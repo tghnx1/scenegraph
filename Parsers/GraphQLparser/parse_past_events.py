@@ -23,29 +23,44 @@ query GET_EVENT($id: ID!) {
   event(id: $id) {
     id
     title
+    flyerFront
+    flyerBack
+    content
+    minimumAge
+    cost
+    contentUrl
+    embargoDate
     date
+    time
     startTime
     endTime
     interestedCount
-    contentUrl
     lineup
-    cost
-    isTicketed
-    isSaved
     isInterested
-    queueItEnabled
+    isSaved
+    isTicketed
+    isFestival
+    dateUpdated
+    resaleActive
     newEventForm
-    pick {
-      id
-      blurb
-    }
+    datePosted
+    hasSecretVenue
+    live
+    canSubscribeToTicketNotifications
+    queueItEnabled
+    presaleStatus
+    ticketingSystem
     __typename
+
     images {
       id
       filename
       alt
+      type
+      crop
+      __typename
     }
-    flyerFront
+
     venue {
       id
       name
@@ -53,15 +68,125 @@ query GET_EVENT($id: ID!) {
       contentUrl
       live
       __typename
+      area {
+        id
+        name
+        urlName
+        __typename
+        country {
+          id
+          name
+          urlCode
+          isoCode
+          __typename
+        }
+      }
+      location {
+        latitude
+        longitude
+        __typename
+      }
     }
+
     promoters {
       id
       name
+      contentUrl
+      live
+      hasTicketAccess
       __typename
     }
+
     artists {
       id
       name
+      contentUrl
+      urlSafeName
+      __typename
+    }
+
+    pick {
+      id
+      blurb
+      __typename
+      author {
+        id
+        name
+        imageUrl
+        username
+        contributor
+        __typename
+      }
+    }
+
+    promotionalLinks {
+      title
+      url
+      __typename
+    }
+
+    
+
+    admin {
+      id
+      username
+      __typename
+    }
+
+    tickets {
+      id
+      title
+      validType
+      onSaleFrom
+      priceRetail
+      isAddOn
+      __typename
+      currency {
+        id
+        code
+        __typename
+      }
+    }
+
+    playerLinks {
+      __typename
+    }
+
+    childEvents {
+      id
+      title
+      contentUrl
+      date
+      startTime
+      endTime
+      __typename
+    }
+
+    genres {
+      id
+      name
+      slug
+      __typename
+    }
+
+    setTimes {
+      id
+      lineup
+      status
+      __typename
+    }
+
+    area {
+      ianaTimeZone
+      __typename
+    }
+
+    ticketing {
+      canSubscribeToTicketNotifications
+      __typename
+      ticketTiersV2 {
+        __typename
+      }
     }
   }
 }
@@ -89,14 +214,23 @@ def fetch_single_event(event_id):
     headers = {
         "Content-Type": "application/json",
         "User-Agent": get_random_ua(),
-        "Referer": f"https://ra.co/events/de/berlin",
+        "Referer": "https://ra.co/events/de/berlin",
         "Origin": "https://ra.co"
     }
 
     req = urllib.request.Request(URL, data=data, headers=headers, method="POST")
     try:
         with urllib.request.urlopen(req, timeout=15) as resp:
-            return json.loads(resp.read())
+            raw = resp.read().decode("utf-8")
+            parsed = json.loads(raw)
+
+            if "errors" in parsed:
+                print(f"[GraphQL error] event {event_id}: {parsed['errors']}", file=sys.stderr)
+                logging.error(f"GraphQL error for event {event_id}: {parsed['errors']}")
+                return None
+
+            return parsed
+
     except Exception as e:
         error_msg = f"Error fetching event {event_id}: {e}"
         print(error_msg, file=sys.stderr)
