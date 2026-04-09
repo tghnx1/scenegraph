@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 
 # --- CONFIGURATION ---
 AREA_ID = 34  # Berlin
-DAYS_FORWARD = 7 # How far into the future to look
+DAYS_FORWARD = 375 # How far into the future to look
 OUTPUT_JSON = "ra_future_events.json"
 OUTPUT_CSV = "ra_future_events.csv"
 
@@ -34,6 +34,7 @@ query GET_EVENT($id: ID!) {
     event(id: $id) {
         id
         title
+        content
         date
         startTime
         endTime
@@ -50,6 +51,7 @@ query GET_EVENT($id: ID!) {
             id
             blurb
         }
+        __typename
         images {
             id
             filename
@@ -62,10 +64,12 @@ query GET_EVENT($id: ID!) {
             address
             contentUrl
             live
+            __typename
         }
         promoters {
             id
             name
+            __typename
         }
         artists {
             id
@@ -79,7 +83,7 @@ def get_event_details(session, headers, event_id):
 	"""Fetch detailed information for a single event."""
 	url = "https://ra.co/graphql"
 	variables = {"id": event_id}
-	
+
 	try:
 		time.sleep(random.uniform(0.5, 1.5))  # Rate limiting
 		response = session.post(url, json={'query': GET_EVENT_QUERY, 'variables': variables}, headers=headers, timeout=15)
@@ -92,10 +96,10 @@ def get_event_details(session, headers, event_id):
 def scrape_ra():
 	start_date, end_date = get_future_dates(DAYS_FORWARD)
 	url = "https://ra.co/graphql"
-	
+
 	# Use a Session to persist cookies (looks more like a real user)
 	session = requests.Session()
-	
+
 	headers = {
 		"User-Agent": random.choice(USER_AGENTS),
 		"Content-Type": "application/json",
@@ -118,7 +122,7 @@ def scrape_ra():
 	"""
 
 	print(f"Starting scrape for Berlin future events ({start_date} to {end_date})...")
-	
+
 	# Random initial delay to not look like a scheduled task
 	time.sleep(random.uniform(1.0, 3.0))
 
@@ -127,7 +131,7 @@ def scrape_ra():
 		all_event_ids = []
 		page = 1
 		page_size = 50  # Fetch 50 events per page
-		
+
 		while True:
 			variables = {
 				"filters": {
@@ -137,46 +141,46 @@ def scrape_ra():
 				"pageSize": page_size,
 				"page": page
 			}
-			
+
 			response = session.post(url, json={'query': query, 'variables': variables}, headers=headers, timeout=15)
-			
+
 			# Check for Rate Limiting (429)
 			if response.status_code == 429:
 				print("429 Error: RA has rate-limited this IP. Stopping to avoid a ban.")
 				sys.exit()
-				
+
 			response.raise_for_status()
 			data = response.json()
-			
+
 			# Debug: Print response on first page
 			if page == 1:
 				print(f"API Response (first page): {json.dumps(data, indent=2)[:500]}...")
-			
+
 			# Check for GraphQL errors
 			if 'errors' in data:
 				print(f"GraphQL Error: {data['errors']}")
 				return
-			
+
 			listings = data.get('data', {}).get('eventListings', {}).get('data', [])
 			total_count = data.get('data', {}).get('eventListings', {}).get('totalResults', 0)
-			
+
 			if not listings:
 				break
-			
+
 			for item in listings:
 				event_id = item.get('event', {}).get('id')
 				if event_id:
 					all_event_ids.append(event_id)
-			
+
 			print(f"Fetched page {page}: {len(listings)} events (Total so far: {len(all_event_ids)}/{total_count})")
-			
+
 			# Stop if we've fetched all pages
 			if len(listings) < page_size:
 				break
-			
+
 			page += 1
 			time.sleep(random.uniform(0.5, 1.0))  # Rate limiting between pages
-		
+
 		if not all_event_ids:
 			print("No events found. You might be blocked or the range is empty.")
 			return
@@ -202,7 +206,7 @@ def scrape_ra():
 			for detailed_event in all_events_data:
 				artists_list = ', '.join([a.get('name', '') for a in detailed_event.get('artists', [])])
 				promoters_list = ', '.join([p.get('name', '') for p in detailed_event.get('promoters', [])])
-				
+
 				writer.writerow([
 					detailed_event.get('date', '')[:10],
 					detailed_event.get('title', 'N/A'),
