@@ -18,11 +18,17 @@ from playwright.async_api import (
 #  source venv/bin/activate
 #  /Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome --remote-debugging-port=9222 --user-data-dir="/tmp/chrome_dev_test"
 # ./venv/bin/python artists_bio.py \
-#   --artists /Users/tghnx1/Desktop/42/scenegraph/Parsers/artists.json \
-#   --out artist_biographies_test.json \
+#   --artists /Users/tghnx1/Desktop/42/scenegraph/Parsers/data/json/artists.json \
+#   --out /Users/tghnx1/Desktop/42/scenegraph/Parsers/data/json/artist_biographies.json \
 #   --cdp-url http://localhost:9222 \
 #   --limit 5
 RA_BASE = "https://ra.co"
+SCRIPT_DIR = Path(__file__).resolve().parent
+PARSERS_DIR = SCRIPT_DIR.parent
+DATA_DIR = PARSERS_DIR / "data"
+JSON_DIR = DATA_DIR / "json"
+LOG_DIR = DATA_DIR / "logs"
+DEBUG_DIR = DATA_DIR / "debug" / "biographies"
 LOGGER = logging.getLogger("artists_bio")
 TERMINAL_SKIP_STATUSES = {"ok", "not_found", "empty"}
 DEFAULT_CHECKPOINT_EVERY = 10
@@ -235,21 +241,26 @@ async def human_scroll(page: Page) -> None:
 
 
 async def save_debug(page: Page, prefix: str = "debug") -> None:
-    safe_prefix = re.sub(r"[^a-zA-Z0-9._-]+", "_", prefix)
+    prefix_path = Path(prefix)
+    prefix_path.parent.mkdir(parents=True, exist_ok=True)
+    safe_name = re.sub(r"[^a-zA-Z0-9._-]+", "_", prefix_path.name)
+    output_base = prefix_path.with_name(safe_name)
+    screenshot_path = output_base.with_suffix(".png")
+    html_path = output_base.with_suffix(".html")
 
     try:
-        await page.screenshot(path=f"{safe_prefix}.png", full_page=True)
+        await page.screenshot(path=str(screenshot_path), full_page=True)
     except Exception as e:
         announce(f"[!] Screenshot save failed: {e}", logging.ERROR)
 
     try:
         html = await page.content()
-        with open(f"{safe_prefix}.html", "w", encoding="utf-8") as f:
+        with html_path.open("w", encoding="utf-8") as f:
             f.write(html)
     except Exception as e:
         announce(f"[!] HTML save failed: {e}", logging.ERROR)
 
-    announce(f"[i] Saved debug files: {safe_prefix}.png, {safe_prefix}.html")
+    announce(f"[i] Saved debug files: {screenshot_path}, {html_path}")
 
 
 async def is_blocked_page(page: Page) -> bool:
@@ -639,8 +650,9 @@ async def run(
     checkpoint_every: int,
 ) -> None:
     checkpoint_every = max(1, checkpoint_every)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
     resolved_log_path = setup_logging(
-        log_path if log_path is not None else out_path.with_name(f"{out_path.stem}.log")
+        log_path if log_path is not None else LOG_DIR / f"{out_path.stem}.log"
     )
     run_started_at = time.perf_counter()
 
@@ -764,13 +776,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--artists",
         type=Path,
-        default=Path("/mnt/data/artists.json"),
+        default=JSON_DIR / "artists.json",
         help="Path to artists.json",
     )
     parser.add_argument(
         "--out",
         type=Path,
-        default=Path("artist_biographies.json"),
+        default=JSON_DIR / "artist_biographies.json",
         help="Output JSON path",
     )
     parser.add_argument(
@@ -788,7 +800,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--debug-dir",
         type=Path,
-        default=Path("debug_biographies"),
+        default=DEBUG_DIR,
         help="Directory for screenshots/html dumps",
     )
     parser.add_argument(

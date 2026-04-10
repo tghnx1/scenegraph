@@ -1,17 +1,26 @@
 import urllib.request
 import json
 import sys
-import os
 import random
 import time
 from datetime import datetime, timedelta
 import subprocess
 import calendar
 import logging
+from pathlib import Path
 
-log_file = "/Users/tghnx1/Desktop/42/scenegraph/Parsers/parse_past_events.log"
+SCRIPT_DIR = Path(__file__).resolve().parent
+PARSERS_DIR = SCRIPT_DIR.parent
+DATA_DIR = PARSERS_DIR / "data"
+JSON_DIR = DATA_DIR / "json"
+LOG_DIR = DATA_DIR / "logs"
+
+JSON_DIR.mkdir(parents=True, exist_ok=True)
+LOG_DIR.mkdir(parents=True, exist_ok=True)
+
+log_file = LOG_DIR / "parse_past_events.log"
 logging.basicConfig(
-    filename=log_file,
+    filename=str(log_file),
     level=logging.WARNING,
     format="%(asctime)s [%(levelname)s] %(message)s",
     datefmt="%Y-%m-%d %H:%M:%S"
@@ -262,14 +271,14 @@ def get_month_chunks(start_date_str, end_date_str):
     return chunks
 
 def main():
-    out_file = "/Users/tghnx1/Desktop/42/scenegraph/Parsers/ra_berlin_past_events.json"
+    out_file = JSON_DIR / "ra_berlin_past_events.json"
 
     # 4. Incremental Deduplication: Load existing data
     past_events = []
     scraped_ids = set()
-    if os.path.exists(out_file):
+    if out_file.exists():
         try:
-            with open(out_file, "r", encoding="utf-8") as f:
+            with out_file.open("r", encoding="utf-8") as f:
                 content = f.read().strip()
                 if content:
                     past_events = json.loads(content)
@@ -382,7 +391,7 @@ def main():
                         # 5. Add Checkpointing
                         if new_events_count % 50 == 0:
                             print(f"  [Checkpointing] Saving {len(past_events)} events to disk...")
-                            with open(out_file, "w", encoding="utf-8") as f:
+                            with out_file.open("w", encoding="utf-8") as f:
                                 json.dump(past_events, f, ensure_ascii=False, indent=2)
 
                     else:
@@ -408,7 +417,7 @@ def main():
 
     # Final save
     # 7. Rename Output (done)
-    with open(out_file, "w", encoding="utf-8") as f:
+    with out_file.open("w", encoding="utf-8") as f:
         json.dump(past_events, f, ensure_ascii=False, indent=2)
 
     print(f"\\nFinished! Successfully compiled {len(past_events)} total past events to {out_file}")

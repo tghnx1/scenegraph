@@ -4,8 +4,12 @@ import sys
 import re
 from datetime import datetime
 import time
+from pathlib import Path
 
 URL = "https://ra.co/graphql"
+SCRIPT_DIR = Path(__file__).resolve().parent
+PARSERS_DIR = SCRIPT_DIR.parent
+JSON_DIR = PARSERS_DIR / "data" / "json"
 GRAPHQL_QUERY = """
 query GET_EVENT($id: ID!) {
   event(id: $id) {
@@ -79,6 +83,7 @@ def fetch_single_event(event_id):
         return None
 
 def main():
+    JSON_DIR.mkdir(parents=True, exist_ok=True)
     today_str = datetime.now().strftime("%Y-%m-%d")
     print(f"Fetching events for today ({today_str})...")
 
@@ -165,8 +170,8 @@ def main():
         time.sleep(0.5)
 
     # Save result
-    out_file = "/Users/tghnx1/Desktop/42/Transcendence/Parsers/GraphQLparser/ra_berlin_today_events.json"
-    with open(out_file, "w", encoding="utf-8") as f:
+    out_file = JSON_DIR / "ra_berlin_today_events.json"
+    with out_file.open("w", encoding="utf-8") as f:
         json.dump(todays_events, f, ensure_ascii=False, indent=2)
 
     print(f"\nSuccessfully filtered and saved {len(todays_events)} events for today to {out_file}")
