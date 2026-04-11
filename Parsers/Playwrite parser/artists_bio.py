@@ -366,14 +366,28 @@ async def save_debug(page: Page, prefix: str = "debug") -> None:
 
 async def is_blocked_page(page: Page) -> bool:
     try:
-        content = (await page.content()).lower()
         title = (await page.title()).lower()
         url = (page.url or "").lower()
+        visible_text = normalize_space(await page.locator("body").inner_text()).lower()
     except Exception as e:
         announce(f"[!] is_blocked_page exception: {e}", logging.ERROR)
         return True
 
-    blocked_markers = [
+    # Use only high-signal visible markers here.
+    # Raw HTML frequently contains hidden captcha/ad scripts, and normal artist
+    # biographies may include words like "challenge", which caused false blocks.
+    url_markers = [
+        "captcha-delivery.com",
+        "geo.captcha-delivery.com",
+        "/cdn-cgi/challenge-platform/",
+    ]
+    title_markers = [
+        "just a moment",
+        "access denied",
+        "security check",
+        "verify you are human",
+    ]
+    visible_markers = [
         "captcha",
         "verify you are human",
         "access is temporarily restricted",
@@ -381,16 +395,38 @@ async def is_blocked_page(page: Page) -> bool:
         "temporarily restricted",
         "unusual activity",
         "unusual traffic",
-        "challenge",
-        "cloudflare",
         "security check",
+        "security challenge",
         "automated (bot) activity",
         "inspection tools",
         "sorry, you have been blocked",
+        "pardon our interruption",
+        "checking if the site connection is secure",
+        "please enable javascript and cookies",
+        "please enable js and disable any ad blocker",
+        "protected by datadome",
     ]
 
-    combined = f"{title}\n{url}\n{content}"
-    return any(marker in combined for marker in blocked_markers)
+    if any(marker in url for marker in url_markers):
+        return True
+
+    if any(marker in title for marker in title_markers):
+        return True
+
+    # A normal artist biography page should not be considered blocked simply
+    # because it contains generic words in its prose.
+    looks_like_real_biography = (
+        "/dj/" in url
+        and "/biography" in url
+        and "biography" in title
+        and "biography" in visible_text
+        and len(visible_text) >= 200
+    )
+
+    if looks_like_real_biography:
+        return False
+
+    return any(marker in visible_text for marker in visible_markers)
 
 
 async def page_looks_like_404(page: Page) -> bool:
