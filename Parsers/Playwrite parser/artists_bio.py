@@ -4,6 +4,7 @@ import json
 import logging
 import random
 import re
+import tempfile
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -16,7 +17,7 @@ from playwright.async_api import (
     TimeoutError as PlaywrightTimeoutError,
 )
 #  source venv/bin/activate
-#  /Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome --remote-debugging-port=9222 --user-data-dir="/tmp/chrome_dev_test"
+#  /Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome --remote-debugging-port=9222 --user-data-dir="/Users/tghnx1/Desktop/42/scenegraph/Parsers/data/runtime/chrome-profile"
 # ./venv/bin/python artists_bio.py \
 #   --artists /Users/tghnx1/Desktop/42/scenegraph/Parsers/data/json/artists.json \
 #   --out /Users/tghnx1/Desktop/42/scenegraph/Parsers/data/json/artist_biographies.json \
@@ -32,6 +33,11 @@ DEBUG_DIR = DATA_DIR / "debug" / "biographies"
 LOGGER = logging.getLogger("artists_bio")
 TERMINAL_SKIP_STATUSES = {"ok", "not_found", "empty"}
 DEFAULT_CHECKPOINT_EVERY = 10
+DEFAULT_POLL_INTERVAL = 15.0
+DEFAULT_IDLE_EXIT_SECONDS = 300.0
+DEFAULT_BLOCKED_RETRY_SECONDS = 900.0
+DEFAULT_TIMEOUT_RETRY_SECONDS = 300.0
+DEFAULT_ERROR_RETRY_SECONDS = 300.0
 
 
 def setup_logging(log_path: Path) -> Path:
@@ -220,9 +226,100 @@ def build_results_list(
     return ordered_results
 
 
+def write_json_atomic(path: Path, data) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temp_path: Optional[Path] = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            "w",
+            encoding="utf-8",
+            dir=path.parent,
+            delete=False,
+        ) as tmp:
+            json.dump(data, tmp, ensure_ascii=False, indent=2)
+            temp_path = Path(tmp.name)
+        temp_path.replace(path)
+    finally:
+        if temp_path is not None and temp_path.exists():
+            temp_path.unlink(missing_ok=True)
+
+
 def save_results(out_path: Path, results: List[Dict[str, Any]]) -> None:
-    with out_path.open("w", encoding="utf-8") as f:
-        json.dump(results, f, ensure_ascii=False, indent=2)
+    write_json_atomic(out_path, results)
+
+
+def load_artists_snapshot(path: Path) -> Tuple[Optional[List[Dict[str, Any]]], Optional[str]]:
+    try:
+        return load_artists(path), None
+    except FileNotFoundError:
+        return None, f"Artists file not found yet: {path}"
+    except json.JSONDecodeError as e:
+        return None, f"Artists file is not ready yet: {path} ({e})"
+    except Exception as e:
+        return None, f"Failed to load artists from {path}: {e}"
+
+
+def is_session_closed_error(exc: Exception) -> bool:
+    message = str(exc).lower()
+    markers = [
+        "target page, context or browser has been closed",
+        "target closed",
+        "browser has been closed",
+    ]
+    return any(marker in message for marker in markers)
+
+
+def browser_is_usable(browser: Optional[Browser]) -> bool:
+    if browser is None:
+        return False
+
+    try:
+        is_connected = getattr(browser, "is_connected", None)
+        if callable(is_connected):
+            return bool(is_connected())
+    except Exception:
+        return False
+
+    return True
+
+
+def page_is_usable(page: Optional[Page]) -> bool:
+    if page is None:
+        return False
+
+    try:
+        is_closed = getattr(page, "is_closed", None)
+        if callable(is_closed):
+            return not bool(is_closed())
+    except Exception:
+        return False
+
+    return True
+
+
+async def close_browser_session(browser: Optional[Browser]) -> None:
+    if browser is None:
+        return
+
+    try:
+        await browser.close()
+    except Exception:
+        pass
+
+
+def get_retry_delay_seconds(
+    status: Optional[str],
+    blocked_retry_seconds: float,
+    timeout_retry_seconds: float,
+    error_retry_seconds: float,
+) -> float:
+    if status == "blocked":
+        return blocked_retry_seconds
+    if status == "timeout":
+        return timeout_retry_seconds
+    if status == "error":
+        return error_retry_seconds
+    return 0.0
 
 
 async def human_pause(min_ms: int = 1500, max_ms: int = 3500) -> None:
@@ -241,6 +338,10 @@ async def human_scroll(page: Page) -> None:
 
 
 async def save_debug(page: Page, prefix: str = "debug") -> None:
+    if not page_is_usable(page):
+        announce("[i] Skipping debug capture because the Playwright page is already closed.", logging.WARNING)
+        return
+
     prefix_path = Path(prefix)
     prefix_path.parent.mkdir(parents=True, exist_ok=True)
     safe_name = re.sub(r"[^a-zA-Z0-9._-]+", "_", prefix_path.name)
@@ -634,6 +735,10 @@ async def parse_biography_page(page: Page, artist: Dict[str, Any], debug_dir: Pa
     except Exception as e:
         result["status"] = "error"
         result["error"] = str(e)
+        if is_session_closed_error(e):
+            result["status"] = "session_closed"
+            announce(f"[!] Browser session closed while parsing {url}: {e}", logging.WARNING)
+            return result
         announce(f"[!] Unexpected error while parsing {url}: {e}", logging.ERROR)
         prefix = debug_dir / f"error_{artist_id or 'unknown'}"
         await save_debug(page, str(prefix))
@@ -648,8 +753,19 @@ async def run(
     debug_dir: Path,
     log_path: Optional[Path],
     checkpoint_every: int,
+    watch: bool,
+    poll_interval: float,
+    idle_exit_seconds: float,
+    blocked_retry_seconds: float,
+    timeout_retry_seconds: float,
+    error_retry_seconds: float,
 ) -> None:
     checkpoint_every = max(1, checkpoint_every)
+    poll_interval = max(1.0, poll_interval)
+    idle_exit_seconds = max(0.0, idle_exit_seconds)
+    blocked_retry_seconds = max(0.0, blocked_retry_seconds)
+    timeout_retry_seconds = max(0.0, timeout_retry_seconds)
+    error_retry_seconds = max(0.0, error_retry_seconds)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     resolved_log_path = setup_logging(
         log_path if log_path is not None else LOG_DIR / f"{out_path.stem}.log"
@@ -658,117 +774,223 @@ async def run(
 
     announce(f"[i] Logging to {resolved_log_path}")
 
-    artists = load_artists(artists_path)
-
-    if limit is not None:
-        artists = artists[:limit]
-
-    announce(f"[i] Loaded {len(artists)} artists from {artists_path}")
-
     debug_dir.mkdir(parents=True, exist_ok=True)
 
     existing_results, results_by_key, existing_order = load_existing_results(out_path)
     if existing_results:
         announce(f"[i] Loaded {len(existing_results)} existing biography records from {out_path}")
 
-    current_keys = [make_artist_key(artist) for artist in artists]
-    skipped_existing = sum(
-        1 for key in current_keys if should_skip_existing(results_by_key.get(key))
-    )
-    if skipped_existing:
-        announce(f"[i] Will skip {skipped_existing} artists already parsed with terminal status")
-
-    if skipped_existing == len(artists):
-        final_results = build_results_list(results_by_key, current_keys, existing_order)
-        save_results(out_path, final_results)
-        total_elapsed = time.perf_counter() - run_started_at
-
-        announce(f"[i] Nothing new to parse. Saved {len(final_results)} records to {out_path}")
-        announce(
-            "[i] Run summary: "
-            f"total_artists={len(artists)}, "
-            "parsed_this_run=0, "
-            f"skipped_existing={skipped_existing}, "
-            f"total_time={format_elapsed(total_elapsed)}, "
-            "average_parse_time=0.00s"
-        )
-        return
+    discovered_order = list(existing_order)
+    discovered_keys = set(existing_order)
+    skipped_existing_keys = {
+        key for key, item in results_by_key.items() if should_skip_existing(item)
+    }
+    parsed_keys_this_run: set[Tuple[str, str]] = set()
+    parsed_this_run = 0
+    parse_durations: List[float] = []
+    last_snapshot_signature: Optional[Tuple[int, int, int]] = None
+    last_wait_reason: Optional[str] = None
+    last_total_artists = 0
+    idle_started_at: Optional[float] = None
+    retry_not_before: Dict[Tuple[str, str], float] = {}
 
     async with async_playwright() as p:
-        announce(f"[i] Connecting to existing Chrome via CDP: {cdp_url}")
-        browser = await p.chromium.connect_over_cdp(cdp_url)
+        browser: Optional[Browser] = None
+        page: Optional[Page] = None
 
-        if not browser.contexts:
-            raise RuntimeError(
-                "No Chrome contexts found. Start Chrome with --remote-debugging-port=9222"
-            )
+        try:
+            while True:
+                artists, snapshot_error = load_artists_snapshot(artists_path)
 
-        page = await get_or_create_page(browser)
-        announce(f"[i] Using page: {page.url or 'about:blank'}")
+                if artists is None:
+                    if not watch:
+                        raise FileNotFoundError(snapshot_error)
 
-        parsed_this_run = 0
-        skipped_this_run = 0
-        parse_durations: List[float] = []
+                    if snapshot_error != last_wait_reason:
+                        announce(f"[i] {snapshot_error}")
+                        last_wait_reason = snapshot_error
 
-        for idx, artist in enumerate(artists, start=1):
-            key = current_keys[idx - 1]
-            existing_item = results_by_key.get(key)
-            artist_label = artist.get("id") or artist.get("biography_url")
+                    if idle_started_at is None:
+                        idle_started_at = time.perf_counter()
 
-            if should_skip_existing(existing_item):
-                skipped_this_run += 1
-                announce(
-                    f"[{idx}/{len(artists)}] Skipping {artist_label} "
-                    f"(already parsed, status={existing_item.get('status')})"
+                    if idle_exit_seconds and time.perf_counter() - idle_started_at >= idle_exit_seconds:
+                        announce("[i] Watch idle timeout reached while waiting for artists input.")
+                        break
+
+                    await asyncio.sleep(poll_interval)
+                    continue
+
+                last_wait_reason = None
+
+                if limit is not None:
+                    artists = artists[:limit]
+
+                total_artists = len(artists)
+                pending_artists = []
+                deferred_retry_count = 0
+
+                for idx, artist in enumerate(artists, start=1):
+                    key = make_artist_key(artist)
+                    if key not in discovered_keys:
+                        discovered_keys.add(key)
+                        discovered_order.append(key)
+
+                    existing_item = results_by_key.get(key)
+                    if should_skip_existing(existing_item):
+                        if key not in parsed_keys_this_run:
+                            skipped_existing_keys.add(key)
+                        continue
+
+                    retry_at = retry_not_before.get(key)
+                    if retry_at is not None and time.time() < retry_at:
+                        deferred_retry_count += 1
+                        continue
+
+                    pending_artists.append((idx, artist, key))
+
+                last_total_artists = total_artists
+                snapshot_signature = (
+                    total_artists,
+                    len(pending_artists),
+                    len(skipped_existing_keys) + deferred_retry_count,
                 )
-                continue
+                if snapshot_signature != last_snapshot_signature:
+                    announce(
+                        "[i] Artist snapshot: "
+                        f"total={total_artists}, "
+                        f"pending={len(pending_artists)}, "
+                        f"already_done={len(skipped_existing_keys)}, "
+                        f"deferred_retry={deferred_retry_count}"
+                    )
+                    last_snapshot_signature = snapshot_signature
 
-            artist_started_at = time.perf_counter()
-            announce(f"[{idx}/{len(artists)}] Parsing {artist_label}")
-            item = await parse_biography_page(page, artist, debug_dir)
-            elapsed = time.perf_counter() - artist_started_at
+                if not pending_artists:
+                    if not watch:
+                        break
 
-            results_by_key[key] = item
-            parsed_this_run += 1
-            parse_durations.append(elapsed)
+                    if idle_started_at is None:
+                        idle_started_at = time.perf_counter()
+                        announce(f"[i] No pending artists. Watching {artists_path} for updates...")
 
-            announce(
-                f"[{idx}/{len(artists)}] Finished {artist_label} "
-                f"status={item['status']} in {format_elapsed(elapsed)}"
-            )
+                    if idle_exit_seconds and time.perf_counter() - idle_started_at >= idle_exit_seconds:
+                        announce("[i] Watch idle timeout reached with no new artists.")
+                        break
 
-            if parsed_this_run % checkpoint_every == 0:
-                checkpoint_results = build_results_list(results_by_key, current_keys, existing_order)
-                save_results(out_path, checkpoint_results)
+                    await asyncio.sleep(poll_interval)
+                    continue
+
+                idle_started_at = None
+                idx, artist, key = pending_artists[0]
+                artist_label = artist.get("id") or artist.get("biography_url")
+
+                if page is not None and (not page_is_usable(page) or not browser_is_usable(browser)):
+                    announce("[i] Playwright page/browser is closed. Reconnecting to Chrome CDP...", logging.WARNING)
+                    await close_browser_session(browser)
+                    browser = None
+                    page = None
+
+                if page is None:
+                    try:
+                        announce(f"[i] Connecting to existing Chrome via CDP: {cdp_url}")
+                        browser = await p.chromium.connect_over_cdp(cdp_url)
+
+                        if not browser.contexts:
+                            raise RuntimeError(
+                                "No Chrome contexts found. Start Chrome with --remote-debugging-port=9222"
+                            )
+
+                        page = await get_or_create_page(browser)
+                        announce(f"[i] Using page: {page.url or 'about:blank'}")
+                    except Exception as e:
+                        if not watch:
+                            raise
+
+                        wait_message = f"Waiting for Chrome CDP at {cdp_url}: {e}"
+                        if wait_message != last_wait_reason:
+                            announce(f"[i] {wait_message}", logging.WARNING)
+                            last_wait_reason = wait_message
+
+                        if idle_started_at is None:
+                            idle_started_at = time.perf_counter()
+
+                        await asyncio.sleep(poll_interval)
+                        continue
+
+                last_wait_reason = None
+                artist_started_at = time.perf_counter()
+                announce(f"[{idx}/{total_artists}] Parsing {artist_label}")
+                item = await parse_biography_page(page, artist, debug_dir)
+                elapsed = time.perf_counter() - artist_started_at
+
+                if item["status"] == "session_closed":
+                    announce(
+                        f"[i] Lost browser session while parsing {artist_label}. "
+                        "Will reconnect and retry without recording an artist error.",
+                        logging.WARNING,
+                    )
+                    await close_browser_session(browser)
+                    browser = None
+                    page = None
+                    await asyncio.sleep(min(poll_interval, 5.0))
+                    continue
+
+                results_by_key[key] = item
+                parsed_keys_this_run.add(key)
+                parsed_this_run += 1
+                parse_durations.append(elapsed)
+
+                retry_delay = get_retry_delay_seconds(
+                    item.get("status"),
+                    blocked_retry_seconds=blocked_retry_seconds,
+                    timeout_retry_seconds=timeout_retry_seconds,
+                    error_retry_seconds=error_retry_seconds,
+                )
+                if retry_delay > 0:
+                    retry_not_before[key] = time.time() + retry_delay
+                    announce(
+                        f"[i] Deferring retry for {artist_label} "
+                        f"for {format_elapsed(retry_delay)} after status={item['status']}"
+                    )
+                else:
+                    retry_not_before.pop(key, None)
+
                 announce(
-                    f"[i] Checkpoint saved {len(checkpoint_results)} records to {out_path}"
+                    f"[{idx}/{total_artists}] Finished {artist_label} "
+                    f"status={item['status']} in {format_elapsed(elapsed)}"
                 )
 
-            # stronger cooldown after block to reduce repeated bans
-            if item["status"] == "blocked":
-                announce("[!] Block detected. Cooling down longer...", logging.WARNING)
-                await human_pause(12000, 20000)
-            else:
-                await human_pause(3000, 7000)
+                if parsed_this_run % checkpoint_every == 0:
+                    checkpoint_results = build_results_list(results_by_key, discovered_order, existing_order)
+                    save_results(out_path, checkpoint_results)
+                    announce(
+                        f"[i] Checkpoint saved {len(checkpoint_results)} records to {out_path}"
+                    )
 
-        final_results = build_results_list(results_by_key, current_keys, existing_order)
-        save_results(out_path, final_results)
+                if item["status"] == "blocked":
+                    announce("[!] Block detected. Cooling down longer...", logging.WARNING)
+                    await human_pause(12000, 20000)
+                else:
+                    await human_pause(3000, 7000)
+        finally:
+            await close_browser_session(browser)
 
-        total_elapsed = time.perf_counter() - run_started_at
-        average_elapsed = (
-            sum(parse_durations) / len(parse_durations) if parse_durations else 0.0
-        )
+    final_results = build_results_list(results_by_key, discovered_order, existing_order)
+    save_results(out_path, final_results)
 
-        announce(f"[i] Saved {len(final_results)} records to {out_path}")
-        announce(
-            "[i] Run summary: "
-            f"total_artists={len(artists)}, "
-            f"parsed_this_run={parsed_this_run}, "
-            f"skipped_existing={skipped_this_run}, "
-            f"total_time={format_elapsed(total_elapsed)}, "
-            f"average_parse_time={format_elapsed(average_elapsed) if parse_durations else '0.00s'}"
-        )
-        await browser.close()
+    total_elapsed = time.perf_counter() - run_started_at
+    average_elapsed = (
+        sum(parse_durations) / len(parse_durations) if parse_durations else 0.0
+    )
+
+    announce(f"[i] Saved {len(final_results)} records to {out_path}")
+    announce(
+        "[i] Run summary: "
+        f"total_artists={last_total_artists}, "
+        f"parsed_this_run={parsed_this_run}, "
+        f"skipped_existing={len(skipped_existing_keys)}, "
+        f"total_time={format_elapsed(total_elapsed)}, "
+        f"average_parse_time={format_elapsed(average_elapsed) if parse_durations else '0.00s'}"
+    )
 
 
 def parse_args() -> argparse.Namespace:
@@ -815,6 +1037,41 @@ def parse_args() -> argparse.Namespace:
         default=DEFAULT_CHECKPOINT_EVERY,
         help="Save output after every N newly parsed artists",
     )
+    parser.add_argument(
+        "--watch",
+        action="store_true",
+        help="Keep polling the artists file for new entries while running",
+    )
+    parser.add_argument(
+        "--poll-interval",
+        type=float,
+        default=DEFAULT_POLL_INTERVAL,
+        help="Seconds between artists file refreshes in watch mode",
+    )
+    parser.add_argument(
+        "--idle-exit-seconds",
+        type=float,
+        default=DEFAULT_IDLE_EXIT_SECONDS,
+        help="In watch mode, exit after this many idle seconds without new artists. Use 0 to wait forever.",
+    )
+    parser.add_argument(
+        "--blocked-retry-seconds",
+        type=float,
+        default=DEFAULT_BLOCKED_RETRY_SECONDS,
+        help="Delay before retrying an artist that returned status=blocked",
+    )
+    parser.add_argument(
+        "--timeout-retry-seconds",
+        type=float,
+        default=DEFAULT_TIMEOUT_RETRY_SECONDS,
+        help="Delay before retrying an artist that returned status=timeout",
+    )
+    parser.add_argument(
+        "--error-retry-seconds",
+        type=float,
+        default=DEFAULT_ERROR_RETRY_SECONDS,
+        help="Delay before retrying an artist that returned status=error",
+    )
     return parser.parse_args()
 
 
@@ -828,6 +1085,12 @@ async def main() -> None:
         debug_dir=args.debug_dir,
         log_path=args.log_file,
         checkpoint_every=args.checkpoint_every,
+        watch=args.watch,
+        poll_interval=args.poll_interval,
+        idle_exit_seconds=args.idle_exit_seconds,
+        blocked_retry_seconds=args.blocked_retry_seconds,
+        timeout_retry_seconds=args.timeout_retry_seconds,
+        error_retry_seconds=args.error_retry_seconds,
     )
 
 

@@ -24,6 +24,7 @@ artists.json
 Parsers/data/json/*.json
 Parsers/data/json/*.jsonl
 Parsers/data/logs/*.log
+Parsers/data/runtime/
 Parsers/data/debug/**/*.html
 Parsers/data/debug/**/*.png
 
