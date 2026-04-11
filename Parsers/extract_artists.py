@@ -1,11 +1,30 @@
 import argparse
 import json
+import tempfile
 from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 JSON_DIR = SCRIPT_DIR / "data" / "json"
 DEFAULT_INPUT_PATH = JSON_DIR / "ra_berlin_past_events.json"
 DEFAULT_OUTPUT_PATH = JSON_DIR / "artists.json"
+
+
+def write_json_atomic(path: Path, data) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temp_path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            "w",
+            encoding="utf-8",
+            dir=path.parent,
+            delete=False,
+        ) as tmp:
+            json.dump(data, tmp, ensure_ascii=False, indent=2)
+            temp_path = Path(tmp.name)
+        temp_path.replace(path)
+    finally:
+        if temp_path is not None and temp_path.exists():
+            temp_path.unlink(missing_ok=True)
 
 
 def parse_args() -> argparse.Namespace:
@@ -46,8 +65,7 @@ def main() -> None:
                     "url": f"https://ra.co{content_url}/biography",
                 }
 
-    with args.output.open("w", encoding="utf-8") as outfile:
-        json.dump(list(unique_artists.values()), outfile, ensure_ascii=False, indent=2)
+    write_json_atomic(args.output, list(unique_artists.values()))
 
     print(f"Saved {len(unique_artists)} artists to {args.output}")
 

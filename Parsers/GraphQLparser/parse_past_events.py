@@ -1,3 +1,4 @@
+import argparse
 import urllib.request
 import json
 import sys
@@ -7,6 +8,7 @@ from datetime import datetime, timedelta
 import subprocess
 import calendar
 import logging
+import tempfile
 from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -14,6 +16,8 @@ PARSERS_DIR = SCRIPT_DIR.parent
 DATA_DIR = PARSERS_DIR / "data"
 JSON_DIR = DATA_DIR / "json"
 LOG_DIR = DATA_DIR / "logs"
+DEFAULT_OUTPUT_PATH = JSON_DIR / "ra_berlin_past_events.json"
+DEFAULT_CHECKPOINT_EVERY = 50
 
 JSON_DIR.mkdir(parents=True, exist_ok=True)
 LOG_DIR.mkdir(parents=True, exist_ok=True)
@@ -270,8 +274,46 @@ def get_month_chunks(start_date_str, end_date_str):
     chunks.reverse()
     return chunks
 
+
+def write_json_atomic(path: Path, data) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temp_path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            "w",
+            encoding="utf-8",
+            dir=path.parent,
+            delete=False,
+        ) as tmp:
+            json.dump(data, tmp, ensure_ascii=False, indent=2)
+            temp_path = Path(tmp.name)
+        temp_path.replace(path)
+    finally:
+        if temp_path is not None and temp_path.exists():
+            temp_path.unlink(missing_ok=True)
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--out",
+        type=Path,
+        default=DEFAULT_OUTPUT_PATH,
+        help="Output JSON path",
+    )
+    parser.add_argument(
+        "--checkpoint-every",
+        type=int,
+        default=DEFAULT_CHECKPOINT_EVERY,
+        help="Save progress after every N new events",
+    )
+    return parser.parse_args()
+
+
 def main():
-    out_file = JSON_DIR / "ra_berlin_past_events.json"
+    args = parse_args()
+    out_file = args.out
+    checkpoint_every = max(1, args.checkpoint_every)
 
     # 4. Incremental Deduplication: Load existing data
     past_events = []
@@ -389,10 +431,9 @@ def main():
                         new_events_count += 1
 
                         # 5. Add Checkpointing
-                        if new_events_count % 50 == 0:
+                        if new_events_count % checkpoint_every == 0:
                             print(f"  [Checkpointing] Saving {len(past_events)} events to disk...")
-                            with out_file.open("w", encoding="utf-8") as f:
-                                json.dump(past_events, f, ensure_ascii=False, indent=2)
+                            write_json_atomic(out_file, past_events)
 
                     else:
                         warning_msg = f"    -> Error or invalid data for event {eid}"
@@ -417,8 +458,7 @@ def main():
 
     # Final save
     # 7. Rename Output (done)
-    with out_file.open("w", encoding="utf-8") as f:
-        json.dump(past_events, f, ensure_ascii=False, indent=2)
+    write_json_atomic(out_file, past_events)
 
     print(f"\\nFinished! Successfully compiled {len(past_events)} total past events to {out_file}")
 
