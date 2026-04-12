@@ -523,4 +523,10 @@ def main():
     # Final save
     # 7. Rename Output (done)
     snapshot_path = write_json_atomic(out_file, past_events)
-    if s
+    if snapshot_path is not None:
+        print(f"[Backup] Snapshot saved to {snapshot_path}")
+
+    print(f"\\nFinished! Successfully compiled {len(past_events)} total past events to {out_file}")
+
+if __name__ == "__main__":
+    main()
