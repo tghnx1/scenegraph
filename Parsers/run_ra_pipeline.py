@@ -464,4 +464,14 @@ def main() -> int:
             if extract_failures:
                 return 1
 
-     
+            announce("[pipeline] Pipeline finished successfully.")
+            return 0
+    finally:
+        if parse_proc.poll() is None:
+            parse_proc.terminate()
+        if bio_proc.poll() is None:
+            bio_proc.terminate()
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
