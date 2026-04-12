@@ -3,6 +3,7 @@ import urllib.request
 import json
 import sys
 import random
+import shutil
 import time
 from datetime import datetime, timedelta
 import subprocess
@@ -10,17 +11,23 @@ import calendar
 import logging
 import tempfile
 from pathlib import Path
+from typing import Optional
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 PARSERS_DIR = SCRIPT_DIR.parent
 DATA_DIR = PARSERS_DIR / "data"
 JSON_DIR = DATA_DIR / "json"
 LOG_DIR = DATA_DIR / "logs"
+BACKUP_DIR = DATA_DIR / "backups" / "json"
 DEFAULT_OUTPUT_PATH = JSON_DIR / "ra_berlin_past_events.json"
 DEFAULT_CHECKPOINT_EVERY = 50
+DEFAULT_MIN_DATE = "2021-01-01"
+BACKUP_SNAPSHOT_INTERVAL_SECONDS = 6 * 60 * 60
+BACKUP_MAX_SNAPSHOTS = 20
 
 JSON_DIR.mkdir(parents=True, exist_ok=True)
 LOG_DIR.mkdir(parents=True, exist_ok=True)
+BACKUP_DIR.mkdir(parents=True, exist_ok=True)
 
 log_file = LOG_DIR / "parse_past_events.log"
 logging.basicConfig(
@@ -275,9 +282,56 @@ def get_month_chunks(start_date_str, end_date_str):
     return chunks
 
 
-def write_json_atomic(path: Path, data) -> None:
+def rotate_json_backup(
+    path: Path,
+    backup_dir: Path,
+    snapshot_interval_seconds: int = BACKUP_SNAPSHOT_INTERVAL_SECONDS,
+    max_snapshots: int = BACKUP_MAX_SNAPSHOTS,
+) -> Optional[Path]:
+    if not path.exists():
+        return None
+
+    backup_dir.mkdir(parents=True, exist_ok=True)
+    prev_path = backup_dir / f"{path.stem}.prev{path.suffix}"
+    temp_prev: Optional[Path] = None
+    snapshot_path: Optional[Path] = None
+
+    try:
+        with tempfile.NamedTemporaryFile(dir=backup_dir, delete=False) as tmp_prev_file:
+            temp_prev = Path(tmp_prev_file.name)
+        shutil.copy2(path, temp_prev)
+        temp_prev.replace(prev_path)
+    finally:
+        if temp_prev is not None and temp_prev.exists():
+            temp_prev.unlink(missing_ok=True)
+
+    snapshots = sorted(
+        p
+        for p in backup_dir.glob(f"{path.stem}.*{path.suffix}")
+        if p.name != prev_path.name
+    )
+    should_snapshot = True
+    if snapshots:
+        latest_snapshot = max(snapshots, key=lambda p: p.stat().st_mtime)
+        should_snapshot = (time.time() - latest_snapshot.stat().st_mtime) >= snapshot_interval_seconds
+
+    if should_snapshot:
+        timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        snapshot_path = backup_dir / f"{path.stem}.{timestamp}{path.suffix}"
+        shutil.copy2(path, snapshot_path)
+
+        snapshots.append(snapshot_path)
+        if max_snapshots > 0 and len(snapshots) > max_snapshots:
+            for old_snapshot in snapshots[:-max_snapshots]:
+                old_snapshot.unlink(missing_ok=True)
+
+    return snapshot_path
+
+
+def write_json_atomic(path: Path, data) -> Optional[Path]:
     path.parent.mkdir(parents=True, exist_ok=True)
-    temp_path: Path | None = None
+    snapshot_path = rotate_json_backup(path, BACKUP_DIR)
+    temp_path: Optional[Path] = None
     try:
         with tempfile.NamedTemporaryFile(
             "w",
@@ -291,6 +345,7 @@ def write_json_atomic(path: Path, data) -> None:
     finally:
         if temp_path is not None and temp_path.exists():
             temp_path.unlink(missing_ok=True)
+    return snapshot_path
 
 
 def parse_args() -> argparse.Namespace:
@@ -307,6 +362,12 @@ def parse_args() -> argparse.Namespace:
         default=DEFAULT_CHECKPOINT_EVERY,
         help="Save progress after every N new events",
     )
+    parser.add_argument(
+        "--min-date",
+        type=str,
+        default=DEFAULT_MIN_DATE,
+        help="Oldest event date to crawl, in YYYY-MM-DD format",
+    )
     return parser.parse_args()
 
 
@@ -314,6 +375,7 @@ def main():
     args = parse_args()
     out_file = args.out
     checkpoint_every = max(1, args.checkpoint_every)
+    min_date = args.min_date
 
     # 4. Incremental Deduplication: Load existing data
     past_events = []
@@ -333,7 +395,7 @@ def main():
 
     # 1. Chunk the Date Ranges
     today_str = datetime.now().strftime("%Y-%m-%d")
-    date_chunks = get_month_chunks("2010-01-01", today_str)
+    date_chunks = get_month_chunks(min_date, today_str)
 
     list_query = """
     query GET_EVENT_LISTINGS($filters: FilterInputDtoInput, $filterOptions: FilterOptionsInputDtoInput) {
@@ -433,7 +495,9 @@ def main():
                         # 5. Add Checkpointing
                         if new_events_count % checkpoint_every == 0:
                             print(f"  [Checkpointing] Saving {len(past_events)} events to disk...")
-                            write_json_atomic(out_file, past_events)
+                            snapshot_path = write_json_atomic(out_file, past_events)
+                            if snapshot_path is not None:
+                                print(f"  [Backup] Snapshot saved to {snapshot_path}")
 
                     else:
                         warning_msg = f"    -> Error or invalid data for event {eid}"
@@ -458,9 +522,5 @@ def main():
 
     # Final save
     # 7. Rename Output (done)
-    write_json_atomic(out_file, past_events)
-
-    print(f"\\nFinished! Successfully compiled {len(past_events)} total past events to {out_file}")
-
-if __name__ == "__main__":
-    main()
+    snapshot_path = write_json_atomic(out_file, past_events)
+    if s

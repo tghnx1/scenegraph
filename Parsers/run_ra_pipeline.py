@@ -33,6 +33,7 @@ DEFAULT_CHROME_BINARY = Path("/Applications/Google Chrome.app/Contents/MacOS/Goo
 DEFAULT_CHROME_USER_DATA_DIR = RUNTIME_DIR / "chrome-profile"
 DEFAULT_CHROME_STARTUP_TIMEOUT = 20.0
 DEFAULT_CHROME_START_URL = "https://ra.co"
+DEFAULT_EVENTS_MIN_DATE = "2021-01-01"
 
 LOGGER = logging.getLogger("ra_pipeline")
 
@@ -186,6 +187,12 @@ def parse_args() -> argparse.Namespace:
         help="Checkpoint frequency for parse_past_events.py",
     )
     parser.add_argument(
+        "--events-min-date",
+        type=str,
+        default=DEFAULT_EVENTS_MIN_DATE,
+        help="Oldest event date to crawl in parse_past_events.py, format YYYY-MM-DD",
+    )
+    parser.add_argument(
         "--bio-checkpoint-every",
         type=int,
         default=10,
@@ -263,6 +270,8 @@ def start_parse_process(args: argparse.Namespace) -> subprocess.Popen:
         str(args.events_json),
         "--checkpoint-every",
         str(max(1, args.events_checkpoint_every)),
+        "--min-date",
+        args.events_min_date,
     ]
     announce("[pipeline] Starting parse_past_events.py")
     return subprocess.Popen(cmd, cwd=str(GRAPHQL_DIR))
@@ -455,14 +464,4 @@ def main() -> int:
             if extract_failures:
                 return 1
 
-            announce("[pipeline] Pipeline finished successfully.")
-            return 0
-    finally:
-        if parse_proc.poll() is None:
-            parse_proc.terminate()
-        if bio_proc.poll() is None:
-            bio_proc.terminate()
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())
+     
