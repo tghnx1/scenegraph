@@ -507,4 +507,9 @@ def main():
     # 7. Rename Output (done)
     backup_path = write_json_atomic(out_file, past_events)
     if backup_path is not None:
- 
+        print(f"[Backup] Updated rolling backup at {backup_path}")
+
+    print(f"\\nFinished! Successfully compiled {len(past_events)} total past events to {out_file}")
+
+if __name__ == "__main__":
+    main()
