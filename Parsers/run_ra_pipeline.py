@@ -9,6 +9,10 @@ from pathlib import Path
 from typing import Optional
 from urllib.parse import urlparse
 
+
+#caffeinate -dimsu python3 /Users/tghnx1/Desktop/42/scenegraph/Parsers/run_ra_pipeline.py \
+# --cdp-url http://localhost:9222 \
+#  --launch-chrome
 SCRIPT_DIR = Path(__file__).resolve().parent
 GRAPHQL_DIR = SCRIPT_DIR / "GraphQLparser"
 PLAYWRIGHT_DIR = SCRIPT_DIR / "Playwrite parser"
@@ -34,6 +38,10 @@ DEFAULT_CHROME_USER_DATA_DIR = RUNTIME_DIR / "chrome-profile"
 DEFAULT_CHROME_STARTUP_TIMEOUT = 20.0
 DEFAULT_CHROME_START_URL = "https://ra.co"
 DEFAULT_EVENTS_MIN_DATE = "2021-01-01"
+DEFAULT_EVENTS_CHECKPOINT_EVERY = 50
+DEFAULT_BIO_CHECKPOINT_EVERY = 10
+DEFAULT_EXTRACT_POLL_INTERVAL = 10.0
+DEFAULT_EXTRACT_MIN_INTERVAL = 45.0
 
 LOGGER = logging.getLogger("ra_pipeline")
 
@@ -183,7 +191,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--events-checkpoint-every",
         type=int,
-        default=10,
+        default=DEFAULT_EVENTS_CHECKPOINT_EVERY,
         help="Checkpoint frequency for parse_past_events.py",
     )
     parser.add_argument(
@@ -195,14 +203,20 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--bio-checkpoint-every",
         type=int,
-        default=10,
+        default=DEFAULT_BIO_CHECKPOINT_EVERY,
         help="Checkpoint frequency for artists_bio.py",
     )
     parser.add_argument(
         "--extract-poll-interval",
         type=float,
-        default=10.0,
+        default=DEFAULT_EXTRACT_POLL_INTERVAL,
         help="Seconds between checks for new event checkpoints",
+    )
+    parser.add_argument(
+        "--extract-min-interval",
+        type=float,
+        default=DEFAULT_EXTRACT_MIN_INTERVAL,
+        help="Minimum seconds between extract_artists.py refreshes while parsing is still running",
     )
     parser.add_argument(
         "--bio-poll-interval",
@@ -406,6 +420,8 @@ def main() -> int:
     parse_proc = start_parse_process(args)
     bio_proc = start_bio_process(args, watch=True)
     last_extracted_signature: Optional[tuple[int, int]] = None
+    pending_extract_signature: Optional[tuple[int, int]] = None
+    last_extract_ran_at: Optional[float] = None
     extract_failures = 0
 
     try:
@@ -415,10 +431,22 @@ def main() -> int:
             events_signature = file_signature(args.events_json)
 
             if events_signature is not None and events_signature != last_extracted_signature:
-                if run_extract_artists(args):
-                    last_extracted_signature = events_signature
-                else:
-                    extract_failures += 1
+                pending_extract_signature = events_signature
+
+            if pending_extract_signature is not None:
+                now = time.monotonic()
+                min_interval_reached = (
+                    last_extract_ran_at is None
+                    or now - last_extract_ran_at >= max(0.0, args.extract_min_interval)
+                )
+
+                if parse_returncode is not None or min_interval_reached:
+                    if run_extract_artists(args):
+                        last_extracted_signature = pending_extract_signature
+                    else:
+                        extract_failures += 1
+                    pending_extract_signature = None
+                    last_extract_ran_at = now
 
             if parse_returncode is None:
                 bio_returncode = bio_proc.poll()
@@ -437,10 +465,15 @@ def main() -> int:
 
             final_signature = file_signature(args.events_json)
             if final_signature is not None and final_signature != last_extracted_signature:
+                pending_extract_signature = final_signature
+
+            if pending_extract_signature is not None:
                 if run_extract_artists(args):
-                    last_extracted_signature = final_signature
+                    last_extracted_signature = pending_extract_signature
                 else:
                     extract_failures += 1
+                pending_extract_signature = None
+                last_extract_ran_at = time.monotonic()
 
             if bio_proc.poll() is None:
                 announce("[pipeline] Waiting for artists_bio.py to finish its watch cycle...")
