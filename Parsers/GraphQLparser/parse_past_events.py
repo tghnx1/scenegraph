@@ -22,8 +22,6 @@ BACKUP_DIR = DATA_DIR / "backups" / "json"
 DEFAULT_OUTPUT_PATH = JSON_DIR / "ra_berlin_past_events.json"
 DEFAULT_CHECKPOINT_EVERY = 50
 DEFAULT_MIN_DATE = "2021-01-01"
-BACKUP_SNAPSHOT_INTERVAL_SECONDS = 6 * 60 * 60
-BACKUP_MAX_SNAPSHOTS = 20
 
 JSON_DIR.mkdir(parents=True, exist_ok=True)
 LOG_DIR.mkdir(parents=True, exist_ok=True)
@@ -285,8 +283,6 @@ def get_month_chunks(start_date_str, end_date_str):
 def rotate_json_backup(
     path: Path,
     backup_dir: Path,
-    snapshot_interval_seconds: int = BACKUP_SNAPSHOT_INTERVAL_SECONDS,
-    max_snapshots: int = BACKUP_MAX_SNAPSHOTS,
 ) -> Optional[Path]:
     if not path.exists():
         return None
@@ -294,7 +290,6 @@ def rotate_json_backup(
     backup_dir.mkdir(parents=True, exist_ok=True)
     prev_path = backup_dir / f"{path.stem}.prev{path.suffix}"
     temp_prev: Optional[Path] = None
-    snapshot_path: Optional[Path] = None
 
     try:
         with tempfile.NamedTemporaryFile(dir=backup_dir, delete=False) as tmp_prev_file:
@@ -305,32 +300,16 @@ def rotate_json_backup(
         if temp_prev is not None and temp_prev.exists():
             temp_prev.unlink(missing_ok=True)
 
-    snapshots = sorted(
-        p
-        for p in backup_dir.glob(f"{path.stem}.*{path.suffix}")
-        if p.name != prev_path.name
-    )
-    should_snapshot = True
-    if snapshots:
-        latest_snapshot = max(snapshots, key=lambda p: p.stat().st_mtime)
-        should_snapshot = (time.time() - latest_snapshot.stat().st_mtime) >= snapshot_interval_seconds
+    for stale_backup in backup_dir.glob(f"{path.stem}*{path.suffix}"):
+        if stale_backup != prev_path:
+            stale_backup.unlink(missing_ok=True)
 
-    if should_snapshot:
-        timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        snapshot_path = backup_dir / f"{path.stem}.{timestamp}{path.suffix}"
-        shutil.copy2(path, snapshot_path)
-
-        snapshots.append(snapshot_path)
-        if max_snapshots > 0 and len(snapshots) > max_snapshots:
-            for old_snapshot in snapshots[:-max_snapshots]:
-                old_snapshot.unlink(missing_ok=True)
-
-    return snapshot_path
+    return prev_path
 
 
-def write_json_atomic(path: Path, data) -> Optional[Path]:
+def write_json_atomic(path: Path, data, *, create_backup: bool = True) -> Optional[Path]:
     path.parent.mkdir(parents=True, exist_ok=True)
-    snapshot_path = rotate_json_backup(path, BACKUP_DIR)
+    backup_path = rotate_json_backup(path, BACKUP_DIR) if create_backup else None
     temp_path: Optional[Path] = None
     try:
         with tempfile.NamedTemporaryFile(
@@ -345,7 +324,7 @@ def write_json_atomic(path: Path, data) -> Optional[Path]:
     finally:
         if temp_path is not None and temp_path.exists():
             temp_path.unlink(missing_ok=True)
-    return snapshot_path
+    return backup_path
 
 
 def parse_args() -> argparse.Namespace:
@@ -495,9 +474,13 @@ def main():
                         # 5. Add Checkpointing
                         if new_events_count % checkpoint_every == 0:
                             print(f"  [Checkpointing] Saving {len(past_events)} events to disk...")
-                            snapshot_path = write_json_atomic(out_file, past_events)
-                            if snapshot_path is not None:
-                                print(f"  [Backup] Snapshot saved to {snapshot_path}")
+                            backup_path = write_json_atomic(
+                                out_file,
+                                past_events,
+                                create_backup=False,
+                            )
+                            if backup_path is not None:
+                                print(f"  [Backup] Updated rolling backup at {backup_path}")
 
                     else:
                         warning_msg = f"    -> Error or invalid data for event {eid}"
@@ -522,11 +505,6 @@ def main():
 
     # Final save
     # 7. Rename Output (done)
-    snapshot_path = write_json_atomic(out_file, past_events)
-    if snapshot_path is not None:
-        print(f"[Backup] Snapshot saved to {snapshot_path}")
-
-    print(f"\\nFinished! Successfully compiled {len(past_events)} total past events to {out_file}")
-
-if __name__ == "__main__":
-    main()
+    backup_path = write_json_atomic(out_file, past_events)
+    if backup_path is not None:
+ 

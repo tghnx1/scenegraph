@@ -4,8 +4,10 @@ import json
 import logging
 import random
 import re
+import shutil
 import tempfile
 import time
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -30,6 +32,7 @@ DATA_DIR = PARSERS_DIR / "data"
 JSON_DIR = DATA_DIR / "json"
 LOG_DIR = DATA_DIR / "logs"
 DEBUG_DIR = DATA_DIR / "debug" / "biographies"
+BACKUP_DIR = DATA_DIR / "backups" / "json"
 LOGGER = logging.getLogger("artists_bio")
 TERMINAL_SKIP_STATUSES = {"ok", "not_found", "empty"}
 DEFAULT_CHECKPOINT_EVERY = 10
@@ -226,8 +229,36 @@ def build_results_list(
     return ordered_results
 
 
-def write_json_atomic(path: Path, data) -> None:
+def rotate_json_backup(
+    path: Path,
+    backup_dir: Path,
+) -> Optional[Path]:
+    if not path.exists():
+        return None
+
+    backup_dir.mkdir(parents=True, exist_ok=True)
+    prev_path = backup_dir / f"{path.stem}.prev{path.suffix}"
+    temp_prev: Optional[Path] = None
+
+    try:
+        with tempfile.NamedTemporaryFile(dir=backup_dir, delete=False) as tmp_prev_file:
+            temp_prev = Path(tmp_prev_file.name)
+        shutil.copy2(path, temp_prev)
+        temp_prev.replace(prev_path)
+    finally:
+        if temp_prev is not None and temp_prev.exists():
+            temp_prev.unlink(missing_ok=True)
+
+    for stale_backup in backup_dir.glob(f"{path.stem}*{path.suffix}"):
+        if stale_backup != prev_path:
+            stale_backup.unlink(missing_ok=True)
+
+    return prev_path
+
+
+def write_json_atomic(path: Path, data, *, create_backup: bool = True) -> Optional[Path]:
     path.parent.mkdir(parents=True, exist_ok=True)
+    backup_path = rotate_json_backup(path, BACKUP_DIR) if create_backup else None
     temp_path: Optional[Path] = None
     try:
         with tempfile.NamedTemporaryFile(
@@ -242,10 +273,18 @@ def write_json_atomic(path: Path, data) -> None:
     finally:
         if temp_path is not None and temp_path.exists():
             temp_path.unlink(missing_ok=True)
+    return backup_path
 
 
-def save_results(out_path: Path, results: List[Dict[str, Any]]) -> None:
-    write_json_atomic(out_path, results)
+def save_results(
+    out_path: Path,
+    results: List[Dict[str, Any]],
+    *,
+    create_backup: bool = True,
+) -> None:
+    backup_path = write_json_atomic(out_path, results, create_backup=create_backup)
+    if backup_path is not None:
+        announce(f"[i] Updated rolling backup at {backup_path}")
 
 
 def load_artists_snapshot(path: Path) -> Tuple[Optional[List[Dict[str, Any]]], Optional[str]]:
@@ -997,7 +1036,7 @@ async def run(
 
                 if parsed_this_run % checkpoint_every == 0:
                     checkpoint_results = build_results_list(results_by_key, discovered_order, existing_order)
-                    save_results(out_path, checkpoint_results)
+                    save_results(out_path, checkpoint_results, create_backup=False)
                     announce(
                         f"[i] Checkpoint saved {len(checkpoint_results)} records to {out_path}"
                     )

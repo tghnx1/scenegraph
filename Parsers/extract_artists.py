@@ -2,6 +2,7 @@ import argparse
 import json
 import tempfile
 from pathlib import Path
+from typing import Optional
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 JSON_DIR = SCRIPT_DIR / "data" / "json"
@@ -11,7 +12,7 @@ DEFAULT_OUTPUT_PATH = JSON_DIR / "artists.json"
 
 def write_json_atomic(path: Path, data) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    temp_path: Path | None = None
+    temp_path: Optional[Path] = None
     try:
         with tempfile.NamedTemporaryFile(
             "w",
