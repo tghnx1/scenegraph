@@ -1,5 +1,8 @@
 Generated parser artifacts live here so the scraper scripts stay separate from their output.
 
+You can move all generated data outside the repo by setting:
+- `SCENEGRAPH_DATA_DIR=/absolute/path/to/scenegraph-data`
+
 Recommended layout:
 - `json/` for scraped and derived JSON files
 - `backups/` for a single rolling `*.prev.json` backup of expensive datasets

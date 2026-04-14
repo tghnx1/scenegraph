@@ -1,11 +1,22 @@
 import argparse
 import json
+import os
 import tempfile
 from pathlib import Path
 from typing import Optional
 
 SCRIPT_DIR = Path(__file__).resolve().parent
-JSON_DIR = SCRIPT_DIR / "data" / "json"
+
+
+def resolve_data_dir(default_root: Path) -> Path:
+    override = os.environ.get("SCENEGRAPH_DATA_DIR")
+    if override:
+        return Path(override).expanduser().resolve()
+    return default_root / "data"
+
+
+DATA_DIR = resolve_data_dir(SCRIPT_DIR)
+JSON_DIR = DATA_DIR / "json"
 DEFAULT_INPUT_PATH = JSON_DIR / "ra_berlin_past_events.json"
 DEFAULT_OUTPUT_PATH = JSON_DIR / "artists.json"
 
