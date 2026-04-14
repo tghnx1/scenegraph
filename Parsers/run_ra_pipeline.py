@@ -39,7 +39,7 @@ PARSE_PAST_EVENTS_SCRIPT = GRAPHQL_DIR / "parse_past_events.py"
 EXTRACT_ARTISTS_SCRIPT = SCRIPT_DIR / "extract_artists.py"
 ARTISTS_BIO_SCRIPT = PLAYWRIGHT_DIR / "artists_bio.py"
 
-DEFAULT_EVENTS_JSON = JSON_DIR / "ra_berlin_past_events.json"
+DEFAULT_EVENTS_JSON = JSON_DIR / "events_by_year"
 DEFAULT_ARTISTS_JSON = JSON_DIR / "artists.json"
 DEFAULT_BIO_JSON = JSON_DIR / "artist_biographies.json"
 DEFAULT_BIO_LOG = LOG_DIR / "artist_biographies.log"
@@ -55,6 +55,7 @@ DEFAULT_EVENTS_CHECKPOINT_EVERY = 50
 DEFAULT_BIO_CHECKPOINT_EVERY = 10
 DEFAULT_EXTRACT_POLL_INTERVAL = 10.0
 DEFAULT_EXTRACT_MIN_INTERVAL = 45.0
+YEARLY_FILE_PREFIX = "ra_berlin_past_events_"
 
 LOGGER = logging.getLogger("ra_pipeline")
 
@@ -82,9 +83,20 @@ def announce(message: str, level: int = logging.INFO) -> None:
         LOGGER.log(level, message)
 
 
-def file_signature(path: Path) -> Optional[tuple[int, int]]:
+def file_signature(path: Path) -> Optional[tuple[int, ...]]:
     if not path.exists():
         return None
+    if path.is_dir() or path.suffix.lower() != ".json":
+        json_files = sorted(path.glob(f"{YEARLY_FILE_PREFIX}*.json"))
+        if not json_files:
+            return None
+        latest_mtime = 0
+        total_size = 0
+        for json_file in json_files:
+            stat = json_file.stat()
+            latest_mtime = max(latest_mtime, stat.st_mtime_ns)
+            total_size += stat.st_size
+        return (latest_mtime, total_size, len(json_files))
     stat = path.stat()
     return (stat.st_mtime_ns, stat.st_size)
 
@@ -116,6 +128,13 @@ def cdp_port(cdp_url: str) -> int:
     return parsed.port
 
 
+def ensure_output_target(path: Path) -> None:
+    if path.suffix.lower() == ".json":
+        path.parent.mkdir(parents=True, exist_ok=True)
+    else:
+        path.mkdir(parents=True, exist_ok=True)
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -134,7 +153,7 @@ def parse_args() -> argparse.Namespace:
         "--events-json",
         type=Path,
         default=DEFAULT_EVENTS_JSON,
-        help="Output path for past events JSON",
+        help="Output path for past events JSON, or a directory of yearly event shards",
     )
     parser.add_argument(
         "--artists-json",
@@ -420,7 +439,7 @@ def ensure_chrome_cdp(
 
 def main() -> int:
     args = parse_args()
-    args.events_json.parent.mkdir(parents=True, exist_ok=True)
+    ensure_output_target(args.events_json)
     args.artists_json.parent.mkdir(parents=True, exist_ok=True)
     args.bio_json.parent.mkdir(parents=True, exist_ok=True)
     args.debug_dir.mkdir(parents=True, exist_ok=True)

@@ -17,8 +17,9 @@ def resolve_data_dir(default_root: Path) -> Path:
 
 DATA_DIR = resolve_data_dir(SCRIPT_DIR)
 JSON_DIR = DATA_DIR / "json"
-DEFAULT_INPUT_PATH = JSON_DIR / "ra_berlin_past_events.json"
+DEFAULT_INPUT_PATH = JSON_DIR / "events_by_year"
 DEFAULT_OUTPUT_PATH = JSON_DIR / "artists.json"
+YEARLY_FILE_PREFIX = "ra_berlin_past_events_"
 
 
 def write_json_atomic(path: Path, data) -> None:
@@ -37,6 +38,19 @@ def write_json_atomic(path: Path, data) -> None:
     finally:
         if temp_path is not None and temp_path.exists():
             temp_path.unlink(missing_ok=True)
+
+
+def iter_event_files(input_path: Path) -> list[Path]:
+    if input_path.is_dir() or input_path.suffix.lower() != ".json":
+        files = sorted(input_path.glob(f"{YEARLY_FILE_PREFIX}*.json"), reverse=True)
+        if files:
+            return files
+        raise FileNotFoundError(f"No yearly event files found in {input_path}")
+
+    if not input_path.exists():
+        raise FileNotFoundError(f"Events input does not exist: {input_path}")
+
+    return [input_path]
 
 
 def parse_args() -> argparse.Namespace:
@@ -60,26 +74,31 @@ def main() -> None:
     args = parse_args()
     args.output.parent.mkdir(parents=True, exist_ok=True)
 
-    with args.input.open("r", encoding="utf-8") as infile:
-        events = json.load(infile)
-
     unique_artists = {}
+    event_files = iter_event_files(args.input)
 
-    for event in events:
-        artists = event.get("artists", [])
-        for artist in artists:
-            artist_id = artist.get("id")
-            content_url = artist.get("contentUrl")
+    for event_file in event_files:
+        with event_file.open("r", encoding="utf-8") as infile:
+            events = json.load(infile)
 
-            if artist_id and content_url and artist_id not in unique_artists:
-                unique_artists[artist_id] = {
-                    "id": artist_id,
-                    "url": f"https://ra.co{content_url}/biography",
-                }
+        if not isinstance(events, list):
+            raise ValueError(f"{event_file} must contain a JSON array")
+
+        for event in events:
+            artists = event.get("artists", [])
+            for artist in artists:
+                artist_id = artist.get("id")
+                content_url = artist.get("contentUrl")
+
+                if artist_id and content_url and artist_id not in unique_artists:
+                    unique_artists[artist_id] = {
+                        "id": artist_id,
+                        "url": f"https://ra.co{content_url}/biography",
+                    }
 
     write_json_atomic(args.output, list(unique_artists.values()))
 
-    print(f"Saved {len(unique_artists)} artists to {args.output}")
+    print(f"Saved {len(unique_artists)} artists to {args.output} from {len(event_files)} event file(s)")
 
 
 if __name__ == "__main__":
