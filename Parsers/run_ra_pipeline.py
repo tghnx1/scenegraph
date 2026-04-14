@@ -1,5 +1,6 @@
 import argparse
 import logging
+import os
 import subprocess
 import sys
 import time
@@ -10,13 +11,25 @@ from typing import Optional
 from urllib.parse import urlparse
 
 
+#export SCENEGRAPH_DATA_DIR="/Volumes/Untitled/42/scenegraph-data"
+
 #caffeinate -dimsu python3 /Users/tghnx1/Desktop/42/scenegraph/Parsers/run_ra_pipeline.py \
-# --cdp-url http://localhost:9222 \
-#  --launch-chrome
+  #--cdp-url http://localhost:9222 \
+  #--launch-chrome
+
 SCRIPT_DIR = Path(__file__).resolve().parent
 GRAPHQL_DIR = SCRIPT_DIR / "GraphQLparser"
 PLAYWRIGHT_DIR = SCRIPT_DIR / "Playwrite parser"
-DATA_DIR = SCRIPT_DIR / "data"
+
+
+def resolve_data_dir(default_root: Path) -> Path:
+    override = os.environ.get("SCENEGRAPH_DATA_DIR")
+    if override:
+        return Path(override).expanduser().resolve()
+    return default_root / "data"
+
+
+DATA_DIR = resolve_data_dir(SCRIPT_DIR)
 JSON_DIR = DATA_DIR / "json"
 LOG_DIR = DATA_DIR / "logs"
 DEBUG_DIR = DATA_DIR / "debug" / "biographies"
@@ -414,6 +427,7 @@ def main() -> int:
 
     pipeline_log = setup_logging(args.pipeline_log)
     announce(f"[pipeline] Logging to {pipeline_log}")
+    announce(f"[pipeline] Data directory: {DATA_DIR}")
 
     chrome_proc: Optional[subprocess.Popen] = None
     chrome_proc = ensure_chrome_cdp(args, chrome_proc)

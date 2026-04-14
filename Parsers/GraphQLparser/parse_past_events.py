@@ -1,4 +1,5 @@
 import argparse
+import os
 import urllib.request
 import json
 import sys
@@ -15,7 +16,16 @@ from typing import Optional
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 PARSERS_DIR = SCRIPT_DIR.parent
-DATA_DIR = PARSERS_DIR / "data"
+
+
+def resolve_data_dir(default_root: Path) -> Path:
+    override = os.environ.get("SCENEGRAPH_DATA_DIR")
+    if override:
+        return Path(override).expanduser().resolve()
+    return default_root / "data"
+
+
+DATA_DIR = resolve_data_dir(PARSERS_DIR)
 JSON_DIR = DATA_DIR / "json"
 LOG_DIR = DATA_DIR / "logs"
 BACKUP_DIR = DATA_DIR / "backups" / "json"

@@ -2,6 +2,7 @@ import asyncio
 import argparse
 import json
 import logging
+import os
 import random
 import re
 import shutil
@@ -19,16 +20,26 @@ from playwright.async_api import (
     TimeoutError as PlaywrightTimeoutError,
 )
 #  source venv/bin/activate
-#  /Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome --remote-debugging-port=9222 --user-data-dir="/Users/tghnx1/Desktop/42/scenegraph/Parsers/data/runtime/chrome-profile"
+#  export SCENEGRAPH_DATA_DIR="/Volumes/Untitled/42/scenegraph-data"
+#  /Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome --remote-debugging-port=9222 --user-data-dir="$SCENEGRAPH_DATA_DIR/runtime/chrome-profile"
 # ./venv/bin/python artists_bio.py \
-#   --artists /Users/tghnx1/Desktop/42/scenegraph/Parsers/data/json/artists.json \
-#   --out /Users/tghnx1/Desktop/42/scenegraph/Parsers/data/json/artist_biographies.json \
+#   --artists "$SCENEGRAPH_DATA_DIR/json/artists.json" \
+#   --out "$SCENEGRAPH_DATA_DIR/json/artist_biographies.json" \
 #   --cdp-url http://localhost:9222 \
 #   --limit 5
 RA_BASE = "https://ra.co"
 SCRIPT_DIR = Path(__file__).resolve().parent
 PARSERS_DIR = SCRIPT_DIR.parent
-DATA_DIR = PARSERS_DIR / "data"
+
+
+def resolve_data_dir(default_root: Path) -> Path:
+    override = os.environ.get("SCENEGRAPH_DATA_DIR")
+    if override:
+        return Path(override).expanduser().resolve()
+    return default_root / "data"
+
+
+DATA_DIR = resolve_data_dir(PARSERS_DIR)
 JSON_DIR = DATA_DIR / "json"
 LOG_DIR = DATA_DIR / "logs"
 DEBUG_DIR = DATA_DIR / "debug" / "biographies"
