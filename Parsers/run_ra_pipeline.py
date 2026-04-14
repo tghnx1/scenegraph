@@ -43,6 +43,7 @@ DEFAULT_EVENTS_JSON = JSON_DIR / "events_by_year"
 DEFAULT_ARTISTS_JSON = JSON_DIR / "artists.json"
 DEFAULT_BIO_JSON = JSON_DIR / "artist_biographies.json"
 DEFAULT_BIO_LOG = LOG_DIR / "artist_biographies.log"
+DEFAULT_BIO_PROCESS_LOG = LOG_DIR / "artist_bio_process.log"
 DEFAULT_PIPELINE_LOG = LOG_DIR / "ra_pipeline.log"
 DEFAULT_CHROME_LOG = LOG_DIR / "chrome_debug.log"
 DEFAULT_BIO_PYTHON = PLAYWRIGHT_DIR / "venv" / "bin" / "python"
@@ -172,6 +173,12 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         default=DEFAULT_BIO_LOG,
         help="Log path for the biography scraper",
+    )
+    parser.add_argument(
+        "--bio-process-log",
+        type=Path,
+        default=DEFAULT_BIO_PROCESS_LOG,
+        help="Log file for stdout/stderr from the artists_bio.py process",
     )
     parser.add_argument(
         "--pipeline-log",
@@ -356,7 +363,18 @@ def start_bio_process(args: argparse.Namespace, watch: bool) -> subprocess.Popen
 
     mode_label = "watch" if watch else "final"
     announce(f"[pipeline] Starting artists_bio.py ({mode_label} mode)")
-    return subprocess.Popen(cmd, cwd=str(PLAYWRIGHT_DIR))
+    args.bio_process_log.parent.mkdir(parents=True, exist_ok=True)
+    announce(f"[pipeline] artists_bio.py stdout/stderr -> {args.bio_process_log}")
+    bio_log_handle = args.bio_process_log.open("a", encoding="utf-8")
+    try:
+        return subprocess.Popen(
+            cmd,
+            cwd=str(PLAYWRIGHT_DIR),
+            stdout=bio_log_handle,
+            stderr=subprocess.STDOUT,
+        )
+    finally:
+        bio_log_handle.close()
 
 
 def ensure_chrome_cdp(

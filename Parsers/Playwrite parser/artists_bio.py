@@ -171,46 +171,52 @@ def make_artist_key(item: Dict[str, Any]) -> Tuple[str, str]:
 def load_existing_results(
     out_path: Path,
 ) -> Tuple[List[Dict[str, Any]], Dict[Tuple[str, str], Dict[str, Any]], List[Tuple[str, str]]]:
+    def parse_results_file(path: Path) -> Tuple[List[Dict[str, Any]], Dict[Tuple[str, str], Dict[str, Any]], List[Tuple[str, str]]]:
+        with path.open("r", encoding="utf-8") as f:
+            content = f.read().strip()
+
+        if not content:
+            return [], {}, []
+
+        data = json.loads(content)
+        if not isinstance(data, list):
+            raise ValueError(f"{path} is not a JSON array")
+
+        existing_results: List[Dict[str, Any]] = []
+        results_by_key: Dict[Tuple[str, str], Dict[str, Any]] = {}
+        existing_order: List[Tuple[str, str]] = []
+
+        for item in data:
+            if not isinstance(item, dict):
+                continue
+
+            key = make_artist_key(item)
+            if key in results_by_key:
+                continue
+
+            existing_results.append(item)
+            results_by_key[key] = item
+            existing_order.append(key)
+
+        return existing_results, results_by_key, existing_order
+
     if not out_path.exists():
         return [], {}, []
 
     try:
-        with out_path.open("r", encoding="utf-8") as f:
-            content = f.read().strip()
-    except Exception as e:
-        announce(f"[!] Failed to read existing output {out_path}: {e}", logging.ERROR)
-        return [], {}, []
-
-    if not content:
-        return [], {}, []
-
-    try:
-        data = json.loads(content)
+        return parse_results_file(out_path)
     except Exception as e:
         announce(f"[!] Failed to parse existing output {out_path}: {e}", logging.ERROR)
-        return [], {}, []
 
-    if not isinstance(data, list):
-        announce(f"[!] Existing output {out_path} is not a JSON array. Starting fresh.", logging.WARNING)
-        return [], {}, []
+    backup_path = BACKUP_DIR / f"{out_path.stem}.prev{out_path.suffix}"
+    if backup_path.exists():
+        try:
+            announce(f"[!] Attempting recovery from rolling backup {backup_path}", logging.WARNING)
+            return parse_results_file(backup_path)
+        except Exception as backup_error:
+            announce(f"[!] Failed to recover from backup {backup_path}: {backup_error}", logging.ERROR)
 
-    existing_results: List[Dict[str, Any]] = []
-    results_by_key: Dict[Tuple[str, str], Dict[str, Any]] = {}
-    existing_order: List[Tuple[str, str]] = []
-
-    for item in data:
-        if not isinstance(item, dict):
-            continue
-
-        key = make_artist_key(item)
-        if key in results_by_key:
-            continue
-
-        existing_results.append(item)
-        results_by_key[key] = item
-        existing_order.append(key)
-
-    return existing_results, results_by_key, existing_order
+    return [], {}, []
 
 
 def should_skip_existing(item: Optional[Dict[str, Any]]) -> bool:
