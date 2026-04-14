@@ -1,0 +1,2182 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Transcendence x Scene Graph — Development Presentation</title>
+  <style>
+    :root {
+      --bg-0: #08141a;
+      --bg-1: #0e2430;
+      --bg-2: #12394c;
+      --bg-3: #173f52;
+      --ink: #eaf2ef;
+      --muted: #a7c4bf;
+      --accent: #f5a65b;
+      --accent-2: #7ce0d3;
+      --accent-3: #ff746a;
+      --panel: rgba(10, 26, 35, 0.72);
+      --panel-strong: rgba(6, 18, 25, 0.88);
+      --line: rgba(234, 242, 239, 0.18);
+      --shadow: 0 24px 80px rgba(0, 0, 0, 0.35);
+      --radius-xl: 30px;
+      --radius-lg: 22px;
+      --radius-md: 16px;
+      --page-pad: clamp(24px, 5vw, 64px);
+      --title-font: "Avenir Next", "Segoe UI", "Helvetica Neue", sans-serif;
+      --body-font: "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+      --mono-font: "SF Mono", "Menlo", "Monaco", monospace;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      min-height: 100%;
+      background:
+        radial-gradient(circle at 20% 15%, rgba(124, 224, 211, 0.10), transparent 28%),
+        radial-gradient(circle at 82% 18%, rgba(245, 166, 91, 0.14), transparent 30%),
+        radial-gradient(circle at 74% 80%, rgba(255, 116, 106, 0.12), transparent 25%),
+        linear-gradient(145deg, var(--bg-0), var(--bg-1) 42%, var(--bg-2) 100%);
+      color: var(--ink);
+      font-family: var(--body-font);
+      overflow: hidden;
+    }
+
+    body::before,
+    body::after {
+      content: "";
+      position: fixed;
+      inset: auto;
+      width: 36vw;
+      height: 36vw;
+      border-radius: 50%;
+      filter: blur(80px);
+      opacity: 0.22;
+      pointer-events: none;
+      animation: drift 22s ease-in-out infinite alternate;
+      z-index: 0;
+    }
+
+    body::before {
+      top: -10vw;
+      right: -8vw;
+      background: rgba(124, 224, 211, 0.25);
+    }
+
+    body::after {
+      left: -10vw;
+      bottom: -8vw;
+      background: rgba(245, 166, 91, 0.18);
+      animation-duration: 26s;
+    }
+
+    .deck-shell {
+      position: relative;
+      z-index: 1;
+      min-height: 100vh;
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+    }
+
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 18px var(--page-pad) 0;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      font-family: var(--title-font);
+      font-size: 0.95rem;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .brand-badge {
+      width: 44px;
+      height: 44px;
+      border-radius: 14px;
+      display: grid;
+      place-items: center;
+      background:
+        linear-gradient(135deg, rgba(124, 224, 211, 0.22), rgba(245, 166, 91, 0.18)),
+        rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      box-shadow: var(--shadow);
+      color: var(--ink);
+      font-weight: 800;
+      font-family: var(--title-font);
+    }
+
+    .progress-wrap {
+      min-width: min(420px, 40vw);
+      display: grid;
+      gap: 8px;
+    }
+
+    .progress-label {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      font-family: var(--title-font);
+      font-size: 0.88rem;
+      color: var(--muted);
+    }
+
+    .progress-bar {
+      width: 100%;
+      height: 8px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.08);
+      overflow: hidden;
+    }
+
+    .progress-fill {
+      width: 0%;
+      height: 100%;
+      border-radius: inherit;
+      background: linear-gradient(90deg, var(--accent), var(--accent-2));
+      box-shadow: 0 0 24px rgba(124, 224, 211, 0.45);
+      transition: width 320ms ease;
+    }
+
+    .deck {
+      position: relative;
+      min-height: 0;
+    }
+
+    .slide {
+      position: absolute;
+      inset: 0;
+      padding: 28px var(--page-pad) 34px;
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      opacity: 0;
+      pointer-events: none;
+      transform: translateX(54px) scale(0.985);
+      transition:
+        opacity 360ms ease,
+        transform 460ms ease;
+    }
+
+    .slide.active {
+      opacity: 1;
+      pointer-events: auto;
+      transform: translateX(0) scale(1);
+    }
+
+    .slide-head {
+      display: grid;
+      gap: 12px;
+      margin-bottom: 18px;
+      max-width: 1100px;
+    }
+
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      width: fit-content;
+      padding: 10px 14px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      font-family: var(--title-font);
+      font-size: 0.82rem;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--accent-2);
+    }
+
+    .eyebrow::before {
+      content: "";
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--accent);
+      box-shadow: 0 0 12px rgba(245, 166, 91, 0.7);
+    }
+
+    h1, h2 {
+      margin: 0;
+      font-family: var(--title-font);
+      font-weight: 800;
+      line-height: 0.95;
+      letter-spacing: -0.035em;
+    }
+
+    h1 {
+      font-size: clamp(2.9rem, 6vw, 6rem);
+      max-width: 13ch;
+    }
+
+    h2 {
+      font-size: clamp(2rem, 4vw, 3.6rem);
+      max-width: 14ch;
+    }
+
+    .lead {
+      margin: 0;
+      max-width: 74ch;
+      font-size: clamp(1.05rem, 1.7vw, 1.35rem);
+      line-height: 1.6;
+      color: #d5e5de;
+    }
+
+    .body-grid {
+      display: grid;
+      gap: 22px;
+      align-content: start;
+    }
+
+    .hero-layout {
+      display: grid;
+      grid-template-columns: 1.2fr 0.9fr;
+      gap: 28px;
+      align-items: stretch;
+    }
+
+    .panel {
+      position: relative;
+      background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.02)),
+        var(--panel);
+      border: 1px solid rgba(255, 255, 255, 0.11);
+      border-radius: var(--radius-xl);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+
+    .panel::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background:
+        linear-gradient(130deg, rgba(124, 224, 211, 0.12), transparent 36%),
+        linear-gradient(310deg, rgba(245, 166, 91, 0.11), transparent 32%);
+      pointer-events: none;
+    }
+
+    .panel-inner {
+      position: relative;
+      z-index: 1;
+      padding: 24px;
+      display: grid;
+      gap: 16px;
+      height: 100%;
+    }
+
+    .hero-stats {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+      margin-top: 10px;
+    }
+
+    .stat-card,
+    .mini-card,
+    .info-card,
+    .phase-card,
+    .risk-card,
+    .module-card {
+      position: relative;
+      padding: 18px;
+      border-radius: var(--radius-lg);
+      border: 1px solid rgba(255, 255, 255, 0.10);
+      background: rgba(7, 19, 26, 0.54);
+      overflow: hidden;
+    }
+
+    .stat-card::after,
+    .mini-card::after,
+    .info-card::after,
+    .phase-card::after,
+    .risk-card::after,
+    .module-card::after {
+      content: "";
+      position: absolute;
+      inset: auto -20% -40% auto;
+      width: 120px;
+      height: 120px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(124, 224, 211, 0.22), transparent 70%);
+      pointer-events: none;
+    }
+
+    .stat-title,
+    .mini-title,
+    .info-title,
+    .phase-title,
+    .risk-title,
+    .module-title {
+      font-family: var(--title-font);
+      font-size: 0.82rem;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--muted);
+      margin-bottom: 10px;
+    }
+
+    .stat-value {
+      font-family: var(--title-font);
+      font-weight: 800;
+      font-size: 2rem;
+      color: var(--ink);
+      line-height: 1;
+    }
+
+    .stat-note,
+    .mini-note,
+    .info-copy,
+    .phase-copy,
+    .risk-copy,
+    .module-copy,
+    .small-copy {
+      font-size: 1rem;
+      line-height: 1.55;
+      color: #d2e2dc;
+    }
+
+    .chip-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+
+    .chip {
+      padding: 11px 14px;
+      border-radius: 999px;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      background: rgba(255, 255, 255, 0.05);
+      font-family: var(--title-font);
+      font-size: 0.83rem;
+      letter-spacing: 0.04em;
+      color: #e9f3ef;
+    }
+
+    .chip.strong {
+      background: rgba(245, 166, 91, 0.14);
+      color: #ffe6cb;
+      border-color: rgba(245, 166, 91, 0.28);
+    }
+
+    .orbit-panel {
+      min-height: 440px;
+    }
+
+    .orbit-stage {
+      position: relative;
+      min-height: 100%;
+      display: grid;
+      place-items: center;
+      padding: 16px;
+      overflow: hidden;
+    }
+
+    .orbit-grid {
+      position: absolute;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(255, 255, 255, 0.04) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 255, 255, 0.04) 1px, transparent 1px);
+      background-size: 36px 36px;
+      mask-image: radial-gradient(circle at center, black 40%, transparent 86%);
+    }
+
+    .orbit-core {
+      position: relative;
+      width: 180px;
+      height: 180px;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      background:
+        radial-gradient(circle at 50% 45%, rgba(124, 224, 211, 0.35), rgba(11, 25, 34, 0.92) 70%);
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      box-shadow: 0 0 44px rgba(124, 224, 211, 0.25);
+      font-family: var(--title-font);
+      font-size: 1.15rem;
+      line-height: 1.3;
+      text-align: center;
+      z-index: 2;
+      animation: pulse 5s ease-in-out infinite;
+    }
+
+    .orbit,
+    .orbit.orbit-2,
+    .orbit.orbit-3 {
+      position: absolute;
+      border-radius: 50%;
+      border: 1px dashed rgba(255, 255, 255, 0.17);
+      animation: spin 18s linear infinite;
+    }
+
+    .orbit {
+      width: 330px;
+      height: 330px;
+    }
+
+    .orbit.orbit-2 {
+      width: 470px;
+      height: 470px;
+      animation-duration: 28s;
+      animation-direction: reverse;
+    }
+
+    .orbit.orbit-3 {
+      width: 620px;
+      height: 620px;
+      animation-duration: 34s;
+    }
+
+    .orbit-node {
+      position: absolute;
+      top: -18px;
+      left: 50%;
+      transform: translateX(-50%);
+      padding: 10px 14px;
+      border-radius: 999px;
+      background: var(--panel-strong);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      font-family: var(--title-font);
+      font-size: 0.78rem;
+      letter-spacing: 0.07em;
+      text-transform: uppercase;
+      white-space: nowrap;
+      color: var(--ink);
+      box-shadow: var(--shadow);
+    }
+
+    .orbit-node.alt {
+      top: auto;
+      bottom: -18px;
+      background: rgba(245, 166, 91, 0.16);
+      color: #ffe7d0;
+    }
+
+    .orbit-node.side {
+      top: 50%;
+      left: auto;
+      right: -28px;
+      transform: translateY(-50%);
+      background: rgba(124, 224, 211, 0.16);
+    }
+
+    .orbit-node.side-left {
+      top: 50%;
+      left: -28px;
+      right: auto;
+      transform: translateY(-50%);
+      background: rgba(255, 116, 106, 0.16);
+      color: #ffd9d5;
+    }
+
+    .columns-2,
+    .columns-3,
+    .columns-4 {
+      display: grid;
+      gap: 18px;
+    }
+
+    .columns-2 {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .columns-3 {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .columns-4 {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+
+    .list {
+      display: grid;
+      gap: 12px;
+      padding: 0;
+      margin: 0;
+      list-style: none;
+    }
+
+    .list li {
+      display: grid;
+      grid-template-columns: 22px 1fr;
+      gap: 12px;
+      align-items: start;
+      color: #dce9e4;
+      line-height: 1.55;
+    }
+
+    .list li::before {
+      content: "";
+      width: 12px;
+      height: 12px;
+      margin-top: 6px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--accent), var(--accent-2));
+      box-shadow: 0 0 16px rgba(124, 224, 211, 0.35);
+    }
+
+    .diagram-frame {
+      min-height: 460px;
+    }
+
+    .diagram-frame svg {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    .diagram-card {
+      fill: rgba(7, 20, 28, 0.88);
+      stroke: rgba(255, 255, 255, 0.14);
+      stroke-width: 1.3;
+      filter: drop-shadow(0 24px 48px rgba(0, 0, 0, 0.24));
+    }
+
+    .diagram-card.alt {
+      fill: rgba(19, 46, 60, 0.88);
+    }
+
+    .diagram-card.warn {
+      fill: rgba(68, 34, 26, 0.88);
+    }
+
+    .diagram-title {
+      font: 700 17px var(--title-font);
+      fill: #f4faf8;
+      letter-spacing: 0.04em;
+    }
+
+    .diagram-copy {
+      font: 15px var(--body-font);
+      fill: #d9e8e2;
+    }
+
+    .diagram-kicker {
+      font: 700 12px var(--title-font);
+      fill: #8edcd1;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    .diagram-copy.muted {
+      fill: #9fbbb6;
+    }
+
+    .flow-line,
+    .flow-line-thick {
+      fill: none;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      stroke-dasharray: 12 12;
+      animation: flowDash 18s linear infinite;
+    }
+
+    .flow-line {
+      stroke: rgba(124, 224, 211, 0.72);
+      stroke-width: 3;
+    }
+
+    .flow-line-thick {
+      stroke: rgba(245, 166, 91, 0.72);
+      stroke-width: 4;
+    }
+
+    .flow-label {
+      font: 700 12px var(--title-font);
+      fill: #ffe3c8;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+    }
+
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 16px;
+      margin-top: 10px;
+    }
+
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: #d9e8e2;
+      font-size: 0.98rem;
+    }
+
+    .legend-swatch {
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      box-shadow: 0 0 14px rgba(255, 255, 255, 0.25);
+    }
+
+    .swatch-artist { background: #6bb7ff; }
+    .swatch-event { background: #ffd25a; }
+    .swatch-promoter { background: #d291ff; }
+    .swatch-venue { background: #5edd9c; }
+    .swatch-user { background: #ff8c72; }
+
+    .formula {
+      font-family: var(--mono-font);
+      font-size: 1.02rem;
+      line-height: 1.75;
+      white-space: pre-line;
+      color: #d9ece6;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: var(--radius-md);
+      padding: 18px;
+    }
+
+    .score-stack {
+      display: grid;
+      gap: 12px;
+    }
+
+    .score-row {
+      display: grid;
+      grid-template-columns: 170px 1fr 62px;
+      gap: 12px;
+      align-items: center;
+    }
+
+    .score-row span {
+      font-family: var(--title-font);
+      font-size: 0.88rem;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .score-bar {
+      position: relative;
+      height: 16px;
+      background: rgba(255, 255, 255, 0.08);
+      border-radius: 999px;
+      overflow: hidden;
+    }
+
+    .score-fill {
+      position: absolute;
+      inset: 0 auto 0 0;
+      border-radius: inherit;
+      background: linear-gradient(90deg, var(--accent), var(--accent-2));
+      box-shadow: 0 0 20px rgba(124, 224, 211, 0.26);
+      transform-origin: left;
+      animation: grow 1.2s ease both;
+    }
+
+    .timeline {
+      position: relative;
+      display: grid;
+      grid-template-columns: 160px 1fr;
+      gap: 20px;
+      padding-top: 6px;
+    }
+
+    .timeline::before {
+      content: "";
+      position: absolute;
+      left: 78px;
+      top: 0;
+      bottom: 0;
+      width: 2px;
+      background: linear-gradient(180deg, rgba(124, 224, 211, 0.18), rgba(245, 166, 91, 0.55), rgba(255, 116, 106, 0.18));
+    }
+
+    .timeline-step {
+      display: contents;
+    }
+
+    .timeline-label {
+      position: relative;
+      padding-right: 26px;
+      text-align: right;
+      font-family: var(--title-font);
+      font-size: 1rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--accent-2);
+    }
+
+    .timeline-label::after {
+      content: "";
+      position: absolute;
+      top: 12px;
+      right: -7px;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--accent), var(--accent-2));
+      box-shadow: 0 0 22px rgba(124, 224, 211, 0.35);
+    }
+
+    .timeline-card {
+      margin-bottom: 18px;
+      padding: 20px 22px;
+      border-radius: var(--radius-lg);
+      background: rgba(7, 19, 26, 0.58);
+      border: 1px solid rgba(255, 255, 255, 0.09);
+    }
+
+    .timeline-card h3 {
+      margin: 0 0 10px;
+      font-family: var(--title-font);
+      font-size: 1.25rem;
+      color: #f4faf8;
+    }
+
+    .timeline-card p {
+      margin: 0 0 12px;
+      color: #d6e6e0;
+      line-height: 1.6;
+    }
+
+    .timeline-card .list {
+      gap: 8px;
+    }
+
+    .swimlanes {
+      display: grid;
+      gap: 14px;
+    }
+
+    .lane {
+      display: grid;
+      grid-template-columns: 220px 1fr;
+      gap: 14px;
+      align-items: stretch;
+    }
+
+    .lane-name {
+      padding: 18px;
+      border-radius: var(--radius-lg);
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      font-family: var(--title-font);
+      font-size: 0.95rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--accent-2);
+    }
+
+    .lane-track {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .lane-pill {
+      padding: 16px 14px;
+      border-radius: var(--radius-md);
+      background: rgba(7, 19, 26, 0.58);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      color: #d7e7e1;
+      line-height: 1.45;
+    }
+
+    .lane-pill strong {
+      display: block;
+      font-family: var(--title-font);
+      color: #fff4e8;
+      margin-bottom: 6px;
+    }
+
+    .matrix {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 18px;
+    }
+
+    .footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 20px;
+      padding-top: 18px;
+      color: var(--muted);
+      font-family: var(--title-font);
+      font-size: 0.86rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .controls {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 0 var(--page-pad) 18px;
+    }
+
+    .controls-left,
+    .controls-right {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .control-btn,
+    .dot {
+      border: 0;
+      cursor: pointer;
+      transition: transform 160ms ease, background 200ms ease, opacity 200ms ease;
+    }
+
+    .control-btn {
+      padding: 12px 18px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.08);
+      color: var(--ink);
+      font-family: var(--title-font);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      font-size: 0.82rem;
+    }
+
+    .control-btn:hover,
+    .dot:hover {
+      transform: translateY(-1px);
+    }
+
+    .control-btn:disabled {
+      opacity: 0.45;
+      cursor: default;
+      transform: none;
+    }
+
+    .dot-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.18);
+      box-shadow: 0 0 0 0 rgba(124, 224, 211, 0);
+    }
+
+    .dot.active {
+      background: var(--accent-2);
+      box-shadow: 0 0 0 8px rgba(124, 224, 211, 0.14);
+    }
+
+    [data-animate] {
+      opacity: 0;
+      transform: translateY(22px);
+    }
+
+    .slide.active [data-animate] {
+      animation: reveal 660ms cubic-bezier(.19, 1, .22, 1) both;
+      animation-delay: var(--delay, 0ms);
+    }
+
+    .slide.active .score-fill {
+      animation-delay: calc(var(--delay, 0ms) + 160ms);
+    }
+
+    .key-hint {
+      color: var(--muted);
+      font-size: 0.92rem;
+    }
+
+    .key {
+      display: inline-grid;
+      place-items: center;
+      min-width: 28px;
+      padding: 4px 8px;
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      font-family: var(--mono-font);
+      font-size: 0.78rem;
+      color: var(--ink);
+    }
+
+    @keyframes reveal {
+      from {
+        opacity: 0;
+        transform: translateY(22px) scale(0.985);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+      }
+    }
+
+    @keyframes drift {
+      from { transform: translate3d(-16px, 0, 0); }
+      to { transform: translate3d(20px, -26px, 0); }
+    }
+
+    @keyframes spin {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+
+    @keyframes pulse {
+      0%, 100% { transform: scale(1); box-shadow: 0 0 44px rgba(124, 224, 211, 0.22); }
+      50% { transform: scale(1.04); box-shadow: 0 0 56px rgba(245, 166, 91, 0.22); }
+    }
+
+    @keyframes grow {
+      from { transform: scaleX(0); }
+      to { transform: scaleX(1); }
+    }
+
+    @keyframes flowDash {
+      from { stroke-dashoffset: 0; }
+      to { stroke-dashoffset: -180; }
+    }
+
+    @media (max-width: 1160px) {
+      .hero-layout,
+      .columns-3,
+      .columns-4,
+      .matrix {
+        grid-template-columns: 1fr;
+      }
+
+      .columns-2 {
+        grid-template-columns: 1fr;
+      }
+
+      .hero-stats,
+      .lane-track {
+        grid-template-columns: 1fr;
+      }
+
+      .lane {
+        grid-template-columns: 1fr;
+      }
+
+      .timeline {
+        grid-template-columns: 1fr;
+      }
+
+      .timeline::before {
+        left: 6px;
+      }
+
+      .timeline-label {
+        text-align: left;
+        padding-left: 26px;
+        padding-right: 0;
+      }
+
+      .timeline-label::after {
+        left: -1px;
+        right: auto;
+      }
+    }
+
+    @media (max-width: 860px) {
+      .topbar,
+      .controls {
+        padding-left: 20px;
+        padding-right: 20px;
+      }
+
+      .slide {
+        padding-left: 20px;
+        padding-right: 20px;
+      }
+
+      h1 {
+        font-size: 2.7rem;
+      }
+
+      h2 {
+        font-size: 2rem;
+      }
+
+      .progress-wrap {
+        min-width: 0;
+        width: 46vw;
+      }
+
+      .score-row {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *,
+      *::before,
+      *::after {
+        animation: none !important;
+        transition: none !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="deck-shell">
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-badge">42</div>
+        <div>
+          Transcendence / Berlin Scene Graph
+        </div>
+      </div>
+      <div class="progress-wrap">
+        <div class="progress-label">
+          <span id="slideCounter">01 / 14</span>
+          <span>Development Presentation</span>
+        </div>
+        <div class="progress-bar">
+          <div class="progress-fill" id="progressFill"></div>
+        </div>
+      </div>
+    </header>
+
+    <main class="deck" id="deck">
+      <section class="slide active" data-title="Title">
+        <div class="slide-head">
+          <div class="eyebrow" data-animate style="--delay: 60ms;">For a 42 team starting from scratch</div>
+          <h1 data-animate style="--delay: 140ms;">Transcendence + Scene Graph Navigator</h1>
+          <p class="lead" data-animate style="--delay: 220ms;">
+            Подробный, defendable и реалистичный план разработки проекта: от обязательной базы Transcendence до сцены, графа связей,
+            рекомендаций и понятной демонстрации на защите.
+          </p>
+        </div>
+
+        <div class="body-grid hero-layout">
+          <div class="panel" data-animate style="--delay: 320ms;">
+            <div class="panel-inner">
+              <div class="chip-row">
+                <div class="chip strong">Mandatory first</div>
+                <div class="chip">Safe 16-point path</div>
+                <div class="chip">Graph product value last</div>
+              </div>
+              <div class="columns-2">
+                <div class="mini-card">
+                  <div class="mini-title">Главная идея</div>
+                  <div class="mini-note">
+                    Мы не строим "еще одну соцсеть для музыки". Мы строим web-продукт, который показывает DJ не только популярные имена,
+                    а реально достижимые следующие шаги: promoter, venue, artist, event.
+                  </div>
+                </div>
+                <div class="mini-card">
+                  <div class="mini-title">Главная стратегия</div>
+                  <div class="mini-note">
+                    Сначала закрываем обязательную платформу Transcendence, потом берем самые безопасные модульные очки,
+                    и только затем добавляем custom recommendation engine как центральную фишку продукта.
+                  </div>
+                </div>
+              </div>
+              <div class="hero-stats">
+                <div class="stat-card">
+                  <div class="stat-title">Layer 1</div>
+                  <div class="stat-value">Platform</div>
+                  <div class="stat-note">Auth, Docker, DB, HTTPS, multi-user, clean baseline.</div>
+                </div>
+                <div class="stat-card">
+                  <div class="stat-title">Layer 2</div>
+                  <div class="stat-value">Modules</div>
+                  <div class="stat-note">Realtime, social, search, API, dashboard, export/import.</div>
+                </div>
+                <div class="stat-card">
+                  <div class="stat-title">Layer 3</div>
+                  <div class="stat-value">Graph Brain</div>
+                  <div class="stat-note">Reachability, explanation path, realistic opportunities.</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="panel orbit-panel" data-animate style="--delay: 420ms;">
+            <div class="orbit-stage">
+              <div class="orbit-grid"></div>
+              <div class="orbit orbit-3">
+                <div class="orbit-node">42 rules</div>
+                <div class="orbit-node alt">demo flow</div>
+              </div>
+              <div class="orbit orbit-2">
+                <div class="orbit-node side">modules</div>
+                <div class="orbit-node side-left">team split</div>
+              </div>
+              <div class="orbit">
+                <div class="orbit-node">data</div>
+                <div class="orbit-node alt">graph</div>
+              </div>
+              <div class="orbit-core">
+                Product
+                <br>
+                that a 42 team
+                <br>
+                can actually ship
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="footer">
+          <div>Based on current project docs</div>
+          <div>Storyline: mandatory → modules → graph value</div>
+        </div>
+      </section>
+
+      <section class="slide" data-title="Product idea">
+        <div class="slide-head">
+          <div class="eyebrow" data-animate style="--delay: 40ms;">Slide 2 / What we are building</div>
+          <h2 data-animate style="--delay: 120ms;">Что это за продукт и почему он вообще интересен</h2>
+          <p class="lead" data-animate style="--delay: 200ms;">
+            В документации продукт описан как web-приложение для emerging DJs. Оно строит карту местной сцены из event data,
+            связывает артистов, промоутеров, площадки и события, а потом объясняет, куда двигаться дальше и почему именно туда.
+          </p>
+        </div>
+
+        <div class="body-grid columns-3">
+          <div class="info-card" data-animate style="--delay: 300ms;">
+            <div class="info-title">Проблема</div>
+            <div class="info-copy">
+              Музыкальная сцена непрозрачна. У новичка есть куски информации: кто где играл, кто что организует,
+              какие стили совпадают. Но нет системной карты.
+            </div>
+          </div>
+          <div class="info-card" data-animate style="--delay: 380ms;">
+            <div class="info-title">Решение</div>
+            <div class="info-copy">
+              Мы превращаем разрозненные события в graph: Artist, Event, Promoter, Venue. Затем система ранжирует "следующие шаги"
+              не по fame, а по reachability.
+            </div>
+          </div>
+          <div class="info-card" data-animate style="--delay: 460ms;">
+            <div class="info-title">Ключевой тезис</div>
+            <div class="info-copy">
+              Не "кто самый популярный", а "кто реально близок к твоему текущему положению в сцене" и через какие связи это видно.
+            </div>
+          </div>
+        </div>
+
+        <div class="body-grid columns-2">
+          <div class="panel" data-animate style="--delay: 520ms;">
+            <div class="panel-inner">
+              <div class="mini-title">Пользовательский цикл</div>
+              <div class="columns-4">
+                <div class="module-card">
+                  <div class="module-title">Step 1</div>
+                  <div class="module-copy"><strong>Профиль</strong><br>Аккаунт, scene interests, ссылки, artist identity.</div>
+                </div>
+                <div class="module-card">
+                  <div class="module-title">Step 2</div>
+                  <div class="module-copy"><strong>Mapping</strong><br>Система находит ближайшие узлы графа и стартовую позицию.</div>
+                </div>
+                <div class="module-card">
+                  <div class="module-title">Step 3</div>
+                  <div class="module-copy"><strong>Ranking</strong><br>Считаются promoters, venues, artists, events рядом по сцене.</div>
+                </div>
+                <div class="module-card">
+                  <div class="module-title">Step 4</div>
+                  <div class="module-copy"><strong>Explanation</strong><br>Показывается путь: через кого, через что, через сколько hops.</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="panel" data-animate style="--delay: 600ms;">
+            <div class="panel-inner">
+              <div class="mini-title">Что значит "reachability"</div>
+              <ul class="list">
+                <li>Слишком большой и знаменитый promoter может быть stylistically relevant, но practically unreachable.</li>
+                <li>Малый или средний promoter с пересечением по lineup, venue и style часто гораздо полезнее.</li>
+                <li>Поэтому recommendation engine должен учитывать и близость по graph, и level gap, и повторяемость связей.</li>
+                <li>Это делает продукт объяснимым и полезным, а не просто впечатляющим на скриншоте.</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        <div class="footer">
+          <div>Product lens: reachability over popularity</div>
+          <div>Source docs: system design, project description</div>
+        </div>
+      </section>
+
+      <section class="slide" data-title="42 strategy">
+        <div class="slide-head">
+          <div class="eyebrow" data-animate style="--delay: 40ms;">Slide 3 / Evaluation strategy</div>
+          <h2 data-animate style="--delay: 120ms;">Как думать о проекте, если за спиной только School 42</h2>
+          <p class="lead" data-animate style="--delay: 200ms;">
+            Самая важная мысль из документации: порядок matters. Нельзя начинать с "умного графа", пока не существует defendable web-platform,
+            которая проходит mandatory и безопасно собирает очки по модулям.
+          </p>
+        </div>
+
+        <div class="body-grid columns-3">
+          <div class="phase-card" data-animate style="--delay: 300ms;">
+            <div class="phase-title">Layer A</div>
+            <div class="phase-copy">
+              <strong>Mandatory skeleton.</strong><br>
+              Docker, frontend shell, backend shell, auth, DB, HTTPS path, validation, privacy/terms, multi-user sanity.
+            </div>
+          </div>
+          <div class="phase-card" data-animate style="--delay: 380ms;">
+            <div class="phase-title">Layer B</div>
+            <div class="phase-copy">
+              <strong>Point-safe modules.</strong><br>
+              ORM, user interaction, realtime, public API, search, browser support, analytics dashboard, export/import.
+            </div>
+          </div>
+          <div class="phase-card" data-animate style="--delay: 460ms;">
+            <div class="phase-title">Layer C</div>
+            <div class="phase-copy">
+              <strong>Core differentiator.</strong><br>
+              Scene graph recommendation and explanation engine — ваш custom major module и причина, по которой проект memorable.
+            </div>
+          </div>
+        </div>
+
+        <div class="body-grid columns-2">
+          <div class="panel" data-animate style="--delay: 540ms;">
+            <div class="panel-inner">
+              <div class="mini-title">Безопасная модульная цель</div>
+              <ul class="list">
+                <li>Framework for frontend + backend — major.</li>
+                <li>Realtime features — major.</li>
+                <li>User interaction — major.</li>
+                <li>Public API — major.</li>
+                <li>Analytics dashboard — major.</li>
+                <li>Custom scene graph recommendation engine — major.</li>
+                <li>ORM, advanced search, browser support, export/import — minor.</li>
+              </ul>
+            </div>
+          </div>
+
+          <div class="panel" data-animate style="--delay: 620ms;">
+            <div class="panel-inner">
+              <div class="mini-title">Чего не делаем слишком рано</div>
+              <ul class="list">
+                <li>Не строим AI-first demo ради впечатления, если базовые модули еще не закрыты.</li>
+                <li>Не пытаемся внедрить ML, embeddings или RAG как dependency для pass/fail.</li>
+                <li>Не растаскиваем проект в микросервисы, если команда еще не закрыла стабильный monorepo flow.</li>
+                <li>Не спорим о perfect stack. Важно не "идеально", а defendable и shipping-friendly.</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        <div class="footer">
+          <div>Rule of thumb: product brain only after platform skeleton</div>
+          <div>Safe path to 16 points, then polish</div>
+        </div>
+      </section>
+
+      <section class="slide" data-title="System architecture">
+        <div class="slide-head">
+          <div class="eyebrow" data-animate style="--delay: 40ms;">Slide 4 / High-level architecture</div>
+          <h2 data-animate style="--delay: 120ms;">Общая архитектура: какие зоны системы у нас вообще есть</h2>
+          <p class="lead" data-animate style="--delay: 200ms;">
+            Из текущей документации вырисовываются три больших контура: клиентский продукт, web-platform и offline data pipeline.
+            Именно их и нужно держать в голове при планировании команды и сроков.
+          </p>
+        </div>
+
+        <div class="panel diagram-frame" data-animate style="--delay: 300ms;">
+          <div class="panel-inner">
+            <svg viewBox="0 0 1320 560" aria-label="High level architecture">
+              <defs>
+                <marker id="arrow-teal" viewBox="0 0 12 12" refX="10" refY="6" markerWidth="10" markerHeight="10" orient="auto-start-reverse">
+                  <path d="M 0 0 L 12 6 L 0 12 z" fill="rgba(124, 224, 211, 0.78)"></path>
+                </marker>
+                <marker id="arrow-amber" viewBox="0 0 12 12" refX="10" refY="6" markerWidth="10" markerHeight="10" orient="auto-start-reverse">
+                  <path d="M 0 0 L 12 6 L 0 12 z" fill="rgba(245, 166, 91, 0.8)"></path>
+                </marker>
+              </defs>
+
+              <rect class="diagram-card alt" x="34" y="98" rx="28" ry="28" width="332" height="344"></rect>
+              <text class="diagram-kicker" x="64" y="142">Zone A</text>
+              <text class="diagram-title" x="64" y="176">User-facing product</text>
+              <text class="diagram-copy" x="64" y="214">- Auth pages</text>
+              <text class="diagram-copy" x="64" y="244">- Dashboard</text>
+              <text class="diagram-copy" x="64" y="274">- Search</text>
+              <text class="diagram-copy" x="64" y="304">- Recommendation view</text>
+              <text class="diagram-copy" x="64" y="334">- Graph explorer</text>
+              <text class="diagram-copy" x="64" y="364">- Friends / chat / notifications</text>
+              <text class="diagram-copy muted" x="64" y="404">Client app, предположительно SPA</text>
+
+              <rect class="diagram-card" x="490" y="56" rx="28" ry="28" width="356" height="428"></rect>
+              <text class="diagram-kicker" x="522" y="100">Zone B</text>
+              <text class="diagram-title" x="522" y="136">Web platform + application core</text>
+              <text class="diagram-copy" x="522" y="176">- Auth and session layer</text>
+              <text class="diagram-copy" x="522" y="206">- Public API / search / export</text>
+              <text class="diagram-copy" x="522" y="236">- Real-time layer for chat & presence</text>
+              <text class="diagram-copy" x="522" y="266">- Recommendation engine</text>
+              <text class="diagram-copy" x="522" y="296">- Explanation path builder</text>
+              <text class="diagram-copy" x="522" y="326">- Analytics query layer</text>
+              <text class="diagram-copy" x="522" y="356">- ORM + DB access</text>
+              <text class="diagram-copy muted" x="522" y="404">Single backend is the safest first shape</text>
+
+              <rect class="diagram-card warn" x="970" y="98" rx="28" ry="28" width="314" height="344"></rect>
+              <text class="diagram-kicker" x="1002" y="142">Zone C</text>
+              <text class="diagram-title" x="1002" y="176">Offline data and enrichment</text>
+              <text class="diagram-copy" x="1002" y="214">- Event ingestion</text>
+              <text class="diagram-copy" x="1002" y="244">- Artist extraction</text>
+              <text class="diagram-copy" x="1002" y="274">- Biography scraping</text>
+              <text class="diagram-copy" x="1002" y="304">- Style tagging</text>
+              <text class="diagram-copy" x="1002" y="334">- Precomputed metrics</text>
+              <text class="diagram-copy" x="1002" y="364">- Import/export artifacts</text>
+              <text class="diagram-copy muted" x="1002" y="404">Runs beside the app, not inside the UI request path</text>
+
+              <path class="flow-line" d="M 366 270 C 416 270, 430 270, 490 270" marker-end="url(#arrow-teal)"></path>
+              <text class="flow-label" x="390" y="252">HTTPS / REST</text>
+
+              <path class="flow-line-thick" d="M 846 270 C 904 270, 914 270, 970 270" marker-end="url(#arrow-amber)"></path>
+              <text class="flow-label" x="870" y="252">Batch jobs / ETL</text>
+
+              <path class="flow-line" d="M 846 330 C 912 346, 924 348, 970 368" marker-end="url(#arrow-teal)"></path>
+              <text class="flow-label" x="862" y="388">Precomputed signals → runtime</text>
+
+              <path class="flow-line-thick" d="M 668 484 C 668 526, 246 526, 246 444" marker-end="url(#arrow-amber)"></path>
+              <text class="flow-label" x="350" y="516">WebSocket events / notifications</text>
+            </svg>
+          </div>
+        </div>
+
+        <div class="footer">
+          <div>Three zones: client, platform, offline pipeline</div>
+          <div>Keep offline work out of user request critical path</div>
+        </div>
+      </section>
+
+      <section class="slide" data-title="Runtime communication">
+        <div class="slide-head">
+          <div class="eyebrow" data-animate style="--delay: 40ms;">Slide 5 / Communication map</div>
+          <h2 data-animate style="--delay: 120ms;">Как что с чем общается и через что именно</h2>
+          <p class="lead" data-animate style="--delay: 200ms;">
+            Это один из самых важных слайдов для команды: он убирает магию. Ниже не просто "блоки", а реальные типы коммуникации:
+            HTTPS, WebSocket, ORM/SQL, batch ingestion и explanation payloads.
+          </p>
+        </div>
+
+        <div class="body-grid columns-2">
+          <div class="panel diagram-frame" data-animate style="--delay: 300ms;">
+            <div class="panel-inner">
+              <svg viewBox="0 0 940 520" aria-label="Runtime communication diagram">
+                <defs>
+                  <marker id="arrow-a" viewBox="0 0 12 12" refX="10" refY="6" markerWidth="10" markerHeight="10" orient="auto-start-reverse">
+                    <path d="M 0 0 L 12 6 L 0 12 z" fill="rgba(124, 224, 211, 0.82)"></path>
+                  </marker>
+                </defs>
+
+                <rect class="diagram-card alt" x="34" y="44" rx="26" ry="26" width="220" height="170"></rect>
+                <text class="diagram-kicker" x="62" y="84">Client</text>
+                <text class="diagram-title" x="62" y="118">Browser app</text>
+                <text class="diagram-copy" x="62" y="152">- profile</text>
+                <text class="diagram-copy" x="62" y="178">- search</text>
+                <text class="diagram-copy" x="62" y="204">- graph view</text>
+
+                <rect class="diagram-card" x="360" y="36" rx="26" ry="26" width="250" height="188"></rect>
+                <text class="diagram-kicker" x="392" y="76">Gateway</text>
+                <text class="diagram-title" x="392" y="110">API + auth layer</text>
+                <text class="diagram-copy" x="392" y="144">- protected routes</text>
+                <text class="diagram-copy" x="392" y="170">- search endpoints</text>
+                <text class="diagram-copy" x="392" y="196">- recommendation endpoints</text>
+
+                <rect class="diagram-card" x="674" y="36" rx="26" ry="26" width="230" height="188"></rect>
+                <text class="diagram-kicker" x="706" y="76">State</text>
+                <text class="diagram-title" x="706" y="110">Database</text>
+                <text class="diagram-copy" x="706" y="144">users</text>
+                <text class="diagram-copy" x="706" y="170">graph entities</text>
+                <text class="diagram-copy" x="706" y="196">messages / metrics</text>
+
+                <rect class="diagram-card warn" x="360" y="294" rx="26" ry="26" width="250" height="172"></rect>
+                <text class="diagram-kicker" x="392" y="334">Realtime</text>
+                <text class="diagram-title" x="392" y="368">WebSocket hub</text>
+                <text class="diagram-copy" x="392" y="402">- chat</text>
+                <text class="diagram-copy" x="392" y="428">- presence</text>
+                <text class="diagram-copy" x="392" y="454">- notifications</text>
+
+                <rect class="diagram-card alt" x="674" y="294" rx="26" ry="26" width="230" height="172"></rect>
+                <text class="diagram-kicker" x="706" y="334">Core logic</text>
+                <text class="diagram-title" x="706" y="368">Recommendation engine</text>
+                <text class="diagram-copy" x="706" y="402">ranking</text>
+                <text class="diagram-copy" x="706" y="428">explanation path</text>
+                <text class="diagram-copy" x="706" y="454">reachability</text>
+
+                <path class="flow-line" d="M 254 116 C 300 116, 318 116, 360 116" marker-end="url(#arrow-a)"></path>
+                <text class="flow-label" x="273" y="98">HTTPS</text>
+
+                <path class="flow-line" d="M 610 116 C 642 116, 650 116, 674 116" marker-end="url(#arrow-a)"></path>
+                <text class="flow-label" x="620" y="98">ORM / SQL</text>
+
+                <path class="flow-line" d="M 254 184 C 334 226, 350 322, 360 360" marker-end="url(#arrow-a)"></path>
+                <text class="flow-label" x="236" y="286">WebSocket</text>
+
+                <path class="flow-line" d="M 610 380 C 642 380, 650 380, 674 380" marker-end="url(#arrow-a)"></path>
+                <text class="flow-label" x="622" y="362">score + path query</text>
+
+                <path class="flow-line" d="M 788 294 C 788 250, 788 236, 788 224" marker-end="url(#arrow-a)"></path>
+                <text class="flow-label" x="814" y="262">reads graph state</text>
+              </svg>
+            </div>
+          </div>
+
+          <div class="panel" data-animate style="--delay: 380ms;">
+            <div class="panel-inner">
+              <div class="mini-title">Runtime flow in plain language</div>
+              <ul class="list">
+                <li><strong>Browser → API:</strong> login, profile, search, dashboard, recommendation requests go over HTTPS.</li>
+                <li><strong>Browser ↔ WebSocket hub:</strong> chat, presence, notifications and optional refresh events go over a persistent socket connection.</li>
+                <li><strong>API → DB:</strong> backend reads user state, graph entities, metrics and recommendations through an ORM or direct query layer.</li>
+                <li><strong>API → Recommendation engine:</strong> engine calculates ranked candidates and builds human-readable explanation paths.</li>
+                <li><strong>Recommendation engine → DB:</strong> reads precomputed metrics and graph relationships, not raw scraped pages.</li>
+                <li><strong>Offline pipeline → DB/import layer:</strong> event data and enrichments are prepared ahead of time, so runtime stays fast and defendable.</li>
+              </ul>
+              <div class="legend">
+                <div class="legend-item"><span class="legend-swatch swatch-user"></span>User node</div>
+                <div class="legend-item"><span class="legend-swatch swatch-artist"></span>Artist node</div>
+                <div class="legend-item"><span class="legend-swatch swatch-promoter"></span>Promoter node</div>
+                <div class="legend-item"><span class="legend-swatch swatch-venue"></span>Venue node</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="footer">
+          <div>Protocols matter: HTTPS, WebSocket, ORM/SQL, batch import</div>
+          <div>Remove magic early, team confidence goes up</div>
+        </div>
+      </section>
+
+      <section class="slide" data-title="Data pipeline">
+        <div class="slide-head">
+          <div class="eyebrow" data-animate style="--delay: 40ms;">Slide 6 / Offline ingestion</div>
+          <h2 data-animate style="--delay: 120ms;">Data pipeline: как сцена попадает в продукт</h2>
+          <p class="lead" data-animate style="--delay: 200ms;">
+            Здесь особенно полезно опираться на уже существующую документацию и текущий код. У вас pipeline уже мыслится event-first,
+            а в текущем repo он даже частично реализован как цепочка парсеров.
+          </p>
+        </div>
+
+        <div class="body-grid columns-2">
+          <div class="panel diagram-frame" data-animate style="--delay: 300ms;">
+            <div class="panel-inner">
+              <svg viewBox="0 0 980 520" aria-label="Offline data pipeline diagram">
+                <defs>
+                  <marker id="arrow-b" viewBox="0 0 12 12" refX="10" refY="6" markerWidth="10" markerHeight="10" orient="auto-start-reverse">
+                    <path d="M 0 0 L 12 6 L 0 12 z" fill="rgba(245, 166, 91, 0.82)"></path>
+                  </marker>
+                </defs>
+
+                <rect class="diagram-card alt" x="34" y="184" rx="24" ry="24" width="160" height="118"></rect>
+                <text class="diagram-title" x="68" y="234">City / source</text>
+                <text class="diagram-copy" x="68" y="266">RA-like event data</text>
+
+                <rect class="diagram-card" x="248" y="70" rx="24" ry="24" width="200" height="96"></rect>
+                <text class="diagram-title" x="278" y="126">parse_past_events.py</text>
+
+                <rect class="diagram-card" x="248" y="216" rx="24" ry="24" width="200" height="96"></rect>
+                <text class="diagram-title" x="286" y="272">extract_artists.py</text>
+
+                <rect class="diagram-card warn" x="248" y="362" rx="24" ry="24" width="200" height="96"></rect>
+                <text class="diagram-title" x="278" y="418">artists_bio.py</text>
+
+                <rect class="diagram-card alt" x="532" y="70" rx="24" ry="24" width="198" height="96"></rect>
+                <text class="diagram-title" x="558" y="126">Canonical JSON</text>
+
+                <rect class="diagram-card" x="532" y="216" rx="24" ry="24" width="198" height="96"></rect>
+                <text class="diagram-title" x="570" y="272">Entity upsert</text>
+
+                <rect class="diagram-card warn" x="532" y="362" rx="24" ry="24" width="198" height="96"></rect>
+                <text class="diagram-title" x="560" y="418">Enrichment</text>
+
+                <rect class="diagram-card alt" x="790" y="184" rx="24" ry="24" width="160" height="160"></rect>
+                <text class="diagram-title" x="820" y="234">Graph state</text>
+                <text class="diagram-copy" x="820" y="270">artists</text>
+                <text class="diagram-copy" x="820" y="296">events</text>
+                <text class="diagram-copy" x="820" y="322">promoters</text>
+
+                <path class="flow-line-thick" d="M 194 242 C 216 242, 224 118, 248 118" marker-end="url(#arrow-b)"></path>
+                <path class="flow-line-thick" d="M 194 242 C 218 242, 224 264, 248 264" marker-end="url(#arrow-b)"></path>
+                <path class="flow-line-thick" d="M 194 242 C 218 242, 224 410, 248 410" marker-end="url(#arrow-b)"></path>
+
+                <path class="flow-line" d="M 448 118 C 490 118, 502 118, 532 118" marker-end="url(#arrow-b)"></path>
+                <path class="flow-line" d="M 448 264 C 490 264, 502 264, 532 264" marker-end="url(#arrow-b)"></path>
+                <path class="flow-line" d="M 448 410 C 490 410, 502 410, 532 410" marker-end="url(#arrow-b)"></path>
+
+                <path class="flow-line-thick" d="M 730 118 C 764 118, 766 216, 790 216" marker-end="url(#arrow-b)"></path>
+                <path class="flow-line-thick" d="M 730 264 C 760 264, 764 264, 790 264" marker-end="url(#arrow-b)"></path>
+                <path class="flow-line-thick" d="M 730 410 C 764 410, 766 314, 790 314" marker-end="url(#arrow-b)"></path>
+
+                <text class="flow-label" x="486" y="102">checkpoint JSON</text>
+                <text class="flow-label" x="476" y="248">entities + edges</text>
+                <text class="flow-label" x="484" y="394">tags + bios + metrics</text>
+              </svg>
+            </div>
+          </div>
+
+          <div class="panel" data-animate style="--delay: 380ms;">
+            <div class="panel-inner">
+              <div class="mini-title">Как объяснить pipeline команде</div>
+              <ul class="list">
+                <li><strong>Шаг 1:</strong> мы собираем события, потому что event — лучший контейнер контекста: lineup, date, promoter, venue, description.</li>
+                <li><strong>Шаг 2:</strong> из событий выводим entities, а не наоборот. Это защищает от "мертвых" артистов без сцены вокруг них.</li>
+                <li><strong>Шаг 3:</strong> отдельно тянем biographies и style context, чтобы потом recommendation engine мог объяснять совпадения не только по co-occurrence.</li>
+                <li><strong>Шаг 4:</strong> precompute metrics заранее. Runtime не должен парсить интернет и не должен ждать тяжелых вычислений.</li>
+                <li><strong>Шаг 5:</strong> результат ingestion — это не просто JSON-файлы, а подготовленное graph state для app runtime.</li>
+              </ul>
+              <div class="chip-row">
+                <div class="chip">event-first</div>
+                <div class="chip">checkpoint-safe</div>
+                <div class="chip">graph-ready</div>
+                <div class="chip strong">runtime stays clean</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="footer">
+          <div>Current repo already proves the pipeline idea</div>
+          <div>Offline work feeds product value, not UI complexity</div>
+        </div>
+      </section>
+
+      <section class="slide" data-title="Graph model">
+        <div class="slide-head">
+          <div class="eyebrow" data-animate style="--delay: 40ms;">Slide 7 / Graph model</div>
+          <h2 data-animate style="--delay: 120ms;">Какие сущности и связи реально формируют сцену</h2>
+          <p class="lead" data-animate style="--delay: 200ms;">
+            Базовый MVP-граф намеренно компактный. Основные документы сходятся на четырех core entities:
+            Artist, Event, Promoter, Venue. В расширенной версии можно добавить Label и Radio, но не нужно делать это слишком рано.
+          </p>
+        </div>
+
+        <div class="body-grid columns-2">
+          <div class="panel diagram-frame" data-animate style="--delay: 300ms;">
+            <div class="panel-inner">
+              <svg viewBox="0 0 940 540" aria-label="Graph entities and relations">
+                <defs>
+                  <marker id="arrow-c" viewBox="0 0 12 12" refX="10" refY="6" markerWidth="10" markerHeight="10" orient="auto-start-reverse">
+                    <path d="M 0 0 L 12 6 L 0 12 z" fill="rgba(124, 224, 211, 0.82)"></path>
+                  </marker>
+                </defs>
+
+                <circle cx="210" cy="130" r="78" fill="#6bb7ff" opacity="0.85"></circle>
+                <circle cx="490" cy="130" r="78" fill="#ffd25a" opacity="0.88"></circle>
+                <circle cx="730" cy="130" r="78" fill="#d291ff" opacity="0.88"></circle>
+                <circle cx="490" cy="360" r="78" fill="#5edd9c" opacity="0.86"></circle>
+                <circle cx="210" cy="420" r="52" fill="#4d6174" opacity="0.34"></circle>
+                <circle cx="730" cy="420" r="52" fill="#4d6174" opacity="0.34"></circle>
+
+                <text x="178" y="138" class="diagram-title">Artist</text>
+                <text x="463" y="138" class="diagram-title">Event</text>
+                <text x="680" y="138" class="diagram-title">Promoter</text>
+                <text x="457" y="368" class="diagram-title">Venue</text>
+                <text x="176" y="428" class="diagram-copy muted">Label</text>
+                <text x="700" y="428" class="diagram-copy muted">Radio</text>
+
+                <path class="flow-line" d="M 286 130 C 352 130, 390 130, 412 130" marker-end="url(#arrow-c)"></path>
+                <text class="flow-label" x="330" y="112">played_at</text>
+
+                <path class="flow-line-thick" d="M 568 130 C 624 130, 646 130, 652 130" marker-end="url(#arrow-c)"></path>
+                <text class="flow-label" x="596" y="112">hosted_by / organizes</text>
+
+                <path class="flow-line" d="M 490 208 C 490 256, 490 270, 490 282" marker-end="url(#arrow-c)"></path>
+                <text class="flow-label" x="516" y="258">takes_place_at</text>
+
+                <path class="flow-line-thick" d="M 238 201 C 284 266, 340 314, 420 346" marker-end="url(#arrow-c)"></path>
+                <text class="flow-label" x="246" y="296">same event neighborhood</text>
+
+                <path class="flow-line" d="M 702 201 C 654 266, 600 312, 558 344" marker-end="url(#arrow-c)"></path>
+                <text class="flow-label" x="604" y="304">venue history</text>
+
+                <text class="diagram-copy" x="58" y="504">MVP core: Artist, Event, Promoter, Venue</text>
+                <text class="diagram-copy muted" x="498" y="504">Future extension: Label, Radio, more media presence</text>
+              </svg>
+            </div>
+          </div>
+
+          <div class="panel" data-animate style="--delay: 380ms;">
+            <div class="panel-inner">
+              <div class="mini-title">Почему именно эти 4 узла достаточно хороши для MVP</div>
+              <ul class="list">
+                <li><strong>Artist</strong> дает нам карьерную траекторию, стиль и соседей по lineup.</li>
+                <li><strong>Event</strong> это ключевой контекстный узел: в нем встречаются все остальные сущности.</li>
+                <li><strong>Promoter</strong> — это тот, кто реально создает opportunity, а не просто существует как абстрактный бренд.</li>
+                <li><strong>Venue</strong> помогает понять уровень сцены, recurring nights и географическую/культурную нишу.</li>
+              </ul>
+
+              <div class="formula">
+MVP graph:
+Artist -> Event
+Promoter -> Event
+Event -> Venue
+
+Extended graph later:
+Artist -> Label
+Artist -> Radio
+Promoter -> Collective links
+Venue -> recurring series
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="footer">
+          <div>Compact graph first, richer graph later</div>
+          <div>Every extra entity must earn its maintenance cost</div>
+        </div>
+      </section>
+
+      <section class="slide" data-title="Recommendation engine">
+        <div class="slide-head">
+          <div class="eyebrow" data-animate style="--delay: 40ms;">Slide 8 / Recommendation logic</div>
+          <h2 data-animate style="--delay: 120ms;">Как recommendation engine принимает решения</h2>
+          <p class="lead" data-animate style="--delay: 200ms;">
+            По документам recommendation logic строится из пяти крупных сигналов: proximity, strength, style similarity,
+            relevance и reachability. Это не black box и не "магия AI", а объяснимый scoring pipeline.
+          </p>
+        </div>
+
+        <div class="body-grid columns-2">
+          <div class="panel" data-animate style="--delay: 300ms;">
+            <div class="panel-inner">
+              <div class="mini-title">High-level scoring model</div>
+              <div class="formula">
+score =
+  w1 * graph_proximity
++ w2 * connection_strength
++ w3 * style_similarity
++ w4 * scene_relevance
++ w5 * reachability
+              </div>
+              <div class="small-copy">
+                Важно не точное уравнение, а то, что каждая составляющая объяснима и может быть показана пользователю в UI.
+              </div>
+            </div>
+          </div>
+
+          <div class="panel" data-animate style="--delay: 380ms;">
+            <div class="panel-inner">
+              <div class="mini-title">Как читать score глазами команды</div>
+              <div class="score-stack">
+                <div class="score-row">
+                  <span>Graph proximity</span>
+                  <div class="score-bar"><div class="score-fill" style="width: 88%; --delay: 420ms;"></div></div>
+                  <span>1-2 hops</span>
+                </div>
+                <div class="score-row">
+                  <span>Strength</span>
+                  <div class="score-bar"><div class="score-fill" style="width: 74%; --delay: 500ms;"></div></div>
+                  <span>shared edges</span>
+                </div>
+                <div class="score-row">
+                  <span>Style fit</span>
+                  <div class="score-bar"><div class="score-fill" style="width: 82%; --delay: 580ms;"></div></div>
+                  <span>tag overlap</span>
+                </div>
+                <div class="score-row">
+                  <span>Relevance</span>
+                  <div class="score-bar"><div class="score-fill" style="width: 63%; --delay: 660ms;"></div></div>
+                  <span>followers / activity</span>
+                </div>
+                <div class="score-row">
+                  <span>Reachability</span>
+                  <div class="score-bar"><div class="score-fill" style="width: 92%; --delay: 740ms;"></div></div>
+                  <span>realistic level</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="body-grid columns-3">
+          <div class="module-card" data-animate style="--delay: 520ms;">
+            <div class="module-title">Signal 1</div>
+            <div class="module-copy"><strong>Proximity</strong><br>Чем меньше hops до target entity, тем выше шанс, что рекомендация не абстрактна.</div>
+          </div>
+          <div class="module-card" data-animate style="--delay: 600ms;">
+            <div class="module-title">Signal 2</div>
+            <div class="module-copy"><strong>Strength</strong><br>Повторяющиеся co-lineups, recurring venues и overlapping promoters усиливают confidence.</div>
+          </div>
+          <div class="module-card" data-animate style="--delay: 680ms;">
+            <div class="module-title">Signal 3</div>
+            <div class="module-copy"><strong>Reachability</strong><br>Самый важный ограничитель: мы penalize node, если он stylistically близок, но карьерно недостижим.</div>
+          </div>
+        </div>
+
+        <div class="footer">
+          <div>This is an explainable engine, not a mystery box</div>
+          <div>Every score component should map to visible UI evidence</div>
+        </div>
+      </section>
+
+      <section class="slide" data-title="Modules">
+        <div class="slide-head">
+          <div class="eyebrow" data-animate style="--delay: 40ms;">Slide 9 / 42 module strategy</div>
+          <h2 data-animate style="--delay: 120ms;">Какие модули мы реально заявляем и почему это defendable</h2>
+          <p class="lead" data-animate style="--delay: 200ms;">
+            По документации у проекта есть безопасная цель: 16 очков без зависимости от AI-модулей. Это важно:
+            если recommendation core выйдет сильным — отлично, но pass/fail не должен зависеть от спорной интерпретации subject.
+          </p>
+        </div>
+
+        <div class="body-grid matrix">
+          <div class="panel" data-animate style="--delay: 300ms;">
+            <div class="panel-inner">
+              <div class="mini-title">Major modules</div>
+              <ul class="list">
+                <li>Framework for frontend + backend</li>
+                <li>Realtime features</li>
+                <li>User interaction</li>
+                <li>Public API</li>
+                <li>Advanced analytics dashboard</li>
+                <li>Scene graph recommendation & explanation engine</li>
+              </ul>
+            </div>
+          </div>
+
+          <div class="panel" data-animate style="--delay: 380ms;">
+            <div class="panel-inner">
+              <div class="mini-title">Minor modules</div>
+              <ul class="list">
+                <li>ORM</li>
+                <li>Advanced search</li>
+                <li>Additional browser support</li>
+                <li>Data export / import</li>
+              </ul>
+            </div>
+          </div>
+
+          <div class="panel" data-animate style="--delay: 460ms;">
+            <div class="panel-inner">
+              <div class="mini-title">Почему это безопасно</div>
+              <ul class="list">
+                <li>Каждый модуль имеет четкий user-facing или evaluator-facing proof.</li>
+                <li>Модули можно демонстрировать независимо: chat, API, search, dashboard, export.</li>
+                <li>Custom module — центральная логика проекта, а не cosmetic feature.</li>
+              </ul>
+            </div>
+          </div>
+
+          <div class="panel" data-animate style="--delay: 540ms;">
+            <div class="panel-inner">
+              <div class="mini-title">Что не заявляем рано</div>
+              <ul class="list">
+                <li>AI points как критическую зависимость.</li>
+                <li>ML / embeddings / RAG, если они не полностью defendable.</li>
+                <li>Большие scope additions вроде organizations, SSR, microservices.</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        <div class="footer">
+          <div>Safe 16-point plan beats fuzzy ambition</div>
+          <div>Everything claimed must be easy to prove live</div>
+        </div>
+      </section>
+
+      <section class="slide" data-title="Roadmap">
+        <div class="slide-head">
+          <div class="eyebrow" data-animate style="--delay: 40ms;">Slide 10 / Phase roadmap</div>
+          <h2 data-animate style="--delay: 120ms;">Фазы разработки: что строим и в каком порядке</h2>
+          <p class="lead" data-animate style="--delay: 200ms;">
+            Ниже — структура из текущего full development plan. Это хороший skeleton для реальной командной работы:
+            сначала platform, потом modules, потом graph core, потом hardening и defense.
+          </p>
+        </div>
+
+        <div class="body-grid timeline">
+          <div class="timeline-step">
+            <div class="timeline-label" data-animate style="--delay: 280ms;">Phase 0</div>
+            <div class="timeline-card" data-animate style="--delay: 340ms;">
+              <h3>Freeze the scope</h3>
+              <p>Утвердить modules, роли, ветки, issue board, out-of-scope и expected demo story. Это скучно, но экономит недели хаоса.</p>
+            </div>
+          </div>
+          <div class="timeline-step">
+            <div class="timeline-label" data-animate style="--delay: 400ms;">Phase 1</div>
+            <div class="timeline-card" data-animate style="--delay: 460ms;">
+              <h3>Mandatory skeleton first</h3>
+              <p>Frontend shell, backend shell, DB, auth, validation, Docker, HTTPS path, privacy/terms, multi-user baseline.</p>
+            </div>
+          </div>
+          <div class="timeline-step">
+            <div class="timeline-label" data-animate style="--delay: 520ms;">Phase 2</div>
+            <div class="timeline-card" data-animate style="--delay: 580ms;">
+              <h3>Safe point modules</h3>
+              <p>ORM, user interaction, realtime, public API, advanced search, analytics dashboard, export/import, browser support.</p>
+            </div>
+          </div>
+          <div class="timeline-step">
+            <div class="timeline-label" data-animate style="--delay: 640ms;">Phase 3</div>
+            <div class="timeline-card" data-animate style="--delay: 700ms;">
+              <h3>Core domain model</h3>
+              <p>Scene graph entities and edges, event-first ingestion, upsert strategy, style tagging, metrics precompute.</p>
+            </div>
+          </div>
+          <div class="timeline-step">
+            <div class="timeline-label" data-animate style="--delay: 760ms;">Phase 4</div>
+            <div class="timeline-card" data-animate style="--delay: 820ms;">
+              <h3>Recommendation core</h3>
+              <p>Candidate generation, ranking signals, reachability, explanation paths, recommendation endpoints and UI proof.</p>
+            </div>
+          </div>
+          <div class="timeline-step">
+            <div class="timeline-label" data-animate style="--delay: 880ms;">Phase 5-7</div>
+            <div class="timeline-card" data-animate style="--delay: 940ms;">
+              <h3>UI integration, hardening, defense</h3>
+              <p>Graph view, explanation panel, browser fixes, clean console, security sanity, seeded demo and final docs.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="footer">
+          <div>Phases are a safety rail, not bureaucracy</div>
+          <div>Never jump to Phase 4 if Phase 1 is shaky</div>
+        </div>
+      </section>
+
+      <section class="slide" data-title="Week plan">
+        <div class="slide-head">
+          <div class="eyebrow" data-animate style="--delay: 40ms;">Slide 11 / Weekly build plan</div>
+          <h2 data-animate style="--delay: 120ms;">Пример подробного графика работ по неделям</h2>
+          <p class="lead" data-animate style="--delay: 200ms;">
+            Ниже — не "единственный правильный" календарь, а реалистичный расклад для команды, которая только выходит из school-project mindset
+            и хочет успеть не только закодить, но и защитить.
+          </p>
+        </div>
+
+        <div class="body-grid columns-3">
+          <div class="phase-card" data-animate style="--delay: 300ms;">
+            <div class="phase-title">Week 1</div>
+            <div class="phase-copy"><strong>Lock and skeleton</strong><br>Modules locked, repo layout, Docker shell, auth skeleton, DB schema draft, main routes.</div>
+          </div>
+          <div class="phase-card" data-animate style="--delay: 380ms;">
+            <div class="phase-title">Week 2</div>
+            <div class="phase-copy"><strong>Mandatory baseline</strong><br>Signup/login, protected routes, forms, privacy/terms, multi-user sanity, responsive shell.</div>
+          </div>
+          <div class="phase-card" data-animate style="--delay: 460ms;">
+            <div class="phase-title">Week 3</div>
+            <div class="phase-copy"><strong>Safe modules</strong><br>Friends, DM chat, presence, notifications, public API skeleton, search page.</div>
+          </div>
+          <div class="phase-card" data-animate style="--delay: 540ms;">
+            <div class="phase-title">Week 4</div>
+            <div class="phase-copy"><strong>Analytics + import/export</strong><br>Dashboard widgets, CSV/JSON export, seed import, browser fixes start.</div>
+          </div>
+          <div class="phase-card" data-animate style="--delay: 620ms;">
+            <div class="phase-title">Week 5</div>
+            <div class="phase-copy"><strong>Ingestion + graph state</strong><br>Parsers, entity upserts, styles, metrics, initial graph queries.</div>
+          </div>
+          <div class="phase-card" data-animate style="--delay: 700ms;">
+            <div class="phase-title">Week 6</div>
+            <div class="phase-copy"><strong>Recommendation engine</strong><br>Ranking, explanation paths, recommendation API, UI integration.</div>
+          </div>
+        </div>
+
+        <div class="body-grid columns-2">
+          <div class="panel" data-animate style="--delay: 780ms;">
+            <div class="panel-inner">
+              <div class="mini-title">Week 7</div>
+              <div class="small-copy">
+                Hardening sprint: Safari/Firefox, websocket reconnect, duplicate signup, rate limits, empty search, bad API key, no noisy logs, no ugly edge-case crashes.
+              </div>
+            </div>
+          </div>
+          <div class="panel" data-animate style="--delay: 860ms;">
+            <div class="panel-inner">
+              <div class="mini-title">Week 8</div>
+              <div class="small-copy">
+                Defense sprint: seeded accounts, seeded graph data, exact demo path, README polish, architecture docs, module-by-module evidence, evaluator Q&A prep.
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="footer">
+          <div>Calendar can move, order should not</div>
+          <div>Weeks 7-8 are not optional if you want a calm defense</div>
+        </div>
+      </section>
+
+      <section class="slide" data-title="Team split">
+        <div class="slide-head">
+          <div class="eyebrow" data-animate style="--delay: 40ms;">Slide 12 / Parallel workstreams</div>
+          <h2 data-animate style="--delay: 120ms;">Как распараллелить работу команды без хаоса</h2>
+          <p class="lead" data-animate style="--delay: 200ms;">
+            Хорошее разбиение не изолирует людей навсегда, а дает им primary ownership. По documentation team split примерно такой:
+            auth/social, realtime, ingestion, recommendation, dashboard/API.
+          </p>
+        </div>
+
+        <div class="panel" data-animate style="--delay: 300ms;">
+          <div class="panel-inner">
+            <div class="swimlanes">
+              <div class="lane">
+                <div class="lane-name">Stream A<br>User & auth</div>
+                <div class="lane-track">
+                  <div class="lane-pill"><strong>Foundation</strong>Login, signup, sessions, protected routes.</div>
+                  <div class="lane-pill"><strong>Social</strong>Profile, friends, basic preferences.</div>
+                  <div class="lane-pill"><strong>Integration</strong>User graph mapping inputs.</div>
+                  <div class="lane-pill"><strong>Defense</strong>Bad input, duplicate signup, privacy surface.</div>
+                </div>
+              </div>
+              <div class="lane">
+                <div class="lane-name">Stream B<br>Realtime</div>
+                <div class="lane-track">
+                  <div class="lane-pill"><strong>Foundation</strong>Socket hub, channel model.</div>
+                  <div class="lane-pill"><strong>Features</strong>DM chat, notifications, presence.</div>
+                  <div class="lane-pill"><strong>Product hook</strong>Optional recommendation refresh event.</div>
+                  <div class="lane-pill"><strong>Defense</strong>Reconnect and concurrent session sanity.</div>
+                </div>
+              </div>
+              <div class="lane">
+                <div class="lane-name">Stream C<br>Ingestion & graph</div>
+                <div class="lane-track">
+                  <div class="lane-pill"><strong>Foundation</strong>Event ingestion, canonical data format.</div>
+                  <div class="lane-pill"><strong>Graph build</strong>Upsert Artist/Event/Promoter/Venue.</div>
+                  <div class="lane-pill"><strong>Enrichment</strong>Style tags, bios, metrics.</div>
+                  <div class="lane-pill"><strong>Defense</strong>Stable seed dataset for demo.</div>
+                </div>
+              </div>
+              <div class="lane">
+                <div class="lane-name">Stream D<br>Recommendation</div>
+                <div class="lane-track">
+                  <div class="lane-pill"><strong>Foundation</strong>Candidate generation and ranking sketch.</div>
+                  <div class="lane-pill"><strong>Core</strong>Proximity, strength, style, reachability.</div>
+                  <div class="lane-pill"><strong>UX</strong>Explanation paths and scoring text.</div>
+                  <div class="lane-pill"><strong>Defense</strong>Custom major module justification.</div>
+                </div>
+              </div>
+              <div class="lane">
+                <div class="lane-name">Stream E<br>Search & analytics</div>
+                <div class="lane-track">
+                  <div class="lane-pill"><strong>Foundation</strong>Search page and filter model.</div>
+                  <div class="lane-pill"><strong>Dashboard</strong>Charts, ranges, export.</div>
+                  <div class="lane-pill"><strong>Public API</strong>Docs, rate limit, endpoints.</div>
+                  <div class="lane-pill"><strong>Defense</strong>Browser support and evaluator-facing polish.</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="footer">
+          <div>Ownership reduces collisions, not knowledge sharing</div>
+          <div>Everyone still needs a system-level story for the defense</div>
+        </div>
+      </section>
+
+      <section class="slide" data-title="Risks">
+        <div class="slide-head">
+          <div class="eyebrow" data-animate style="--delay: 40ms;">Slide 13 / Risks and anti-patterns</div>
+          <h2 data-animate style="--delay: 120ms;">Где проект почти наверняка может поехать не туда</h2>
+          <p class="lead" data-animate style="--delay: 200ms;">
+            Этот слайд нужен не для страха, а для спокойствия. Чем раньше команда проговаривает реальные риски, тем меньше шансов,
+            что проект сломается от scope creep или от попытки "сделать впечатляюще" вместо "сделать defendable".
+          </p>
+        </div>
+
+        <div class="body-grid columns-2">
+          <div class="risk-card" data-animate style="--delay: 300ms;">
+            <div class="risk-title">Risk 1</div>
+            <div class="risk-copy">
+              <strong>Начать с графа, а не с платформы.</strong><br>
+              Тогда на неделе защиты выяснится, что интересная логика есть, а login, realtime, API или browser support shaky.
+            </div>
+          </div>
+          <div class="risk-card" data-animate style="--delay: 380ms;">
+            <div class="risk-title">Risk 2</div>
+            <div class="risk-copy">
+              <strong>Claim слишком умные модули.</strong><br>
+              Если AI/RAG/ML не полностью доказуемы, они скорее вредят, чем помогают. Safe modules важнее.
+            </div>
+          </div>
+          <div class="risk-card" data-animate style="--delay: 460ms;">
+            <div class="risk-title">Risk 3</div>
+            <div class="risk-copy">
+              <strong>Переоценить data pipeline.</strong><br>
+              Scraping, enrichment и style tagging легко разрастаются. Runtime должен жить даже при ограниченном seed dataset.
+            </div>
+          </div>
+          <div class="risk-card" data-animate style="--delay: 540ms;">
+            <div class="risk-title">Risk 4</div>
+            <div class="risk-copy">
+              <strong>Сделать красивый UI без explainability.</strong><br>
+              Если recommendation нельзя объяснить path'ом и фактами, evaluator может считать фичу "магической и недоказанной".
+            </div>
+          </div>
+        </div>
+
+        <div class="body-grid columns-3">
+          <div class="module-card" data-animate style="--delay: 620ms;">
+            <div class="module-title">Mitigation</div>
+            <div class="module-copy">Ship vertical slices, not massive branches.</div>
+          </div>
+          <div class="module-card" data-animate style="--delay: 700ms;">
+            <div class="module-title">Mitigation</div>
+            <div class="module-copy">Keep a stable demo dataset independent from live scraping.</div>
+          </div>
+          <div class="module-card" data-animate style="--delay: 780ms;">
+            <div class="module-title">Mitigation</div>
+            <div class="module-copy">Document every claimed module with visible proof in UI or API.</div>
+          </div>
+        </div>
+
+        <div class="footer">
+          <div>Biggest trap: fancy complexity before stable proof</div>
+          <div>Defense likes clarity more than maximal cleverness</div>
+        </div>
+      </section>
+
+      <section class="slide" data-title="Demo">
+        <div class="slide-head">
+          <div class="eyebrow" data-animate style="--delay: 40ms;">Slide 14 / Final demo</div>
+          <h2 data-animate style="--delay: 120ms;">Как должна выглядеть живая демонстрация проекта</h2>
+          <p class="lead" data-animate style="--delay: 200ms;">
+            Хороший demo flow для Transcendence — это не "тыкать куда попало". Это заранее выстроенная narrative, где каждый экран
+            доказывает кусок architecture и кусок module strategy.
+          </p>
+        </div>
+
+        <div class="body-grid columns-2">
+          <div class="panel" data-animate style="--delay: 300ms;">
+            <div class="panel-inner">
+              <div class="mini-title">Recommended live flow</div>
+              <ul class="list">
+                <li>Показать signup/login и быстро доказать auth + protected routes.</li>
+                <li>Открыть профиль пользователя и scene preferences.</li>
+                <li>Открыть search и показать фильтрацию artists/events/promoters/venues.</li>
+                <li>Открыть graph/recommendation page и показать top promoters, venues, artists, events.</li>
+                <li>Кликнуть по рекомендации и показать explanation path step by step.</li>
+                <li>Показать chat / presence / notification как proof realtime.</li>
+                <li>Показать dashboard и export как proof analytics modules.</li>
+                <li>Коротко показать public API или docs page.</li>
+              </ul>
+            </div>
+          </div>
+
+          <div class="panel" data-animate style="--delay: 380ms;">
+            <div class="panel-inner">
+              <div class="mini-title">What evaluator should remember</div>
+              <ul class="list">
+                <li>Это полноценный web product, не только data experiment.</li>
+                <li>Custom module реально центральный: recommendation engine объясним и project-specific.</li>
+                <li>Realtime, search, API, dashboard и social layer не декоративны — они встроены в продуктовый сценарий.</li>
+                <li>Команда понимает архитектуру, а не просто "подняла что-то, что работает на удаче".</li>
+              </ul>
+              <div class="chip-row">
+                <div class="chip strong">Explain every recommendation</div>
+                <div class="chip">Show the path</div>
+                <div class="chip">Prove the module</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="footer">
+          <div>Best demo line: not popular, but realistically reachable next</div>
+          <div>End with explanation path, not with a generic ranking list</div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="controls">
+      <div class="controls-left">
+        <button class="control-btn" id="prevBtn">Prev</button>
+        <button class="control-btn" id="nextBtn">Next</button>
+      </div>
+      <div class="controls-right">
+        <div class="dot-list" id="dotList" aria-label="Slide navigation"></div>
+        <div class="key-hint">Navigate: <span class="key">&larr;</span> <span class="key">&rarr;</span> or <span class="key">Space</span></div>
+      </div>
+    </footer>
+  </div>
+
+  <script>
+    (() => {
+      const slides = Array.from(document.querySelectorAll(".slide"));
+      const prevBtn = document.getElementById("prevBtn");
+      const nextBtn = document.getElementById("nextBtn");
+      const dotList = document.getElementById("dotList");
+      const progressFill = document.getElementById("progressFill");
+      const slideCounter = document.getElementById("slideCounter");
+      let activeIndex = 0;
+
+      function buildDots() {
+        slides.forEach((slide, index) => {
+          const dot = document.createElement("button");
+          dot.className = "dot";
+          dot.type = "button";
+          dot.setAttribute("aria-label", `Go to slide ${index + 1}`);
+          dot.addEventListener("click", () => showSlide(index));
+          dotList.appendChild(dot);
+        });
+      }
+
+      function refreshAnimatedNodes(slide) {
+        slide.querySelectorAll("[data-animate]").forEach((node) => {
+          node.style.animation = "none";
+          node.offsetHeight;
+          node.style.animation = "";
+        });
+        slide.querySelectorAll(".score-fill").forEach((node) => {
+          node.style.animation = "none";
+          node.offsetHeight;
+          node.style.animation = "";
+        });
+      }
+
+      function showSlide(index) {
+        activeIndex = Math.max(0, Math.min(index, slides.length - 1));
+        slides.forEach((slide, i) => {
+          slide.classList.toggle("active", i === activeIndex);
+        });
+
+        Array.from(dotList.children).forEach((dot, i) => {
+          dot.classList.toggle("active", i === activeIndex);
+        });
+
+        prevBtn.disabled = activeIndex === 0;
+        nextBtn.disabled = activeIndex === slides.length - 1;
+
+        const ratio = ((activeIndex + 1) / slides.length) * 100;
+        progressFill.style.width = `${ratio}%`;
+        slideCounter.textContent = `${String(activeIndex + 1).padStart(2, "0")} / ${String(slides.length).padStart(2, "0")}`;
+
+        refreshAnimatedNodes(slides[activeIndex]);
+      }
+
+      prevBtn.addEventListener("click", () => showSlide(activeIndex - 1));
+      nextBtn.addEventListener("click", () => showSlide(activeIndex + 1));
+
+      window.addEventListener("keydown", (event) => {
+        if (event.key === "ArrowRight" || event.key === "PageDown" || event.key === " ") {
+          event.preventDefault();
+          showSlide(activeIndex + 1);
+        }
+        if (event.key === "ArrowLeft" || event.key === "PageUp") {
+          event.preventDefault();
+          showSlide(activeIndex - 1);
+        }
+        if (event.key === "Home") {
+          showSlide(0);
+        }
+        if (event.key === "End") {
+          showSlide(slides.length - 1);
+        }
+      }, { passive: false });
+
+      buildDots();
+      showSlide(0);
+    })();
+  </script>
+</body>
+</html>
