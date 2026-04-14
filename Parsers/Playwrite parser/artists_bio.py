@@ -415,6 +415,7 @@ async def save_debug(page: Page, prefix: str = "debug") -> None:
 
 
 async def is_blocked_page(page: Page) -> bool:
+    html = ""
     try:
         title = (await page.title()).lower()
         url = (page.url or "").lower()
@@ -456,11 +457,29 @@ async def is_blocked_page(page: Page) -> bool:
         "please enable js and disable any ad blocker",
         "protected by datadome",
     ]
+    html_markers = [
+        "geo.captcha-delivery.com",
+        "ct.captcha-delivery.com/c.js",
+        'title="datadome captcha"',
+        "'host':'geo.captcha-delivery.com'",
+        '"host":"geo.captcha-delivery.com"',
+    ]
 
     if any(marker in url for marker in url_markers):
         return True
 
     if any(marker in title for marker in title_markers):
+        return True
+
+    # DataDome challenge pages often render almost no visible text because the
+    # whole page is just an iframe/script bootstrap. These HTML markers are
+    # specific enough to avoid the earlier false positives from hidden ad code.
+    try:
+        html = (await page.content()).lower()
+    except Exception:
+        html = ""
+
+    if any(marker in html for marker in html_markers):
         return True
 
     # A normal artist biography page should not be considered blocked simply
