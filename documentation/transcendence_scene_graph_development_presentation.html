@@ -840,6 +840,9 @@
     }
 
     .control-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
       padding: 12px 18px;
       border-radius: 999px;
       background: rgba(255, 255, 255, 0.08);
@@ -848,6 +851,7 @@
       letter-spacing: 0.08em;
       text-transform: uppercase;
       font-size: 0.82rem;
+      text-decoration: none;
     }
 
     .control-btn:hover,
@@ -2005,6 +2009,19 @@ score =
                 <li><strong>API</strong> starts as soon as schema and seed shape are stable.</li>
                 <li><strong>Frontend</strong> plugs into the API last and turns the slice into a demo.</li>
               </ul>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel" data-animate style="--delay: 580ms;">
+          <div class="panel-inner">
+            <div class="mini-title">Need the branching map?</div>
+            <div class="small-copy">
+              Open the interactive task tree if the team wants to see the roadmap as a graph:
+              Step → task branches → task detail with purpose, outputs, and risks.
+            </div>
+            <div style="margin-top: 18px;">
+              <a class="control-btn" href="./task-tree.html" target="_blank" rel="noreferrer">Open interactive task tree</a>
             </div>
           </div>
         </div>
