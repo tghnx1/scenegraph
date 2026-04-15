@@ -1853,73 +1853,82 @@ score =
 
       <section class="slide" data-title="Week plan">
         <div class="slide-head">
-          <div class="eyebrow" data-animate style="--delay: 40ms;">Slide 11 / Weekly build plan</div>
-          <h2 data-animate style="--delay: 120ms;">Example of a realistic week-by-week schedule</h2>
+          <div class="eyebrow" data-animate style="--delay: 40ms;">Slide 11 / Step 1 sprint plan</div>
+          <h2 data-animate style="--delay: 120ms;">Step 1 only: ship the walking skeleton</h2>
           <p class="lead" data-animate style="--delay: 200ms;">
-            This is not the only correct calendar. It is a realistic layout for a team that is just moving beyond the school-project mindset
-            and wants enough time not only to code, but also to defend the project calmly.
+            Step 1 is not the recommendation engine. Step 1 is one read-only vertical slice:
+            the app boots, the backend talks to the database, real seed data is imported,
+            and one page shows real artists or events from the Berlin scene dataset.
           </p>
         </div>
 
         <div class="body-grid columns-3">
           <div class="phase-card" data-animate style="--delay: 300ms;">
-            <div class="phase-title">Week 1</div>
-            <div class="phase-copy"><strong>Lock and skeleton</strong><br>Modules locked, repo layout, Docker shell, auth skeleton, DB schema draft, main routes.</div>
+            <div class="phase-title">Day 1</div>
+            <div class="phase-copy"><strong>Repo and app skeleton</strong><br>Finalize repo structure, boot frontend shell, boot backend shell, define env files, and agree on one command sequence for local startup.</div>
           </div>
           <div class="phase-card" data-animate style="--delay: 380ms;">
-            <div class="phase-title">Week 2</div>
-            <div class="phase-copy"><strong>Mandatory baseline</strong><br>Signup/login, protected routes, forms, privacy/terms, multi-user sanity, responsive shell.</div>
+            <div class="phase-title">Day 2</div>
+            <div class="phase-copy"><strong>First schema and migrations</strong><br>Create only the minimum tables for Step 1: users, artists, events, promoters, venues. Keep it simple and import-friendly.</div>
           </div>
           <div class="phase-card" data-animate style="--delay: 460ms;">
-            <div class="phase-title">Week 3</div>
-            <div class="phase-copy"><strong>Safe modules</strong><br>Friends, DM chat, presence, notifications, public API skeleton, search page.</div>
+            <div class="phase-title">Day 3</div>
+            <div class="phase-copy"><strong>Seed import bridge</strong><br>Take a tiny clean subset from the current parser output and write a reproducible import script that fills the DB with demo-ready records.</div>
           </div>
           <div class="phase-card" data-animate style="--delay: 540ms;">
-            <div class="phase-title">Week 4</div>
-            <div class="phase-copy"><strong>Analytics + import/export</strong><br>Dashboard widgets, CSV/JSON export, seed import, browser fixes start.</div>
+            <div class="phase-title">Day 4</div>
+            <div class="phase-copy"><strong>Read-only API</strong><br>Expose a health route plus one real data route such as GET /artists or GET /events with simple pagination or a limit.</div>
           </div>
           <div class="phase-card" data-animate style="--delay: 620ms;">
-            <div class="phase-title">Week 5</div>
-            <div class="phase-copy"><strong>Ingestion + graph state</strong><br>Parsers, entity upserts, styles, metrics, initial graph queries.</div>
+            <div class="phase-title">Day 5</div>
+            <div class="phase-copy"><strong>First visible page</strong><br>Render one clean read-only page such as Browse Artists or Recent Events with loading, empty, and error states.</div>
           </div>
           <div class="phase-card" data-animate style="--delay: 700ms;">
-            <div class="phase-title">Week 6</div>
-            <div class="phase-copy"><strong>Recommendation engine</strong><br>Ranking, explanation paths, recommendation API, UI integration.</div>
+            <div class="phase-title">Day 6</div>
+            <div class="phase-copy"><strong>Integration and cleanup</strong><br>Wire frontend to backend, backend to DB, and seed import to real parser data. Remove mocks and fix basic DX gaps.</div>
           </div>
         </div>
 
         <div class="body-grid columns-2">
           <div class="panel" data-animate style="--delay: 780ms;">
             <div class="panel-inner">
-              <div class="mini-title">Week 7</div>
-              <div class="small-copy">
-                Hardening sprint: Safari/Firefox, websocket reconnect, duplicate signup, rate limits, empty search, bad API key, no noisy logs, no ugly edge-case crashes.
-              </div>
+              <div class="mini-title">Day 7 demo checklist</div>
+              <ul class="list">
+                <li>The app opens locally without guesswork.</li>
+                <li>The database migration runs cleanly from scratch.</li>
+                <li>The seed script imports 20–50 real records reproducibly.</li>
+                <li>One backend route returns real DB data, not mocks.</li>
+                <li>One frontend page displays that real scene data end-to-end.</li>
+              </ul>
             </div>
           </div>
           <div class="panel" data-animate style="--delay: 860ms;">
             <div class="panel-inner">
-              <div class="mini-title">Week 8</div>
+              <div class="mini-title">Definition of done</div>
               <div class="small-copy">
-                Defense sprint: seeded accounts, seeded graph data, exact demo path, README polish, architecture docs, module-by-module evidence, evaluator Q&A prep.
+                Step 1 is done when the team can honestly say:
+                <br><br>
+                <strong>“We already have a real web app connected to a real database, populated from our parser pipeline, and serving real scene data through the backend.”</strong>
+                <br><br>
+                No auth yet. No graph edges yet. No recommendations yet. Just one stable vertical slice.
               </div>
             </div>
           </div>
         </div>
 
         <div class="footer">
-          <div>Calendar can move, order should not</div>
-          <div>Weeks 7-8 are not optional if you want a calm defense</div>
+          <div>Step 1 is about proof of integration, not product ambition</div>
+          <div>If this slice is unstable, everything later will wobble</div>
         </div>
       </section>
 
       <section class="slide" data-title="Team split">
         <div class="slide-head">
-          <div class="eyebrow" data-animate style="--delay: 40ms;">Slide 12 / Parallel workstreams</div>
-          <h2 data-animate style="--delay: 120ms;">How to parallelize the team without chaos</h2>
+          <div class="eyebrow" data-animate style="--delay: 40ms;">Slide 12 / Step 1 ownership split</div>
+          <h2 data-animate style="--delay: 120ms;">How to split Step 1 across 4–5 people</h2>
           <p class="lead" data-animate style="--delay: 200ms;">
-            A good split does not isolate people forever. It gives them primary ownership.
-            According to the documentation, the team split should look roughly like this: auth/social, realtime, ingestion, recommendation, dashboard/API.
+            A good split does not lock people into silos forever. It gives each person primary ownership for one part of the walking skeleton,
+            while keeping the integration path clear and visible to the whole team.
           </p>
         </div>
 
@@ -1927,57 +1936,82 @@ score =
           <div class="panel-inner">
             <div class="swimlanes">
               <div class="lane">
-                <div class="lane-name">Stream A<br>User & auth</div>
+                <div class="lane-name">Role A<br>Platform owner</div>
                 <div class="lane-track">
-                  <div class="lane-pill"><strong>Foundation</strong>Login, signup, sessions, protected routes.</div>
-                  <div class="lane-pill"><strong>Social</strong>Profile, friends, basic preferences.</div>
-                  <div class="lane-pill"><strong>Integration</strong>User graph mapping inputs.</div>
-                  <div class="lane-pill"><strong>Defense</strong>Bad input, duplicate signup, privacy surface.</div>
+                  <div class="lane-pill"><strong>Owns</strong>Repo layout, local startup, frontend shell, backend shell, env flow.</div>
+                  <div class="lane-pill"><strong>Delivers</strong>Everyone can clone, install, and boot the project locally.</div>
+                  <div class="lane-pill"><strong>Hands off to</strong>API and Frontend owners once the shell is stable.</div>
+                  <div class="lane-pill"><strong>Risk to avoid</strong>Do not overbuild infra. This is not the time for microservices or clever deployment tricks.</div>
                 </div>
               </div>
               <div class="lane">
-                <div class="lane-name">Stream B<br>Realtime</div>
+                <div class="lane-name">Role B<br>Database owner</div>
                 <div class="lane-track">
-                  <div class="lane-pill"><strong>Foundation</strong>Socket hub, channel model.</div>
-                  <div class="lane-pill"><strong>Features</strong>DM chat, notifications, presence.</div>
-                  <div class="lane-pill"><strong>Product hook</strong>Optional recommendation refresh event.</div>
-                  <div class="lane-pill"><strong>Defense</strong>Reconnect and concurrent session sanity.</div>
+                  <div class="lane-pill"><strong>Owns</strong>Schema, migrations, first five tables, and DB boot sanity.</div>
+                  <div class="lane-pill"><strong>Delivers</strong>A fresh database can be created from zero with one migration flow.</div>
+                  <div class="lane-pill"><strong>Hands off to</strong>Seed Import and API owners.</div>
+                  <div class="lane-pill"><strong>Risk to avoid</strong>Do not design the full graph now. Build only what Step 1 needs.</div>
                 </div>
               </div>
               <div class="lane">
-                <div class="lane-name">Stream C<br>Ingestion & graph</div>
+                <div class="lane-name">Role C<br>Seed import owner</div>
                 <div class="lane-track">
-                  <div class="lane-pill"><strong>Foundation</strong>Event ingestion, canonical data format.</div>
-                  <div class="lane-pill"><strong>Graph build</strong>Upsert Artist/Event/Promoter/Venue.</div>
-                  <div class="lane-pill"><strong>Enrichment</strong>Style tags, bios, metrics.</div>
-                  <div class="lane-pill"><strong>Defense</strong>Stable seed dataset for demo.</div>
+                  <div class="lane-pill"><strong>Owns</strong>The bridge from current parser outputs into DB-ready records.</div>
+                  <div class="lane-pill"><strong>Delivers</strong>A reproducible seed script loading a small clean Berlin scene sample.</div>
+                  <div class="lane-pill"><strong>Hands off to</strong>API and Frontend owners once seed data is stable.</div>
+                  <div class="lane-pill"><strong>Risk to avoid</strong>Do not import the whole world yet. Pick a tiny trustworthy subset.</div>
                 </div>
               </div>
               <div class="lane">
-                <div class="lane-name">Stream D<br>Recommendation</div>
+                <div class="lane-name">Role D<br>API owner</div>
                 <div class="lane-track">
-                  <div class="lane-pill"><strong>Foundation</strong>Candidate generation and ranking sketch.</div>
-                  <div class="lane-pill"><strong>Core</strong>Proximity, strength, style, reachability.</div>
-                  <div class="lane-pill"><strong>UX</strong>Explanation paths and scoring text.</div>
-                  <div class="lane-pill"><strong>Defense</strong>Custom major module justification.</div>
+                  <div class="lane-pill"><strong>Owns</strong>Healthcheck, first read-only route, simple query shape, and DB access.</div>
+                  <div class="lane-pill"><strong>Delivers</strong>GET /health and one real data endpoint like GET /artists or GET /events.</div>
+                  <div class="lane-pill"><strong>Hands off to</strong>Frontend owner for the first visible page.</div>
+                  <div class="lane-pill"><strong>Risk to avoid</strong>Do not build the final API surface now. One clean route is enough.</div>
                 </div>
               </div>
               <div class="lane">
-                <div class="lane-name">Stream E<br>Search & analytics</div>
+                <div class="lane-name">Role E<br>Frontend owner</div>
                 <div class="lane-track">
-                  <div class="lane-pill"><strong>Foundation</strong>Search page and filter model.</div>
-                  <div class="lane-pill"><strong>Dashboard</strong>Charts, ranges, export.</div>
-                  <div class="lane-pill"><strong>Public API</strong>Docs, rate limit, endpoints.</div>
-                  <div class="lane-pill"><strong>Defense</strong>Browser support and evaluator-facing polish.</div>
+                  <div class="lane-pill"><strong>Owns</strong>The first real page in the app.</div>
+                  <div class="lane-pill"><strong>Delivers</strong>A clean Browse Artists or Recent Events screen using real API data.</div>
+                  <div class="lane-pill"><strong>Includes</strong>Loading, empty, and error states so the slice feels alive, not fake.</div>
+                  <div class="lane-pill"><strong>Risk to avoid</strong>Do not chase polish. Visibility beats visual perfection in Step 1.</div>
                 </div>
               </div>
             </div>
           </div>
         </div>
 
+        <div class="body-grid columns-2">
+          <div class="panel" data-animate style="--delay: 420ms;">
+            <div class="panel-inner">
+              <div class="mini-title">If the team has only 4 people</div>
+              <ul class="list">
+                <li>Merge <strong>Platform owner</strong> and <strong>Frontend owner</strong> into one role.</li>
+                <li>Keep <strong>Database</strong>, <strong>Seed Import</strong>, and <strong>API</strong> as separate owners.</li>
+                <li>This is the safest merge because the frontend person already needs app boot, routing, and local DX context.</li>
+              </ul>
+            </div>
+          </div>
+
+          <div class="panel" data-animate style="--delay: 500ms;">
+            <div class="panel-inner">
+              <div class="mini-title">Best handoff order</div>
+              <ul class="list">
+                <li><strong>Platform</strong> unblocks everyone first.</li>
+                <li><strong>Database</strong> and <strong>Seed Import</strong> can then move in parallel.</li>
+                <li><strong>API</strong> starts as soon as schema and seed shape are stable.</li>
+                <li><strong>Frontend</strong> plugs into the API last and turns the slice into a demo.</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
         <div class="footer">
-          <div>Ownership reduces collisions, not knowledge sharing</div>
-          <div>Everyone still needs a system-level story for the defense</div>
+          <div>Primary ownership reduces collisions without creating silos</div>
+          <div>Step 1 succeeds when all five roles converge into one visible slice</div>
         </div>
       </section>
 
