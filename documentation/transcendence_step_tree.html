@@ -624,6 +624,165 @@
       line-height: 1.55;
     }
 
+    .step-special {
+      margin-top: 18px;
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .stack-section {
+      margin-top: 24px;
+      display: grid;
+      gap: 16px;
+    }
+
+    .stack-toolbar {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 14px;
+      flex-wrap: wrap;
+    }
+
+    .stack-toolbar p {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.52;
+      max-width: 56ch;
+    }
+
+    .stack-chip-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .stack-chip {
+      border: 1px solid rgba(255, 255, 255, 0.10);
+      background: rgba(255, 255, 255, 0.04);
+      color: var(--text);
+      padding: 10px 14px;
+      border-radius: 999px;
+      font-family: var(--title-font);
+      font-size: 0.78rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      cursor: pointer;
+      transition: background 160ms ease, border-color 160ms ease, transform 160ms ease;
+    }
+
+    .stack-chip:hover,
+    .stack-chip:focus-visible {
+      background: rgba(255, 255, 255, 0.06);
+      border-color: rgba(126, 227, 212, 0.30);
+      transform: translateY(-1px);
+      outline: none;
+    }
+
+    .stack-chip.active {
+      background:
+        linear-gradient(135deg, rgba(126, 227, 212, 0.14), rgba(244, 168, 95, 0.10)),
+        rgba(255, 255, 255, 0.05);
+      border-color: rgba(126, 227, 212, 0.40);
+      color: #fff6eb;
+    }
+
+    .stack-decision-card {
+      padding: 18px;
+      border-radius: var(--radius-lg);
+      border: 1px solid rgba(255, 255, 255, 0.10);
+      background: var(--panel-strong);
+      display: grid;
+      gap: 16px;
+    }
+
+    .stack-decision-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+
+    .stack-decision-copy {
+      margin: 12px 0 0;
+      color: #d4e4de;
+      line-height: 1.6;
+    }
+
+    .stack-decision-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .table-wrap {
+      overflow-x: auto;
+      border-radius: var(--radius-md);
+      border: 1px solid rgba(255, 255, 255, 0.10);
+      background: rgba(255, 255, 255, 0.03);
+    }
+
+    .stack-table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 620px;
+    }
+
+    .stack-table th,
+    .stack-table td {
+      padding: 14px 16px;
+      text-align: left;
+      vertical-align: top;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .stack-table th {
+      font-family: var(--title-font);
+      font-size: 0.76rem;
+      letter-spacing: 0.11em;
+      text-transform: uppercase;
+      color: var(--muted);
+      background: rgba(255, 255, 255, 0.04);
+    }
+
+    .stack-table td {
+      color: #d4e4de;
+      line-height: 1.55;
+    }
+
+    .stack-table tr.recommended-row td {
+      background: rgba(126, 227, 212, 0.08);
+    }
+
+    .variant-name {
+      font-family: var(--title-font);
+      font-weight: 700;
+      color: var(--text);
+    }
+
+    .recommend-mark {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 7px 10px;
+      border-radius: 999px;
+      border: 1px solid rgba(126, 227, 212, 0.24);
+      background: rgba(126, 227, 212, 0.10);
+      color: #eafbf8;
+      font-family: var(--title-font);
+      font-size: 0.72rem;
+      letter-spacing: 0.09em;
+      text-transform: uppercase;
+    }
+
+    .recommend-mark.muted {
+      border-color: rgba(255, 255, 255, 0.10);
+      background: rgba(255, 255, 255, 0.04);
+      color: var(--muted);
+    }
+
     .footer-note {
       color: var(--muted);
       font-size: 0.92rem;
@@ -666,7 +825,9 @@
 
       .stats,
       .detail-grid,
-      .task-detail-grid {
+      .task-detail-grid,
+      .stack-decision-grid,
+      .step-special {
         grid-template-columns: 1fr;
       }
 
@@ -1167,11 +1328,217 @@
       }
     ];
 
+    const stepOneStack = [
+      {
+        id: "stack-frontend",
+        title: "Frontend",
+        recommendation: "React + TypeScript + Vite",
+        whyNow: "This is the fastest safe way to get one real page on screen without locking the team into advanced frontend architecture too early.",
+        options: [
+          {
+            name: "React + TypeScript + Vite",
+            description: "A familiar component model with a very fast dev server and a light bootstrap path.",
+            recommended: true
+          },
+          {
+            name: "Vue",
+            description: "A strong frontend option with a gentler template style, but it adds stack divergence if the team already thinks in React.",
+            recommended: false
+          },
+          {
+            name: "Svelte",
+            description: "Very lean and pleasant, but a weaker default if the team wants the safest mainstream path for Step 1.",
+            recommended: false
+          }
+        ]
+      },
+      {
+        id: "stack-styling",
+        title: "Frontend styling",
+        recommendation: "CSS Modules or plain CSS",
+        whyNow: "For the first slice, styling should support visibility, not become a system design project of its own.",
+        options: [
+          {
+            name: "CSS Modules",
+            description: "Scoped styles per component with low cognitive load and no utility-class wall.",
+            recommended: true
+          },
+          {
+            name: "Plain CSS",
+            description: "The lightest possible starting point when the UI surface is still tiny and simple.",
+            recommended: true
+          },
+          {
+            name: "Tailwind",
+            description: "Fast once the team already knows it, but noisier if people are still learning the app itself.",
+            recommended: false
+          }
+        ]
+      },
+      {
+        id: "stack-backend",
+        title: "Backend",
+        recommendation: "Express + TypeScript",
+        whyNow: "The first backend job is boring on purpose: boot, connect, expose one clean read-only route, and stay understandable.",
+        options: [
+          {
+            name: "Express + TypeScript",
+            description: "Straightforward routing and middleware with the least ceremony for a first API slice.",
+            recommended: true
+          },
+          {
+            name: "Fastify",
+            description: "A performant, clean backend framework, but it does not buy much for the very first vertical slice.",
+            recommended: false
+          },
+          {
+            name: "NestJS",
+            description: "A structured framework that shines later, but it is heavier than we need for Step 1.",
+            recommended: false
+          }
+        ]
+      },
+      {
+        id: "stack-database",
+        title: "Database",
+        recommendation: "PostgreSQL",
+        whyNow: "We need one reliable database that handles current relational needs and still leaves room for later graph-like relations.",
+        options: [
+          {
+            name: "PostgreSQL",
+            description: "A strong default for web apps, relational modeling, and future graph-ish join-heavy queries.",
+            recommended: true
+          },
+          {
+            name: "MySQL",
+            description: "Perfectly usable for web apps, but less natural as the default recommendation for this project shape.",
+            recommended: false
+          },
+          {
+            name: "SQLite",
+            description: "Very lightweight for local prototypes, but too limited as the shared team baseline for this project.",
+            recommended: false
+          }
+        ]
+      },
+      {
+        id: "stack-orm",
+        title: "ORM / DB access",
+        recommendation: "Prisma",
+        whyNow: "The team needs schema, migrations, and typed access fast; Step 1 is not the moment for a hand-rolled SQL discipline experiment.",
+        options: [
+          {
+            name: "Prisma",
+            description: "Schema-driven ORM with migrations and a typed client that reduces manual setup on day one.",
+            recommended: true
+          },
+          {
+            name: "Drizzle",
+            description: "A nice lightweight typed SQL option, but usually a slightly more deliberate choice than we need right now.",
+            recommended: false
+          },
+          {
+            name: "Raw SQL",
+            description: "Maximum control, minimum abstraction, and much more manual coordination cost for an early team slice.",
+            recommended: false
+          }
+        ]
+      },
+      {
+        id: "stack-api",
+        title: "API format",
+        recommendation: "REST JSON",
+        whyNow: "One or two read-only endpoints are easier to reason about through REST than through a richer API abstraction.",
+        options: [
+          {
+            name: "REST JSON",
+            description: "Simple routes, simple payloads, easy to inspect in the browser and easy to connect to the first page.",
+            recommended: true
+          },
+          {
+            name: "GraphQL",
+            description: "Flexible for larger graphs later, but unnecessary complexity for the first read-only slice.",
+            recommended: false
+          },
+          {
+            name: "tRPC",
+            description: "A nice fullstack DX choice, but it couples the stack more tightly before we need that optimization.",
+            recommended: false
+          }
+        ]
+      },
+      {
+        id: "stack-validation",
+        title: "Validation",
+        recommendation: "Zod",
+        whyNow: "Validation should help the team stabilize shapes early instead of discovering payload drift during integration.",
+        options: [
+          {
+            name: "Zod",
+            description: "TypeScript-friendly schemas that are easy to read and useful on both sides of the boundary.",
+            recommended: true
+          },
+          {
+            name: "Joi",
+            description: "A mature validation library, but less natural if the team wants one TS-friendly mental model everywhere.",
+            recommended: false
+          },
+          {
+            name: "express-validator",
+            description: "Works well inside Express, but feels more route-bound and less reusable as a shared contract layer.",
+            recommended: false
+          }
+        ]
+      },
+      {
+        id: "stack-local-run",
+        title: "Local run",
+        recommendation: "Docker Compose",
+        whyNow: "The team needs one shared boot path before it needs a perfect local-dev story. Consistency matters more than cleverness here.",
+        options: [
+          {
+            name: "Docker Compose",
+            description: "A reproducible multi-service local environment that reduces 'works on my machine' drift.",
+            recommended: true
+          },
+          {
+            name: "Manual local setup",
+            description: "Fast for one person, but fragile for a team because environments diverge immediately.",
+            recommended: false
+          }
+        ]
+      },
+      {
+        id: "stack-seed-import",
+        title: "Seed import",
+        recommendation: "Repeatable import script",
+        whyNow: "If seed data enters the project manually, the first slice will never feel stable or trustworthy.",
+        options: [
+          {
+            name: "Repeatable import script",
+            description: "A reproducible way to load a small real dataset into the database every time.",
+            recommended: true
+          },
+          {
+            name: "Manual SQL",
+            description: "Quick in a pinch, but too brittle and too person-dependent for team setup.",
+            recommended: false
+          },
+          {
+            name: "Static JSON file only",
+            description: "Useful as source input, but not enough unless it is wrapped in a real import flow.",
+            recommended: false
+          }
+        ]
+      }
+    ];
+
     const stepGrid = document.getElementById("step-grid");
     const detailRoot = document.getElementById("detail-root");
 
     let activeStepId = roadmap[1].id;
     let activeTaskId = roadmap[1].tasks[0].id;
+    let activeStackId = stepOneStack[0].id;
 
     function renderStepGrid() {
       stepGrid.innerHTML = "";
@@ -1200,6 +1567,7 @@
     function renderDetail() {
       const step = roadmap.find((item) => item.id === activeStepId);
       const task = step.tasks.find((item) => item.id === activeTaskId) || step.tasks[0];
+      const isStepOne = step.id === "step-1";
 
       detailRoot.innerHTML = `
         <div class="detail-head">
@@ -1227,6 +1595,23 @@
           </div>
         </div>
 
+        ${isStepOne ? `
+          <div class="step-special">
+            <div class="info-card">
+              <strong>Definition of done</strong>
+              <span>A real web app boots, talks to a real database, imports real sample data, and shows one real page through the backend. No auth, no graph engine, no recommendation layer yet.</span>
+            </div>
+            <div class="info-card">
+              <strong>Best handoff order</strong>
+              <span>Platform unblocks first. Database and Seed Import move in parallel. API starts once shape is stable. Frontend plugs into the API last and turns the slice into a demo.</span>
+            </div>
+            <div class="info-card">
+              <strong>4-person fallback</strong>
+              <span>Merge Platform and Frontend into one ownership line. Keep Database, Seed Import, and API separate so integration pressure stays manageable.</span>
+            </div>
+          </div>
+        ` : ""}
+
         <section class="subtask-section">
           <div class="subtask-toolbar">
             <h3>Task branches inside ${step.number}</h3>
@@ -1235,6 +1620,19 @@
           <div class="subtask-list" id="subtask-list"></div>
           <div class="task-detail" id="task-detail"></div>
         </section>
+
+        ${isStepOne ? `
+          <section class="stack-section">
+            <div class="stack-toolbar">
+              <div>
+                <h3>Step 1 stack decisions</h3>
+                <p>These are the choices we need right now for the walking skeleton. Not the whole future stack. Just the minimum shared contract for the first vertical slice.</p>
+              </div>
+            </div>
+            <div class="stack-chip-row" id="stack-chip-row"></div>
+            <div class="stack-decision-card" id="stack-decision-card"></div>
+          </section>
+        ` : ""}
       `;
 
       const subtaskList = detailRoot.querySelector("#subtask-list");
@@ -1280,6 +1678,71 @@
           </div>
         </div>
       `;
+
+      if (isStepOne) {
+        const stackChipRow = detailRoot.querySelector("#stack-chip-row");
+        const stackDecisionCard = detailRoot.querySelector("#stack-decision-card");
+        const stackChoice = stepOneStack.find((item) => item.id === activeStackId) || stepOneStack[0];
+
+        stepOneStack.forEach((item) => {
+          const chip = document.createElement("button");
+          chip.type = "button";
+          chip.className = `stack-chip${item.id === stackChoice.id ? " active" : ""}`;
+          chip.textContent = item.title;
+          chip.addEventListener("click", () => {
+            activeStackId = item.id;
+            renderDetail();
+          });
+          stackChipRow.appendChild(chip);
+        });
+
+        stackDecisionCard.innerHTML = `
+          <div class="stack-decision-head">
+            <div>
+              <div class="detail-kicker">Step 1 stack item</div>
+              <h3>${stackChoice.title}</h3>
+              <p class="stack-decision-copy">${stackChoice.whyNow}</p>
+            </div>
+            <span class="pill">${stackChoice.recommendation}</span>
+          </div>
+
+          <div class="stack-decision-grid">
+            <div class="info-card">
+              <strong>Recommendation</strong>
+              <span>${stackChoice.recommendation}</span>
+            </div>
+            <div class="info-card">
+              <strong>Decision rule</strong>
+              <span>Choose the option that gets the team to one shared, reproducible, end-to-end slice fastest.</span>
+            </div>
+          </div>
+
+          <div class="table-wrap">
+            <table class="stack-table">
+              <thead>
+                <tr>
+                  <th>Variant</th>
+                  <th>What it means</th>
+                  <th>Right now</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${stackChoice.options.map((option) => `
+                  <tr class="${option.recommended ? "recommended-row" : ""}">
+                    <td><span class="variant-name">${option.name}</span></td>
+                    <td>${option.description}</td>
+                    <td>
+                      <span class="recommend-mark${option.recommended ? "" : " muted"}">
+                        ${option.recommended ? "Recommended" : "Possible later"}
+                      </span>
+                    </td>
+                  </tr>
+                `).join("")}
+              </tbody>
+            </table>
+          </div>
+        `;
+      }
     }
 
     function render() {

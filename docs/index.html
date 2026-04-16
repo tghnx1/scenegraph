@@ -1857,178 +1857,128 @@ score =
 
       <section class="slide" data-title="Week plan">
         <div class="slide-head">
-          <div class="eyebrow" data-animate style="--delay: 40ms;">Slide 11 / Step 1 sprint plan</div>
-          <h2 data-animate style="--delay: 120ms;">Step 1 only: ship the walking skeleton</h2>
+          <div class="eyebrow" data-animate style="--delay: 40ms;">Slide 11 / Execution map</div>
+          <h2 data-animate style="--delay: 120ms;">Step-by-step execution now lives in the interactive roadmap</h2>
           <p class="lead" data-animate style="--delay: 200ms;">
-            Step 1 is not the recommendation engine. Step 1 is one read-only vertical slice:
-            the app boots, the backend talks to the database, real seed data is imported,
-            and one page shows real artists or events from the Berlin scene dataset.
+            This presentation now stays focused on product logic, evaluation strategy, and architecture shape.
+            The operational planning detail lives in a separate interactive map, where the team can click through
+            the roadmap by Step and inspect the real task branches inside each one.
           </p>
         </div>
 
         <div class="body-grid columns-3">
           <div class="phase-card" data-animate style="--delay: 300ms;">
-            <div class="phase-title">Day 1</div>
-            <div class="phase-copy"><strong>Repo and app skeleton</strong><br>Finalize repo structure, boot frontend shell, boot backend shell, define env files, and agree on one command sequence for local startup.</div>
+            <div class="phase-title">What the map shows</div>
+            <div class="phase-copy"><strong>Roadmap as a graph</strong><br>Product root → Step 0 to Step 7 → task branches inside each step, instead of one long static wall of text.</div>
           </div>
           <div class="phase-card" data-animate style="--delay: 380ms;">
-            <div class="phase-title">Day 2</div>
-            <div class="phase-copy"><strong>First schema and migrations</strong><br>Create only the minimum tables for Step 1: users, artists, events, promoters, venues. Keep it simple and import-friendly.</div>
+            <div class="phase-title">Why it helps</div>
+            <div class="phase-copy"><strong>Drilldown without clutter</strong><br>Click a step, then click a task, and see purpose, outputs, and risks without overloading the main presentation.</div>
           </div>
           <div class="phase-card" data-animate style="--delay: 460ms;">
-            <div class="phase-title">Day 3</div>
-            <div class="phase-copy"><strong>Seed import bridge</strong><br>Take a tiny clean subset from the current parser output and write a reproducible import script that fills the DB with demo-ready records.</div>
-          </div>
-          <div class="phase-card" data-animate style="--delay: 540ms;">
-            <div class="phase-title">Day 4</div>
-            <div class="phase-copy"><strong>Read-only API</strong><br>Expose a health route plus one real data route such as GET /artists or GET /events with simple pagination or a limit.</div>
-          </div>
-          <div class="phase-card" data-animate style="--delay: 620ms;">
-            <div class="phase-title">Day 5</div>
-            <div class="phase-copy"><strong>First visible page</strong><br>Render one clean read-only page such as Browse Artists or Recent Events with loading, empty, and error states.</div>
-          </div>
-          <div class="phase-card" data-animate style="--delay: 700ms;">
-            <div class="phase-title">Day 6</div>
-            <div class="phase-copy"><strong>Integration and cleanup</strong><br>Wire frontend to backend, backend to DB, and seed import to real parser data. Remove mocks and fix basic DX gaps.</div>
+            <div class="phase-title">What moved there</div>
+            <div class="phase-copy"><strong>Step 1 planning detail</strong><br>The walking skeleton tasks, ownership split, handoff logic, and Step 1 stack decisions now live inside the task tree instead of being duplicated here.</div>
           </div>
         </div>
 
         <div class="body-grid columns-2">
           <div class="panel" data-animate style="--delay: 780ms;">
             <div class="panel-inner">
-              <div class="mini-title">Day 7 demo checklist</div>
+              <div class="mini-title">What you can inspect there</div>
               <ul class="list">
-                <li>The app opens locally without guesswork.</li>
-                <li>The database migration runs cleanly from scratch.</li>
-                <li>The seed script imports 20–50 real records reproducibly.</li>
-                <li>One backend route returns real DB data, not mocks.</li>
-                <li>One frontend page displays that real scene data end-to-end.</li>
+                <li>Step-by-step roadmap from scope freeze to submission.</li>
+                <li>Task branches with owner hints, outputs, and risks.</li>
+                <li>Step 1 definition of done and handoff order.</li>
+                <li>Step 1 stack decision table with variants and recommendations.</li>
               </ul>
             </div>
           </div>
           <div class="panel" data-animate style="--delay: 860ms;">
             <div class="panel-inner">
-              <div class="mini-title">Definition of done</div>
+              <div class="mini-title">Open the task tree</div>
               <div class="small-copy">
-                Step 1 is done when the team can honestly say:
+                Use the interactive roadmap when the team wants to answer:
                 <br><br>
-                <strong>“We already have a real web app connected to a real database, populated from our parser pipeline, and serving real scene data through the backend.”</strong>
+                <strong>“What exactly do we build in this step, why does it exist, and which option do we choose right now?”</strong>
                 <br><br>
-                No auth yet. No graph edges yet. No recommendations yet. Just one stable vertical slice.
+                <a class="control-btn" href="./task-tree.html" target="_blank" rel="noreferrer">Open interactive task tree</a>
               </div>
             </div>
           </div>
         </div>
 
         <div class="footer">
-          <div>Step 1 is about proof of integration, not product ambition</div>
-          <div>If this slice is unstable, everything later will wobble</div>
+          <div>The presentation explains the product</div>
+          <div>The task tree explains the work</div>
         </div>
       </section>
 
       <section class="slide" data-title="Team split">
         <div class="slide-head">
-          <div class="eyebrow" data-animate style="--delay: 40ms;">Slide 12 / Step 1 ownership split</div>
-          <h2 data-animate style="--delay: 120ms;">How to split Step 1 across 4–5 people</h2>
+          <div class="eyebrow" data-animate style="--delay: 40ms;">Slide 12 / How to use both artifacts</div>
+          <h2 data-animate style="--delay: 120ms;">The presentation and the task tree should play different roles</h2>
           <p class="lead" data-animate style="--delay: 200ms;">
-            A good split does not lock people into silos forever. It gives each person primary ownership for one part of the walking skeleton,
-            while keeping the integration path clear and visible to the whole team.
+            The mistake is letting every artifact try to do everything. We keep the deck for vision and architecture,
+            and we keep the interactive roadmap for execution detail, branching tasks, and practical Step-level decisions.
           </p>
         </div>
 
-        <div class="panel" data-animate style="--delay: 300ms;">
-          <div class="panel-inner">
-            <div class="swimlanes">
-              <div class="lane">
-                <div class="lane-name">Role A<br>Platform owner</div>
-                <div class="lane-track">
-                  <div class="lane-pill"><strong>Owns</strong>Repo layout, local startup, frontend shell, backend shell, env flow.</div>
-                  <div class="lane-pill"><strong>Delivers</strong>Everyone can clone, install, and boot the project locally.</div>
-                  <div class="lane-pill"><strong>Hands off to</strong>API and Frontend owners once the shell is stable.</div>
-                  <div class="lane-pill"><strong>Risk to avoid</strong>Do not overbuild infra. This is not the time for microservices or clever deployment tricks.</div>
-                </div>
-              </div>
-              <div class="lane">
-                <div class="lane-name">Role B<br>Database owner</div>
-                <div class="lane-track">
-                  <div class="lane-pill"><strong>Owns</strong>Schema, migrations, first five tables, and DB boot sanity.</div>
-                  <div class="lane-pill"><strong>Delivers</strong>A fresh database can be created from zero with one migration flow.</div>
-                  <div class="lane-pill"><strong>Hands off to</strong>Seed Import and API owners.</div>
-                  <div class="lane-pill"><strong>Risk to avoid</strong>Do not design the full graph now. Build only what Step 1 needs.</div>
-                </div>
-              </div>
-              <div class="lane">
-                <div class="lane-name">Role C<br>Seed import owner</div>
-                <div class="lane-track">
-                  <div class="lane-pill"><strong>Owns</strong>The bridge from current parser outputs into DB-ready records.</div>
-                  <div class="lane-pill"><strong>Delivers</strong>A reproducible seed script loading a small clean Berlin scene sample.</div>
-                  <div class="lane-pill"><strong>Hands off to</strong>API and Frontend owners once seed data is stable.</div>
-                  <div class="lane-pill"><strong>Risk to avoid</strong>Do not import the whole world yet. Pick a tiny trustworthy subset.</div>
-                </div>
-              </div>
-              <div class="lane">
-                <div class="lane-name">Role D<br>API owner</div>
-                <div class="lane-track">
-                  <div class="lane-pill"><strong>Owns</strong>Healthcheck, first read-only route, simple query shape, and DB access.</div>
-                  <div class="lane-pill"><strong>Delivers</strong>GET /health and one real data endpoint like GET /artists or GET /events.</div>
-                  <div class="lane-pill"><strong>Hands off to</strong>Frontend owner for the first visible page.</div>
-                  <div class="lane-pill"><strong>Risk to avoid</strong>Do not build the final API surface now. One clean route is enough.</div>
-                </div>
-              </div>
-              <div class="lane">
-                <div class="lane-name">Role E<br>Frontend owner</div>
-                <div class="lane-track">
-                  <div class="lane-pill"><strong>Owns</strong>The first real page in the app.</div>
-                  <div class="lane-pill"><strong>Delivers</strong>A clean Browse Artists or Recent Events screen using real API data.</div>
-                  <div class="lane-pill"><strong>Includes</strong>Loading, empty, and error states so the slice feels alive, not fake.</div>
-                  <div class="lane-pill"><strong>Risk to avoid</strong>Do not chase polish. Visibility beats visual perfection in Step 1.</div>
-                </div>
-              </div>
+        <div class="body-grid columns-2">
+          <div class="panel" data-animate style="--delay: 300ms;">
+            <div class="panel-inner">
+              <div class="mini-title">Use the presentation for</div>
+              <ul class="list">
+                <li>product story and problem framing</li>
+                <li>evaluation strategy and module logic</li>
+                <li>high-level architecture and system communication</li>
+                <li>demo narrative and project positioning</li>
+              </ul>
             </div>
           </div>
-        </div>
-
-        <div class="body-grid columns-2">
+          <div class="panel" data-animate style="--delay: 380ms;">
+            <div class="panel-inner">
+              <div class="mini-title">Use the task tree for</div>
+              <ul class="list">
+                <li>step-by-step execution planning</li>
+                <li>task branches, outputs, and risks</li>
+                <li>Step 1 stack choices and variant comparisons</li>
+                <li>ownership, handoff, and task sequencing</li>
+              </ul>
+            </div>
+          </div>
           <div class="panel" data-animate style="--delay: 420ms;">
             <div class="panel-inner">
-              <div class="mini-title">If the team has only 4 people</div>
+              <div class="mini-title">Simple team ritual</div>
               <ul class="list">
-                <li>Merge <strong>Platform owner</strong> and <strong>Frontend owner</strong> into one role.</li>
-                <li>Keep <strong>Database</strong>, <strong>Seed Import</strong>, and <strong>API</strong> as separate owners.</li>
-                <li>This is the safest merge because the frontend person already needs app boot, routing, and local DX context.</li>
+                <li>When the team debates architecture, use the deck.</li>
+                <li>When the team plans execution, use the task tree.</li>
+                <li>When a Step changes, update the task tree first, then refresh any strategic slide that depends on it.</li>
               </ul>
             </div>
           </div>
-
           <div class="panel" data-animate style="--delay: 500ms;">
             <div class="panel-inner">
-              <div class="mini-title">Best handoff order</div>
-              <ul class="list">
-                <li><strong>Platform</strong> unblocks everyone first.</li>
-                <li><strong>Database</strong> and <strong>Seed Import</strong> can then move in parallel.</li>
-                <li><strong>API</strong> starts as soon as schema and seed shape are stable.</li>
-                <li><strong>Frontend</strong> plugs into the API last and turns the slice into a demo.</li>
-              </ul>
+              <div class="mini-title">Explicit transition</div>
+              <div class="small-copy">
+                Step 1 detail no longer lives in the deck. The deck now points to the roadmap on purpose, so the team always knows where the operational truth lives.
+                <br><br>
+                <a class="control-btn" href="./task-tree.html" target="_blank" rel="noreferrer">Open interactive task tree</a>
+              </div>
             </div>
           </div>
-        </div>
-
-        <div class="panel" data-animate style="--delay: 580ms;">
-          <div class="panel-inner">
-            <div class="mini-title">Need the branching map?</div>
-            <div class="small-copy">
-              Open the interactive task tree if the team wants to see the roadmap as a graph:
-              Step → task branches → task detail with purpose, outputs, and risks.
-            </div>
-            <div style="margin-top: 18px;">
-              <a class="control-btn" href="./task-tree.html" target="_blank" rel="noreferrer">Open interactive task tree</a>
+          <div class="panel" data-animate style="--delay: 580ms;">
+            <div class="panel-inner">
+              <div class="mini-title">What Step 1 detail already moved there</div>
+              <div class="small-copy">
+                The walking skeleton tasks, Step 1 definition of done, ownership hints, handoff order, 4-person fallback, and the Step 1 stack comparison table are all centralized there now.
+              </div>
             </div>
           </div>
         </div>
 
         <div class="footer">
-          <div>Primary ownership reduces collisions without creating silos</div>
-          <div>Step 1 succeeds when all five roles converge into one visible slice</div>
+          <div>The deck aligns the team</div>
+          <div>The task tree drives the work</div>
         </div>
       </section>
 
