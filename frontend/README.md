@@ -4,11 +4,12 @@ Install the necessary parts first before pulling files from the branch.
 
 ## Requirements
 ```sh
-$ node --version  
+$ node --version
 v20.20.2
 $ npm --version
 10.8.2
 ```
+
 ## Install modules/components
 ```sh
 $ npm install
@@ -20,11 +21,8 @@ $ npm install
 $ npm run dev
 ```
 
-That would just test the default vite page again. 
-Replace the content of ./frontend with the content of this directory.
-
 ## Notes
-- used mock data instead of direct request to backend to avoid having 502 errors. 
+- used mock data instead of direct request to backend to avoid having 502 errors.
 	- click on artists to display artist page (again just a mock data).
 	- the map tab is just a placeholder, can be a link to a dashboard (maybe).
 - gallery of [react-force-graph](https://github.com/vasturiano/react-force-graph)
