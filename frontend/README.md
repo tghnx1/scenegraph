@@ -4,21 +4,22 @@ Install the necessary parts first before pulling files from the branch.
 
 ## Requirements
 ```sh
-$ node --version
+$> node --version
 v20.20.2
-$ npm --version
+$> npm --version
 10.8.2
 ```
 
 ## Install modules/components
 ```sh
-$ npm install
+$> npm install
 ```
 
-## Test the frontend
+## Test the page
 
 ```sh
-$ npm run dev
+$> npm run dev
+// h then enter
 ```
 
 ## Notes
