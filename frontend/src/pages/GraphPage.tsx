@@ -4,6 +4,7 @@ import { useApi }        from '../hooks/useApi'
 import { fetchGraph }    from '../api/graph'
 import { useGraphStore } from '../store/graphStore'
 import type { GraphNode } from '../types/graph'
+import { useNavigate }    from 'react-router-dom' //
 
 const NODE_COLORS: Record<string, string> = {
   artist:   '#7F77DD',
@@ -11,7 +12,7 @@ const NODE_COLORS: Record<string, string> = {
   promoter: '#D85A30',
 }
 
-export function GraphPage() {
+/* export function GraphPage() {
   const { activeGenre, selectedNode, setSelected } = useGraphStore()
 
   // re-fetches automatically when activeGenre changes
@@ -49,5 +50,38 @@ export function GraphPage() {
       )}
 
     </div>
+  )
+} */
+
+  export function GraphPage() {
+  const navigate = useNavigate()
+  const { activeGenre, setSelected, selectedNode } = useGraphStore()
+
+  const { data, isLoading, error, refetch } = useApi(
+    () => fetchGraph({ genre: activeGenre ?? undefined }),
+    [activeGenre]
+  )
+
+  const handleNodeClick = useCallback((node: object) => {
+    const n = node as GraphNode
+    setSelected(n)
+    // If user clicks an artist node → go to their page
+    if (n.type === 'artist') {
+      navigate(`/artist/${n.id}`)   // ← add this
+    }
+  }, [setSelected, navigate])
+
+  if (isLoading) return <p style={{padding:24}}>Loading graph...</p>
+  if (error)     return <p style={{padding:24}}>{error} — <button onClick={refetch}>retry</button></p>
+
+  return (
+    <ForceGraph2D
+      graphData={data ?? { nodes: [], links: [] }}
+      nodeColor={(n: any) => NODE_COLORS[n.type as keyof typeof NODE_COLORS] ?? '#888'}
+      nodeLabel="label"
+      linkWidth={(l: any) => Math.sqrt(l.weight ?? 1)}
+      onNodeClick={handleNodeClick}
+      backgroundColor="transparent"
+    />
   )
 }

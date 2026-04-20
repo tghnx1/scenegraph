@@ -35,3 +35,13 @@ $ npm run dev
 
 That would just test the default vite page again. 
 Replace the content of ./frontend with the content of this directory.
+
+## Notes
+- used mock data instead of direct request to backend to avoid having 502 errors. 
+	- click on artists to display artist page (again just a mock data).
+	- the map tab is just a placeholder, can be a link to a dashboard (maybe).
+- gallery of [react-force-graph](https://github.com/vasturiano/react-force-graph)
+	- alternatives:
+		- [vis network](https://visjs.github.io/vis-network/examples/)
+		- [d3.js](https://observablehq.com/@d3/gallery?utm_source=d3js-org&utm_medium=hero&utm_campaign=try-observable#networks)
+		- [cytoscape.js](https://js.cytoscape.org/#demos)
