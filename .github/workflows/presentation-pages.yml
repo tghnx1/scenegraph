@@ -5,9 +5,9 @@ on:
     branches:
       - main
       - Maksim_parcing
+      - Platform-bootstrap
     paths:
       - docs/**
-      - documentation/transcendence_scene_graph_development_presentation.html
       - .github/workflows/presentation-pages.yml
   workflow_dispatch:
 
@@ -33,9 +33,6 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
-
-      - name: Sync presentation into Pages entrypoint
-        run: cp documentation/transcendence_scene_graph_development_presentation.html docs/index.html
 
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
