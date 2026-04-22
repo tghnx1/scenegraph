@@ -53,7 +53,7 @@ const NODE_COLORS: Record<string, string> = {
   )
 } */
 
-  export function GraphPage() {
+/*   export function GraphPage() {
   const navigate = useNavigate()
   const { activeGenre, setSelected, selectedNode } = useGraphStore()
 
@@ -83,5 +83,78 @@ const NODE_COLORS: Record<string, string> = {
       onNodeClick={handleNodeClick}
       backgroundColor="transparent"
     />
+  )
+} */
+
+export function GraphPage() {
+  const navigate = useNavigate()
+  const { activeGenre, setSelected, selectedNode } = useGraphStore()
+
+  const { data, isLoading, error, refetch } = useApi(
+    () => fetchGraph({ genre: activeGenre ?? undefined }),
+    [activeGenre]
+  )
+
+  const handleNodeClick = useCallback(
+    (node: object) => {
+      const n = node as GraphNode
+      setSelected(n)
+    },
+    [setSelected]
+  )
+
+  if (isLoading) return <p style={{ padding: 24 }}>Loading graph...</p>
+  if (error) return <p style={{ padding: 24 }}>{error} — <button onClick={refetch}>retry</button></p>
+
+  return (
+    <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+      <ForceGraph2D
+        graphData={data ?? { nodes: [], links: [] }}
+        nodeColor={(n: any) => NODE_COLORS[n.type as keyof typeof NODE_COLORS] ?? '#888'}
+        nodeLabel="label"
+        linkWidth={(l: any) => Math.sqrt(l.weight ?? 1)}
+        onNodeClick={handleNodeClick}
+        backgroundColor="transparent"
+      />
+
+      {selectedNode && (
+        <div
+          style={{
+            position: 'absolute',
+            left: 16,
+            right: 16,
+            bottom: 16,
+            background: 'rgba(15, 15, 18, 0.95)',
+            border: '1px solid #2b2b35',
+            borderRadius: 12,
+            padding: 16,
+            color: '#f3f3f3',
+            boxShadow: '0 10px 30px rgba(0,0,0,0.35)',
+          }}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+            <div>
+              <div style={{ fontSize: 12, color: '#9aa', textTransform: 'uppercase' }}>
+                {selectedNode.type}
+              </div>
+              <h3 style={{ margin: '4px 0 8px 0' }}>{selectedNode.label}</h3>
+              <div style={{ fontSize: 13, color: '#bbb' }}>{selectedNode.eventCount} events</div>
+              <div style={{ fontSize: 13, color: '#bbb', marginTop: 4 }}>
+                {selectedNode.genres?.slice(0, 4).join(' · ') || 'No genres'}
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+              {selectedNode.type === 'artist' && (
+                <button onClick={() => navigate(`/artist/${selectedNode.id}`)}>
+                  View full profile
+                </button>
+              )}
+              <button onClick={() => setSelected(null)}>Close</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
   )
 }
