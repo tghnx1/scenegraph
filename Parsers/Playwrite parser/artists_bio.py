@@ -19,14 +19,22 @@ from playwright.async_api import (
     Page,
     TimeoutError as PlaywrightTimeoutError,
 )
-#  source venv/bin/activate
-#  export SCENEGRAPH_DATA_DIR="/Volumes/Untitled/42/scenegraph-data"
-#  /Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome --remote-debugging-port=9222 --user-data-dir="$SCENEGRAPH_DATA_DIR/runtime/chrome-profile"
-# ./venv/bin/python artists_bio.py \
+# Known-good local run notes:
+# - Keep the repo outside Desktop/Documents so iCloud does not offload the venv
+#   or parser sources. The working copy lives in /Users/tghnx1/code/scenegraph.
+# - Parser data lives on the external SSD via SCENEGRAPH_DATA_DIR.
+# - Chrome must expose CDP on localhost:9222 before this script starts.
+#
+# cd "/Users/tghnx1/code/scenegraph/Parsers/Playwrite parser"
+# export SCENEGRAPH_DATA_DIR="/Volumes/Untitled/42/scenegraph-data"
+# curl http://localhost:9222/json/version || \
+#   /Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome \
+#     --remote-debugging-port=9222 \
+#     --user-data-dir="$SCENEGRAPH_DATA_DIR/runtime/chrome-profile"
+# caffeinate -dimsu "./venv/bin/python" "./artists_bio.py" \
 #   --artists "$SCENEGRAPH_DATA_DIR/json/artists.json" \
 #   --out "$SCENEGRAPH_DATA_DIR/json/artist_biographies.json" \
-#   --cdp-url http://localhost:9222 \
-#   --limit 5
+#   --cdp-url http://localhost:9222
 RA_BASE = "https://ra.co"
 SCRIPT_DIR = Path(__file__).resolve().parent
 PARSERS_DIR = SCRIPT_DIR.parent
