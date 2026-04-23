@@ -8,6 +8,7 @@ export interface GraphNode { //GraphNode interface
   eventCount: number
   lat?:       number //with ? --> optional, only for venue (if necessary)
   lng?:       number
+  raVenueId?: string
 }
 
 export interface GraphEdge { //GraphEdge interface, shape of every line in the force graph
