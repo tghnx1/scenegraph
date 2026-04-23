@@ -1,0 +1,1058 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Scene Graph — Current Implementation</title>
+  <style>
+    :root {
+      --bg-0: #08141a;
+      --bg-1: #0e2430;
+      --bg-2: #12394c;
+      --bg-3: #173f52;
+      --ink: #eaf2ef;
+      --muted: #a7c4bf;
+      --accent: #f5a65b;
+      --accent-2: #7ce0d3;
+      --accent-3: #ff746a;
+      --panel: rgba(10, 26, 35, 0.72);
+      --panel-strong: rgba(6, 18, 25, 0.88);
+      --line: rgba(234, 242, 239, 0.18);
+      --shadow: 0 24px 80px rgba(0, 0, 0, 0.35);
+      --radius-xl: 30px;
+      --radius-lg: 22px;
+      --radius-md: 16px;
+      --page-pad: clamp(24px, 5vw, 64px);
+      --title-font: "Avenir Next", "Segoe UI", "Helvetica Neue", sans-serif;
+      --body-font: "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+      --mono-font: "SF Mono", "Menlo", "Monaco", monospace;
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      margin: 0;
+      min-height: 100%;
+      background:
+        radial-gradient(circle at 18% 14%, rgba(124, 224, 211, 0.10), transparent 28%),
+        radial-gradient(circle at 84% 20%, rgba(245, 166, 91, 0.14), transparent 30%),
+        radial-gradient(circle at 72% 82%, rgba(255, 116, 106, 0.12), transparent 25%),
+        linear-gradient(145deg, var(--bg-0), var(--bg-1) 42%, var(--bg-2) 100%);
+      color: var(--ink);
+      font-family: var(--body-font);
+      overflow-x: hidden;
+    }
+
+    body::before,
+    body::after {
+      content: "";
+      position: fixed;
+      width: 34vw;
+      height: 34vw;
+      border-radius: 50%;
+      filter: blur(82px);
+      opacity: 0.22;
+      pointer-events: none;
+      z-index: 0;
+      animation: drift 22s ease-in-out infinite alternate;
+    }
+
+    body::before {
+      top: -10vw;
+      right: -8vw;
+      background: rgba(124, 224, 211, 0.25);
+    }
+
+    body::after {
+      left: -10vw;
+      bottom: -8vw;
+      background: rgba(245, 166, 91, 0.18);
+      animation-duration: 28s;
+    }
+
+    .deck-shell {
+      position: relative;
+      z-index: 1;
+      min-height: 100vh;
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+    }
+
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 18px var(--page-pad) 0;
+      flex-wrap: wrap;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      font-family: var(--title-font);
+      font-size: 0.95rem;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .brand-badge {
+      width: 44px;
+      height: 44px;
+      border-radius: 14px;
+      display: grid;
+      place-items: center;
+      background:
+        linear-gradient(135deg, rgba(124, 224, 211, 0.22), rgba(245, 166, 91, 0.18)),
+        rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      box-shadow: var(--shadow);
+      color: var(--ink);
+      font-weight: 800;
+      font-family: var(--title-font);
+    }
+
+    .progress-wrap {
+      min-width: min(420px, 40vw);
+      display: grid;
+      gap: 8px;
+    }
+
+    .progress-label {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      font-family: var(--title-font);
+      font-size: 0.88rem;
+      color: var(--muted);
+    }
+
+    .progress-bar {
+      width: 100%;
+      height: 8px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.08);
+      overflow: hidden;
+    }
+
+    .progress-fill {
+      width: 0%;
+      height: 100%;
+      border-radius: inherit;
+      background: linear-gradient(90deg, var(--accent), var(--accent-2));
+      box-shadow: 0 0 24px rgba(124, 224, 211, 0.45);
+      transition: width 320ms ease;
+    }
+
+    .deck {
+      position: relative;
+      min-height: 0;
+    }
+
+    .slide {
+      position: absolute;
+      inset: 0;
+      padding: 28px var(--page-pad) 34px;
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      gap: 12px;
+      opacity: 0;
+      pointer-events: none;
+      transform: translateX(54px) scale(0.985);
+      overflow-y: auto;
+      overflow-x: hidden;
+      transition: opacity 360ms ease, transform 460ms ease;
+    }
+
+    .slide.active {
+      opacity: 1;
+      pointer-events: auto;
+      transform: translateX(0) scale(1);
+    }
+
+    .slide-head {
+      display: grid;
+      gap: 12px;
+      margin-bottom: 18px;
+      max-width: 1120px;
+    }
+
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      width: fit-content;
+      padding: 10px 14px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      font-family: var(--title-font);
+      font-size: 0.82rem;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--accent-2);
+    }
+
+    .eyebrow::before {
+      content: "";
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--accent);
+      box-shadow: 0 0 12px rgba(245, 166, 91, 0.7);
+    }
+
+    h1, h2, h3 {
+      margin: 0;
+      font-family: var(--title-font);
+      font-weight: 800;
+      line-height: 0.95;
+      letter-spacing: -0.035em;
+    }
+
+    h1 {
+      font-size: clamp(2.7rem, 5.8vw, 5.6rem);
+      max-width: 12ch;
+    }
+
+    h2 {
+      font-size: clamp(2rem, 4vw, 3.4rem);
+      max-width: 14ch;
+    }
+
+    h3 {
+      font-size: 1.15rem;
+      line-height: 1.15;
+    }
+
+    .lead {
+      margin: 0;
+      max-width: 76ch;
+      font-size: clamp(1.05rem, 1.7vw, 1.35rem);
+      line-height: 1.6;
+      color: #d5e5de;
+    }
+
+    .panel {
+      position: relative;
+      background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.02)),
+        var(--panel);
+      border: 1px solid rgba(255, 255, 255, 0.11);
+      border-radius: var(--radius-xl);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+
+    .panel::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background:
+        linear-gradient(130deg, rgba(124, 224, 211, 0.12), transparent 36%),
+        linear-gradient(310deg, rgba(245, 166, 91, 0.11), transparent 32%);
+      pointer-events: none;
+    }
+
+    .panel-inner {
+      position: relative;
+      z-index: 1;
+      padding: 24px;
+      display: grid;
+      gap: 16px;
+      height: 100%;
+    }
+
+    .columns-2,
+    .columns-3,
+    .columns-4 {
+      display: grid;
+      gap: 18px;
+      align-content: start;
+    }
+
+    .columns-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .columns-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .columns-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+
+    .card {
+      padding: 18px;
+      border-radius: var(--radius-lg);
+      border: 1px solid rgba(255, 255, 255, 0.10);
+      background: rgba(7, 19, 26, 0.56);
+    }
+
+    .card-title {
+      font-family: var(--title-font);
+      font-size: 0.82rem;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--muted);
+      margin-bottom: 10px;
+    }
+
+    .card-value {
+      font-family: var(--title-font);
+      font-size: clamp(1.5rem, 2vw, 2rem);
+      line-height: 1;
+      margin-bottom: 10px;
+    }
+
+    .copy,
+    .card-copy {
+      color: #d2e2dc;
+      line-height: 1.55;
+      font-size: 1rem;
+    }
+
+    .chip-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .chip {
+      padding: 10px 14px;
+      border-radius: 999px;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      background: rgba(255, 255, 255, 0.05);
+      font-family: var(--title-font);
+      font-size: 0.83rem;
+      letter-spacing: 0.04em;
+      color: #e9f3ef;
+    }
+
+    .chip.strong {
+      background: rgba(245, 166, 91, 0.14);
+      color: #ffe6cb;
+      border-color: rgba(245, 166, 91, 0.28);
+    }
+
+    .architecture-grid {
+      display: grid;
+      grid-template-columns: 1.15fr 0.85fr;
+      gap: 22px;
+      align-items: stretch;
+    }
+
+    .flow-stage {
+      position: relative;
+      display: grid;
+      gap: 24px;
+      padding: 26px;
+      min-height: 420px;
+    }
+
+    .flow-lane {
+      display: flex;
+      align-items: center;
+      gap: 18px;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+
+    .service {
+      min-width: 150px;
+      max-width: 210px;
+      padding: 18px 18px 20px;
+      border-radius: 22px;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      background: rgba(7, 19, 26, 0.68);
+      box-shadow: var(--shadow);
+    }
+
+    .service .kicker {
+      display: block;
+      margin-bottom: 8px;
+      color: var(--muted);
+      font-family: var(--title-font);
+      font-size: 0.76rem;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    .service strong {
+      display: block;
+      font-family: var(--title-font);
+      font-size: 1.18rem;
+      margin-bottom: 8px;
+    }
+
+    .service p {
+      margin: 0;
+      color: #d2e2dc;
+      line-height: 1.5;
+      font-size: 0.97rem;
+    }
+
+    .service.gateway { background: rgba(245, 166, 91, 0.10); }
+    .service.frontend { background: rgba(124, 224, 211, 0.10); }
+    .service.backend { background: rgba(255, 116, 106, 0.10); }
+    .service.db { background: rgba(255, 255, 255, 0.05); }
+
+    .arrow {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 46px;
+      height: 46px;
+      border-radius: 999px;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      background: rgba(255, 255, 255, 0.05);
+      color: var(--accent-2);
+      font-family: var(--title-font);
+      font-size: 1.15rem;
+    }
+
+    .network-note {
+      display: grid;
+      gap: 12px;
+    }
+
+    .list {
+      display: grid;
+      gap: 12px;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .list li {
+      display: flex;
+      gap: 12px;
+      align-items: flex-start;
+      color: #dce9e4;
+      line-height: 1.55;
+    }
+
+    .list li::before {
+      content: "";
+      width: 10px;
+      height: 10px;
+      margin-top: 8px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--accent), var(--accent-2));
+      flex: 0 0 auto;
+      box-shadow: 0 0 18px rgba(124, 224, 211, 0.35);
+    }
+
+    .sequence {
+      display: grid;
+      gap: 14px;
+    }
+
+    .step {
+      display: grid;
+      grid-template-columns: 58px 1fr;
+      gap: 16px;
+      align-items: start;
+      padding: 16px 18px;
+      border-radius: var(--radius-lg);
+      background: rgba(7, 19, 26, 0.56);
+      border: 1px solid rgba(255, 255, 255, 0.10);
+    }
+
+    .step-num {
+      width: 42px;
+      height: 42px;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      font-family: var(--title-font);
+      font-weight: 800;
+      background: linear-gradient(135deg, rgba(245, 166, 91, 0.28), rgba(124, 224, 211, 0.22));
+      border: 1px solid rgba(255, 255, 255, 0.12);
+    }
+
+    .mono {
+      font-family: var(--mono-font);
+      font-size: 0.92rem;
+      color: #ffe8cd;
+      background: rgba(255, 255, 255, 0.05);
+      padding: 2px 7px;
+      border-radius: 7px;
+    }
+
+    .file-map {
+      display: grid;
+      gap: 14px;
+    }
+
+    .file-item {
+      padding: 18px;
+      border-radius: var(--radius-lg);
+      background: rgba(7, 19, 26, 0.56);
+      border: 1px solid rgba(255, 255, 255, 0.10);
+    }
+
+    .file-path {
+      font-family: var(--mono-font);
+      color: #ffe8cd;
+      font-size: 0.93rem;
+      margin-bottom: 10px;
+      display: block;
+    }
+
+    .badge-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 10px;
+    }
+
+    .badge {
+      padding: 7px 10px;
+      border-radius: 999px;
+      background: rgba(124, 224, 211, 0.12);
+      border: 1px solid rgba(124, 224, 211, 0.2);
+      color: #d7faf5;
+      font-family: var(--title-font);
+      font-size: 0.73rem;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    .decision-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 18px;
+    }
+
+    .good { border-color: rgba(124, 224, 211, 0.18); }
+    .temporary { border-color: rgba(245, 166, 91, 0.25); }
+
+    .slide-foot {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+      font-family: var(--title-font);
+      color: var(--muted);
+      font-size: 0.9rem;
+      margin-top: 10px;
+    }
+
+    .controls {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 18px;
+      padding: 10px var(--page-pad) 26px;
+      flex-wrap: wrap;
+    }
+
+    .control-buttons {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+    }
+
+    button {
+      appearance: none;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      background: rgba(255, 255, 255, 0.06);
+      color: var(--ink);
+      padding: 11px 18px;
+      border-radius: 999px;
+      font-family: var(--title-font);
+      font-size: 0.88rem;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      cursor: pointer;
+      transition: transform 180ms ease, border-color 180ms ease, background 180ms ease;
+    }
+
+    button:hover {
+      transform: translateY(-1px);
+      border-color: rgba(124, 224, 211, 0.35);
+      background: rgba(124, 224, 211, 0.10);
+    }
+
+    .slide-index {
+      color: var(--muted);
+      font-family: var(--title-font);
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      font-size: 0.8rem;
+    }
+
+    @keyframes drift {
+      from { transform: translate3d(0, 0, 0) scale(1); }
+      to { transform: translate3d(-18px, 22px, 0) scale(1.08); }
+    }
+
+    @media (max-width: 1040px) {
+      .architecture-grid,
+      .columns-4,
+      .columns-3,
+      .columns-2,
+      .decision-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .topbar,
+      .controls,
+      .slide-foot {
+        align-items: flex-start;
+      }
+    }
+
+    @media (max-width: 720px) {
+      .slide { padding-top: 22px; }
+      .flow-lane { flex-direction: column; }
+      .arrow { transform: rotate(90deg); }
+      .step { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="deck-shell">
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-badge">SG</div>
+        <div>Current Implementation</div>
+      </div>
+      <div class="progress-wrap">
+        <div class="progress-label">
+          <span>Current architecture walkthrough</span>
+          <span id="progressText">1 / 6</span>
+        </div>
+        <div class="progress-bar">
+          <div class="progress-fill" id="progressFill"></div>
+        </div>
+      </div>
+    </header>
+
+    <main class="deck" id="deck">
+      <section class="slide active" data-title="Overview">
+        <div class="slide-head">
+          <span class="eyebrow">Implementation Snapshot</span>
+          <h1>How Scene Graph Works Right Now</h1>
+          <p class="lead">
+            This deck documents the live Step 1 implementation as it exists in the repository today:
+            a single external gateway through <span class="mono">nginx</span>, a React/Vite frontend,
+            a FastAPI backend, and a Postgres database with a tiny bootstrap data path.
+          </p>
+        </div>
+
+        <div class="columns-4">
+          <article class="card">
+            <div class="card-title">External Entry</div>
+            <div class="card-value">nginx</div>
+            <div class="card-copy">Only <span class="mono">localhost:80</span> is published to the host. Browser traffic lands here first.</div>
+          </article>
+          <article class="card">
+            <div class="card-title">Frontend</div>
+            <div class="card-value">React + Vite</div>
+            <div class="card-copy">The UI runs inside Docker and is reached through nginx instead of exposing Vite directly.</div>
+          </article>
+          <article class="card">
+            <div class="card-title">Backend</div>
+            <div class="card-value">FastAPI</div>
+            <div class="card-copy">Serves <span class="mono">/health</span> and <span class="mono">/api/venues</span>, and initializes the demo database bootstrap.</div>
+          </article>
+          <article class="card">
+            <div class="card-title">Data</div>
+            <div class="card-value">Postgres</div>
+            <div class="card-copy">Stored in a named Docker volume so container recreation does not wipe local data by default.</div>
+          </article>
+        </div>
+
+        <div class="panel">
+          <div class="panel-inner">
+            <div class="chip-row">
+              <span class="chip strong">Current goal: one real end-to-end slice</span>
+              <span class="chip">External routing simplified</span>
+              <span class="chip">DB reachable only inside Docker</span>
+              <span class="chip">Backend reachable only through proxy</span>
+            </div>
+            <p class="copy">
+              This is not the final architecture. It is the first defendable implementation slice. The system already proves:
+              container boot, internal networking, backend-to-db connectivity, frontend-to-backend reads, and a shared entry point.
+            </p>
+          </div>
+        </div>
+
+        <div class="slide-foot">
+          <span>Focus: what is already true in code</span>
+          <span>Platform Bootstrap • Current Implementation</span>
+        </div>
+      </section>
+
+      <section class="slide" data-title="Request Flow">
+        <div class="slide-head">
+          <span class="eyebrow">Traffic Diagram</span>
+          <h2>Request Flow Through the Stack</h2>
+          <p class="lead">
+            The browser never talks directly to the FastAPI container or the database. It only talks to nginx, and nginx routes requests internally.
+          </p>
+        </div>
+
+        <div class="architecture-grid">
+          <div class="panel">
+            <div class="panel-inner flow-stage">
+              <div class="flow-lane">
+                <div class="service">
+                  <span class="kicker">External Client</span>
+                  <strong>Browser</strong>
+                  <p>Requests <span class="mono">http://localhost</span> and gets one same-origin app surface.</p>
+                </div>
+                <div class="arrow">→</div>
+                <div class="service gateway">
+                  <span class="kicker">Published Port</span>
+                  <strong>nginx</strong>
+                  <p>Listens on port <span class="mono">80</span> and decides whether traffic goes to frontend or backend.</p>
+                </div>
+              </div>
+
+              <div class="flow-lane">
+                <div class="service frontend">
+                  <span class="kicker">UI Route</span>
+                  <strong>frontend</strong>
+                  <p>Receives <span class="mono">/</span> and serves the React/Vite app.</p>
+                </div>
+                <div class="arrow">↘</div>
+                <div class="service backend">
+                  <span class="kicker">API Route</span>
+                  <strong>backend</strong>
+                  <p>Receives <span class="mono">/health</span> and <span class="mono">/api/*</span> requests through nginx.</p>
+                </div>
+                <div class="arrow">→</div>
+                <div class="service db">
+                  <span class="kicker">Internal Data</span>
+                  <strong>db</strong>
+                  <p>Only the backend talks to Postgres over the internal Docker network.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-inner network-note">
+              <h3>How nginx routes now</h3>
+              <ul class="list">
+                <li><span><span class="mono">/</span> goes to the Vite frontend service.</span></li>
+                <li><span><span class="mono">/health</span> is proxied to FastAPI.</span></li>
+                <li><span><span class="mono">/api/...</span> is proxied to FastAPI.</span></li>
+                <li><span>The browser sees one origin, so current reads avoid direct cross-origin calls.</span></li>
+              </ul>
+
+              <h3>Why this matters</h3>
+              <ul class="list">
+                <li><span>Only one service is published to the host.</span></li>
+                <li><span>Backend and database are hidden from the host network.</span></li>
+                <li><span>Later HTTPS and auth flow can land in nginx instead of every container.</span></li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        <div class="slide-foot">
+          <span>Browser → nginx → frontend/backend → db</span>
+          <span>Single external gateway</span>
+        </div>
+      </section>
+
+      <section class="slide" data-title="Boot Sequence">
+        <div class="slide-head">
+          <span class="eyebrow">Startup Order</span>
+          <h2>What Happens During Docker Startup</h2>
+          <p class="lead">
+            The stack uses Docker healthchecks and dependency ordering so services come up in a predictable sequence instead of racing each other.
+          </p>
+        </div>
+
+        <div class="panel">
+          <div class="panel-inner sequence">
+            <div class="step">
+              <div class="step-num">1</div>
+              <div>
+                <h3>Compose reads <span class="mono">.env</span></h3>
+                <p class="copy">Variables such as <span class="mono">DATABASE_URL</span> and Postgres credentials are loaded before container creation.</p>
+              </div>
+            </div>
+            <div class="step">
+              <div class="step-num">2</div>
+              <div>
+                <h3>Postgres starts first</h3>
+                <p class="copy">The <span class="mono">db</span> service becomes healthy only after <span class="mono">pg_isready</span> succeeds.</p>
+              </div>
+            </div>
+            <div class="step">
+              <div class="step-num">3</div>
+              <div>
+                <h3>FastAPI waits for the database</h3>
+                <p class="copy">The <span class="mono">backend</span> service depends on healthy Postgres before it starts.</p>
+              </div>
+            </div>
+            <div class="step">
+              <div class="step-num">4</div>
+              <div>
+                <h3>Backend bootstrap runs on startup</h3>
+                <p class="copy">FastAPI lifespan calls the temporary DB bootstrap: create <span class="mono">venues</span> if missing, then seed demo rows if the table is empty.</p>
+              </div>
+            </div>
+            <div class="step">
+              <div class="step-num">5</div>
+              <div>
+                <h3>Backend healthcheck starts polling</h3>
+                <p class="copy">Docker runs a tiny Python command that requests <span class="mono">http://127.0.0.1:3000/health</span> inside the container.</p>
+              </div>
+            </div>
+            <div class="step">
+              <div class="step-num">6</div>
+              <div>
+                <h3>Frontend starts, then nginx starts last</h3>
+                <p class="copy">nginx depends on backend health and frontend startup, so the public gateway comes online after the inner services are ready.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="slide-foot">
+          <span>Deterministic startup beats lucky startup</span>
+          <span>Healthchecks keep the boot flow honest</span>
+        </div>
+      </section>
+
+      <section class="slide" data-title="File Map">
+        <div class="slide-head">
+          <span class="eyebrow">Code Map</span>
+          <h2>Which Files Own Which Responsibilities</h2>
+          <p class="lead">
+            This is the shortest path through the repository if someone wants to understand the current runtime implementation without reading everything.
+          </p>
+        </div>
+
+        <div class="file-map">
+          <div class="file-item">
+            <span class="file-path">docker-compose.yml</span>
+            <p class="copy">Defines the runtime topology: <span class="mono">db</span>, <span class="mono">backend</span>, <span class="mono">frontend</span>, <span class="mono">nginx</span>, healthchecks, and which ports are exposed or kept internal.</p>
+            <div class="badge-row">
+              <span class="badge">orchestration</span>
+              <span class="badge">service order</span>
+              <span class="badge">network exposure</span>
+            </div>
+          </div>
+
+          <div class="file-item">
+            <span class="file-path">nginx/default.conf</span>
+            <p class="copy">Defines the public routing rules. <span class="mono">/</span> goes to the frontend. <span class="mono">/health</span> and <span class="mono">/api/...</span> go to FastAPI.</p>
+            <div class="badge-row">
+              <span class="badge">gateway</span>
+              <span class="badge">reverse proxy</span>
+              <span class="badge">same-origin routing</span>
+            </div>
+          </div>
+
+          <div class="file-item">
+            <span class="file-path">backend/app/main.py</span>
+            <p class="copy">Creates the FastAPI app, runs startup lifespan, exposes <span class="mono">/health</span>, and serves the current read-only route <span class="mono">/api/venues</span>.</p>
+            <div class="badge-row">
+              <span class="badge">fastapi app</span>
+              <span class="badge">routes</span>
+              <span class="badge">startup hook</span>
+            </div>
+          </div>
+
+          <div class="file-item">
+            <span class="file-path">backend/app/db.py</span>
+            <p class="copy">Owns the current Postgres connection code and the temporary bootstrap SQL for demo data. This file is intentionally marked as temporary until real migrations land.</p>
+            <div class="badge-row">
+              <span class="badge">db connection</span>
+              <span class="badge">temporary bootstrap</span>
+              <span class="badge">seed data</span>
+            </div>
+          </div>
+
+          <div class="file-item">
+            <span class="file-path">frontend/src/App.tsx</span>
+            <p class="copy">Fetches <span class="mono">/health</span> and <span class="mono">/api/venues</span>, then renders visible proof that the frontend, backend, and db are connected.</p>
+            <div class="badge-row">
+              <span class="badge">bootstrap ui</span>
+              <span class="badge">api reads</span>
+              <span class="badge">integration proof</span>
+            </div>
+          </div>
+
+          <div class="file-item">
+            <span class="file-path">.env.example</span>
+            <p class="copy">Documents the required env structure without storing real secrets. Team members copy it into <span class="mono">.env</span> for local runs.</p>
+            <div class="badge-row">
+              <span class="badge">env contract</span>
+              <span class="badge">local bootstrap</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="slide-foot">
+          <span>Read these first before diving deeper</span>
+          <span>Code map for onboarding</span>
+        </div>
+      </section>
+
+      <section class="slide" data-title="Temporary Choices">
+        <div class="slide-head">
+          <span class="eyebrow">Current Truth</span>
+          <h2>What Is Deliberate Now and What Must Change Later</h2>
+          <p class="lead">
+            The current stack is intentionally split between decisions that are stable enough to keep and temporary decisions that only exist to make Step 1 demonstrable.
+          </p>
+        </div>
+
+        <div class="decision-grid">
+          <div class="panel good">
+            <div class="panel-inner">
+              <h3>Keep for now</h3>
+              <ul class="list">
+                <li><span>Single external gateway through nginx.</span></li>
+                <li><span>Internal-only backend and Postgres exposure.</span></li>
+                <li><span>FastAPI health endpoint and Docker healthchecks.</span></li>
+                <li><span>One visible read-only slice proving real integration.</span></li>
+                <li><span>Named Postgres volume for local persistence.</span></li>
+              </ul>
+            </div>
+          </div>
+
+          <div class="panel temporary">
+            <div class="panel-inner">
+              <h3>Replace later</h3>
+              <ul class="list">
+                <li><span>Startup SQL that auto-creates the demo table.</span></li>
+                <li><span>Seed rows inserted directly by backend startup logic.</span></li>
+                <li><span>Single-file backend route layout in <span class="mono">main.py</span>.</span></li>
+                <li><span>Demo-only <span class="mono">venues</span> bootstrap once the real shared schema arrives.</span></li>
+                <li><span>Ad hoc bootstrap data path once migrations and import flows exist.</span></li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel" style="margin-top: 18px;">
+          <div class="panel-inner">
+            <h3>Current cleanup rule</h3>
+            <p class="copy">
+              As soon as the team lands the shared schema for <span class="mono">venues</span>, <span class="mono">promoters</span>,
+              <span class="mono">artists</span>, and <span class="mono">events</span>, the backend startup SQL should be removed and replaced by the real migration flow.
+            </p>
+          </div>
+        </div>
+
+        <div class="slide-foot">
+          <span>Temporary does not mean accidental</span>
+          <span>Documented tradeoffs reduce future confusion</span>
+        </div>
+      </section>
+
+      <section class="slide" data-title="Doc Home">
+        <div class="slide-head">
+          <span class="eyebrow">Living Documentation</span>
+          <h2>How To Use This Deck Going Forward</h2>
+          <p class="lead">
+            This page should become the running documentation of the implementation that actually exists, not the implementation people vaguely remember.
+          </p>
+        </div>
+
+        <div class="columns-2">
+          <div class="panel">
+            <div class="panel-inner">
+              <h3>Add here when implementation changes</h3>
+              <ul class="list">
+                <li><span>new services or containers</span></li>
+                <li><span>new public routes or proxies</span></li>
+                <li><span>changes in startup order</span></li>
+                <li><span>schema ownership changes</span></li>
+                <li><span>removal of temporary bootstrap logic</span></li>
+              </ul>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-inner">
+              <h3>What this deck should answer fast</h3>
+              <ul class="list">
+                <li><span>Which port does the browser actually hit?</span></li>
+                <li><span>Which container handles each request?</span></li>
+                <li><span>Which files define the current runtime behavior?</span></li>
+                <li><span>Which parts are temporary and scheduled for replacement?</span></li>
+                <li><span>What changed since the last implementation pass?</span></li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel" style="margin-top: 18px;">
+          <div class="panel-inner">
+            <div class="chip-row">
+              <span class="chip strong">Recommended update rule</span>
+              <span class="chip">If code changed, this deck should change too</span>
+            </div>
+            <p class="copy">
+              Treat this as the implementation source of truth for onboarding, debugging, and review prep.
+              The goal is not to impress; the goal is to stay accurate.
+            </p>
+          </div>
+        </div>
+
+        <div class="slide-foot">
+          <span>Documentation should trail code by hours, not weeks</span>
+          <span>Scene Graph • Current Implementation</span>
+        </div>
+      </section>
+    </main>
+
+    <footer class="controls">
+      <div class="control-buttons">
+        <button type="button" id="prevBtn">Previous</button>
+        <button type="button" id="nextBtn">Next</button>
+      </div>
+      <div class="slide-index" id="slideIndex">Slide 1 of 6</div>
+    </footer>
+  </div>
+
+  <script>
+    const slides = Array.from(document.querySelectorAll('.slide'));
+    const progressFill = document.getElementById('progressFill');
+    const progressText = document.getElementById('progressText');
+    const slideIndex = document.getElementById('slideIndex');
+    const prevBtn = document.getElementById('prevBtn');
+    const nextBtn = document.getElementById('nextBtn');
+    let current = 0;
+
+    function render() {
+      slides.forEach((slide, index) => {
+        slide.classList.toggle('active', index === current);
+      });
+
+      const total = slides.length;
+      const currentHuman = current + 1;
+      const percent = (currentHuman / total) * 100;
+      progressFill.style.width = `${percent}%`;
+      progressText.textContent = `${currentHuman} / ${total}`;
+      slideIndex.textContent = `Slide ${currentHuman} of ${total}`;
+    }
+
+    function goNext() {
+      current = (current + 1) % slides.length;
+      render();
+    }
+
+    function goPrev() {
+      current = (current - 1 + slides.length) % slides.length;
+      render();
+    }
+
+    nextBtn.addEventListener('click', goNext);
+    prevBtn.addEventListener('click', goPrev);
+
+    window.addEventListener('keydown', (event) => {
+      if (event.key === 'ArrowRight' || event.key === 'PageDown') goNext();
+      if (event.key === 'ArrowLeft' || event.key === 'PageUp') goPrev();
+    });
+
+    render();
+  </script>
+</body>
+</html>
