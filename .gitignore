@@ -23,13 +23,13 @@ ra_berlin_past_events.jsonl
 ra_future_events.json
 ra_future_events.csv
 artists.json
-Parsers/data/json/*.json
-Parsers/data/json/*.jsonl
-Parsers/data/backups/**/*.json
-Parsers/data/logs/*.log
-Parsers/data/runtime/
-Parsers/data/debug/**/*.html
-Parsers/data/debug/**/*.png
+parsers/data/json/*.json
+parsers/data/json/*.jsonl
+parsers/data/backups/**/*.json
+parsers/data/logs/*.log
+parsers/data/runtime/
+parsers/data/debug/**/*.html
+parsers/data/debug/**/*.png
 
 # IDEs
 .idea/

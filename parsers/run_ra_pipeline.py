@@ -13,13 +13,13 @@ from urllib.parse import urlparse
 
 #export SCENEGRAPH_DATA_DIR="/Volumes/Untitled/42/scenegraph-data"
 
-#caffeinate -dimsu python3 /Users/tghnx1/Desktop/42/scenegraph/Parsers/run_ra_pipeline.py \
+#caffeinate -dimsu python3 /Users/tghnx1/code/scenegraph/parsers/run_ra_pipeline.py \
   #--cdp-url http://localhost:9222 \
   #--launch-chrome
 
 SCRIPT_DIR = Path(__file__).resolve().parent
-GRAPHQL_DIR = SCRIPT_DIR / "GraphQLparser"
-PLAYWRIGHT_DIR = SCRIPT_DIR / "Playwrite parser"
+GRAPHQL_DIR = SCRIPT_DIR / "graphql_parser"
+PLAYWRIGHT_DIR = SCRIPT_DIR / "playwright_parser"
 
 
 def resolve_data_dir(default_root: Path) -> Path:

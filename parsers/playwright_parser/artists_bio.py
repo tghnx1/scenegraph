@@ -25,7 +25,7 @@ from playwright.async_api import (
 # - Parser data lives on the external SSD via SCENEGRAPH_DATA_DIR.
 # - Chrome must expose CDP on localhost:9222 before this script starts.
 #
-# cd "/Users/tghnx1/code/scenegraph/Parsers/Playwrite parser"
+# cd "/Users/tghnx1/code/scenegraph/parsers/playwright_parser"
 # export SCENEGRAPH_DATA_DIR="/Volumes/Untitled/42/scenegraph-data"
 # curl http://localhost:9222/json/version || \
 #   /Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome \
