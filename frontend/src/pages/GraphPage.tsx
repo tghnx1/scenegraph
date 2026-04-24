@@ -10,6 +10,7 @@ const NODE_COLORS: Record<string, string> = {
   artist:   '#7F77DD',
   venue:    '#1D9E75',
   promoter: '#D85A30',
+  event:    '#F59E0B'
 }
 
 /* export function GraphPage() {
@@ -124,8 +125,13 @@ export function GraphPage() {
         nodeColor={(n: any) => NODE_COLORS[n.type as keyof typeof NODE_COLORS] ?? '#888'}
         nodeLabel="label"
         linkWidth={(l: any) => Math.sqrt(l.weight ?? 1)}
+        linkColor={(l: any) => {
+          const w = (l.weight ?? 1) as number
+          const alpha = Math.min(0.75, 0.25 + w * 0.08)
+          return `rgba(148,163,184,${alpha})` // slate-400 with dynamic alpha
+        }}
         onNodeClick={handleNodeClick}
-        backgroundColor="transparent"
+        backgroundColor="#0b1220"
         warmupTicks={120}
         cooldownTicks={180}
       />
