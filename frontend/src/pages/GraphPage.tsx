@@ -1,5 +1,5 @@
 import ForceGraph2D from 'react-force-graph-2d'
-import { useCallback }   from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 import { useApi }        from '../hooks/useApi'
 import { fetchGraph }    from '../api/graph'
 import { useGraphStore } from '../store/graphStore'
@@ -10,6 +10,7 @@ const NODE_COLORS: Record<string, string> = {
   artist:   '#7F77DD',
   venue:    '#1D9E75',
   promoter: '#D85A30',
+  event:    '#F59E0B'
 }
 
 /* export function GraphPage() {
@@ -87,6 +88,7 @@ const NODE_COLORS: Record<string, string> = {
 } */
 
 export function GraphPage() {
+  const graphRef = useRef<any>(null)
   const navigate = useNavigate()
   const { activeGenre, setSelected, selectedNode } = useGraphStore()
 
@@ -103,18 +105,35 @@ export function GraphPage() {
     [setSelected]
   )
 
+  useEffect(() => {
+    if (!graphRef.current) return
+
+    //adjust forces
+    graphRef.current.d3Force('charge')?.strength(-12)
+    graphRef.current.d3Force('link')?.distance(45)
+    graphRef.current.d3Force('link')?.strength(0.2)
+  }, [data])
+
   if (isLoading) return <p style={{ padding: 24 }}>Loading graph...</p>
   if (error) return <p style={{ padding: 24 }}>{error} — <button onClick={refetch}>retry</button></p>
 
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%' }}>
       <ForceGraph2D
+        ref={graphRef}
         graphData={data ?? { nodes: [], links: [] }}
         nodeColor={(n: any) => NODE_COLORS[n.type as keyof typeof NODE_COLORS] ?? '#888'}
         nodeLabel="label"
         linkWidth={(l: any) => Math.sqrt(l.weight ?? 1)}
+        linkColor={(l: any) => {
+          const w = (l.weight ?? 1) as number
+          const alpha = Math.min(0.75, 0.25 + w * 0.08)
+          return `rgba(148,163,184,${alpha})` // slate-400 with dynamic alpha
+        }}
         onNodeClick={handleNodeClick}
-        backgroundColor="transparent"
+        backgroundColor="#0b1220"
+        warmupTicks={120}
+        cooldownTicks={180}
       />
 
       {selectedNode && (
