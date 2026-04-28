@@ -26,5 +26,5 @@ dist-ssr
 # Intentional exclude
 unused_eslint.config.js
 src/api/mock_data/mock_big.ts
-./exclude/*
+exclude/*
 
