@@ -21,7 +21,7 @@ export const fetchGraph = (params: GraphParams = {}) => //the function component
 export const fetchArtistEgoGraph = (artistId: string, depth = 2) => //fetches the subgraph around one artist. used when a user clicks a node(depth=2 -> artist + their connections + those connections' connections)
   api.get<GraphData>(`/graph/artist/${artistId}?depth=${depth}`) */
 
-import { MOCK_GRAPH } from './mock'
+import { MOCK_GRAPH } from './mock_data/mock'
 import type { GraphData } from '../types/graph'
 
 export interface GraphParams {
