@@ -1,5 +1,6 @@
 import ForceGraph2D from 'react-force-graph-2d'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { forceX, forceY } from 'd3-force'
+import { useCallback, useEffect, useRef } from 'react'
 import { useApi }        from '../hooks/useApi'
 import { fetchGraph }    from '../api/graph'
 import { useGraphStore } from '../store/graphStore'
@@ -13,29 +14,9 @@ const NODE_COLORS: Record<string, string> = {
   event:    '#F59E0B'
 }
 
+const GRAPH_WIDTH = 928
+const GRAPH_HEIGHT = 680
 const CENTERING_FORCE_STRENGTH = 0.04
-const MIN_GRAPH_HEIGHT = 520
-
-function createAxisForce(axis: 'x' | 'y', target = 0, strength = CENTERING_FORCE_STRENGTH) {
-  let nodes: Array<{ x?: number; y?: number; vx?: number; vy?: number }> = []
-
-  const force = (alpha: number) => {
-    for (const node of nodes) {
-      if (axis === 'x') {
-        node.vx = (node.vx ?? 0) + (target - (node.x ?? 0)) * strength * alpha
-      } else {
-        node.vy = (node.vy ?? 0) + (target - (node.y ?? 0)) * strength * alpha
-      }
-    }
-  }
-
-  force.initialize = (nextNodes: typeof nodes) => {
-    nodes = nextNodes
-  }
-
-  return force
-}
-
 
 /* export function GraphPage() {
   const { activeGenre, selectedNode, setSelected } = useGraphStore()
@@ -113,8 +94,6 @@ function createAxisForce(axis: 'x' | 'y', target = 0, strength = CENTERING_FORCE
 
 export function GraphPage() {
   const graphRef = useRef<any>(null)
-  const containerRef = useRef<HTMLDivElement | null>(null)
-  const [graphSize, setGraphSize] = useState({ width: 0, height: 0 })
   const navigate = useNavigate()
   const { activeGenre, setSelected, selectedNode } = useGraphStore()
 
@@ -132,26 +111,6 @@ export function GraphPage() {
   )
 
   useEffect(() => {
-    const container = containerRef.current
-    if (!container) return
-
-    const updateSize = () => {
-      const rect = container.getBoundingClientRect()
-      setGraphSize({
-        width: Math.floor(rect.width),
-        height: Math.max(Math.floor(rect.height), MIN_GRAPH_HEIGHT),
-      })
-    }
-
-    updateSize()
-
-    const resizeObserver = new ResizeObserver(updateSize)
-    resizeObserver.observe(container)
-
-    return () => resizeObserver.disconnect()
-  }, [])
-
-  useEffect(() => {
     if (!graphRef.current) return
 
     const graph = graphRef.current
@@ -162,8 +121,8 @@ export function GraphPage() {
     graph.d3Force('link')?.id((d: GraphNode) => d.id)
     graph.d3Force('link')?.distance(45)
     graph.d3Force('link')?.strength(0.5)
-    graph.d3Force('x', createAxisForce('x'))
-    graph.d3Force('y', createAxisForce('y'))
+    graph.d3Force('x', forceX(0).strength(CENTERING_FORCE_STRENGTH))
+    graph.d3Force('y', forceY(0).strength(CENTERING_FORCE_STRENGTH))
 
     // Reheat when data changes so the layout settles again.
     graph.d3ReheatSimulation()
@@ -173,11 +132,11 @@ export function GraphPage() {
   if (error) return <p style={{ padding: 24 }}>{error} — <button onClick={refetch}>retry</button></p>
 
   return (
-    <div ref={containerRef} style={{ position: 'relative', width: '100%', height: '100%', minHeight: MIN_GRAPH_HEIGHT }}>
+    <div style={{ position: 'relative', width: '100%', height: '100%' }}>
       <ForceGraph2D
         ref={graphRef}
-        width={graphSize.width || undefined}
-        height={graphSize.height || undefined}
+        width={GRAPH_WIDTH}
+        height={GRAPH_HEIGHT}
         graphData={data ?? { nodes: [], links: [] }}
         nodeColor={(n: any) => NODE_COLORS[n.type as keyof typeof NODE_COLORS] ?? '#888'}
         nodeRelSize={5}
