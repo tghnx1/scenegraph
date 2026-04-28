@@ -106,6 +106,11 @@ Initial schema:
 - Promoter
 - Venue
 
+Migration note:
+- If Step 1 uses temporary backend startup SQL to auto-create demo tables or seed data, remove that bootstrap logic once the shared schema and real migrations exist.
+- Table creation must move into the team migration flow instead of application startup.
+- Seed data should become a separate repeatable seed or import step.
+
 ### 1.5 Docker setup
 Containers:
 - frontend
