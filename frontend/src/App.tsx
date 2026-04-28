@@ -1,6 +1,6 @@
 /* import { Routes, Route, Navigate, NavLink } from 'react-router-dom'
 import { GraphPage }  from './pages/GraphPage'
-import { MapPage }    from './pages/MapPage'
+import { DashboardPage }    from './pages/DashboardPage'
 import { ArtistPage } from './pages/ArtistPage'
 
 export default function App() {
@@ -15,14 +15,14 @@ export default function App() {
         }}
       >
         <NavLink to="/graph">Graph</NavLink>
-        <NavLink to="/map">Map</NavLink>
+        <NavLink to="/dashboard">Dashboard</NavLink>
       </nav>
 
       <main style={{ flex: 1, overflow: 'hidden' }}>
         <Routes>
           <Route path="/" element={<Navigate to="/graph" />} />
           <Route path="/graph" element={<GraphPage />} />
-          <Route path="/map" element={<MapPage />} />
+          <Route path="/dashboard" element={<DashboardPage />} />
           <Route path="/artist/:id" element={<ArtistPage />} />
         </Routes>
       </main>
@@ -34,7 +34,7 @@ export default function App() {
 //maybe better colours
 import { Routes, Route, Navigate, NavLink } from 'react-router-dom'
 import { GraphPage } from './pages/GraphPage'
-import { MapPage } from './pages/MapPage'
+import { DashboardPage } from './pages/DashboardPage'
 import { ArtistPage } from './pages/ArtistPage'
 
 const shellStyle: React.CSSProperties = {
@@ -82,7 +82,7 @@ export default function App() {
         </NavLink>
 
         <NavLink
-          to="/map"
+          to="/dashboard"
           style={({ isActive }) => ({
             ...linkBaseStyle,
             background: isActive ? 'rgba(16,185,129,0.2)' : 'transparent',
@@ -90,7 +90,7 @@ export default function App() {
             border: isActive ? '1px solid rgba(52,211,153,0.45)' : '1px solid transparent',
           })}
         >
-          Map
+          Dashboard
         </NavLink>
       </nav>
 
@@ -98,7 +98,7 @@ export default function App() {
         <Routes>
           <Route path="/" element={<Navigate to="/graph" />} />
           <Route path="/graph" element={<GraphPage />} />
-          <Route path="/map" element={<MapPage />} />
+          <Route path="/dashboard" element={<DashboardPage />} />
           <Route path="/artist/:id" element={<ArtistPage />} />
         </Routes>
       </main>
