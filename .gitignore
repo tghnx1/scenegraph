@@ -1,0 +1,36 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# macOS
+.DS_Store
+
+# Virtual Environments
+venv/
+env/
+.env
+node_modules/
+dist/
+
+# Scraped Data & Logs
+*.log
+ra_berlin_past_events.json
+ra_berlin_past_events.jsonl
+ra_future_events.json
+ra_future_events.csv
+artists.json
+parsers/data/json/*.json
+parsers/data/json/*.jsonl
+parsers/data/backups/**/*.json
+parsers/data/logs/*.log
+parsers/data/runtime/
+parsers/data/debug/**/*.html
+parsers/data/debug/**/*.png
+
+# IDEs
+.idea/
+*.iml
