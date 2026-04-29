@@ -5,9 +5,9 @@ import { fetchGraph } from '../api/graph'
 import { useGraphStore } from '../store/graphStore'
 import type { GraphNode } from '../types/graph'
 import { useGraphHighlights } from './GraphPage/hooks/useGraphHighlights'
-import { useGraphFilters } from './GraphPage/hooks/useGraphFilters'
+//import { useGraphFilters } from './GraphPage/hooks/useGraphFilters'
 import { useGraphPhysics } from './GraphPage/hooks/useGraphPhysics'
-import { GraphNodeFilters } from './GraphPage/components/NodeFilter'
+//import { GraphNodeFilters } from './GraphPage/components/NodeFilter'
 import { GraphNodeDetailsPanel } from './GraphPage/components/DetailsPanel'
 
 // Constants
@@ -33,7 +33,7 @@ export function GraphPage() {
 
   //hooks
   const { connectedNodes } = useGraphHighlights(selectedNode || null, data)
-  const { visibleNodeTypes, filteredData, toggleNodeType } = useGraphFilters(data)
+  //const { visibleNodeTypes, filteredData, toggleNodeType } = useGraphFilters(data)
   useGraphPhysics(graphRef, data)
 
   //setup container resize observer
@@ -70,34 +70,35 @@ export function GraphPage() {
 
   return (
     <div ref={containerRef} style={{ position: 'relative', width: '100%', height: '100%', minHeight: MIN_GRAPH_HEIGHT }}>
-      <GraphNodeFilters visibleNodeTypes={visibleNodeTypes} onToggle={toggleNodeType} nodeColors={NODE_COLORS} />
+      {/* <GraphNodeFilters visibleNodeTypes={visibleNodeTypes} onToggle={toggleNodeType} nodeColors={NODE_COLORS} /> */} 
 
       <ForceGraph2D
         ref={graphRef}
         width={graphSize.width || undefined}
         height={graphSize.height || undefined}
-        graphData={filteredData()}
+        //graphData={filteredData()} //filter is disabled like in line 73 & 36
+        graphData={data || { nodes: [], links: [] }}
         nodeColor={(n: any) => {
           if (selectedNode?.id === n.id) return '#FFD700' // Selected node: gold
           return NODE_COLORS[n.type as keyof typeof NODE_COLORS] ?? '#888'
         }}
         nodeRelSize={5}
-        // nodeVal={(n: any) => selectedNode?.id === n.id ? 3 : 1}
+        nodeVal={(n: any) => selectedNode?.id === n.id ? 3 : 1}
         nodeLabel={(n: any) => n.label ?? n.id}
         linkWidth={(l: any) => {
-          // const source = typeof l.source === 'object' ? l.source.id : l.source
-          // const target = typeof l.target === 'object' ? l.target.id : l.target
-          // if (connectedNodes.has(source) && connectedNodes.has(target)) {
-          //   return Math.sqrt(l.value ?? l.weight ?? 1) * 2
-          // }
+          const source = typeof l.source === 'object' ? l.source.id : l.source
+          const target = typeof l.target === 'object' ? l.target.id : l.target
+          if (connectedNodes.has(source) && connectedNodes.has(target)) {
+            return Math.sqrt(l.value ?? l.weight ?? 1) * 2
+          }
           return Math.sqrt(l.value ?? l.weight ?? 1)
         }}
         linkColor={(l: any) => {
-          // const source = typeof l.source === 'object' ? l.source.id : l.source
-          // const target = typeof l.target === 'object' ? l.target.id : l.target
-          // if (connectedNodes.has(source) && connectedNodes.has(target)) {
-          //   return 'rgba(255, 215, 0, 0.8)'
-          // }
+          const source = typeof l.source === 'object' ? l.source.id : l.source
+          const target = typeof l.target === 'object' ? l.target.id : l.target
+          if (connectedNodes.has(source) && connectedNodes.has(target)) {
+            return 'rgba(255, 215, 0, 0.8)'
+          }
           return 'rgba(153,153,153,0.6)'
         }}
         enableNodeDrag
