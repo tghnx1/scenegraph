@@ -2,7 +2,7 @@ COMPOSE := docker compose
 ENV_FILE := .env
 ENV_EXAMPLE := .env.example
 
-.PHONY: help env build up upd down stop restart logs ps health clean
+.PHONY: help env build up upd down stop restart logs ps health clean list fclean
 
 help:
 	@printf "\n"
@@ -54,9 +54,24 @@ ps:
 
 health:
 	@printf "GET /health\n"
-	@curl -fsS http://localhost/health && printf "\n"
+	@curl -fsS http://localhost:8080/health && printf "\n"
 	@printf "\nGET /api/venues\n"
-	@curl -fsS http://localhost/api/venues && printf "\n"
+	@curl -fsS http://localhost:8080/api/venues && printf "\n"
+
+list:
+	@printf "%b\n" "${BLU}== Images ==${RES}" && docker images
+	@printf "%b\n" "${RED}== Containers ==${RES}" && docker ps -a
+	@printf "%b\n" "${GRE}== Volumes ==${RES}" && docker volume ls
+	@printf "%b\n" "${YEL}== Networks ==${RES}" && docker network ls
+	@printf "%b\n" "${MAG}== Container PID 1 ==${RES}"
+	@docker ps --format "{{.Names}}" | while read container; do \
+		cmd=$$(docker exec $$container cat /proc/1/cmdline 2>/dev/null | tr '\0' ' ' || echo "N/A"); \
+		printf "%s\t%s\n" "$$container" "$$cmd"; \
+	done
 
 clean:
 	$(COMPOSE) down -v
+
+fclean:
+	$(COMPOSE) down --rmi all -v --remove-orphans
+	docker builder prune -f

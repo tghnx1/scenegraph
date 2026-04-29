@@ -9,8 +9,8 @@ import { useNavigate }    from 'react-router-dom' //
 const NODE_COLORS: Record<string, string> = {
   artist:   '#7F77DD',
   venue:    '#1D9E75',
-  promoter: '#D85A30',
-  event:    '#F59E0B'
+  promoter: '#eb7751',
+  event:    '#9d2b2b'
 }
 
 const CENTERING_FORCE_STRENGTH = 0.04
@@ -123,6 +123,36 @@ export function GraphPage() {
     [activeGenre]
   )
 
+  // Compute all connected node IDs using breadth-first search
+  const getConnectedNodeIds = useCallback(() => {
+    if (!selectedNode || !data) return new Set<string>()
+    const visited = new Set<string>([selectedNode.id])
+    const queue: string[] = [selectedNode.id]
+    
+    while (queue.length > 0) {
+      const currentId = queue.shift()!
+      
+      // Find all neighbors of the current node
+      data.links?.forEach((link: any) => {
+        const source = typeof link.source === 'object' ? link.source.id : link.source
+        const target = typeof link.target === 'object' ? link.target.id : link.target
+        
+        if (source === currentId && !visited.has(target)) {
+          visited.add(target)
+          queue.push(target)
+        }
+        if (target === currentId && !visited.has(source)) {
+          visited.add(source)
+          queue.push(source)
+        }
+      })
+    }
+    
+    return visited
+  }, [selectedNode, data])
+
+  const connectedNodes = getConnectedNodeIds()
+
   const handleNodeClick = useCallback(
     (node: object) => {
       const n = node as GraphNode
@@ -172,19 +202,36 @@ export function GraphPage() {
   if (isLoading) return <p style={{ padding: 24 }}>Loading graph...</p>
   if (error) return <p style={{ padding: 24 }}>{error} — <button onClick={refetch}>retry</button></p>
 
-  return (
+    return (
     <div ref={containerRef} style={{ position: 'relative', width: '100%', height: '100%', minHeight: MIN_GRAPH_HEIGHT }}>
       <ForceGraph2D
         ref={graphRef}
         width={graphSize.width || undefined}
         height={graphSize.height || undefined}
         graphData={data ?? { nodes: [], links: [] }}
-        nodeColor={(n: any) => NODE_COLORS[n.type as keyof typeof NODE_COLORS] ?? '#888'}
+        nodeColor={(n: any) => {
+          if (selectedNode?.id === n.id) return '#FFD700' // Selected node: gold
+          return NODE_COLORS[n.type as keyof typeof NODE_COLORS] ?? '#888'
+        }}
         nodeRelSize={5}
-        nodeVal={() => 1}
+        nodeVal={(n: any) => selectedNode?.id === n.id ? 3 : 1} //larger selected node
         nodeLabel={(n: any) => n.label ?? n.id}
-        linkWidth={(l: any) => Math.sqrt(l.value ?? l.weight ?? 1)}
-        linkColor={() => 'rgba(153,153,153,0.6)'}
+        linkWidth={(l: any) => {
+          const source = typeof l.source === 'object' ? l.source.id : l.source
+          const target = typeof l.target === 'object' ? l.target.id : l.target
+          if (connectedNodes.has(source) && connectedNodes.has(target)) {
+            return Math.sqrt(l.value ?? l.weight ?? 1) * 2 // Thicker for highlighted links
+          }
+          return Math.sqrt(l.value ?? l.weight ?? 1)
+        }}
+        linkColor={(l: any) => {
+          const source = typeof l.source === 'object' ? l.source.id : l.source
+          const target = typeof l.target === 'object' ? l.target.id : l.target
+          if (connectedNodes.has(source) && connectedNodes.has(target)) {
+            return 'rgba(255, 215, 0, 0.8)' // Highlighted for connected links
+          }
+          return 'rgba(153,153,153,0.6)' // Original color for others
+        }}
         enableNodeDrag
         onNodeDrag={(node: any) => {
           node.fx = node.x
