@@ -22,7 +22,7 @@ export const fetchArtistEgoGraph = (artistId: string, depth = 2) => //fetches th
   api.get<GraphData>(`/graph/artist/${artistId}?depth=${depth}`) */
 
 import { MOCK_GRAPH } from './mock_data/mock'
-import type { GraphData } from '../types/graph'
+import type { GraphData, GraphNode, GraphEdge } from '../types/graph'
 
 export interface GraphParams {
   genre?:    string
@@ -38,8 +38,8 @@ export const fetchGraph = (params: GraphParams = {}): Promise<GraphData> => {
   const filtered = params.genre
     ? {
         ...MOCK_GRAPH,
-        nodes: MOCK_GRAPH.nodes.filter(n =>
-          n.genres.some(g =>
+        nodes: MOCK_GRAPH.nodes.filter((n: GraphNode) =>
+          n.genres?.some(g =>
             g.toLowerCase() === params.genre!.toLowerCase()
           )
         ),
@@ -52,15 +52,15 @@ export const fetchGraph = (params: GraphParams = {}): Promise<GraphData> => {
 export const fetchArtistEgoGraph = (artistId: string): Promise<GraphData> => {
   // Return only nodes and links connected to this artist
   const connectedLinks = MOCK_GRAPH.links.filter(
-    l => l.source === artistId || l.target === artistId
+    (l: GraphEdge) => l.source === artistId || l.target === artistId
   )
   const connectedIds = new Set([
     artistId,
-    ...connectedLinks.map(l => l.source as string),
-    ...connectedLinks.map(l => l.target as string),
+    ...connectedLinks.map((l: GraphEdge) => l.source as string),
+    ...connectedLinks.map((l: GraphEdge) => l.target as string),
   ])
   return Promise.resolve({
-    nodes: MOCK_GRAPH.nodes.filter(n => connectedIds.has(n.id)),
+    nodes: MOCK_GRAPH.nodes.filter((n: GraphNode) => connectedIds.has(n.id)),
     links: connectedLinks,
   })
 }

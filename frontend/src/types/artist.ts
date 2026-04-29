@@ -6,7 +6,7 @@ export interface Genre { //separate interface if genres are their own entities i
 
 export interface Artist { //should match the shape returned by GET /artists/:id from express (used in ArtistPage)
   id:             string //sg_id
-  raId?:           string //ra's id maybe unnecessary
+  raId?:          string //ra's id maybe unnecessary
   name:           string
   genres:         Genre[] //array to display both name and use slug for filtering without extra lookups
   bio?:           string
