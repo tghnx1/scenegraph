@@ -14,7 +14,6 @@ export interface GraphNode { //GraphNode interface
   content?:       string //events
   eventLinks?:      string //events
   bio?:           string //artists
-  
 }
 
 export interface GraphEdge { //GraphEdge interface, shape of every line in the force graph
