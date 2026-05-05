@@ -1,13 +1,19 @@
-export type NodeType = 'artist' | 'venue' | 'promoter' //NodeType union
+export type NodeType = 'artist' | 'venue' | 'promoter' | 'event' //NodeType union
 
 export interface GraphNode { //GraphNode interface
-  id:         string
-  type:       NodeType //can only be artist/venue/promoter
-  label:      string
-  genres:     string[]
-  eventCount: number
-  lat?:       number //with ? --> optional, only for venue (if necessary)
-  lng?:       number
+  id:             string //sg_id
+  type:           NodeType
+  label:          string
+  lat?:           number //venues
+  lng?:           number //venues
+  eventCount?:    number //venues
+  address?:       string //venues
+  genres?:        string[] //events amnd artists
+  interestCount?: number //events
+  date?:          string //events
+  content?:       string //events
+  eventLinks?:      string //events
+  bio?:           string //artists
 }
 
 export interface GraphEdge { //GraphEdge interface, shape of every line in the force graph
