@@ -1,27 +1,28 @@
-export type NodeType = 'artist' | 'event' | 'venue' | 'promoter' //NodeType union
+export type NodeType = 'artist' | 'event' | 'venue' | 'promoter'
 
-export interface GraphNode { //GraphNode interface
-  id:         string
-  type:       NodeType //can only be artist/venue/promoter
-  name:       string
-  genres:     string[]
+export interface GraphNode {
+  id: string
+  type: NodeType
+  name: string
+  genres: string[]
   eventCount?: number
-  entityId?:   number
-  date?:       string
-  startDate?:  string
-  endDate?:    string
-  district?:   string
-  lat?:       number //with ? --> optional, only for venue (if necessary)
-  lng?:       number
+  entityId?: number
+  date?: string
+  startDate?: string
+  endDate?: string
+  district?: string
+  lat?: number
+  lng?: number
 }
 
-export interface GraphEdge { //GraphEdge interface, shape of every line in the force graph
-  source: string //node id
-  target: string //node id
-  weight: number //line thickness
+export interface GraphEdge {
+  source: string
+  target: string
+  weight: number
+  relationship?: string
 }
 
-export interface GraphData { //shape of the API response from GET /graph (what useApi returns and what ForceGraph2D receives)
+export interface GraphData {
   nodes: GraphNode[]
-  links: GraphEdge[] //react-force-graph-2d expects "links" not "edges", dunno how this will work later (hopefully express return "links" too)
+  links: GraphEdge[]
 }
