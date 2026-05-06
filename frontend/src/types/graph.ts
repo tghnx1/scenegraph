@@ -1,11 +1,16 @@
-export type NodeType = 'artist' | 'venue' | 'promoter' //NodeType union
+export type NodeType = 'artist' | 'event' | 'venue' | 'promoter' //NodeType union
 
 export interface GraphNode { //GraphNode interface
   id:         string
   type:       NodeType //can only be artist/venue/promoter
-  label:      string
+  name:       string
   genres:     string[]
-  eventCount: number
+  eventCount?: number
+  entityId?:   number
+  date?:       string
+  startDate?:  string
+  endDate?:    string
+  district?:   string
   lat?:       number //with ? --> optional, only for venue (if necessary)
   lng?:       number
 }

@@ -44,14 +44,13 @@ class GraphNode(BaseModel):
     id: str
     entityId: int
     type: Literal["artist", "event", "venue", "promoter"]
-    label: str
     name: str
-    genre: str | None = None
     genres: list[str] = Field(default_factory=list)
     eventCount: int | None = None
     date: DateValue | None = None
+    startDate: DateValue | None = None
+    endDate: DateValue | None = None
     district: str | None = None
-    sceneFocus: str | None = None
 
 
 class GraphLink(BaseModel):
@@ -158,8 +157,7 @@ async def get_graph(
                 e.genre,
                 e.venue_id,
                 v.name AS venue_name,
-                v.district AS venue_district,
-                v.scene_focus AS venue_scene_focus
+                v.district AS venue_district
             FROM events e
             JOIN venues v
                 ON v.id = e.venue_id
@@ -215,9 +213,7 @@ async def get_graph(
             id=graph_node_id("artist", artist["id"]),
             entityId=artist["id"],
             type="artist",
-            label=artist["name"],
             name=artist["name"],
-            genre=artist["genre"],
             genres=[artist["genre"]],
             eventCount=artist["event_count"],
         )
@@ -228,20 +224,18 @@ async def get_graph(
             id=graph_node_id("event", event["id"]),
             entityId=event["id"],
             type="event",
-            label=event["title"],
             name=event["title"],
-            genre=event["genre"],
             genres=[event["genre"]],
             date=event["event_date"],
+            startDate=event["event_date"],
+            endDate=event["event_date"],
         )
         venue_node = GraphNode(
             id=graph_node_id("venue", event["venue_id"]),
             entityId=event["venue_id"],
             type="venue",
-            label=event["venue_name"],
             name=event["venue_name"],
             district=event["venue_district"],
-            sceneFocus=event["venue_scene_focus"],
         )
 
         nodes_by_id[event_node.id] = event_node
