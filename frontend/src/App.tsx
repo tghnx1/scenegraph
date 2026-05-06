@@ -32,11 +32,12 @@ export default function App() {
  */
 
 //maybe better colours
-import type { CSSProperties, ReactNode } from 'react'
+import { useState, type CSSProperties, type FormEvent, type ReactNode } from 'react'
 import { Routes, Route, Navigate, NavLink, Link } from 'react-router-dom'
 import { GraphPage } from './pages/GraphPage'
 import { DashboardPage } from './pages/DashboardPage'
 import { ArtistPage } from './pages/ArtistPage'
+import { SearchResultsPage } from './pages/SearchResultsPage'
 import {
   hexToRgba,
   LINK_HIGHLIGHT,
@@ -115,6 +116,17 @@ function LegalPage({ title, children }: LegalPageProps) {
 }
 
 export default function App() {
+  const [searchValue, setSearchValue] = useState('')
+
+  const handleSearchSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    const nextQuery = searchValue.trim()
+
+    if (!nextQuery) return
+
+    window.location.href = `/search?q=${encodeURIComponent(nextQuery)}`
+  }
+
   return (
     <div style={shellStyle}>
       <nav style={navStyle}>
@@ -141,6 +153,17 @@ export default function App() {
         >
           Dashboard
         </NavLink>
+
+        <form className="nav-search-form" onSubmit={handleSearchSubmit}>
+          <input
+            className="nav-search-input"
+            type="search"
+            value={searchValue}
+            onChange={(event) => setSearchValue(event.target.value)}
+            placeholder="Search artists, venues, promoters, events..."
+            aria-label="Search"
+          />
+        </form>
       </nav>
 
       <main style={{ flex: 1, overflow: 'hidden' }}>
@@ -148,6 +171,7 @@ export default function App() {
           <Route path="/" element={<Navigate to="/graph" />} />
           <Route path="/graph" element={<GraphPage />} />
           <Route path="/dashboard" element={<DashboardPage />} />
+          <Route path="/search" element={<SearchResultsPage />} />
           <Route path="/artist/:id" element={<ArtistPage />} />
           <Route
             path="/privacy-policy"
