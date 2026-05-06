@@ -8,6 +8,7 @@ import { useNavigate }    from 'react-router-dom' //
 
 const NODE_COLORS: Record<string, string> = {
   artist:   '#7F77DD',
+  event:    '#D6A247',
   venue:    '#1D9E75',
   promoter: '#D85A30',
 }
@@ -111,7 +112,7 @@ export function GraphPage() {
       <ForceGraph2D
         graphData={data ?? { nodes: [], links: [] }}
         nodeColor={(n: any) => NODE_COLORS[n.type as keyof typeof NODE_COLORS] ?? '#888'}
-        nodeLabel="label"
+        nodeLabel="name"
         linkWidth={(l: any) => Math.sqrt(l.weight ?? 1)}
         onNodeClick={handleNodeClick}
         backgroundColor="transparent"
@@ -137,8 +138,10 @@ export function GraphPage() {
               <div style={{ fontSize: 12, color: '#9aa', textTransform: 'uppercase' }}>
                 {selectedNode.type}
               </div>
-              <h3 style={{ margin: '4px 0 8px 0' }}>{selectedNode.label}</h3>
-              <div style={{ fontSize: 13, color: '#bbb' }}>{selectedNode.eventCount} events</div>
+              <h3 style={{ margin: '4px 0 8px 0' }}>{selectedNode.name}</h3>
+              {selectedNode.eventCount !== undefined && (
+                <div style={{ fontSize: 13, color: '#bbb' }}>{selectedNode.eventCount} events</div>
+              )}
               <div style={{ fontSize: 13, color: '#bbb', marginTop: 4 }}>
                 {selectedNode.genres?.slice(0, 4).join(' · ') || 'No genres'}
               </div>
