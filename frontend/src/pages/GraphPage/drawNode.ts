@@ -1,10 +1,4 @@
-const NODE_COLORS: Record<string, string> = {
-  artist:     '#7F77DD',
-  venue:      '#1D9E75',
-  promoter:   '#eb7751',
-  event:      '#9d2b2b',
-  selection:  '#FFD700'
-}
+import { NODE_COLORS } from '../../styles/colors'
 
 export const drawNodeShape = (ctx: CanvasRenderingContext2D, x: number, y: number, size: number, type: string, isSelected: boolean) => {
   if (x === undefined || y === undefined) return
@@ -13,7 +7,7 @@ export const drawNodeShape = (ctx: CanvasRenderingContext2D, x: number, y: numbe
   ctx.translate(x, y)
 
   const displaySize = isSelected ? size * 1.5 : size
-  const color = isSelected ? NODE_COLORS['selection'] : NODE_COLORS[type as keyof typeof NODE_COLORS] ?? '#888'
+  const color = isSelected ? NODE_COLORS['selection'] : NODE_COLORS[type as keyof typeof NODE_COLORS] ?? NODE_COLORS['promoter']
   ctx.fillStyle = color
   ctx.strokeStyle = isSelected ? NODE_COLORS['selection'] : 'transparent'
   ctx.lineWidth = isSelected ? 3 : 0

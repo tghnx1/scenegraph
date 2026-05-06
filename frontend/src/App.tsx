@@ -37,6 +37,14 @@ import { Routes, Route, Navigate, NavLink, Link } from 'react-router-dom'
 import { GraphPage } from './pages/GraphPage'
 import { DashboardPage } from './pages/DashboardPage'
 import { ArtistPage } from './pages/ArtistPage'
+import {
+  hexToRgba,
+  LINK_HIGHLIGHT,
+  ACCENT_WARM,
+  BACKGROUND,
+  TEXT,
+  TEXT_MUTED,
+} from './styles/colors'
 
 type LegalPageProps = {
   title: string
@@ -47,15 +55,14 @@ const shellStyle: CSSProperties = {
   display: 'flex',
   flexDirection: 'column',
   height: '100vh',
-  color: '#e5e7eb',
-  background:
-    'radial-gradient(1000px 520px at 12% -10%, rgba(59,130,246,0.22), transparent 60%), radial-gradient(900px 460px at 95% 0%, rgba(16,185,129,0.18), transparent 55%), #0b1220',
+  color: TEXT,
+  background: `radial-gradient(1000px 520px at 12% -10%, ${hexToRgba(LINK_HIGHLIGHT, 0.18)}, transparent 60%), radial-gradient(900px 460px at 95% 0%, ${hexToRgba(ACCENT_WARM, 0.15)}, transparent 55%), ${BACKGROUND}`,
 }
 
 const navStyle: CSSProperties = {
   padding: '12px 20px',
-  borderBottom: '1px solid rgba(148, 163, 184, 0.25)',
-  background: 'rgba(11, 18, 32, 0.55)',
+  borderBottom: `1px solid ${hexToRgba(TEXT, 0.18)}`,
+  background: hexToRgba(BACKGROUND, 0.55),
   backdropFilter: 'blur(6px)',
   display: 'flex',
   gap: 12,
@@ -68,9 +75,9 @@ const footerStyle: CSSProperties = {
   alignItems: 'center',
   justifyContent: 'space-between',
   padding: '14px 20px',
-  borderTop: '1px solid rgba(148, 163, 184, 0.18)',
-  background: 'rgba(11, 18, 32, 0.72)',
-  color: '#94a3b8',
+  borderTop: `1px solid ${hexToRgba(TEXT, 0.15)}`,
+  background: hexToRgba(BACKGROUND, 0.72),
+  color: TEXT_MUTED,
   fontSize: 13,
 }
 
@@ -81,13 +88,13 @@ const footerLinksStyle: CSSProperties = {
 }
 
 const legalLinkStyle: CSSProperties = {
-  color: '#cbd5e1',
+  color: TEXT_MUTED,
   textDecoration: 'none',
 }
 
 const linkBaseStyle: CSSProperties = {
   textDecoration: 'none',
-  color: '#cbd5e1',
+  color: TEXT_MUTED,
   padding: '6px 10px',
   borderRadius: 8,
   fontSize: 14,
@@ -115,9 +122,9 @@ export default function App() {
           to="/graph"
           style={({ isActive }) => ({
             ...linkBaseStyle,
-            background: isActive ? 'rgba(59,130,246,0.22)' : 'transparent',
-            color: isActive ? '#eff6ff' : '#cbd5e1',
-            border: isActive ? '1px solid rgba(96,165,250,0.45)' : '1px solid transparent',
+            background: isActive ? hexToRgba(LINK_HIGHLIGHT, 0.2) : 'transparent',
+            color: isActive ? TEXT : TEXT_MUTED,
+            border: isActive ? `1px solid ${hexToRgba(LINK_HIGHLIGHT, 0.45)}` : '1px solid transparent',
           })}
         >
           Graph
@@ -127,9 +134,9 @@ export default function App() {
           to="/dashboard"
           style={({ isActive }) => ({
             ...linkBaseStyle,
-            background: isActive ? 'rgba(16,185,129,0.2)' : 'transparent',
-            color: isActive ? '#ecfeff' : '#cbd5e1',
-            border: isActive ? '1px solid rgba(52,211,153,0.45)' : '1px solid transparent',
+            background: isActive ? hexToRgba(ACCENT_WARM, 0.2) : 'transparent',
+            color: isActive ? TEXT : TEXT_MUTED,
+            border: isActive ? `1px solid ${hexToRgba(ACCENT_WARM, 0.45)}` : '1px solid transparent',
           })}
         >
           Dashboard
@@ -178,7 +185,7 @@ export default function App() {
             path="/contact"
             element={
               <LegalPage title="Contact">
-                Email, form, or other ways for contact.
+                - Empty - Email, form, or other ways for contact.
               </LegalPage>
             }
           />
