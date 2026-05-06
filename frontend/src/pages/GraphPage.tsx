@@ -10,6 +10,7 @@ import { useGraphPhysics } from './GraphPage/hooks/useGraphPhysics'
 //import { GraphNodeFilters } from './GraphPage/components/NodeFilter'
 import { GraphNodeDetailsPanel } from './GraphPage/components/DetailsPanel'
 import { drawNodeShape } from './GraphPage/drawNode.ts'
+import { LINK_HIGHLIGHT, LINK_DIM, BACKGROUND, hexToRgba } from '../styles/colors'
 
 const MIN_GRAPH_HEIGHT = 520
 
@@ -91,9 +92,9 @@ export function GraphPage() {
           const source = typeof l.source === 'object' ? l.source.id : l.source
           const target = typeof l.target === 'object' ? l.target.id : l.target
           if (connectedNodes.has(source) && connectedNodes.has(target)) {
-            return 'rgba(255, 215, 0, 0.8)'
+            return hexToRgba(LINK_HIGHLIGHT, 0.8)
           }
-          return 'rgba(153,153,153,0.6)'
+          return hexToRgba(LINK_DIM, 0.6)
         }}
         enableNodeDrag
         onNodeDrag={(node: any) => {
@@ -105,7 +106,7 @@ export function GraphPage() {
           node.fy = null
         }}
         onNodeClick={handleNodeClick}
-        backgroundColor="#0b1220"
+        backgroundColor={BACKGROUND}
         warmupTicks={120} //120
         cooldownTicks={180} //180
       />
