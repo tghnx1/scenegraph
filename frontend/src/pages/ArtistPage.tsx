@@ -50,12 +50,12 @@ export function ArtistPage() {
     <div style={{ padding:32, maxWidth:640 }}>
 
       {/* Back button */}
-      <button
+{/*       <button
         onClick={() => navigate('/graph')}
         style={{ marginBottom:20, cursor:'pointer' }}
       >
         ← Back to graph
-      </button>
+      </button> */}
 
       {/* Artist header */}
       <h1 style={{ fontSize:28, marginBottom:6 }}>{artist.name}</h1>
