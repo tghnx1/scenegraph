@@ -1,13 +1,13 @@
 :root {
-  /* CSS variables mapped to the centralized palette */
+  /* css vars mapped to the centralized palette, fallback */
   --nord-artist: #B48EAD;
   --nord-venue: #A3BE8C;
   --nord-promoter: #88C0D0;
   --nord-event: #BF616A;
   --nord-selection: #EBCB8B;
-  --nord-link-highlight: #A3BE8C;
+  --nord-link-highlight: #EBCB8B;
   --nord-link-dim: #D8DEE9;
-  --nord-background: #0b1220;
+  --nord-background: #3B4252;
   --nord-text: #EBF3EF;
   --nord-text-muted: #C9D6D1;
   --nord-accent: #7FE0D2;

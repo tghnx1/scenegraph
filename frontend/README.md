@@ -12,7 +12,7 @@ $> npm --version
 
 ## Install modules/components
 ```sh
-$> npm install
+$> npm ci
 ```
 
 ## Test the page
@@ -25,9 +25,5 @@ $> npm run dev
 ## Notes
 - used mock data instead of direct request to backend to avoid having 502 errors.
 	- click on artists to display artist page (again just a mock data).
-	- the map tab is just a placeholder, can be a link to a dashboard (maybe).
-- gallery of [react-force-graph](https://github.com/vasturiano/react-force-graph)
-	- alternatives:
-		- [vis network](https://visjs.github.io/vis-network/examples/)
-		- [d3.js](https://observablehq.com/@d3/gallery?utm_source=d3js-org&utm_medium=hero&utm_campaign=try-observable#networks)
-		- [cytoscape.js](https://js.cytoscape.org/#demos)
+- merge with main 28.4.26 --> change nginx to 8080:80
+	- so after make up, go to http://localhost:8080

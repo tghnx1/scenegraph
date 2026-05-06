@@ -1,5 +1,5 @@
-import type { GraphData }    from '../types/graph'
-import type { Artist, SimilarArtist } from '../types/artist'
+import type { GraphData }    from '../../types/graph'
+import type { Artist, SimilarArtist } from '../../types/artist'
 
 // Events: UNITY @ KitKatClub (2343582) and Savory @ OST (2398252)
 
