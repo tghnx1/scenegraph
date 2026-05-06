@@ -1,6 +1,6 @@
 import { useNavigate } from 'react-router-dom'
 import type { GraphNode } from '../../../types/graph'
-import { BACKGROUND, GRADIENT_MID, TEXT, TEXT_MUTED, hexToRgba } from '../../../styles/colors'
+import { BACKGROUND, GRADIENT_MID, TEXT, TEXT_MUTED, SHADOW, hexToRgba } from '../../../styles/colors'
 
 interface GraphNodeDetailsPanelProps {
   selectedNode: GraphNode | null
@@ -24,7 +24,7 @@ export function GraphNodeDetailsPanel({ selectedNode, onClose }: GraphNodeDetail
         borderRadius: 12,
         padding: 16,
         color: TEXT,
-        boxShadow: '0 10px 30px rgba(0,0,0,0.35)',
+        boxShadow: `0 10px 30px ${hexToRgba(SHADOW, 0.35)}`,
       }}
     >
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
