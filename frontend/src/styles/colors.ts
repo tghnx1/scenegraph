@@ -1,4 +1,4 @@
-// Centralized color palette (Nord-inspired)
+//centralized color palette (Nord)
 export const NODE_COLORS: Record<string, string> = {
   artist:    '#B48EAD',
   venue:     '#A3BE8C',
@@ -7,19 +7,47 @@ export const NODE_COLORS: Record<string, string> = {
   selection: '#EBCB8B',
 }
 
-export const LINK_HIGHLIGHT = '#EBCB8B' // frost/green
-export const LINK_DIM = '#D8DEE9' // light gray
-
+export const LINK_HIGHLIGHT = '#EBCB8B'
+export const LINK_DIM = '#D8DEE9'
 export const BACKGROUND = '#3B4252'
-
-// Additional palette tokens used across the app
 export const TEXT = '#EBF3EF'
 export const TEXT_MUTED = '#C9D6D1'
 export const ACCENT = '#7FE0D2'
 export const ACCENT_WARM = '#D08770'
+export const SHADOW = '#000000'
 export const GRADIENT_START = '#071117'
 export const GRADIENT_MID = '#0f2733'
 export const GRADIENT_END = '#16384a'
+
+export const PALETTE: Record<string, string> = {
+  '--nord-artist': NODE_COLORS.artist,
+  '--nord-venue': NODE_COLORS.venue,
+  '--nord-promoter': NODE_COLORS.promoter,
+  '--nord-event': NODE_COLORS.event,
+  '--nord-selection': NODE_COLORS.selection,
+  '--nord-link-highlight': LINK_HIGHLIGHT,
+  '--nord-link-dim': LINK_DIM,
+  '--nord-background': BACKGROUND,
+  '--nord-text': TEXT,
+  '--nord-text-muted': TEXT_MUTED,
+  '--nord-accent': ACCENT,
+  '--nord-accent-warm': ACCENT_WARM,
+  '--nord-shadow': SHADOW,
+  '--nord-gradient-start': GRADIENT_START,
+  '--nord-gradient-mid': GRADIENT_MID,
+  '--nord-gradient-end': GRADIENT_END,
+}
+
+export function applyCssVars() {
+  if (typeof document === 'undefined') return
+  const root = document.documentElement
+  Object.entries(PALETTE).forEach(([k, v]) => root.style.setProperty(k, v))
+}
+
+export const getCssVar = (name: string) => {
+  if (typeof window === 'undefined') return ''
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim()
+}
 
 export function hexToRgba(hex: string, alpha = 1) {
   const h = hex.replace('#', '')
@@ -43,5 +71,8 @@ export default {
   GRADIENT_START,
   GRADIENT_MID,
   GRADIENT_END,
+  PALETTE,
+  applyCssVars,
+  getCssVar,
   hexToRgba,
 }
