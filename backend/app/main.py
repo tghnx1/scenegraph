@@ -98,7 +98,11 @@ async def list_venues(connection: Connection = Depends(get_db)) -> VenuesRespons
     return VenuesResponse(venues=[Venue(**venue) for venue in venues])
 
 
-@app.get("/api/graph", response_model=GraphResponse)
+@app.get(
+    "/api/graph",
+    response_model=GraphResponse,
+    response_model_exclude_none=True,
+)
 async def get_graph(
     genre: str | None = Query(default=None, min_length=1),
     date_from: DateValue | None = Query(default=None, alias="dateFrom"),
