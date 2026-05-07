@@ -8,6 +8,27 @@ import type {
   SearchEventSummary,
 } from '../../types/search'
 
+function getMockArtist(artistId: string, fallbackLabel: string) {
+  const artist = MOCK_ARTISTS[artistId]
+
+  if (!artist) {
+    return {
+      id: artistId,
+      name: fallbackLabel,
+      genres: [],
+      bio: '',
+      eventCount: 0,
+    }
+  }
+
+  return artist
+}
+
+const ellerArtist = getMockArtist('artist-156016', 'ELLER')
+const connectedArtist1 = getMockArtist('artist-111515', 'artist-111515')
+const connectedArtist2 = getMockArtist('artist-170313', 'artist-170313')
+const unityEventArtist3 = getMockArtist('artist-155300', 'artist-155300')
+
 const unityEventSummary: SearchEventSummary = {
   id: 'event-unity-2025-01-18',
   label: 'UNITY',
@@ -28,21 +49,21 @@ const savoryEventSummary: SearchEventSummary = {
 
 const ellerResult: SearchArtistResult = {
   type: 'artist',
-  id: MOCK_ARTISTS['artist-156016'].id,
-  label: MOCK_ARTISTS['artist-156016'].name,
-  genres: MOCK_ARTISTS['artist-156016'].genres.map((genre) => genre.name),
-  bio: MOCK_ARTISTS['artist-156016'].bio,
-  eventCount: MOCK_ARTISTS['artist-156016'].eventCount ?? 1,
+  id: ellerArtist.id,
+  label: ellerArtist.name,
+  genres: ellerArtist.genres.map((genre) => genre.name),
+  bio: ellerArtist.bio,
+  eventCount: ellerArtist.eventCount ?? 1,
   events: [unityEventSummary],
   connectedArtists: [
     {
-      id: MOCK_ARTISTS['artist-111515'].id,
-      label: MOCK_ARTISTS['artist-111515'].name,
+      id: connectedArtist1.id,
+      label: connectedArtist1.name,
       sharedEvents: 1,
     },
     {
-      id: MOCK_ARTISTS['artist-170313'].id,
-      label: MOCK_ARTISTS['artist-170313'].name,
+      id: connectedArtist2.id,
+      label: connectedArtist2.name,
       sharedEvents: 1,
     },
   ],
@@ -77,20 +98,20 @@ const unityEventResult: SearchEventResult = {
   },
   artists: [
     {
-      id: MOCK_ARTISTS['artist-156016'].id,
-      label: MOCK_ARTISTS['artist-156016'].name,
+      id: ellerArtist.id,
+      label: ellerArtist.name,
     },
     {
-      id: MOCK_ARTISTS['artist-111515'].id,
-      label: MOCK_ARTISTS['artist-111515'].name,
+      id: connectedArtist1.id,
+      label: connectedArtist1.name,
     },
     {
-      id: MOCK_ARTISTS['artist-170313'].id,
-      label: MOCK_ARTISTS['artist-170313'].name,
+      id: connectedArtist2.id,
+      label: connectedArtist2.name,
     },
     {
-      id: MOCK_ARTISTS['artist-155300'].id,
-      label: MOCK_ARTISTS['artist-155300'].name,
+      id: unityEventArtist3.id,
+      label: unityEventArtist3.name,
     },
   ],
   promoters: [
@@ -112,8 +133,8 @@ const savoryEventResult: SearchEventResult = {
   },
   artists: [
     {
-      id: MOCK_ARTISTS['artist-155300'].id,
-      label: MOCK_ARTISTS['artist-155300'].name,
+      id: unityEventArtist3.id,
+      label: unityEventArtist3.name,
     },
   ],
   promoters: [
