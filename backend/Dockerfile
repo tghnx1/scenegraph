@@ -10,9 +10,13 @@ ENV PYTHONUNBUFFERED=1
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY app ./app
+COPY prisma ./prisma/
+COPY app ./app/
+COPY data ./data/
+COPY .env .
+COPY scripts ./scripts/
 
-RUN npx prisma generate
+RUN npx prisma@5.17.0 generate
 
 EXPOSE 3000
 
