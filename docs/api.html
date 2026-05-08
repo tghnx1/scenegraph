@@ -489,6 +489,42 @@ make health</pre>
         it asks before deleting and recreating it. Use <code>RESET_DB=1</code> only when you intentionally want to skip the prompt.
       </p>
     </section>
+
+    <section class="section">
+      <h2>Dump Import vs Incremental Import</h2>
+      <p>
+        Use the SQL dump workflow when a teammate needs the same database snapshot as another teammate.
+        A dump is treated as a full restore, not as an incremental patch.
+      </p>
+      <table>
+        <thead>
+          <tr>
+            <th>Workflow</th>
+            <th>Command</th>
+            <th>When to use it</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Full snapshot restore</td>
+            <td><code>make import-dump DUMP=/absolute/path/to/scenegraph_dump.sql</code></td>
+            <td>Use when sharing a complete local database state with the team. If the database exists, the script asks before overwriting it.</td>
+          </tr>
+          <tr>
+            <td>Incremental/upsert import</td>
+            <td><code>make import-events</code></td>
+            <td>Use when adding or updating event data without deleting the existing database.</td>
+          </tr>
+        </tbody>
+      </table>
+      <p style="margin-top: 12px;">
+        Plain SQL dumps usually contain <code>CREATE TABLE</code>, <code>INSERT</code>, or <code>COPY</code> statements.
+        Replaying them into an existing database can fail on existing tables, duplicate keys, or duplicate rows.
+        For incremental imports, use the validated importer because it writes with upsert behavior.
+        If SQL dumps ever become the required incremental exchange format, restore the dump into a staging database first,
+        then merge into the main database with explicit <code>INSERT ... ON CONFLICT DO UPDATE</code> statements.
+      </p>
+    </section>
   </main>
 </body>
 </html>
