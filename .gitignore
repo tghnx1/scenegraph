@@ -32,6 +32,10 @@ parsers/data/logs/*.log
 parsers/data/runtime/
 parsers/data/debug/**/*.html
 parsers/data/debug/**/*.png
+backend/data/*.json
+backend/data/*.jsonl
+backend/data/*.csv
+!backend/data/.gitkeep
 
 # IDEs
 .idea/

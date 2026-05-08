@@ -2,7 +2,7 @@ COMPOSE := docker compose
 ENV_FILE := .env
 ENV_EXAMPLE := .env.example
 
-.PHONY: help env build up upd down stop restart logs ps health prisma-migrate prisma-studio db-shell clean list fclean
+.PHONY: help env build up upd down stop restart logs ps health prisma-migrate prisma-studio db-shell import-events clean list fclean
 
 help:
 	@printf "\n"
@@ -21,6 +21,7 @@ help:
 	@printf "  make prisma-migrate Apply Prisma migrations to Postgres\n"
 	@printf "  make prisma-studio  Open Prisma Studio on localhost:5555\n"
 	@printf "  make db-shell Open a psql shell inside the Postgres container\n"
+	@printf "  make import-events Import backend/data/ra_berlin_past_events_2026.json\n"
 	@printf "  make clean    Stop stack and remove volumes\n"
 	@printf "  make list     List Docker resources\n"
 	@printf "  make fclean   Remove containers, images, volumes, and builder cache\n"
@@ -71,6 +72,9 @@ prisma-studio: env
 
 db-shell: env
 	$(COMPOSE) exec db psql -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"
+
+import-events: env
+	$(COMPOSE) exec backend python scripts/import_events.py
 
 list:
 	@printf "%b\n" "${BLU}== Images ==${RES}" && docker images
