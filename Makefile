@@ -2,7 +2,7 @@ COMPOSE := docker compose
 ENV_FILE := .env
 ENV_EXAMPLE := .env.example
 
-.PHONY: help env build up upd down stop restart logs ps health clean
+.PHONY: help env build up upd down stop restart logs ps health prisma-migrate prisma-studio db-shell clean
 
 help:
 	@printf "\n"
@@ -18,6 +18,9 @@ help:
 	@printf "  make logs     Follow compose logs\n"
 	@printf "  make ps       Show running services\n"
 	@printf "  make health   Check nginx and API health endpoints\n"
+	@printf "  make prisma-migrate Apply Prisma migrations to Postgres\n"
+	@printf "  make prisma-studio  Open Prisma Studio on localhost:5555\n"
+	@printf "  make db-shell Open a psql shell inside the Postgres container\n"
 	@printf "  make clean    Stop stack and remove volumes\n"
 	@printf "\n"
 
@@ -57,6 +60,15 @@ health:
 	@curl -fsS http://localhost/health && printf "\n"
 	@printf "\nGET /api/venues\n"
 	@curl -fsS http://localhost/api/venues && printf "\n"
+
+prisma-migrate: env
+	$(COMPOSE) --profile tools run --rm --build prisma
+
+prisma-studio: env
+	$(COMPOSE) --profile tools run --rm --build --service-ports prisma npx prisma studio --hostname 0.0.0.0 --port 5555
+
+db-shell: env
+	$(COMPOSE) exec db psql -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"
 
 clean:
 	$(COMPOSE) down -v
