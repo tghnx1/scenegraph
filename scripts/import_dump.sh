@@ -15,8 +15,52 @@ Usage:
 Notes:
   - Supports plain SQL dumps.
   - Keep dump files local; they are ignored by git.
-  - RESET_DB=1 drops and recreates the configured database before import.
+  - If the configured database does not exist, it is created automatically.
+  - If the configured database exists, the script asks before overwriting it.
+  - RESET_DB=1 skips the prompt and overwrites the configured database.
 EOF
+}
+
+database_exists() {
+  docker compose exec -T db sh -lc '
+    psql -v ON_ERROR_STOP=1 \
+      -U "$POSTGRES_USER" \
+      -d postgres \
+      -v db="$POSTGRES_DB" \
+      -tA <<'"'"'SQL'"'"'
+SELECT 1 FROM pg_database WHERE datname = :'"'"'db'"'"';
+SQL
+  '
+}
+
+create_database() {
+  docker compose exec -T db sh -lc '
+    psql -v ON_ERROR_STOP=1 \
+      -U "$POSTGRES_USER" \
+      -d postgres \
+      -v db="$POSTGRES_DB" \
+      -v owner="$POSTGRES_USER" <<'"'"'SQL'"'"'
+CREATE DATABASE :"db" OWNER :"owner";
+SQL
+  '
+}
+
+recreate_database() {
+  docker compose stop backend frontend nginx >/dev/null 2>&1 || true
+  docker compose exec -T db sh -lc '
+    set -eu
+    psql -v ON_ERROR_STOP=1 \
+      -U "$POSTGRES_USER" \
+      -d postgres \
+      -v db="$POSTGRES_DB" \
+      -v owner="$POSTGRES_USER" <<'"'"'SQL'"'"'
+SELECT pg_terminate_backend(pid)
+FROM pg_stat_activity
+WHERE datname = :'"'"'db'"'"' AND pid <> pg_backend_pid();
+DROP DATABASE IF EXISTS :"db";
+CREATE DATABASE :"db" OWNER :"owner";
+SQL
+  '
 }
 
 if [ "${1:-}" = "-h" ] || [ "${1:-}" = "--help" ]; then
@@ -43,27 +87,37 @@ docker compose up -d db
 
 echo "Waiting for Postgres to accept connections..."
 docker compose exec -T db sh -lc '
-  until pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB" >/dev/null 2>&1; do
+  until pg_isready -U "$POSTGRES_USER" -d postgres >/dev/null 2>&1; do
     sleep 1
   done
 '
 
-if [ "$RESET_DB" = "1" ]; then
-  echo "RESET_DB=1: dropping and recreating database..."
-  docker compose exec -T db sh -lc '
-    set -eu
-    psql -v ON_ERROR_STOP=1 \
-      -U "$POSTGRES_USER" \
-      -d postgres \
-      -v db="$POSTGRES_DB" \
-      -v owner="$POSTGRES_USER" <<'"'"'SQL'"'"'
-SELECT pg_terminate_backend(pid)
-FROM pg_stat_activity
-WHERE datname = :'"'"'db'"'"' AND pid <> pg_backend_pid();
-DROP DATABASE IF EXISTS :"db";
-CREATE DATABASE :"db" OWNER :"owner";
-SQL
-  '
+DB_EXISTS=$(database_exists)
+
+if [ "$DB_EXISTS" = "1" ]; then
+  if [ "$RESET_DB" = "1" ]; then
+    echo "RESET_DB=1: overwriting existing database..."
+    recreate_database
+  else
+    printf "Database already exists. Overwrite it before import? This will delete current local data. [y/N] "
+    if ! IFS= read -r ANSWER; then
+      ANSWER=
+      printf "\n"
+    fi
+    case "$ANSWER" in
+      y|Y|yes|YES)
+        echo "Overwriting existing database..."
+        recreate_database
+        ;;
+      *)
+        echo "Import canceled. Existing database was left unchanged."
+        exit 1
+        ;;
+    esac
+  fi
+else
+  echo "Database does not exist. Creating it..."
+  create_database
 fi
 
 echo "Importing SQL dump into database..."
