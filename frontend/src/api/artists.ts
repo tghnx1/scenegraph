@@ -8,7 +8,7 @@ export const fetchSimilarArtists = (id: string) =>
   api.get<SimilarArtist[]>(`/artists/${id}/similar`) //returns an [], not a single object
 */
 
-import { MOCK_ARTISTS, MOCK_SIMILAR } from './mock'
+import { MOCK_ARTISTS, MOCK_SIMILAR } from './mock_data/mock'
 import type { Artist, SimilarArtist } from '../types/artist'
 
 export const fetchArtist = (id: string): Promise<Artist> => {
