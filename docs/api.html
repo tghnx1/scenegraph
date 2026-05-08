@@ -484,6 +484,10 @@ make import-dump DUMP=/absolute/path/to/scenegraph_dump.sql
 RESET_DB=1 make import-dump DUMP=/absolute/path/to/scenegraph_dump.sql
 make db-shell
 make health</pre>
+      <p style="margin-top: 12px;">
+        <code>make import-dump</code> creates the configured database if it is missing. If the database already exists,
+        it asks before deleting and recreating it. Use <code>RESET_DB=1</code> only when you intentionally want to skip the prompt.
+      </p>
     </section>
   </main>
 </body>
