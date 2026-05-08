@@ -344,6 +344,29 @@ Use RA IDs as natural unique keys:
 
 Do not create duplicate rows when an entity appears in multiple events.
 
+### Rule 2.1 — use the right import workflow
+
+There are two different local database workflows:
+
+1. Full database snapshot restore:
+   - command: `make import-dump DUMP=/absolute/path/to/scenegraph_dump.sql`
+   - purpose: give a teammate the same local database state as another teammate
+   - behavior: if the configured database does not exist, the script creates it; if it exists, the script asks before overwriting it
+   - use this for team handoff snapshots, not for adding only new rows
+
+2. Incremental/upsert event import:
+   - command: `make import-events`
+   - purpose: add or update event data without deleting the existing database
+   - behavior: the importer uses stable RA IDs and `ON CONFLICT` upsert rules
+   - use this when the goal is "only new or changed data"
+
+Do not treat a plain `dump.sql` as an incremental patch. SQL dumps usually
+contain `CREATE TABLE`, `INSERT`, or `COPY` statements and can fail or duplicate
+data when replayed into an existing database. If the team later needs
+incremental import from SQL dumps, import the dump into a staging database first,
+then merge into the main database with explicit `INSERT ... ON CONFLICT DO UPDATE`
+statements.
+
 ### Rule 3 — preserve lineup raw text
 
 Always store `events.lineup_raw`, even if `event.artists[]` is already present.
