@@ -17,21 +17,6 @@ services:
       timeout: 5s
       retries: 10
 
-  prisma:
-    build:
-      context: .
-      dockerfile: prisma/Dockerfile
-    container_name: scenegraph-prisma
-    profiles:
-      - tools
-    env_file:
-      - .env
-    ports:
-      - "5555:5555"
-    depends_on:
-      db:
-        condition: service_healthy
-
   backend:
     build:
       context: ./backend
@@ -89,4 +74,3 @@ services:
 
 volumes:
   postgres_data:
-    name: scenegraph_postgres_data
