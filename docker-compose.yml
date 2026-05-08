@@ -19,7 +19,7 @@ services:
 
   prisma:
     build:
-      context: .
+      context: ./backend
       dockerfile: prisma/Dockerfile
     container_name: scenegraph-prisma
     profiles:
