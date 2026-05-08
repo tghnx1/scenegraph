@@ -16,6 +16,7 @@ env/
 .env
 node_modules/
 dist/
+.npm-cache/
 
 # Scraped Data & Logs
 *.log

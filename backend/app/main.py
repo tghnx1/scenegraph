@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from contextlib import asynccontextmanager
 from datetime import date as DateValue
 from typing import Literal
 
@@ -9,16 +8,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from psycopg import Connection
 
-from app.db import get_db, initialize_database
+from app.db import get_db
 
 
-@asynccontextmanager
-async def lifespan(_: FastAPI):
-    initialize_database()
-    yield
-
-
-app = FastAPI(title="Berlin Scene Graph API", lifespan=lifespan)
+app = FastAPI(title="Berlin Scene Graph API")
 
 app.add_middleware(
     CORSMiddleware,
@@ -51,6 +44,7 @@ class GraphNode(BaseModel):
     startDate: DateValue | None = None
     endDate: DateValue | None = None
     district: str | None = None
+    sceneFocus: str | None = None
 
 
 class GraphLink(BaseModel):
@@ -88,7 +82,11 @@ async def list_venues(connection: Connection = Depends(get_db)) -> VenuesRespons
     with connection.cursor() as cursor:
         cursor.execute(
             """
-            SELECT id, name, district, scene_focus
+            SELECT
+                id,
+                name,
+                COALESCE(area_name, country_code, '') AS district,
+                COALESCE(address, content_url, '') AS scene_focus
             FROM venues
             ORDER BY id ASC
             """
@@ -116,60 +114,49 @@ async def get_graph(
             detail="dateFrom must be earlier than or equal to dateTo.",
         )
 
-    where_clauses: list[str] = []
-    params: list[object] = []
-
-    if date_from is not None:
-        where_clauses.append("e.event_date >= %s")
-        params.append(date_from)
-
-    if date_to is not None:
-        where_clauses.append("e.event_date <= %s")
-        params.append(date_to)
-
-    if genre is not None:
-        where_clauses.append(
-            """
-            (
-                LOWER(e.genre) = LOWER(%s)
-                OR EXISTS (
-                    SELECT 1
-                    FROM event_artists ea
-                    JOIN artists a
-                        ON a.id = ea.artist_id
-                    WHERE ea.event_id = e.id
-                      AND LOWER(a.genre) = LOWER(%s)
-                )
-            )
-            """
-        )
-        params.extend([genre, genre])
-
-    where_sql = ""
-    if where_clauses:
-        where_sql = "WHERE " + " AND ".join(where_clauses)
-
-    params.append(limit)
-
     with connection.cursor() as cursor:
         cursor.execute(
-            f"""
+            """
             SELECT
                 e.id,
                 e.title,
-                e.event_date,
-                e.genre,
+                e.event_date::date AS event_date,
                 e.venue_id,
                 v.name AS venue_name,
-                v.district AS venue_district
+                COALESCE(v.area_name, v.country_code, '') AS venue_district,
+                COALESCE(v.address, v.content_url, '') AS venue_scene_focus,
+                array_remove(array_agg(DISTINCT g.name), NULL) AS genres
             FROM events e
-            JOIN venues v
+            LEFT JOIN venues v
                 ON v.id = e.venue_id
-            {where_sql}
+            LEFT JOIN event_genres eg
+                ON eg.event_id = e.id
+            LEFT JOIN genres g
+                ON g.id = eg.genre_id
+            WHERE
+                (%(date_from)s::date IS NULL OR e.event_date::date >= %(date_from)s::date)
+                AND (%(date_to)s::date IS NULL OR e.event_date::date <= %(date_to)s::date)
+                AND (
+                    %(genre)s::text IS NULL
+                    OR EXISTS (
+                        SELECT 1
+                        FROM event_genres eg_filter
+                        JOIN genres g_filter
+                            ON g_filter.id = eg_filter.genre_id
+                        WHERE eg_filter.event_id = e.id
+                          AND LOWER(g_filter.name) = LOWER(%(genre)s::text)
+                    )
+                )
+            GROUP BY e.id, v.id
             ORDER BY e.event_date ASC, e.id ASC
-            LIMIT %s
+            LIMIT %(limit)s
             """,
-            params,
+            {
+                "genre": genre,
+                "date_from": date_from,
+                "date_to": date_to,
+                "limit": limit,
+            },
         )
         events = cursor.fetchall()
 
@@ -183,15 +170,19 @@ async def get_graph(
             SELECT
                 a.id,
                 a.name,
-                a.genre,
-                COUNT(DISTINCT ea_all.event_id) AS event_count
+                COUNT(DISTINCT ea_all.event_id) AS event_count,
+                array_remove(array_agg(DISTINCT g.name), NULL) AS genres
             FROM artists a
             JOIN event_artists ea_filtered
                 ON ea_filtered.artist_id = a.id
             LEFT JOIN event_artists ea_all
                 ON ea_all.artist_id = a.id
+            LEFT JOIN event_genres eg
+                ON eg.event_id = ea_all.event_id
+            LEFT JOIN genres g
+                ON g.id = eg.genre_id
             WHERE ea_filtered.event_id = ANY(%s)
-            GROUP BY a.id, a.name, a.genre
+            GROUP BY a.id, a.name
             ORDER BY a.name ASC
             """,
             (event_ids,),
@@ -218,7 +209,7 @@ async def get_graph(
             entityId=artist["id"],
             type="artist",
             name=artist["name"],
-            genres=[artist["genre"]],
+            genres=artist["genres"] or [],
             eventCount=artist["event_count"],
         )
         nodes_by_id[artist_node.id] = artist_node
@@ -229,30 +220,34 @@ async def get_graph(
             entityId=event["id"],
             type="event",
             name=event["title"],
-            genres=[event["genre"]],
+            genres=event["genres"] or [],
             date=event["event_date"],
             startDate=event["event_date"],
             endDate=event["event_date"],
         )
-        venue_node = GraphNode(
-            id=graph_node_id("venue", event["venue_id"]),
-            entityId=event["venue_id"],
-            type="venue",
-            name=event["venue_name"],
-            district=event["venue_district"],
-        )
 
         nodes_by_id[event_node.id] = event_node
-        nodes_by_id[venue_node.id] = venue_node
 
-        links.append(
-            GraphLink(
-                source=event_node.id,
-                target=venue_node.id,
-                relationship="held_at",
-                weight=1,
+        if event["venue_id"]:
+            venue_node = GraphNode(
+                id=graph_node_id("venue", event["venue_id"]),
+                entityId=event["venue_id"],
+                type="venue",
+                name=event["venue_name"],
+                district=event["venue_district"],
+                sceneFocus=event["venue_scene_focus"],
             )
-        )
+
+            nodes_by_id[venue_node.id] = venue_node
+
+            links.append(
+                GraphLink(
+                    source=event_node.id,
+                    target=venue_node.id,
+                    relationship="held_at",
+                    weight=1,
+                )
+            )
 
     for link in artist_event_links:
         links.append(
