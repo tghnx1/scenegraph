@@ -57,6 +57,9 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    volumes:
+      - ./backend/data:/app/data
+      - ./backend/scripts:/app/scripts
 
   frontend:
     build:

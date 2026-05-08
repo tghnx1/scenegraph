@@ -125,7 +125,7 @@ async def get_graph(
                 v.name AS venue_name,
                 COALESCE(v.area_name, v.country_code, '') AS venue_district,
                 COALESCE(v.address, v.content_url, '') AS venue_scene_focus,
-                array_remove(array_agg(DISTINCT g.name), NULL) AS genres
+                array_remove(array_agg(DISTINCT LOWER(g.name)), NULL) AS genres
             FROM events e
             LEFT JOIN venues v
                 ON v.id = e.venue_id
@@ -171,7 +171,7 @@ async def get_graph(
                 a.id,
                 a.name,
                 COUNT(DISTINCT ea_all.event_id) AS event_count,
-                array_remove(array_agg(DISTINCT g.name), NULL) AS genres
+                array_remove(array_agg(DISTINCT LOWER(g.name)), NULL) AS genres
             FROM artists a
             JOIN event_artists ea_filtered
                 ON ea_filtered.artist_id = a.id
