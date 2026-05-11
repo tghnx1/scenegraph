@@ -1,6 +1,8 @@
 import argparse
+import html
 import json
 import os
+import re
 from collections.abc import Iterable
 from datetime import datetime, timezone
 from pathlib import Path
@@ -11,6 +13,22 @@ from psycopg.rows import dict_row
 
 
 DATABASE_URL = os.environ["DATABASE_URL"]
+ARTIST_TAG_RE = re.compile(
+    r"<artist\s+id=(?P<quote>[\"']).*?(?P=quote)\s*>(?P<name>.*?)</artist>",
+    re.IGNORECASE | re.DOTALL,
+)
+HTML_TAG_RE = re.compile(r"<[^>]+>")
+LINE_BREAK_RE = re.compile(r"(?:\r\n|\r|\n|¶|<br\s*/?>|</p>|</div>)", re.IGNORECASE)
+ZERO_WIDTH_RE = re.compile(r"[\u200b-\u200f\u2060\ufeff]")
+CONTEXT_RE = re.compile(
+    r"(?<!\w)(?:b2b|back\s*to\s*back|live|hosted\s+by|hosts?|performs?|presents?|vs\.?)(?!\w)",
+    re.IGNORECASE,
+)
+ORPHAN_CONNECTOR_RE = re.compile(
+    r"^(?:aka|and|with|b2b|back\s*to\s*back|vs\.?|x|&|\+|,|[-/|:;])+"
+    r"|(?:aka|and|with|b2b|back\s*to\s*back|vs\.?|x|&|\+|,|[-/|:;])+$",
+    re.IGNORECASE,
+)
 
 
 class ImportValidationError(ValueError):
@@ -60,6 +78,41 @@ def clean_payload(value: Any) -> Any:
     if isinstance(value, list):
         return [clean_payload(item) for item in value]
     return value
+
+
+def normalize_lineup_text(value: str | None) -> str | None:
+    if not value:
+        return None
+
+    normalized = html.unescape(value)
+    normalized = ZERO_WIDTH_RE.sub("", normalized)
+    normalized = LINE_BREAK_RE.sub("\n", normalized)
+    lines: list[str] = []
+
+    for raw_line in normalized.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+
+        outside_artist_tags = ARTIST_TAG_RE.sub(" ", line)
+        keep_tagged_names = bool(CONTEXT_RE.search(outside_artist_tags))
+
+        def replace_artist_tag(match: re.Match[str]) -> str:
+            if keep_tagged_names:
+                return html.unescape(match.group("name")).strip()
+            return " "
+
+        cleaned = ARTIST_TAG_RE.sub(replace_artist_tag, line)
+        cleaned = HTML_TAG_RE.sub(" ", cleaned)
+        cleaned = cleaned.replace("*", " ")
+        cleaned = re.sub(r"\s+", " ", cleaned).strip()
+        cleaned = ORPHAN_CONNECTOR_RE.sub("", cleaned).strip()
+
+        if cleaned:
+            lines.append(cleaned)
+
+    residual = "\n".join(lines).strip()
+    return residual or None
 
 
 def validate_event(event: dict[str, Any], index: int) -> None:
@@ -186,15 +239,16 @@ def import_event(cursor: psycopg.Cursor, event: dict[str, Any]) -> None:
     cursor.execute(
         """
         INSERT INTO events (
-            ra_event_id, title, description_text, lineup_raw, content_url, event_date,
+            ra_event_id, title, description_text, lineup_raw, lineup_residual_text, content_url, event_date,
             start_time, end_time, minimum_age, cost_text, interested_count, is_ticketed,
             is_festival, live, has_secret_venue, date_posted, date_updated, venue_id
         )
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         ON CONFLICT (ra_event_id) DO UPDATE SET
             title = EXCLUDED.title,
             description_text = EXCLUDED.description_text,
             lineup_raw = EXCLUDED.lineup_raw,
+            lineup_residual_text = EXCLUDED.lineup_residual_text,
             content_url = EXCLUDED.content_url,
             event_date = EXCLUDED.event_date,
             start_time = EXCLUDED.start_time,
@@ -216,6 +270,7 @@ def import_event(cursor: psycopg.Cursor, event: dict[str, Any]) -> None:
             event["title"],
             event.get("content"),
             event.get("lineup"),
+            normalize_lineup_text(event.get("lineup")),
             event.get("contentUrl"),
             parse_datetime(event.get("date")),
             parse_datetime(event.get("startTime")),

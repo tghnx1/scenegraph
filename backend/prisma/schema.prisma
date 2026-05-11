@@ -26,6 +26,7 @@ model Event {
   title               String
   descriptionText     String?               @map("description_text")
   lineupRaw           String?               @map("lineup_raw")
+  lineupResidualText  String?               @map("lineup_residual_text")
   contentUrl          String?               @map("content_url")
   eventDate           DateTime?             @map("event_date") @db.Timestamptz(6)
   startTime           DateTime?             @map("start_time") @db.Timestamptz(6)
