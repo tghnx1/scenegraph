@@ -73,3 +73,22 @@ def test_graph_event_shape():
         assert "endDate" in event
         assert "label" not in event
         assert "sceneFocus" not in event
+
+
+def test_graph_includes_promoter_relationships():
+    response = client.get("/api/graph", params={"limit": 1000})
+    assert response.status_code == 200
+
+    data = response.json()
+    promoter_nodes = [n for n in data["nodes"] if n["type"] == "promoter"]
+    promoter_links = [l for l in data["links"] if l["relationship"] == "organized"]
+    node_ids = {node["id"] for node in data["nodes"]}
+
+    assert promoter_nodes
+    assert promoter_links
+
+    for link in promoter_links:
+        assert link["source"].startswith("promoter-")
+        assert link["source"] in node_ids
+        assert link["target"].startswith("event-")
+        assert link["target"] in node_ids
