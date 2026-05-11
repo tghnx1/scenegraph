@@ -11,12 +11,13 @@ def test_normalize_text_collapses_whitespace():
     assert normalize_text(None) == ""
 
 
-def test_event_text_profile_uses_structured_and_raw_lineup():
+def test_event_text_profile_uses_structured_and_residual_lineup():
     profile = compose_event_text_profile(
         {
             "title": "CYBERFLEX",
             "description_text": "Bass-heavy electro and breaks.",
             "lineup_raw": "BabaBass3000 b2b Guest Artist",
+            "lineup_residual_text": "Guest Artist live",
         },
         artist_names=["BabaBass3000", "Structured Artist"],
         promoter_names=["Emotional Voyage"],
@@ -26,7 +27,8 @@ def test_event_text_profile_uses_structured_and_raw_lineup():
     assert "Event title: CYBERFLEX" in profile
     assert "Description: Bass-heavy electro and breaks." in profile
     assert "Structured lineup: BabaBass3000, Structured Artist" in profile
-    assert "Raw lineup: BabaBass3000 b2b Guest Artist" in profile
+    assert "Lineup context: Guest Artist live" in profile
+    assert "Raw lineup:" not in profile
     assert "Venue: Club Ost" in profile
     assert "Promoters: Emotional Voyage" in profile
 
@@ -42,11 +44,13 @@ def test_artist_text_profile_combines_biography_and_event_context():
                 "title": "CYBERFLEX",
                 "description_text": "Fast electro pressure.",
                 "lineup_raw": "BabaBass3000, Artist X",
+                "lineup_residual_text": "Artist X",
             },
             {
                 "title": "Emotional Voyage",
                 "description_text": "Breaks, bass, and trippy club sounds.",
                 "lineup_raw": "BabaBass3000 b2b Artist Y",
+                "lineup_residual_text": "Artist Y live",
             },
         ],
         venue_names=["Club Ost", "RSO", "Club Ost"],
@@ -58,7 +62,7 @@ def test_artist_text_profile_combines_biography_and_event_context():
     assert "Played event titles: CYBERFLEX, Emotional Voyage" in profile
     assert "Played event descriptions: Fast electro pressure." in profile
     assert "Breaks, bass, and trippy club sounds." in profile
-    assert "Played event lineup context: BabaBass3000, Artist X" in profile
+    assert "Played event lineup context: Artist X, Artist Y live" in profile
     assert "Recurring venues: Club Ost, RSO" in profile
     assert "Recurring promoters: Emotional Voyage, CYBERFLEX" in profile
 
