@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 from psycopg import Connection
 
 from app.db import get_db
+from app.embeddings import EmbeddingConfig, EntityType, rank_similar_embeddings
 
 
 app = FastAPI(title="Berlin Scene Graph API")
@@ -59,8 +60,115 @@ class GraphResponse(BaseModel):
     links: list[GraphLink]
 
 
+class RecommendationItem(BaseModel):
+    id: int
+    type: Literal["artist", "event"]
+    name: str
+    score: float
+    date: DateValue | None = None
+    venueName: str | None = None
+
+
+class RecommendationsResponse(BaseModel):
+    entityId: int
+    entityType: Literal["artist", "event"]
+    model: str
+    dimensions: int
+    recommendations: list[RecommendationItem]
+
+
 def graph_node_id(node_type: str, entity_id: int) -> str:
     return f"{node_type}-{entity_id}"
+
+
+def recommendation_item_metadata(
+    connection: Connection,
+    entity_type: EntityType,
+    entity_ids: list[int],
+) -> dict[int, dict]:
+    if not entity_ids:
+        return {}
+
+    if entity_type == "event":
+        query = """
+            SELECT
+                e.id,
+                e.title AS name,
+                e.event_date::date AS date,
+                v.name AS venue_name
+            FROM events e
+            LEFT JOIN venues v
+                ON v.id = e.venue_id
+            WHERE e.id = ANY(%s)
+        """
+    else:
+        query = """
+            SELECT
+                id,
+                name,
+                NULL::date AS date,
+                NULL::text AS venue_name
+            FROM artists
+            WHERE id = ANY(%s)
+        """
+
+    with connection.cursor() as cursor:
+        cursor.execute(query, (entity_ids,))
+        rows = cursor.fetchall()
+
+    return {row["id"]: row for row in rows}
+
+
+def build_recommendations_response(
+    connection: Connection,
+    *,
+    entity_type: EntityType,
+    entity_id: int,
+    limit: int,
+) -> RecommendationsResponse:
+    config = EmbeddingConfig.from_env()
+    source, ranked = rank_similar_embeddings(
+        connection,
+        entity_type=entity_type,
+        entity_id=entity_id,
+        config=config,
+        limit=limit,
+    )
+
+    if source is None:
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                f"No {config.model} embedding found for {entity_type} {entity_id}. "
+                "Run scripts/generate_embeddings.py first."
+            ),
+        )
+
+    metadata = recommendation_item_metadata(
+        connection,
+        entity_type,
+        [item["entity_id"] for item in ranked],
+    )
+    recommendations = [
+        RecommendationItem(
+            id=item["entity_id"],
+            type=entity_type,
+            name=metadata[item["entity_id"]]["name"],
+            score=item["score"],
+            date=metadata[item["entity_id"]]["date"],
+            venueName=metadata[item["entity_id"]]["venue_name"],
+        )
+        for item in ranked
+        if item["entity_id"] in metadata
+    ]
+
+    return RecommendationsResponse(
+        entityId=entity_id,
+        entityType=entity_type,
+        model=source["model"],
+        dimensions=source["dimensions"],
+        recommendations=recommendations,
+    )
 
 
 @app.get("/health")
@@ -94,6 +202,42 @@ async def list_venues(connection: Connection = Depends(get_db)) -> VenuesRespons
         venues = cursor.fetchall()
 
     return VenuesResponse(venues=[Venue(**venue) for venue in venues])
+
+
+@app.get(
+    "/api/recommendations/events/{event_id}",
+    response_model=RecommendationsResponse,
+    response_model_exclude_none=True,
+)
+async def recommend_events(
+    event_id: int,
+    limit: int = Query(default=10, ge=1, le=100),
+    connection: Connection = Depends(get_db),
+) -> RecommendationsResponse:
+    return build_recommendations_response(
+        connection,
+        entity_type="event",
+        entity_id=event_id,
+        limit=limit,
+    )
+
+
+@app.get(
+    "/api/recommendations/artists/{artist_id}",
+    response_model=RecommendationsResponse,
+    response_model_exclude_none=True,
+)
+async def recommend_artists(
+    artist_id: int,
+    limit: int = Query(default=10, ge=1, le=100),
+    connection: Connection = Depends(get_db),
+) -> RecommendationsResponse:
+    return build_recommendations_response(
+        connection,
+        entity_type="artist",
+        entity_id=artist_id,
+        limit=limit,
+    )
 
 
 @app.get(
