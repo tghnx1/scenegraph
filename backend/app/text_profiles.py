@@ -72,7 +72,10 @@ def compose_event_text_profile(
             format_section("Event title", event.get("title", "")),
             format_section("Description", event.get("description_text", "")),
             format_section("Structured lineup", artist_names),
-            format_section("Raw lineup", event.get("lineup_raw", "")),
+            format_section(
+                "Lineup context",
+                event.get("lineup_residual_text") or event.get("lineup_raw", ""),
+            ),
             format_section("Venue", venue_name or event.get("venue_name", "")),
             format_section("Promoters", promoter_names),
         ]
@@ -92,7 +95,10 @@ def compose_artist_text_profile(
         (event.get("description_text") for event in events),
         MAX_EVENT_CONTEXTS,
     )
-    event_lineups = unique_texts((event.get("lineup_raw") for event in events), MAX_EVENT_CONTEXTS)
+    event_lineups = unique_texts(
+        (event.get("lineup_residual_text") or event.get("lineup_raw") for event in events),
+        MAX_EVENT_CONTEXTS,
+    )
 
     return join_sections(
         [
@@ -116,6 +122,7 @@ def build_event_text_profile(connection: Connection, event_id: int) -> str:
                 e.title,
                 e.description_text,
                 e.lineup_raw,
+                e.lineup_residual_text,
                 v.name AS venue_name
             FROM events e
             LEFT JOIN venues v
@@ -185,6 +192,7 @@ def build_artist_text_profile(connection: Connection, artist_id: int) -> str:
                 e.title,
                 e.description_text,
                 e.lineup_raw,
+                e.lineup_residual_text,
                 e.event_date,
                 v.name AS venue_name
             FROM events e
