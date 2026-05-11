@@ -2,7 +2,7 @@ COMPOSE := docker compose
 ENV_FILE := .env
 ENV_EXAMPLE := .env.example
 
-.PHONY: help env build up upd down stop restart logs ps health prisma-migrate prisma-studio db-shell import-events import-dump clean list fclean
+.PHONY: help env build up upd down stop restart logs ps health prisma-migrate prisma-studio db-shell import-events generate-embeddings import-dump clean list fclean
 
 help:
 	@printf "\n"
@@ -22,6 +22,7 @@ help:
 	@printf "  make prisma-studio  Open Prisma Studio on localhost:5555\n"
 	@printf "  make db-shell Open a psql shell inside the Postgres container\n"
 	@printf "  make import-events Import backend/data/ra_berlin_past_events_2026.json\n"
+	@printf "  make generate-embeddings Generate OpenAI embeddings for recommendations\n"
 	@printf "  make import-dump   Import a local SQL dump; prompts before overwrite\n"
 	@printf "  make clean    Stop stack and remove volumes\n"
 	@printf "  make list     List Docker resources\n"
@@ -76,6 +77,9 @@ db-shell: env
 
 import-events: env
 	$(COMPOSE) exec backend python scripts/import_events.py
+
+generate-embeddings: env
+	$(COMPOSE) exec backend python scripts/generate_embeddings.py
 
 import-dump: env
 	DUMP="$(DUMP)" RESET_DB="$(RESET_DB)" ./scripts/import_dump.sh
