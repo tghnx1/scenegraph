@@ -11,10 +11,12 @@ __pycache__/
 
 # Virtual Environments
 venv/
+.venv/
 env/
 .env
 node_modules/
 dist/
+.npm-cache/
 
 # Scraped Data & Logs
 *.log
@@ -30,6 +32,14 @@ parsers/data/logs/*.log
 parsers/data/runtime/
 parsers/data/debug/**/*.html
 parsers/data/debug/**/*.png
+backend/data/*.json
+backend/data/*.jsonl
+backend/data/*.csv
+backend/data/*.sql
+*.dump
+scenegraph_dump*.sql
+*_dump.sql
+!backend/data/.gitkeep
 
 # IDEs
 .idea/

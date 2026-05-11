@@ -32,8 +32,10 @@ export function GraphNodeDetailsPanel({ selectedNode, onClose }: GraphNodeDetail
           <div style={{ fontSize: 12, color: TEXT_MUTED, textTransform: 'uppercase' }}>
             {selectedNode.type}
           </div>
-          <h3 style={{ margin: '4px 0 8px 0' }}>{selectedNode.label}</h3>
-          <div style={{ fontSize: 13, color: TEXT_MUTED }}>{selectedNode.eventCount} events</div>
+          <h3 style={{ margin: '4px 0 8px 0' }}>{selectedNode.name}</h3>
+          {selectedNode.eventCount !== undefined && (
+            <div style={{ fontSize: 13, color: TEXT_MUTED }}>{selectedNode.eventCount} events</div>
+          )}
           <div style={{ fontSize: 13, color: TEXT_MUTED, marginTop: 4 }}>
             {selectedNode.genres?.slice(0, 4).join(' · ') || 'No genres'}
           </div>

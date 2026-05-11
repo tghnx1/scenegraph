@@ -617,7 +617,7 @@
       <div class="progress-wrap">
         <div class="progress-label">
           <span>Current architecture walkthrough</span>
-          <span id="progressText">1 / 6</span>
+          <span id="progressText">1 / 7</span>
         </div>
         <div class="progress-bar">
           <div class="progress-fill" id="progressFill"></div>
@@ -631,9 +631,9 @@
           <span class="eyebrow">Implementation Snapshot</span>
           <h1>How Scene Graph Works Right Now</h1>
           <p class="lead">
-            This deck documents the live Step 1 implementation as it exists in the repository today:
-            a single external gateway through <span class="mono">nginx</span>, a React/Vite frontend,
-            a FastAPI backend, and a Postgres database with a tiny bootstrap data path.
+            This deck documents the implementation as it exists in the repository today:
+            a single external gateway through <span class="mono">nginx</span>, a React/Vite graph UI,
+            a FastAPI backend, and a Postgres database populated through the validated event importer.
           </p>
         </div>
 
@@ -641,43 +641,43 @@
           <article class="card">
             <div class="card-title">External Entry</div>
             <div class="card-value">nginx</div>
-            <div class="card-copy">Only <span class="mono">localhost:80</span> is published to the host. Browser traffic lands here first.</div>
+            <div class="card-copy">Only <span class="mono">localhost:8080</span> is published to the host. Browser traffic lands here first.</div>
           </article>
           <article class="card">
             <div class="card-title">Frontend</div>
             <div class="card-value">React + Vite</div>
-            <div class="card-copy">The UI runs inside Docker and is reached through nginx instead of exposing Vite directly.</div>
+            <div class="card-copy">The main graph view calls the real backend graph endpoint instead of using mock graph data.</div>
           </article>
           <article class="card">
             <div class="card-title">Backend</div>
             <div class="card-value">FastAPI</div>
-            <div class="card-copy">Serves <span class="mono">/health</span> and <span class="mono">/api/venues</span>, and initializes the demo database bootstrap.</div>
+            <div class="card-copy">Serves <span class="mono">/health</span>, <span class="mono">/api/venues</span>, and <span class="mono">/api/graph</span> from Postgres.</div>
           </article>
           <article class="card">
             <div class="card-title">Data</div>
             <div class="card-value">Postgres</div>
-            <div class="card-copy">Stored in a named Docker volume so container recreation does not wipe local data by default.</div>
+            <div class="card-copy">Stored in the named Docker volume <span class="mono">scenegraph_postgres_data</span> for local persistence.</div>
           </article>
         </div>
 
         <div class="panel">
           <div class="panel-inner">
             <div class="chip-row">
-              <span class="chip strong">Current goal: one real end-to-end slice</span>
-              <span class="chip">External routing simplified</span>
+              <span class="chip strong">Real graph endpoint online</span>
+              <span class="chip">Imported RA event schema</span>
+              <span class="chip">Prisma lives under backend</span>
               <span class="chip">DB reachable only inside Docker</span>
-              <span class="chip">Backend reachable only through proxy</span>
             </div>
             <p class="copy">
-              This is not the final architecture. It is the first defendable implementation slice. The system already proves:
-              container boot, internal networking, backend-to-db connectivity, frontend-to-backend reads, and a shared entry point.
+              The app now has a defendable database-backed slice: imported events, venues, genres, and artists are queried by the backend
+              and rendered by the frontend graph page. Some artist detail surfaces still use mock data until their backend routes exist.
             </p>
           </div>
         </div>
 
         <div class="slide-foot">
           <span>Focus: what is already true in code</span>
-          <span>Platform Bootstrap • Current Implementation</span>
+          <span>Scene Graph • Current Implementation</span>
         </div>
       </section>
 
@@ -697,13 +697,13 @@
                 <div class="service">
                   <span class="kicker">External Client</span>
                   <strong>Browser</strong>
-                  <p>Requests <span class="mono">http://localhost</span> and gets one same-origin app surface.</p>
+                  <p>Requests <span class="mono">http://localhost:8080</span> and gets one same-origin app surface.</p>
                 </div>
                 <div class="arrow">→</div>
                 <div class="service gateway">
                   <span class="kicker">Published Port</span>
                   <strong>nginx</strong>
-                  <p>Listens on port <span class="mono">80</span> and decides whether traffic goes to frontend or backend.</p>
+                  <p>Publishes host port <span class="mono">8080</span> and routes internally to frontend or backend.</p>
                 </div>
               </div>
 
@@ -711,13 +711,13 @@
                 <div class="service frontend">
                   <span class="kicker">UI Route</span>
                   <strong>frontend</strong>
-                  <p>Receives <span class="mono">/</span> and serves the React/Vite app.</p>
+                  <p>Receives <span class="mono">/</span> and serves the React/Vite graph UI.</p>
                 </div>
                 <div class="arrow">↘</div>
                 <div class="service backend">
                   <span class="kicker">API Route</span>
                   <strong>backend</strong>
-                  <p>Receives <span class="mono">/health</span> and <span class="mono">/api/*</span> requests through nginx.</p>
+                  <p>Receives <span class="mono">/health</span>, <span class="mono">/api/venues</span>, and <span class="mono">/api/graph</span> through nginx.</p>
                 </div>
                 <div class="arrow">→</div>
                 <div class="service db">
@@ -736,7 +736,7 @@
                 <li><span><span class="mono">/</span> goes to the Vite frontend service.</span></li>
                 <li><span><span class="mono">/health</span> is proxied to FastAPI.</span></li>
                 <li><span><span class="mono">/api/...</span> is proxied to FastAPI.</span></li>
-                <li><span>The browser sees one origin, so current reads avoid direct cross-origin calls.</span></li>
+                <li><span>The browser sees one origin, so runtime API reads do not need direct backend exposure.</span></li>
               </ul>
 
               <h3>Why this matters</h3>
@@ -755,12 +755,12 @@
         </div>
       </section>
 
-      <section class="slide" data-title="Boot Sequence">
+      <section class="slide" data-title="Data Flow">
         <div class="slide-head">
-          <span class="eyebrow">Startup Order</span>
-          <h2>What Happens During Docker Startup</h2>
+          <span class="eyebrow">Database and Import</span>
+          <h2>How Data Gets Into the Runtime Graph</h2>
           <p class="lead">
-            The stack uses Docker healthchecks and dependency ordering so services come up in a predictable sequence instead of racing each other.
+            The backend no longer creates demo tables on startup. Schema changes live in Prisma migrations, and event data is loaded through a validation script.
           </p>
         </div>
 
@@ -769,51 +769,100 @@
             <div class="step">
               <div class="step-num">1</div>
               <div>
-                <h3>Compose reads <span class="mono">.env</span></h3>
-                <p class="copy">Variables such as <span class="mono">DATABASE_URL</span> and Postgres credentials are loaded before container creation.</p>
+                <h3>Schema is defined under <span class="mono">backend/prisma</span></h3>
+                <p class="copy"><span class="mono">backend/prisma/schema.prisma</span> and its migrations define the shared Postgres tables for events, venues, artists, promoters, genres, and relations.</p>
               </div>
             </div>
             <div class="step">
               <div class="step-num">2</div>
               <div>
-                <h3>Postgres starts first</h3>
-                <p class="copy">The <span class="mono">db</span> service becomes healthy only after <span class="mono">pg_isready</span> succeeds.</p>
+                <h3>Migrations run through the Prisma tool container</h3>
+                <p class="copy"><span class="mono">make prisma-migrate</span> runs the Compose <span class="mono">prisma</span> profile and applies migrations against the Docker Postgres database.</p>
               </div>
             </div>
             <div class="step">
               <div class="step-num">3</div>
               <div>
-                <h3>FastAPI waits for the database</h3>
-                <p class="copy">The <span class="mono">backend</span> service depends on healthy Postgres before it starts.</p>
+                <h3>Source data stays local</h3>
+                <p class="copy">Import files are expected under <span class="mono">backend/data</span>. The directory is mounted into the backend container and ignored by git except for <span class="mono">.gitkeep</span>.</p>
               </div>
             </div>
             <div class="step">
               <div class="step-num">4</div>
               <div>
-                <h3>Backend bootstrap runs on startup</h3>
-                <p class="copy">FastAPI lifespan calls the temporary DB bootstrap: create <span class="mono">venues</span> if missing, then seed demo rows if the table is empty.</p>
+                <h3>Importer validates before writing</h3>
+                <p class="copy"><span class="mono">backend/scripts/import_events.py</span> checks required event, venue, artist, promoter, genre, and image fields before upserting rows.</p>
               </div>
             </div>
             <div class="step">
               <div class="step-num">5</div>
               <div>
-                <h3>Backend healthcheck starts polling</h3>
-                <p class="copy">Docker runs a tiny Python command that requests <span class="mono">http://127.0.0.1:3000/health</span> inside the container.</p>
+                <h3>Runtime API reads from Postgres</h3>
+                <p class="copy"><span class="mono">/api/graph</span> joins imported events, venues, genres, and artists to return graph nodes and links.</p>
               </div>
             </div>
             <div class="step">
               <div class="step-num">6</div>
               <div>
-                <h3>Frontend starts, then nginx starts last</h3>
-                <p class="copy">nginx depends on backend health and frontend startup, so the public gateway comes online after the inner services are ready.</p>
+                <h3>Postgres persists in a named volume</h3>
+                <p class="copy">The database files live inside Docker's named volume <span class="mono">scenegraph_postgres_data</span>, mounted as <span class="mono">/var/lib/postgresql/data</span> in the db container.</p>
               </div>
             </div>
           </div>
         </div>
 
         <div class="slide-foot">
-          <span>Deterministic startup beats lucky startup</span>
-          <span>Healthchecks keep the boot flow honest</span>
+          <span>Schema through Prisma, data through importer, reads through FastAPI</span>
+          <span>Database-backed graph</span>
+        </div>
+      </section>
+
+      <section class="slide" data-title="API Surface">
+        <div class="slide-head">
+          <span class="eyebrow">Backend Routes</span>
+          <h2>Current Public API Surface</h2>
+          <p class="lead">
+            The public API is intentionally small. It exposes health, a root message, venues, and the graph data needed by the current UI.
+          </p>
+        </div>
+
+        <div class="columns-2">
+          <div class="panel">
+            <div class="panel-inner">
+              <h3>Routes</h3>
+              <ul class="list">
+                <li><span><span class="mono">GET /health</span> checks database connectivity.</span></li>
+                <li><span><span class="mono">GET /api</span> returns a backend status message.</span></li>
+                <li><span><span class="mono">GET /api/venues</span> returns imported venue rows.</span></li>
+                <li><span><span class="mono">GET /api/graph</span> returns artist, event, and venue nodes with graph links.</span></li>
+              </ul>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-inner">
+              <h3>Graph filters</h3>
+              <ul class="list">
+                <li><span><span class="mono">genre</span> filters events by exact genre name, case-insensitive.</span></li>
+                <li><span><span class="mono">dateFrom</span> includes events on or after a date.</span></li>
+                <li><span><span class="mono">dateTo</span> includes events on or before a date.</span></li>
+                <li><span><span class="mono">limit</span> caps selected events, default <span class="mono">500</span>, max <span class="mono">1000</span>.</span></li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel" style="margin-top: 18px;">
+          <div class="panel-inner">
+            <h3>Example</h3>
+            <p class="copy"><span class="mono">GET /api/graph?genre=techno&amp;dateFrom=2026-04-01&amp;dateTo=2026-04-30&amp;limit=100</span></p>
+            <p class="copy">The response contains <span class="mono">nodes</span> and <span class="mono">links</span>. Current links are <span class="mono">artist → event</span> as <span class="mono">performed_at</span> and <span class="mono">event → venue</span> as <span class="mono">held_at</span>.</p>
+          </div>
+        </div>
+
+        <div class="slide-foot">
+          <span>Full API reference: <a href="api.html" style="color: inherit;">api.html</a></span>
+          <span>Small surface, real data</span>
         </div>
       </section>
 
@@ -829,7 +878,7 @@
         <div class="file-map">
           <div class="file-item">
             <span class="file-path">docker-compose.yml</span>
-            <p class="copy">Defines the runtime topology: <span class="mono">db</span>, <span class="mono">backend</span>, <span class="mono">frontend</span>, <span class="mono">nginx</span>, healthchecks, and which ports are exposed or kept internal.</p>
+            <p class="copy">Defines the runtime topology: <span class="mono">db</span>, <span class="mono">prisma</span>, <span class="mono">backend</span>, <span class="mono">frontend</span>, <span class="mono">nginx</span>, healthchecks, volumes, and exposed ports.</p>
             <div class="badge-row">
               <span class="badge">orchestration</span>
               <span class="badge">service order</span>
@@ -849,40 +898,51 @@
 
           <div class="file-item">
             <span class="file-path">backend/app/main.py</span>
-            <p class="copy">Creates the FastAPI app, runs startup lifespan, exposes <span class="mono">/health</span>, and serves the current read-only route <span class="mono">/api/venues</span>.</p>
+            <p class="copy">Creates the FastAPI app, exposes <span class="mono">/health</span>, <span class="mono">/api/venues</span>, and <span class="mono">/api/graph</span>, then maps database rows into response models.</p>
             <div class="badge-row">
               <span class="badge">fastapi app</span>
               <span class="badge">routes</span>
-              <span class="badge">startup hook</span>
+              <span class="badge">graph response</span>
             </div>
           </div>
 
           <div class="file-item">
             <span class="file-path">backend/app/db.py</span>
-            <p class="copy">Owns the current Postgres connection code and the temporary bootstrap SQL for demo data. This file is intentionally marked as temporary until real migrations land.</p>
+            <p class="copy">Owns the current Postgres connection dependency used by FastAPI routes.</p>
             <div class="badge-row">
               <span class="badge">db connection</span>
-              <span class="badge">temporary bootstrap</span>
-              <span class="badge">seed data</span>
+              <span class="badge">psycopg</span>
+              <span class="badge">dependency</span>
             </div>
           </div>
 
           <div class="file-item">
-            <span class="file-path">frontend/src/App.tsx</span>
-            <p class="copy">Fetches <span class="mono">/health</span> and <span class="mono">/api/venues</span>, then renders visible proof that the frontend, backend, and db are connected.</p>
+            <span class="file-path">backend/prisma/schema.prisma</span>
+            <p class="copy">Defines the current imported event schema and relation tables used by the graph API.</p>
             <div class="badge-row">
-              <span class="badge">bootstrap ui</span>
-              <span class="badge">api reads</span>
-              <span class="badge">integration proof</span>
+              <span class="badge">schema</span>
+              <span class="badge">migrations</span>
+              <span class="badge">relations</span>
             </div>
           </div>
 
           <div class="file-item">
-            <span class="file-path">.env.example</span>
-            <p class="copy">Documents the required env structure without storing real secrets. Team members copy it into <span class="mono">.env</span> for local runs.</p>
+            <span class="file-path">backend/scripts/import_events.py</span>
+            <p class="copy">Validates RA-style event JSON and upserts events, venues, artists, promoters, genres, images, and relation rows into Postgres.</p>
             <div class="badge-row">
-              <span class="badge">env contract</span>
-              <span class="badge">local bootstrap</span>
+              <span class="badge">import</span>
+              <span class="badge">validation</span>
+              <span class="badge">upsert</span>
+            </div>
+          </div>
+
+          <div class="file-item">
+            <span class="file-path">frontend/src/api/graph.ts</span>
+            <p class="copy">Calls the real <span class="mono">/api/graph</span> endpoint for the main graph view. The artist ego graph remains mock-backed until a dedicated endpoint exists.</p>
+            <div class="badge-row">
+              <span class="badge">frontend api</span>
+              <span class="badge">real graph</span>
+              <span class="badge">mock ego graph</span>
             </div>
           </div>
         </div>
@@ -893,24 +953,25 @@
         </div>
       </section>
 
-      <section class="slide" data-title="Temporary Choices">
+      <section class="slide" data-title="Real vs Mocked">
         <div class="slide-head">
           <span class="eyebrow">Current Truth</span>
-          <h2>What Is Deliberate Now and What Must Change Later</h2>
+          <h2>What Is Real Now and What Is Still Mocked</h2>
           <p class="lead">
-            The current stack is intentionally split between decisions that are stable enough to keep and temporary decisions that only exist to make Step 1 demonstrable.
+            The project has moved past the first demo database slice, but not every frontend surface has a backend route yet.
           </p>
         </div>
 
         <div class="decision-grid">
           <div class="panel good">
             <div class="panel-inner">
-              <h3>Keep for now</h3>
+              <h3>Real now</h3>
               <ul class="list">
                 <li><span>Single external gateway through nginx.</span></li>
                 <li><span>Internal-only backend and Postgres exposure.</span></li>
-                <li><span>FastAPI health endpoint and Docker healthchecks.</span></li>
-                <li><span>One visible read-only slice proving real integration.</span></li>
+                <li><span>FastAPI health, venues, and graph endpoints.</span></li>
+                <li><span>Main frontend graph reads from <span class="mono">/api/graph</span>.</span></li>
+                <li><span>Validated import into the Prisma-defined Postgres schema.</span></li>
                 <li><span>Named Postgres volume for local persistence.</span></li>
               </ul>
             </div>
@@ -918,13 +979,13 @@
 
           <div class="panel temporary">
             <div class="panel-inner">
-              <h3>Replace later</h3>
+              <h3>Still mocked or not implemented</h3>
               <ul class="list">
-                <li><span>Startup SQL that auto-creates the demo table.</span></li>
-                <li><span>Seed rows inserted directly by backend startup logic.</span></li>
-                <li><span>Single-file backend route layout in <span class="mono">main.py</span>.</span></li>
-                <li><span>Demo-only <span class="mono">venues</span> bootstrap once the real shared schema arrives.</span></li>
-                <li><span>Ad hoc bootstrap data path once migrations and import flows exist.</span></li>
+                <li><span>Artist profile and similar artist calls still use <span class="mono">frontend/src/api/mock_data</span>.</span></li>
+                <li><span>Artist ego graph is mock-backed until <span class="mono">/api/graph/artist/{id}</span> exists.</span></li>
+                <li><span>Promoter tables are imported, but promoter graph nodes and links are not emitted yet.</span></li>
+                <li><span>No authentication, friends, chat, or WebSocket layer exists yet.</span></li>
+                <li><span>No recommendation engine or advanced search endpoint exists yet.</span></li>
               </ul>
             </div>
           </div>
@@ -934,15 +995,15 @@
           <div class="panel-inner">
             <h3>Current cleanup rule</h3>
             <p class="copy">
-              As soon as the team lands the shared schema for <span class="mono">venues</span>, <span class="mono">promoters</span>,
-              <span class="mono">artists</span>, and <span class="mono">events</span>, the backend startup SQL should be removed and replaced by the real migration flow.
+              Keep mock-backed frontend calls clearly separated from real API calls. When a backend route is added,
+              replace the mock adapter in <span class="mono">frontend/src/api</span> and update the API documentation in the same change.
             </p>
           </div>
         </div>
 
         <div class="slide-foot">
-          <span>Temporary does not mean accidental</span>
-          <span>Documented tradeoffs reduce future confusion</span>
+          <span>Real data where it exists, explicit mocks where it does not</span>
+          <span>Implementation status</span>
         </div>
       </section>
 
@@ -964,7 +1025,7 @@
                 <li><span>new public routes or proxies</span></li>
                 <li><span>changes in startup order</span></li>
                 <li><span>schema ownership changes</span></li>
-                <li><span>removal of temporary bootstrap logic</span></li>
+                <li><span>new real endpoints replacing mock frontend adapters</span></li>
               </ul>
             </div>
           </div>
@@ -976,7 +1037,7 @@
                 <li><span>Which port does the browser actually hit?</span></li>
                 <li><span>Which container handles each request?</span></li>
                 <li><span>Which files define the current runtime behavior?</span></li>
-                <li><span>Which parts are temporary and scheduled for replacement?</span></li>
+                <li><span>Which surfaces read Postgres and which still use mock data?</span></li>
                 <li><span>What changed since the last implementation pass?</span></li>
               </ul>
             </div>
@@ -987,7 +1048,8 @@
           <div class="panel-inner">
             <div class="chip-row">
               <span class="chip strong">Recommended update rule</span>
-              <span class="chip">If code changed, this deck should change too</span>
+              <span class="chip">If API behavior changed, docs should change too</span>
+              <span class="chip"><a href="api.html" style="color: inherit;">Open API reference</a></span>
             </div>
             <p class="copy">
               Treat this as the implementation source of truth for onboarding, debugging, and review prep.
@@ -1008,7 +1070,7 @@
         <button type="button" id="prevBtn">Previous</button>
         <button type="button" id="nextBtn">Next</button>
       </div>
-      <div class="slide-index" id="slideIndex">Slide 1 of 6</div>
+      <div class="slide-index" id="slideIndex">Slide 1 of 7</div>
     </footer>
   </div>
 
