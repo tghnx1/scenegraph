@@ -200,6 +200,36 @@ async def get_graph(
         )
         artist_event_links = cursor.fetchall()
 
+        cursor.execute(
+            """
+            SELECT
+                p.id,
+                p.name,
+                COUNT(DISTINCT ep_all.event_id) AS event_count
+            FROM promoters p
+            JOIN event_promoters ep_filtered
+                ON ep_filtered.promoter_id = p.id
+            LEFT JOIN event_promoters ep_all
+                ON ep_all.promoter_id = p.id
+            WHERE ep_filtered.event_id = ANY(%s)
+            GROUP BY p.id, p.name
+            ORDER BY p.name ASC
+            """,
+            (event_ids,),
+        )
+        promoters = cursor.fetchall()
+
+        cursor.execute(
+            """
+            SELECT promoter_id, event_id
+            FROM event_promoters
+            WHERE event_id = ANY(%s)
+            ORDER BY event_id ASC, promoter_id ASC
+            """,
+            (event_ids,),
+        )
+        promoter_event_links = cursor.fetchall()
+
     nodes_by_id: dict[str, GraphNode] = {}
     links: list[GraphLink] = []
 
@@ -213,6 +243,16 @@ async def get_graph(
             eventCount=artist["event_count"],
         )
         nodes_by_id[artist_node.id] = artist_node
+
+    for promoter in promoters:
+        promoter_node = GraphNode(
+            id=graph_node_id("promoter", promoter["id"]),
+            entityId=promoter["id"],
+            type="promoter",
+            name=promoter["name"],
+            eventCount=promoter["event_count"],
+        )
+        nodes_by_id[promoter_node.id] = promoter_node
 
     for event in events:
         event_node = GraphNode(
@@ -255,6 +295,16 @@ async def get_graph(
                 source=graph_node_id("artist", link["artist_id"]),
                 target=graph_node_id("event", link["event_id"]),
                 relationship="performed_at",
+                weight=1,
+            )
+        )
+
+    for link in promoter_event_links:
+        links.append(
+            GraphLink(
+                source=graph_node_id("promoter", link["promoter_id"]),
+                target=graph_node_id("event", link["event_id"]),
+                relationship="organized",
                 weight=1,
             )
         )
