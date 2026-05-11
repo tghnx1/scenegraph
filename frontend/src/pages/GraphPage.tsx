@@ -5,9 +5,7 @@ import { fetchGraph } from '../api/graph'
 import { useGraphStore } from '../store/graphStore'
 import type { GraphNode } from '../types/graph'
 import { useGraphHighlights } from './GraphPage/hooks/useGraphHighlights'
-//import { useGraphFilters } from './GraphPage/hooks/useGraphFilters'
 import { useGraphPhysics } from './GraphPage/hooks/useGraphPhysics'
-//import { GraphNodeFilters } from './GraphPage/components/NodeFilter'
 import { GraphNodeDetailsPanel } from './GraphPage/components/DetailsPanel'
 import { drawNodeShape } from './GraphPage/drawNode.ts'
 import { LINK_HIGHLIGHT, LINK_DIM, BACKGROUND, hexToRgba } from '../styles/colors'
@@ -50,8 +48,7 @@ export function GraphPage() {
 
   const handleNodeClick = useCallback(
     (node: object) => {
-      const n = node as GraphNode
-      setSelected(n)
+      setSelected(node as GraphNode)
     },
     [setSelected]
   )
