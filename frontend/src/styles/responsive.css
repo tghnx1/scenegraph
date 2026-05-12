@@ -31,4 +31,34 @@
   .search-query-box {
     flex-wrap: wrap;
   }
+
+  .dashboard-page {
+    height: auto;
+    min-height: 100%;
+    padding: 12px;
+    grid-template-rows: auto;
+  }
+
+  .dashboard-grid {
+    grid-template-columns: 1fr;
+    grid-template-rows: none;
+    grid-template-areas:
+      "profile"
+      "context"
+      "recommendations"
+      "stats"
+      "graph"
+      "communications";
+  }
+
+  .stat-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .legend-bar,
+  .dashboard-search-strip,
+  .panel-heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
 }
