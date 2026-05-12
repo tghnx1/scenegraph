@@ -13,7 +13,6 @@ interface GraphSidebarDetailsProps {
   isArtistLoading: boolean
   artistError: string | null
   similarArtists: SimilarArtist[]
-  onClearSelection: () => void
 }
 
 function toSelectedArtistResult(
@@ -51,7 +50,6 @@ export function GraphSidebarDetails({
   isArtistLoading,
   artistError,
   similarArtists,
-  onClearSelection,
 }: GraphSidebarDetailsProps) {
   const activeSearchResult = searchResults[0] ?? null
   const selectedArtistResult = toSelectedArtistResult(selectedNode, selectedArtist, similarArtists)
@@ -64,9 +62,6 @@ export function GraphSidebarDetails({
             <h3>Loading biography...</h3>
             <p>Fetching the selected artist details.</p>
           </div>
-          <button className="graph-sidebar-close" onClick={onClearSelection}>
-            Clear selection
-          </button>
         </div>
       )
     }
@@ -78,9 +73,6 @@ export function GraphSidebarDetails({
             <h3>Could not load biography</h3>
             <p className="error">{artistError}</p>
           </div>
-          <button className="graph-sidebar-close" onClick={onClearSelection}>
-            Clear selection
-          </button>
         </div>
       )
     }
@@ -89,9 +81,6 @@ export function GraphSidebarDetails({
       return (
         <div className="graph-sidebar-content">
           <SearchResultCard variant="inline" result={selectedArtistResult} />
-          <button className="graph-sidebar-close" onClick={onClearSelection}>
-            Clear selection
-          </button>
         </div>
       )
     }
@@ -132,9 +121,6 @@ export function GraphSidebarDetails({
           </section>
         </div>
 
-        <button className="graph-sidebar-close" onClick={onClearSelection}>
-          Clear selection
-        </button>
       </div>
     )
   }
@@ -167,8 +153,8 @@ export function GraphSidebarDetails({
   return (
     <div className="graph-sidebar-content">
       <div className="empty-state">
-        <h3>No node selected</h3>
-        <p>Search for an artist, venue, or event above, or click a node in the graph to view details.</p>
+        <h3>Information</h3>
+        <p>Search for an artist, venue, promoter, or event on the search field above, or click a node in the graph to view details.</p>
       </div>
     </div>
   )
