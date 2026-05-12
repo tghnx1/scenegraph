@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useApi } from '../hooks/useApi.ts'
 import { fetchArtist, fetchSimilarArtists } from '../api/artists.ts'
-import { fetchGraph } from '../api/graph.ts'
+import { fetchGraph, type GraphParams } from '../api/graph.ts'
 import { fetchSearch } from '../api/search.ts'
 import { useGraphStore } from '../store/graphStore.ts'
 import type { Artist, SimilarArtist } from '../types/artist.ts'
@@ -14,14 +14,17 @@ import { useGraphPhysics } from './GraphPage/hooks/useGraphPhysics.ts'
 import { drawNodeShape } from './GraphPage/drawNode.ts'
 import { LINK_HIGHLIGHT, LINK_DIM, BACKGROUND, hexToRgba } from '../styles/colors.ts'
 import { GraphSidebarDetails } from './GraphPage/components/DetailsPanel.tsx'
+import { GraphFilters } from './GraphPage/components/GraphFilters.tsx'
 
-const MIN_GRAPH_HEIGHT = 520
+const MIN_GRAPH_HEIGHT = 320
+const DEFAULT_GRAPH_FILTERS: GraphParams = { limit: 500 }
 
 export function GraphPage() {
   const graphRef = useRef<any>(null)
   const containerRef = useRef<HTMLDivElement | null>(null)
   const [graphSize, setGraphSize] = useState({ width: 0, height: 0 })
   const [searchValue, setSearchValue] = useState('')
+  const [graphFilters, setGraphFilters] = useState<GraphParams>(DEFAULT_GRAPH_FILTERS)
   const [searchParams, setSearchParams] = useSearchParams()
   const { setSelected, selectedNode } = useGraphStore()
   const submittedQuery = searchParams.get('q') ?? ''
@@ -29,8 +32,8 @@ export function GraphPage() {
   const selectedArtistId = selectedNode?.type === 'artist' ? selectedNode.id : null
 
   const { data, isLoading, error, refetch } = useApi(
-    () => fetchGraph(),
-    []
+    () => fetchGraph(graphFilters),
+    [graphFilters.genre, graphFilters.dateFrom, graphFilters.dateTo, graphFilters.limit]
   )
 
   const { data: selectedArtist, isLoading: isArtistLoading, error: artistError } = useApi<Artist | null>(
@@ -128,12 +131,24 @@ export function GraphPage() {
     setSelected(null)
   }, [searchParams, setSearchParams, setSelected])
 
-  if (isLoading) return <p style={{ padding: 24 }}>Loading graph...</p>
-  if (error) return <p style={{ padding: 24 }}>{error} — <button onClick={refetch}>retry</button></p>
+  const handleGraphFiltersChange = useCallback(
+    (nextFilters: GraphParams) => {
+      setGraphFilters(nextFilters)
+      setSelected(null)
+
+      if (searchParams.has('artist')) {
+        const nextParams = new URLSearchParams(searchParams)
+        nextParams.delete('artist')
+        setSearchParams(nextParams, { replace: true })
+      }
+    },
+    [searchParams, setSearchParams, setSelected]
+  )
 
   const similarArtistLinks = similarArtists ?? []
   const searchResults = searchData?.results ?? []
   const hasActiveSearchState = Boolean(searchValue || submittedQuery || selectedNode)
+  const graphData = data || { nodes: [], links: [] }
 
   return (
     <div className="graph-page-shell">
@@ -164,6 +179,8 @@ export function GraphPage() {
             {/* <p className="search-query-hint">Enter a name, then press Enter to update the search.</p> */}
           </div>
 
+          <GraphFilters filters={graphFilters} onChange={handleGraphFiltersChange} />
+
           <GraphSidebarDetails
             searchQuery={submittedQuery}
             searchResults={searchResults}
@@ -179,11 +196,17 @@ export function GraphPage() {
       </aside>
 
       <div ref={containerRef} className="graph-canvas graph-canvas--large">
+        {isLoading && !data && <div className="graph-canvas-status">Loading graph...</div>}
+        {error && (
+          <div className="graph-canvas-status error">
+            {error} <button onClick={refetch}>retry</button>
+          </div>
+        )}
         <ForceGraph2D
           ref={graphRef}
           width={graphSize.width || undefined}
           height={graphSize.height || undefined}
-          graphData={data || { nodes: [], links: [] }}
+          graphData={graphData}
           nodeCanvasObject={(node: any, ctx: CanvasRenderingContext2D) => {
             drawNodeShape(ctx, node.x, node.y, 5, node.type, selectedNode?.id === node.id)
           }}

@@ -111,7 +111,7 @@ h3 {
 
 .graph-sidebar-card {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: auto auto minmax(0, 1fr);
   gap: 16px;
   min-height: 0;
   height: 100%;
@@ -156,6 +156,85 @@ h3 {
   background: var(--nord-background);
   border: 1px solid var(--surface-border);
   box-shadow: var(--surface-shadow);
+}
+
+.graph-canvas-status {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  z-index: 2;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(46, 52, 64, 0.82);
+  border: 1px solid rgba(216, 222, 233, 0.16);
+  color: var(--nord-text-muted);
+  font-size: 0.9rem;
+}
+
+.graph-canvas-status button {
+  margin-left: 8px;
+  border: 1px solid rgba(216, 222, 233, 0.16);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--nord-text);
+  cursor: pointer;
+}
+
+.graph-filter-panel {
+  display: grid;
+  gap: 14px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--surface-border-soft);
+}
+
+.graph-filter-group {
+  display: grid;
+  gap: 8px;
+}
+
+.graph-filter-label {
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--nord-accent);
+  font-size: 0.72rem;
+}
+
+.graph-filter-buttons,
+.graph-filter-date-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.graph-filter-button {
+  border: 1px solid rgba(216, 222, 233, 0.14);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--nord-text-muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.85rem;
+  padding: 7px 10px;
+  transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+
+.graph-filter-button:hover,
+.graph-filter-button.active {
+  background: rgba(235, 203, 139, 0.16);
+  border-color: rgba(235, 203, 139, 0.42);
+  color: var(--nord-text);
+}
+
+.graph-filter-date {
+  min-width: 0;
+  flex: 1 1 148px;
+  border: 1px solid rgba(216, 222, 233, 0.16);
+  border-radius: 12px;
+  background: rgba(46, 52, 64, 0.42);
+  color: var(--nord-text);
+  font: inherit;
+  font-size: 0.9rem;
+  padding: 8px 10px;
 }
 
 /* Search and Result Details */
