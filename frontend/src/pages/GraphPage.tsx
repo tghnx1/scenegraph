@@ -18,6 +18,12 @@ import { GraphFilters } from './GraphPage/components/GraphFilters.tsx'
 
 const MIN_GRAPH_HEIGHT = 320
 const DEFAULT_GRAPH_FILTERS: GraphParams = { limit: 100 }
+const NODE_LEGEND_ITEMS = [
+  { type: 'artist', label: 'Artist' },
+  { type: 'venue', label: 'Venue' },
+  { type: 'promoter', label: 'Promoter' },
+  { type: 'event', label: 'Event' },
+]
 
 export function GraphPage() {
   const graphRef = useRef<any>(null)
@@ -207,6 +213,14 @@ export function GraphPage() {
         <div className="graph-canvas-counts" aria-label={`${nodeCount} nodes and ${linkCount} links displayed`}>
           <span>{nodeCount} nodes</span>
           <span>{linkCount} links</span>
+        </div>
+        <div className="graph-legend" aria-label="Graph entity legend">
+          {NODE_LEGEND_ITEMS.map((item) => (
+            <div className="graph-legend-item" key={item.type}>
+              <span className={`graph-legend-marker graph-legend-marker--${item.type}`} aria-hidden="true" />
+              <span>{item.label}</span>
+            </div>
+          ))}
         </div>
         <ForceGraph2D
           ref={graphRef}

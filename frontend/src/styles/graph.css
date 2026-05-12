@@ -104,6 +104,57 @@
   backdrop-filter: blur(6px);
 }
 
+.graph-legend {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  z-index: 2;
+  display: grid;
+  grid-template-columns: repeat(2, max-content);
+  gap: 8px 14px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: rgba(46, 52, 64, 0.82);
+  border: 1px solid rgba(216, 222, 233, 0.16);
+  color: var(--nord-text-muted);
+  font-size: 0.82rem;
+  backdrop-filter: blur(6px);
+}
+
+.graph-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+.graph-legend-marker {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  flex: 0 0 12px;
+  background: var(--nord-promoter);
+}
+
+.graph-legend-marker--artist {
+  background: var(--nord-artist);
+  clip-path: polygon(25% 6%, 75% 6%, 100% 50%, 75% 94%, 25% 94%, 0 50%);
+}
+
+.graph-legend-marker--venue {
+  background: var(--nord-venue);
+  clip-path: polygon(50% 0, 100% 100%, 0 100%);
+}
+
+.graph-legend-marker--promoter {
+  background: var(--nord-promoter);
+}
+
+.graph-legend-marker--event {
+  background: var(--nord-event);
+  border-radius: 50%;
+}
+
 .graph-filter-panel {
   display: grid;
   gap: 14px;
