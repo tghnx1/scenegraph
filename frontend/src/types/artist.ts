@@ -4,7 +4,7 @@ export interface Genre { //separate interface if genres are their own entities i
   slug: string //URL-safe name used for filtering (like techno or dub-techno).
 }
 
-export interface Artist { //should match the shape returned by GET /artists/:id from express (used in ArtistPage)
+export interface Artist { //should match the shape returned by GET /artists/:id from express
   id:             string //sg_id
   raId?:          string //ra's id maybe unnecessary
   name:           string

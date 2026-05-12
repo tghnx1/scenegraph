@@ -133,6 +133,7 @@ export function GraphPage() {
 
   const similarArtistLinks = similarArtists ?? []
   const searchResults = searchData?.results ?? []
+  const hasActiveSearchState = Boolean(searchValue || submittedQuery || selectedNode)
 
   return (
     <div className="graph-page-shell">
@@ -141,7 +142,7 @@ export function GraphPage() {
           <div className="graph-sidebar-search">
             <form className="search-query-form" onSubmit={handleSearchSubmit}>
               <label className="search-query-label" htmlFor="graph-search-query-input">
-                Search catalog
+                Search Database
               </label>
               <div className="search-query-box">
                 <input
@@ -153,14 +154,14 @@ export function GraphPage() {
                   placeholder="Search artists, venues, promoters, events..."
                   aria-label="Search"
                 />
-                {searchValue && (
-                  <button type="button" className="search-query-clear" onClick={handleClearSearch}>
-                    Clear
+                {hasActiveSearchState && (
+                  <button type="button" className="search-query-clear" onClick={handleClearSearch} aria-label="Clear search and selection">
+                    x
                   </button>
                 )}
               </div>
             </form>
-            <p className="search-query-hint">Enter a name, then press Enter to update the search.</p>
+            {/* <p className="search-query-hint">Enter a name, then press Enter to update the search.</p> */}
           </div>
 
           <GraphSidebarDetails
@@ -173,7 +174,6 @@ export function GraphPage() {
             isArtistLoading={isArtistLoading}
             artistError={artistError}
             similarArtists={similarArtistLinks}
-            onClearSelection={() => setSelected(null)}
           />
         </article>
       </aside>
