@@ -23,14 +23,14 @@ export function GraphPage() {
   const [graphSize, setGraphSize] = useState({ width: 0, height: 0 })
   const [searchValue, setSearchValue] = useState('')
   const [searchParams, setSearchParams] = useSearchParams()
-  const { activeGenre, setSelected, selectedNode } = useGraphStore()
+  const { setSelected, selectedNode } = useGraphStore()
   const submittedQuery = searchParams.get('q') ?? ''
   const selectedArtistParam = searchParams.get('artist') ?? ''
   const selectedArtistId = selectedNode?.type === 'artist' ? selectedNode.id : null
 
   const { data, isLoading, error, refetch } = useApi(
-    () => fetchGraph({ genre: activeGenre ?? undefined }),
-    [activeGenre]
+    () => fetchGraph(),
+    []
   )
 
   const { data: selectedArtist, isLoading: isArtistLoading, error: artistError } = useApi<Artist | null>(
