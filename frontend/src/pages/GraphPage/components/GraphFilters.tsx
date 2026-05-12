@@ -64,7 +64,7 @@ export function GraphFilters({ filters, onChange }: GraphFiltersProps) {
       </div>
 
       <div className="graph-filter-group">
-        <span className="graph-filter-label">Limit</span>
+        <span className="graph-filter-label">Event Limit</span>
         <div className="graph-filter-buttons">
           {LIMIT_OPTIONS.map((limit) => (
             <button

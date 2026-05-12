@@ -1,0 +1,34 @@
+@media (max-width: 640px) {
+  .graph-page-shell {
+    height: auto;
+    min-height: 100%;
+    padding: 12px;
+    grid-template-columns: 1fr;
+    grid-template-rows: auto auto;
+    align-items: start;
+  }
+
+  .graph-sidebar {
+    min-height: auto;
+  }
+
+  .graph-sidebar-card {
+    height: auto;
+  }
+
+  .graph-canvas--large {
+    min-height: 360px;
+    height: min(560px, 62dvh);
+    touch-action: pan-y;
+  }
+
+  .search-summary,
+  .result-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .search-query-box {
+    flex-wrap: wrap;
+  }
+}
