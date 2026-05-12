@@ -1,4 +1,4 @@
-import { type CSSProperties } from 'react'
+import { useState, type CSSProperties } from 'react'
 import { Routes, Route, Navigate, NavLink, useLocation, useParams, useSearchParams } from 'react-router-dom'
 import { GraphPage } from './pages/GraphPage'
 import { DashboardPage } from './pages/DashboardPage'
@@ -57,6 +57,7 @@ const navStyle: CSSProperties = {
   background: hexToRgba(BACKGROUND, 0.55),
   backdropFilter: 'blur(6px)',
   display: 'flex',
+  alignItems: 'center',
   gap: 12,
 }
 
@@ -81,9 +82,33 @@ const linkBaseStyle: CSSProperties = {
   transition: 'all 120ms ease',
 }
 
+const navSpacerStyle: CSSProperties = {
+  flex: 1,
+}
+
+const authButtonStyle: CSSProperties = {
+  ...linkBaseStyle,
+  cursor: 'pointer',
+  border: `1px solid ${hexToRgba(TEXT, 0.18)}`,
+  background: hexToRgba(TEXT, 0.06),
+  font: 'inherit',
+  fontSize: 14,
+}
+
 export default function App() {
   const location = useLocation()
   const isGraphActive = location.pathname === '/graph'
+  const [isAuthenticated, setIsAuthenticated] = useState(() => Boolean(localStorage.getItem('token')))
+
+  const handleAuthClick = () => {
+    if (isAuthenticated) {
+      localStorage.removeItem('token')
+      setIsAuthenticated(false)
+      return
+    }
+
+    window.location.href = '/login'
+  }
 
   return (
     <div style={shellStyle}>
@@ -111,6 +136,10 @@ export default function App() {
         >
           Dashboard
         </NavLink>
+        <span style={navSpacerStyle} />
+        <button type="button" style={authButtonStyle} onClick={handleAuthClick}>
+          {isAuthenticated ? 'Logout' : 'Login'}
+        </button>
       </nav>
 
       <main style={{ flex: 1, overflowX: 'hidden', overflowY: 'auto' }}>
