@@ -1,0 +1,89 @@
+:root {
+  /* css vars mapped to the centralized palette, fallback */
+  --nord-artist: #B48EAD;
+  --nord-venue: #A3BE8C;
+  --nord-promoter: #88C0D0;
+  --nord-event: #BF616A;
+  --nord-selection: #EBCB8B;
+  --nord-link-highlight: #EBCB8B;
+  --nord-link-dim: #D8DEE9;
+  --nord-background: #3B4252;
+  --nord-text: #EBF3EF;
+  --nord-text-muted: #C9D6D1;
+  --nord-accent: #7FE0D2;
+  --nord-accent-warm: #D08770;
+  --nord-gradient-1: #071117;
+  --nord-gradient-2: #0f2733;
+  --nord-gradient-3: #16384a;
+  --surface-strong: rgba(7, 17, 23, 0.72);
+  --surface-panel: rgba(59, 66, 82, 0.94);
+  --surface-panel-soft: rgba(216, 222, 233, 0.06);
+  --surface-soft: rgba(255, 255, 255, 0.04);
+  --surface-soft-2: rgba(255, 255, 255, 0.05);
+  --surface-border: rgba(255, 255, 255, 0.12);
+  --surface-border-soft: rgba(255, 255, 255, 0.08);
+  --surface-shadow: 0 24px 60px rgba(0, 0, 0, 0.25);
+
+  font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: var(--nord-text);
+  background:
+    radial-gradient(circle at top left, rgba(112, 190, 175, 0.18), transparent 30%),
+    linear-gradient(160deg, var(--nord-gradient-1) 0%, var(--nord-gradient-2) 52%, var(--nord-gradient-3) 100%);
+  line-height: 1.5;
+  font-weight: 400;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+a {
+  color: inherit;
+}
+
+a:hover {
+  opacity: 0.9;
+}
+
+h1,
+h2,
+h3 {
+  margin: 0;
+}
+
+h1 {
+  font-size: clamp(2.2rem, 5vw, 4rem);
+  line-height: 0.95;
+}
+
+h2 {
+  font-size: 1.5rem;
+}
+
+h3 {
+  font-size: 0.95rem;
+}
+
+.eyebrow {
+  margin: 0 0 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--nord-accent);
+  font-size: 0.8rem;
+}
+
+.lead {
+  color: var(--nord-text-muted);
+  margin: 16px 0 28px;
+  max-width: 60ch;
+}

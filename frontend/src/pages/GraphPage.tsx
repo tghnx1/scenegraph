@@ -17,7 +17,7 @@ import { GraphSidebarDetails } from './GraphPage/components/DetailsPanel.tsx'
 import { GraphFilters } from './GraphPage/components/GraphFilters.tsx'
 
 const MIN_GRAPH_HEIGHT = 320
-const DEFAULT_GRAPH_FILTERS: GraphParams = { limit: 500 }
+const DEFAULT_GRAPH_FILTERS: GraphParams = { limit: 100 }
 
 export function GraphPage() {
   const graphRef = useRef<any>(null)
@@ -149,6 +149,8 @@ export function GraphPage() {
   const searchResults = searchData?.results ?? []
   const hasActiveSearchState = Boolean(searchValue || submittedQuery || selectedNode)
   const graphData = data || { nodes: [], links: [] }
+  const nodeCount = graphData.nodes.length
+  const linkCount = graphData.links.length
 
   return (
     <div className="graph-page-shell">
@@ -202,6 +204,10 @@ export function GraphPage() {
             {error} <button onClick={refetch}>retry</button>
           </div>
         )}
+        <div className="graph-canvas-counts" aria-label={`${nodeCount} nodes and ${linkCount} links displayed`}>
+          <span>{nodeCount} nodes</span>
+          <span>{linkCount} links</span>
+        </div>
         <ForceGraph2D
           ref={graphRef}
           width={graphSize.width || undefined}
