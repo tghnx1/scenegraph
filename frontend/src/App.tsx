@@ -1,43 +1,7 @@
-/* import { Routes, Route, Navigate, NavLink } from 'react-router-dom'
-import { GraphPage }  from './pages/GraphPage'
-import { DashboardPage }    from './pages/DashboardPage'
-import { ArtistPage } from './pages/ArtistPage'
-
-export default function App() {
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
-      <nav
-        style={{
-          padding: '12px 20px',
-          borderBottom: '1px solid #eee',
-          display: 'flex',
-          gap: '16px',
-        }}
-      >
-        <NavLink to="/graph">Graph</NavLink>
-        <NavLink to="/dashboard">Dashboard</NavLink>
-      </nav>
-
-      <main style={{ flex: 1, overflow: 'hidden' }}>
-        <Routes>
-          <Route path="/" element={<Navigate to="/graph" />} />
-          <Route path="/graph" element={<GraphPage />} />
-          <Route path="/dashboard" element={<DashboardPage />} />
-          <Route path="/artist/:id" element={<ArtistPage />} />
-        </Routes>
-      </main>
-    </div>
-  )
-}
- */
-
-//maybe better colours
-import { useState, type CSSProperties, type FormEvent, type ReactNode } from 'react'
-import { Routes, Route, Navigate, NavLink, Link } from 'react-router-dom'
+import { type CSSProperties } from 'react'
+import { Routes, Route, Navigate, NavLink, useParams, useSearchParams } from 'react-router-dom'
 import { GraphPage } from './pages/GraphPage'
 import { DashboardPage } from './pages/DashboardPage'
-import { ArtistPage } from './pages/ArtistPage'
-import { SearchResultsPage } from './pages/SearchResultsPage'
 import {
   hexToRgba,
   LINK_HIGHLIGHT,
@@ -47,10 +11,36 @@ import {
   TEXT_MUTED,
 } from './styles/colors'
 
-type LegalPageProps = {
-  title: string
-  children: ReactNode
+function LegalPage({ section }: { section: string }) {
+  const titles: Record<string, string> = {
+    privacy: 'Privacy Policy',
+    terms: 'Terms of Service',
+    impressum: 'Impressum',
+    cookies: 'Cookie Settings',
+    contact: 'Contact',
+  }
+
+  return (
+    <div style={{ padding: '40px', maxWidth: '800px', margin: '0 auto' }}>
+      <h1>{titles[section] || 'Legal'}</h1>
+      <p style={{ color: TEXT_MUTED, marginTop: '20px' }}>
+        This page is a placeholder for {titles[section]?.toLowerCase() || 'legal information'}.
+      </p>
+    </div>
+  )
 }
+
+function SearchRedirect() {
+  const [searchParams] = useSearchParams()
+  return <Navigate to={`/graph?${searchParams.toString()}`} replace />
+}
+
+function ArtistRedirect() {
+  const { id } = useParams<{ id: string }>()
+  return <Navigate to={`/graph?artist=${encodeURIComponent(id ?? '')}`} replace />
+}
+
+
 
 const shellStyle: CSSProperties = {
   display: 'flex',
@@ -71,8 +61,6 @@ const navStyle: CSSProperties = {
 
 const footerStyle: CSSProperties = {
   display: 'flex',
-  flexWrap: 'wrap',
-  gap: '12px 18px',
   alignItems: 'center',
   justifyContent: 'space-between',
   padding: '14px 20px',
@@ -80,17 +68,6 @@ const footerStyle: CSSProperties = {
   background: hexToRgba(BACKGROUND, 0.72),
   color: TEXT_MUTED,
   fontSize: 13,
-}
-
-const footerLinksStyle: CSSProperties = {
-  display: 'flex',
-  flexWrap: 'wrap',
-  gap: '10px 14px',
-}
-
-const legalLinkStyle: CSSProperties = {
-  color: TEXT_MUTED,
-  textDecoration: 'none',
 }
 
 const linkBaseStyle: CSSProperties = {
@@ -103,30 +80,7 @@ const linkBaseStyle: CSSProperties = {
   transition: 'all 120ms ease',
 }
 
-function LegalPage({ title, children }: LegalPageProps) {
-  return (
-    <section className="page">
-      <article className="card">
-        <p className="eyebrow">Legal</p>
-        <h1>{title}</h1>
-        <p className="lead">{children}</p>
-      </article>
-    </section>
-  )
-}
-
 export default function App() {
-  const [searchValue, setSearchValue] = useState('')
-
-  const handleSearchSubmit = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    const nextQuery = searchValue.trim()
-
-    if (!nextQuery) return
-
-    window.location.href = `/search?q=${encodeURIComponent(nextQuery)}`
-  }
-
   return (
     <div style={shellStyle}>
       <nav style={navStyle}>
@@ -153,17 +107,6 @@ export default function App() {
         >
           Dashboard
         </NavLink>
-
-        <form className="nav-search-form" onSubmit={handleSearchSubmit}>
-          <input
-            className="nav-search-input"
-            type="search"
-            value={searchValue}
-            onChange={(event) => setSearchValue(event.target.value)}
-            placeholder="Search artists, venues, promoters, events..."
-            aria-label="Search"
-          />
-        </form>
       </nav>
 
       <main style={{ flex: 1, overflow: 'hidden' }}>
@@ -171,69 +114,31 @@ export default function App() {
           <Route path="/" element={<Navigate to="/graph" />} />
           <Route path="/graph" element={<GraphPage />} />
           <Route path="/dashboard" element={<DashboardPage />} />
-          <Route path="/search" element={<SearchResultsPage />} />
-          <Route path="/artist/:id" element={<ArtistPage />} />
-          <Route
-            path="/privacy-policy"
-            element={
-              <LegalPage title="Privacy Policy">
-                - Empty - Explain what data are collected, why, how long, and how users can contact us.
-              </LegalPage>
-            }
-          />
-          <Route
-            path="/terms-of-service"
-            element={
-              <LegalPage title="Terms of Service">
-                - Empty - Rules for using the site, content ownership, limitations of liability, & acceptable use.
-              </LegalPage>
-            }
-          />
-          <Route
-            path="/impressum"
-            element={
-              <LegalPage title="Impressum">
-                - Empty - Publisher info, responsible person/company, address, & contact details.
-              </LegalPage>
-            }
-          />
-          <Route
-            path="/cookie-settings"
-            element={
-              <LegalPage title="Cookie Settings">
-                - Empty - Review cookie categories and update consent preferences here.
-              </LegalPage>
-            }
-          />
-          <Route
-            path="/contact"
-            element={
-              <LegalPage title="Contact">
-                - Empty - Email, form, or other ways for contact.
-              </LegalPage>
-            }
-          />
+          <Route path="/search" element={<SearchRedirect />} />
+          <Route path="/artist/:id" element={<ArtistRedirect />} />
+          <Route path="/privacy-policy" element={<LegalPage section="privacy" />} />
+          <Route path="/terms-of-service" element={<LegalPage section="terms" />} />
+          <Route path="/impressum" element={<LegalPage section="impressum" />} />
+          <Route path="/cookie-settings" element={<LegalPage section="cookies" />} />
+          <Route path="/contact" element={<LegalPage section="contact" />} />
         </Routes>
       </main>
 
       <footer style={footerStyle}>
         <span>© 2026 Scenegraph</span>
-        <div style={footerLinksStyle}>
-          <Link to="/privacy-policy" style={legalLinkStyle}>
+        <div style={{ display: 'flex', gap: '16px' }}>
+          <NavLink to="/privacy-policy" style={{ ...linkBaseStyle, color: TEXT_MUTED, fontSize: 12, padding: '4px 8px' }}>
             Privacy Policy
-          </Link>
-          <Link to="/terms-of-service" style={legalLinkStyle}>
-            Terms of Service
-          </Link>
-          <Link to="/impressum" style={legalLinkStyle}>
+          </NavLink>
+          <NavLink to="/terms-of-service" style={{ ...linkBaseStyle, color: TEXT_MUTED, fontSize: 12, padding: '4px 8px' }}>
+            Terms
+          </NavLink>
+          <NavLink to="/impressum" style={{ ...linkBaseStyle, color: TEXT_MUTED, fontSize: 12, padding: '4px 8px' }}>
             Impressum
-          </Link>
-          <Link to="/contact" style={legalLinkStyle}>
+          </NavLink>
+          <NavLink to="/contact" style={{ ...linkBaseStyle, color: TEXT_MUTED, fontSize: 12, padding: '4px 8px' }}>
             Contact
-          </Link>
-          <Link to="/cookie-settings" style={legalLinkStyle}>
-            Cookie Settings
-          </Link>
+          </NavLink>
         </div>
       </footer>
     </div>

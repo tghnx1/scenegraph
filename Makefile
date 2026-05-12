@@ -2,7 +2,7 @@ COMPOSE := docker compose
 ENV_FILE := .env
 ENV_EXAMPLE := .env.example
 
-.PHONY: help env build up upd down stop restart logs ps health prisma-migrate prisma-studio db-shell import-events import-dump clean list fclean
+.PHONY: help env build up upd down stop restart logs ps health frontend-dev prisma-migrate prisma-studio db-shell import-events import-dump clean list fclean
 
 help:
 	@printf "\n"
@@ -12,6 +12,7 @@ help:
 	@printf "  make build    Build containers\n"
 	@printf "  make up       Start stack in foreground\n"
 	@printf "  make upd      Start stack in background\n"
+	@printf "  make frontend-dev Start live frontend dev container\n"
 	@printf "  make down     Stop and remove containers\n"
 	@printf "  make stop     Stop running containers\n"
 	@printf "  make restart  Restart the stack in background\n"
@@ -52,6 +53,9 @@ stop:
 	$(COMPOSE) stop
 
 restart: down upd
+
+frontend-dev: env
+	$(COMPOSE) up -d frontend nginx
 
 logs:
 	$(COMPOSE) logs -f
