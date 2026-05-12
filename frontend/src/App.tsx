@@ -1,5 +1,5 @@
 import { type CSSProperties } from 'react'
-import { Routes, Route, Navigate, NavLink, useParams, useSearchParams } from 'react-router-dom'
+import { Routes, Route, Navigate, NavLink, useLocation, useParams, useSearchParams } from 'react-router-dom'
 import { GraphPage } from './pages/GraphPage'
 import { DashboardPage } from './pages/DashboardPage'
 import {
@@ -82,20 +82,23 @@ const linkBaseStyle: CSSProperties = {
 }
 
 export default function App() {
+  const location = useLocation()
+  const isGraphActive = location.pathname === '/graph'
+
   return (
     <div style={shellStyle}>
       <nav style={navStyle}>
-        <NavLink
-          to="/graph"
-          style={({ isActive }) => ({
+        <a
+          href="/graph"
+          style={{
             ...linkBaseStyle,
-            background: isActive ? hexToRgba(LINK_HIGHLIGHT, 0.2) : 'transparent',
-            color: isActive ? TEXT : TEXT_MUTED,
-            border: isActive ? `1px solid ${hexToRgba(LINK_HIGHLIGHT, 0.45)}` : '1px solid transparent',
-          })}
+            background: isGraphActive ? hexToRgba(LINK_HIGHLIGHT, 0.2) : 'transparent',
+            color: isGraphActive ? TEXT : TEXT_MUTED,
+            border: isGraphActive ? `1px solid ${hexToRgba(LINK_HIGHLIGHT, 0.45)}` : '1px solid transparent',
+          }}
         >
           Graph
-        </NavLink>
+        </a>
 
         <NavLink
           to="/dashboard"
