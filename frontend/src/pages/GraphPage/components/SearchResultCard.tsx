@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import type { SearchResult } from '../types/search'
+import type { SearchResult } from '../../../types/search'
 
 type SearchResultCardProps = {
   result: SearchResult

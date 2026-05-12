@@ -1,4 +1,4 @@
-import { SearchResultCard } from '../../../components/SearchResultCard.tsx'
+import { SearchResultCard } from './SearchResultCard.tsx'
 import type { Artist, SimilarArtist } from '../../../types/artist.ts'
 import type { GraphNode } from '../../../types/graph.ts'
 import type { SearchArtistResult, SearchResult } from '../../../types/search.ts'

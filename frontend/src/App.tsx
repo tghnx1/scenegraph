@@ -45,7 +45,8 @@ function ArtistRedirect() {
 const shellStyle: CSSProperties = {
   display: 'flex',
   flexDirection: 'column',
-  height: '100vh',
+  height: '100dvh',
+  minHeight: '100vh',
   color: TEXT,
   background: `radial-gradient(1000px 520px at 12% -10%, ${hexToRgba(LINK_HIGHLIGHT, 0.18)}, transparent 60%), radial-gradient(900px 460px at 95% 0%, ${hexToRgba(ACCENT_WARM, 0.15)}, transparent 55%), ${BACKGROUND}`,
 }
@@ -109,7 +110,7 @@ export default function App() {
         </NavLink>
       </nav>
 
-      <main style={{ flex: 1, overflow: 'hidden' }}>
+      <main style={{ flex: 1, overflowX: 'hidden', overflowY: 'auto' }}>
         <Routes>
           <Route path="/" element={<Navigate to="/graph" />} />
           <Route path="/graph" element={<GraphPage />} />
