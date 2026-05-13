@@ -20,9 +20,9 @@ export function DashboardPage() {
             <button type="button">Edit</button>
           </div>
           <h2>Artist biography</h2>
-          <p>Self biography and claimed account fields will appear here once a profile is connected.</p>
+          <p>Self biography and claimed account fields appear here.</p>
           <div className="profile-fields">
-            <span>Display name</span>
+            <span>Name</span>
             <span>Genres</span>
             <span>Location</span>
           </div>
@@ -34,7 +34,7 @@ export function DashboardPage() {
             <span className="panel-status">Node details</span>
           </div>
           <h2>Selection details</h2>
-          <p>Selected node information, definitive search results, and related entities will be shown here.</p>
+          <p>Selected node information, definitive search results, and related entities.</p>
         </article>
 
         <article className="dashboard-panel side-panel recommendations-panel">
@@ -44,8 +44,7 @@ export function DashboardPage() {
           </div>
           <div className="placeholder-list">
             <span>Recommended names</span>
-            <span>Why each connection was suggested</span>
-            <span>Confidence and shared context</span>
+            <span>A list of names/connections.</span>
           </div>
         </article>
 
@@ -100,10 +99,11 @@ export function DashboardPage() {
           </div>
           <div className="placeholder-list">
             <span>Clickable contact names</span>
-            <span>Established communication threads</span>
-            <span>Selected chat preview area</span>
+            <span>Open a chat</span>
           </div>
         </article>
+
+        <article className="dashboard-panel empty-panel" aria-label="Empty dashboard panel" />
       </section>
     </div>
   )
