@@ -1,4 +1,4 @@
-import type { GraphParams } from '../../../api/graph.ts'
+import type { GraphParams } from '../../api/graph.ts'
 
 const GENRE_OPTIONS = [
   { label: 'All', value: '' },
