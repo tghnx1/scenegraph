@@ -3,8 +3,7 @@
   height: 100%;
   margin: 0 auto;
   padding: 16px;
-  display: grid;
-  grid-template-rows: minmax(0, 1fr);
+  overflow-y: auto;
 }
 
 .dashboard-tab,
@@ -29,13 +28,14 @@
 }
 
 .dashboard-grid {
-  min-height: 0;
+  min-height: 100%;
   display: grid;
   grid-template-columns: minmax(280px, 0.95fr) minmax(320px, 1.02fr) minmax(300px, 1.04fr);
-  grid-template-rows: minmax(210px, 0.9fr) minmax(290px, 1.1fr);
+  grid-template-rows: repeat(3, minmax(290px, 1fr));
   grid-template-areas:
     "profile context recommendations"
-    "stats graph communications";
+    "stats graph communications"
+    "empty . .";
   gap: 12px;
 }
 
@@ -87,6 +87,11 @@
 
 .communications-panel {
   grid-area: communications;
+}
+
+.empty-panel {
+  grid-area: empty;
+  min-height: 290px;
 }
 
 .side-panel {
