@@ -41,7 +41,7 @@
 
   .dashboard-grid {
     grid-template-columns: 1fr;
-    grid-template-rows: none;
+    grid-template-rows: repeat(7, minmax(260px, var(--dashboard-panel-height)));
     grid-template-areas:
       "profile"
       "context"
@@ -52,12 +52,15 @@
       "empty";
   }
 
+  .context-panel {
+    height: auto;
+  }
+
   .stat-grid {
     grid-template-columns: 1fr;
   }
 
   .legend-bar,
-  .dashboard-search-strip,
   .panel-heading {
     align-items: stretch;
     flex-direction: column;

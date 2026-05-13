@@ -1,7 +1,7 @@
 import { SearchResultCard } from './SearchResultCard.tsx'
-import type { Artist, SimilarArtist } from '../../../types/artist.ts'
-import type { GraphNode } from '../../../types/graph.ts'
-import type { SearchArtistResult, SearchResult } from '../../../types/search.ts'
+import type { Artist, SimilarArtist } from '../../types/artist.ts'
+import type { GraphNode } from '../../types/graph.ts'
+import type { SearchArtistResult, SearchResult } from '../../types/search.ts'
 
 interface GraphSidebarDetailsProps {
   searchQuery: string
@@ -153,7 +153,7 @@ export function GraphSidebarDetails({
   return (
     <div className="graph-sidebar-content">
       <div className="empty-state">
-        <h3>Information</h3>
+        {/* <h3>Information</h3> */}
         <p>Search for an artist, venue, promoter, or event on the search field above, or click a node in the graph to view details.</p>
       </div>
     </div>

@@ -1,5 +1,5 @@
-import { useEffect } from 'react'
-import type { GraphNode } from '../../../types/graph'
+import { useEffect, type RefObject } from 'react'
+import type { GraphNode } from '../../types/graph'
 import { forceCollide } from 'd3-force'
 
 const CENTERING_FORCE_STRENGTH = 0.04
@@ -22,7 +22,7 @@ function createAxisForce(axis: 'x' | 'y', target = 0, strength = CENTERING_FORCE
   return force
 }
 
-export function useGraphPhysics(graphRef: React.RefObject<any>, data: any) {
+export function useGraphPhysics(graphRef: RefObject<any>, data: any) {
   useEffect(() => {
     if (!graphRef.current) return
 

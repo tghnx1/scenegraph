@@ -9,12 +9,13 @@ import { useGraphStore } from '../store/graphStore.ts'
 import type { Artist, SimilarArtist } from '../types/artist.ts'
 import type { GraphNode } from '../types/graph.ts'
 import type { SearchResponse } from '../types/search.ts'
-import { useGraphHighlights } from './GraphPage/hooks/useGraphHighlights.ts'
-import { useGraphPhysics } from './GraphPage/hooks/useGraphPhysics.ts'
+import { useGraphHighlights } from './hooks/useGraphHighlights.ts'
+import { useGraphPhysics } from './hooks/useGraphPhysics.ts'
 import { drawNodeShape } from './GraphPage/drawNode.ts'
 import { LINK_HIGHLIGHT, LINK_DIM, BACKGROUND, hexToRgba } from '../styles/colors.ts'
-import { GraphSidebarDetails } from './GraphPage/components/DetailsPanel.tsx'
-import { GraphFilters } from './GraphPage/components/GraphFilters.tsx'
+import { GraphSidebarDetails } from './components/DetailsPanel.tsx'
+import { GraphFilters } from './components/GraphFilters.tsx'
+import { SearchQueryForm } from './components/SearchQueryForm.tsx'
 
 const MIN_GRAPH_HEIGHT = 320
 const DEFAULT_GRAPH_FILTERS: GraphParams = { limit: 100 }
@@ -163,27 +164,14 @@ export function GraphPage() {
       <aside className="graph-sidebar">
         <article className="graph-sidebar-card">
           <div className="graph-sidebar-search">
-            <form className="search-query-form" onSubmit={handleSearchSubmit}>
-              <label className="search-query-label" htmlFor="graph-search-query-input">
-                Search Database
-              </label>
-              <div className="search-query-box">
-                <input
-                  id="graph-search-query-input"
-                  className="search-query-input"
-                  type="search"
-                  value={searchValue}
-                  onChange={(event) => setSearchValue(event.target.value)}
-                  placeholder="Search artists, venues, promoters, events..."
-                  aria-label="Search"
-                />
-                {hasActiveSearchState && (
-                  <button type="button" className="search-query-clear" onClick={handleClearSearch} aria-label="Clear search and selection">
-                    x
-                  </button>
-                )}
-              </div>
-            </form>
+            <SearchQueryForm
+              inputId="graph-search-query-input"
+              value={searchValue}
+              onChange={setSearchValue}
+              onSubmit={handleSearchSubmit}
+              onClear={handleClearSearch}
+              showClear={hasActiveSearchState}
+            />
             {/* <p className="search-query-hint">Enter a name, then press Enter to update the search.</p> */}
           </div>
 
