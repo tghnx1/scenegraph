@@ -138,7 +138,7 @@ export function DashboardPage() {
         <article className="dashboard-panel side-panel recommendations-panel">
           <div className="panel-heading">
             <span className="search-query-label">Recommendations</span>
-            <span className="panel-status">Draft</span>
+            {/* <span className="panel-status">Draft</span> */}
           </div>
           <div className="placeholder-list">
             <span>Recommended names</span>
@@ -149,7 +149,7 @@ export function DashboardPage() {
         <article className="dashboard-panel stats-panel">
           <div className="panel-heading">
             <span className="search-query-label">Statistics</span>
-            <span className="panel-status">Overview</span>
+            {/* <span className="panel-status">Overview</span> */}
           </div>
           <div className="stat-grid">
             {stats.map((item) => (
@@ -200,7 +200,7 @@ export function DashboardPage() {
         <article className="dashboard-panel side-panel communications-panel">
           <div className="panel-heading">
             <span className="search-query-label">Communications</span>
-            <span className="panel-status">Inbox</span>
+            {/* <span className="panel-status">Inbox</span> */}
           </div>
           <div className="placeholder-list">
             <span>Clickable contact names</span>
