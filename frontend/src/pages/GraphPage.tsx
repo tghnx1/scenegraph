@@ -8,7 +8,8 @@ import { fetchSearch } from '../api/search.ts'
 import { useGraphStore } from '../store/graphStore.ts'
 import type { Artist, SimilarArtist } from '../types/artist.ts'
 import type { GraphNode } from '../types/graph.ts'
-import type { SearchResponse } from '../types/search.ts'
+import type { SearchResponse, SearchResult } from '../types/search.ts'
+import { useDebouncedValue } from './hooks/useDebouncedValue.ts'
 import { useGraphHighlights } from './hooks/useGraphHighlights.ts'
 import { useGraphPhysics } from './hooks/useGraphPhysics.ts'
 import { drawNodeShape } from './GraphPage/drawNode.ts'
@@ -30,11 +31,13 @@ export function GraphPage() {
   const graphRef = useRef<any>(null)
   const containerRef = useRef<HTMLDivElement | null>(null)
   const [graphSize, setGraphSize] = useState({ width: 0, height: 0 })
-  const [searchValue, setSearchValue] = useState('')
   const [graphFilters, setGraphFilters] = useState<GraphParams>(DEFAULT_GRAPH_FILTERS)
   const [searchParams, setSearchParams] = useSearchParams()
   const { setSelected, selectedNode } = useGraphStore()
   const submittedQuery = searchParams.get('q') ?? ''
+  const [searchValue, setSearchValue] = useState(submittedQuery)
+  const [selectedSearchResult, setSelectedSearchResult] = useState<SearchResult | null>(null)
+  const debouncedSearchValue = useDebouncedValue(searchValue.trim(), 350)
   const selectedArtistParam = searchParams.get('artist') ?? ''
   const selectedArtistId = selectedNode?.type === 'artist' ? selectedNode.id : null
 
@@ -60,6 +63,11 @@ export function GraphPage() {
   } = useApi<SearchResponse>(
     () => (submittedQuery ? fetchSearch(submittedQuery) : Promise.resolve({ query: '', results: [] })),
     [submittedQuery]
+  )
+
+  const { data: dropdownSearchData, isLoading: isDropdownSearchLoading } = useApi<SearchResponse>(
+    () => (debouncedSearchValue.length >= 2 ? fetchSearch(debouncedSearchValue) : Promise.resolve({ query: '', results: [] })),
+    [debouncedSearchValue]
   )
 
   const { connectedNodes } = useGraphHighlights(selectedNode || null, data)
@@ -103,6 +111,8 @@ export function GraphPage() {
       const nextNode = node as GraphNode
       const nextParams = new URLSearchParams(searchParams)
       nextParams.delete('q')
+      nextParams.delete('selectedType')
+      nextParams.delete('selectedId')
       if (nextNode.type === 'artist') {
         nextParams.set('artist', nextNode.id)
       } else {
@@ -110,6 +120,7 @@ export function GraphPage() {
       }
 
       setSearchParams(nextParams, { replace: true })
+      setSelectedSearchResult(null)
       setSelected(nextNode)
     },
     [searchParams, setSearchParams, setSelected]
@@ -123,6 +134,9 @@ export function GraphPage() {
       const nextParams = new URLSearchParams(searchParams)
       nextParams.set('q', nextQuery)
       nextParams.delete('artist')
+      nextParams.delete('selectedType')
+      nextParams.delete('selectedId')
+      setSelectedSearchResult(null)
       setSelected(null)
       setSearchParams(nextParams, { replace: true })
     },
@@ -134,9 +148,31 @@ export function GraphPage() {
     const nextParams = new URLSearchParams(searchParams)
     nextParams.delete('q')
     nextParams.delete('artist')
+    nextParams.delete('selectedType')
+    nextParams.delete('selectedId')
     setSearchParams(nextParams, { replace: true })
+    setSelectedSearchResult(null)
     setSelected(null)
   }, [searchParams, setSearchParams, setSelected])
+
+  const handleSearchValueChange = useCallback((nextValue: string) => {
+    setSearchValue(nextValue)
+  }, [])
+
+  const handleSelectSearchResult = useCallback(
+    (result: SearchResult) => {
+      const nextParams = new URLSearchParams(searchParams)
+      nextParams.set('q', result.label)
+      nextParams.set('selectedType', result.type)
+      nextParams.set('selectedId', result.id)
+      nextParams.delete('artist')
+      setSearchValue(result.label)
+      setSelectedSearchResult(result)
+      setSelected(null)
+      setSearchParams(nextParams, { replace: true })
+    },
+    [searchParams, setSearchParams, setSelected]
+  )
 
   const handleGraphFiltersChange = useCallback(
     (nextFilters: GraphParams) => {
@@ -154,6 +190,10 @@ export function GraphPage() {
 
   const similarArtistLinks = similarArtists ?? []
   const searchResults = searchData?.results ?? []
+  const trimmedSearchValue = searchValue.trim()
+  const isDropdownWaiting = trimmedSearchValue.length >= 2 && debouncedSearchValue !== trimmedSearchValue
+  const dropdownSearchResults = debouncedSearchValue === trimmedSearchValue ? dropdownSearchData?.results ?? [] : []
+  const detailSearchResults = selectedSearchResult ? [selectedSearchResult] : searchResults
   const hasActiveSearchState = Boolean(searchValue || submittedQuery || selectedNode)
   const graphData = data || { nodes: [], links: [] }
   const nodeCount = graphData.nodes.length
@@ -167,10 +207,13 @@ export function GraphPage() {
             <SearchQueryForm
               inputId="graph-search-query-input"
               value={searchValue}
-              onChange={setSearchValue}
+              onChange={handleSearchValueChange}
               onSubmit={handleSearchSubmit}
               onClear={handleClearSearch}
               showClear={hasActiveSearchState}
+              results={dropdownSearchResults}
+              isLoading={isDropdownWaiting || isDropdownSearchLoading}
+              onSelectResult={handleSelectSearchResult}
             />
             {/* <p className="search-query-hint">Enter a name, then press Enter to update the search.</p> */}
           </div>
@@ -179,7 +222,7 @@ export function GraphPage() {
 
           <GraphSidebarDetails
             searchQuery={submittedQuery}
-            searchResults={searchResults}
+            searchResults={detailSearchResults}
             isSearchLoading={isSearchLoading}
             searchError={searchError}
             selectedNode={selectedNode}

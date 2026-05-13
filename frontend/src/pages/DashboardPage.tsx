@@ -3,9 +3,10 @@ import { useSearchParams } from 'react-router-dom'
 import { fetchSearch } from '../api/search.ts'
 import { useApi } from '../hooks/useApi.ts'
 import { useGraphStore } from '../store/graphStore.ts'
-import type { SearchResponse } from '../types/search.ts'
+import type { SearchResponse, SearchResult } from '../types/search.ts'
 import { GraphSidebarDetails } from './components/DetailsPanel.tsx'
 import { SearchQueryForm } from './components/SearchQueryForm.tsx'
+import { useDebouncedValue } from './hooks/useDebouncedValue.ts'
 
 const stats = [
   { label: 'Connected nodes', value: '0' },
@@ -20,10 +21,12 @@ const legendItems = [
 ]
 
 export function DashboardPage() {
-  const [searchValue, setSearchValue] = useState('')
   const [searchParams, setSearchParams] = useSearchParams()
   const { setSelected, selectedNode } = useGraphStore()
   const submittedQuery = searchParams.get('q') ?? ''
+  const [searchValue, setSearchValue] = useState(submittedQuery)
+  const [selectedSearchResult, setSelectedSearchResult] = useState<SearchResult | null>(null)
+  const debouncedSearchValue = useDebouncedValue(searchValue.trim(), 350)
 
   const {
     data: searchData,
@@ -32,6 +35,11 @@ export function DashboardPage() {
   } = useApi<SearchResponse>(
     () => (submittedQuery ? fetchSearch(submittedQuery) : Promise.resolve({ query: '', results: [] })),
     [submittedQuery]
+  )
+
+  const { data: dropdownSearchData, isLoading: isDropdownSearchLoading } = useApi<SearchResponse>(
+    () => (debouncedSearchValue.length >= 2 ? fetchSearch(debouncedSearchValue) : Promise.resolve({ query: '', results: [] })),
+    [debouncedSearchValue]
   )
 
   useEffect(() => {
@@ -46,6 +54,9 @@ export function DashboardPage() {
       const nextParams = new URLSearchParams(searchParams)
       nextParams.set('q', nextQuery)
       nextParams.delete('artist')
+      nextParams.delete('selectedType')
+      nextParams.delete('selectedId')
+      setSelectedSearchResult(null)
       setSelected(null)
       setSearchParams(nextParams, { replace: true })
     },
@@ -57,11 +68,37 @@ export function DashboardPage() {
     const nextParams = new URLSearchParams(searchParams)
     nextParams.delete('q')
     nextParams.delete('artist')
+    nextParams.delete('selectedType')
+    nextParams.delete('selectedId')
     setSearchParams(nextParams, { replace: true })
+    setSelectedSearchResult(null)
     setSelected(null)
   }, [searchParams, setSearchParams, setSelected])
 
+  const handleSearchValueChange = useCallback((nextValue: string) => {
+    setSearchValue(nextValue)
+  }, [])
+
+  const handleSelectSearchResult = useCallback(
+    (result: SearchResult) => {
+      const nextParams = new URLSearchParams(searchParams)
+      nextParams.set('q', result.label)
+      nextParams.set('selectedType', result.type)
+      nextParams.set('selectedId', result.id)
+      nextParams.delete('artist')
+      setSearchValue(result.label)
+      setSelectedSearchResult(result)
+      setSelected(null)
+      setSearchParams(nextParams, { replace: true })
+    },
+    [searchParams, setSearchParams, setSelected]
+  )
+
   const searchResults = searchData?.results ?? []
+  const trimmedSearchValue = searchValue.trim()
+  const isDropdownWaiting = trimmedSearchValue.length >= 2 && debouncedSearchValue !== trimmedSearchValue
+  const dropdownSearchResults = debouncedSearchValue === trimmedSearchValue ? dropdownSearchData?.results ?? [] : []
+  const detailSearchResults = selectedSearchResult ? [selectedSearchResult] : searchResults
   const hasActiveSearchState = Boolean(searchValue || submittedQuery || selectedNode)
 
   return (
@@ -87,7 +124,7 @@ export function DashboardPage() {
           </div>
           <GraphSidebarDetails
             searchQuery={submittedQuery}
-            searchResults={searchResults}
+            searchResults={detailSearchResults}
             isSearchLoading={isSearchLoading}
             searchError={searchError}
             selectedNode={null}
@@ -130,10 +167,13 @@ export function DashboardPage() {
             <SearchQueryForm
               inputId="dashboard-search-query-input"
               value={searchValue}
-              onChange={setSearchValue}
+              onChange={handleSearchValueChange}
               onSubmit={handleSearchSubmit}
               onClear={handleClearSearch}
               showClear={hasActiveSearchState}
+              results={dropdownSearchResults}
+              isLoading={isDropdownWaiting || isDropdownSearchLoading}
+              onSelectResult={handleSelectSearchResult}
             />
 
             <div className="panel-heading">
