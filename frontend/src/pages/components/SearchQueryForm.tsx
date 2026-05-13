@@ -60,6 +60,9 @@ export function SearchQueryForm({
           id={inputId}
           className="search-query-input"
           type="search"
+          autoComplete="off"
+          autoCorrect="off"
+          spellCheck={false}
           value={value}
           onChange={(event) => {
             setIsDropdownOpen(true)
