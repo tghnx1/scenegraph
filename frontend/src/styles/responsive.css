@@ -41,7 +41,7 @@
 
   .dashboard-grid {
     grid-template-columns: 1fr;
-    grid-template-rows: repeat(7, minmax(260px, var(--dashboard-panel-height)));
+    grid-template-rows: repeat(7, minmax(360px, var(--dashboard-panel-height)));
     grid-template-areas:
       "profile"
       "context"
