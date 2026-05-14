@@ -13,8 +13,6 @@ MAX_RECURRING_NAMES = 12
 MAX_EVENT_DESCRIPTION_CHARS = 3000
 MAX_EVENT_LINEUP_CHARS = 2000
 MAX_ARTIST_BIOGRAPHY_CHARS = 5000
-MAX_ARTIST_EVENT_DESCRIPTIONS_CHARS = 5000
-MAX_ARTIST_EVENT_LINEUPS_CHARS = 5000
 RA_BIOGRAPHY_PREFIX_RE = re.compile(
     r"^[\s\u0338\u200b\u200c\u200d\u2060\ufeff]*(?:biography\b[:\-\s]*)+",
     re.IGNORECASE,
@@ -125,16 +123,7 @@ def compose_artist_text_profile(
     venue_names: Iterable[Any] = (),
     promoter_names: Iterable[Any] = (),
 ) -> str:
-    events = list(event_contexts)
-    event_titles = unique_texts((event.get("title") for event in events), MAX_EVENT_CONTEXTS)
-    event_descriptions = unique_texts(
-        (event.get("description_text") for event in events),
-        MAX_EVENT_CONTEXTS,
-    )
-    event_lineups = unique_texts(
-        (event.get("lineup_residual_text") or event.get("lineup_raw") for event in events),
-        MAX_EVENT_CONTEXTS,
-    )
+    _ = (event_contexts, venue_names, promoter_names)
 
     return join_sections(
         [
@@ -145,19 +134,6 @@ def compose_artist_text_profile(
                 or normalize_biography_text(artist.get("biography", "")),
                 MAX_ARTIST_BIOGRAPHY_CHARS,
             ),
-            format_section("Played event titles", event_titles),
-            format_section(
-                "Played event descriptions",
-                event_descriptions,
-                MAX_ARTIST_EVENT_DESCRIPTIONS_CHARS,
-            ),
-            format_section(
-                "Played event lineup context",
-                event_lineups,
-                MAX_ARTIST_EVENT_LINEUPS_CHARS,
-            ),
-            format_section("Recurring venues", rank_recurring_names(venue_names)),
-            format_section("Recurring promoters", rank_recurring_names(promoter_names)),
         ]
     )
 
