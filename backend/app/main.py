@@ -10,6 +10,11 @@ from psycopg import Connection
 
 from app.db import get_db
 from app.embeddings import EmbeddingConfig, EntityType, rank_similar_embeddings
+from app.recommendation_scoring import (
+    DEFAULT_RECOMMENDATION_SCORING,
+    final_recommendation_score,
+    hybrid_graph_score,
+)
 
 
 app = FastAPI(title="Berlin Scene Graph API")
@@ -60,7 +65,7 @@ class GraphResponse(BaseModel):
     links: list[GraphLink]
 
 
-class RecommendationItem(BaseModel):
+class SimilarityItem(BaseModel):
     id: int
     type: Literal["artist", "event"]
     name: str
@@ -72,12 +77,12 @@ class RecommendationItem(BaseModel):
     venueName: str | None = None
 
 
-class RecommendationsResponse(BaseModel):
+class SimilarityResponse(BaseModel):
     entityId: int
     entityType: Literal["artist", "event"]
     model: str
     dimensions: int
-    recommendations: list[RecommendationItem]
+    similar: list[SimilarityItem]
 
 
 def graph_node_id(node_type: str, entity_id: int) -> str:
@@ -120,16 +125,6 @@ def recommendation_item_metadata(
         rows = cursor.fetchall()
 
     return {row["id"]: row for row in rows}
-
-
-def capped_overlap_score(left: set[int], right: set[int], cap: int = 3) -> float:
-    if not left or not right:
-        return 0.0
-    return min(len(left & right) / cap, 1.0)
-
-
-def boolean_overlap_score(left: set[int], right: set[int]) -> float:
-    return 1.0 if left and right and bool(left & right) else 0.0
 
 
 def as_id_set(values: list[int | None] | None) -> set[int]:
@@ -196,42 +191,7 @@ def recommendation_feature_sets(
     }
 
 
-def hybrid_graph_score(
-    entity_type: EntityType,
-    source: dict[str, set[int]],
-    candidate: dict[str, set[int]],
-) -> tuple[float, list[str]]:
-    if entity_type == "event":
-        components = {
-            "shared artists": 0.45
-            * capped_overlap_score(source["artists"], candidate["artists"], cap=3),
-            "shared promoters": 0.25
-            * capped_overlap_score(source["promoters"], candidate["promoters"], cap=2),
-            "same venue": 0.20 * boolean_overlap_score(source["venues"], candidate["venues"]),
-            "shared genres": 0.10
-            * capped_overlap_score(source["genres"], candidate["genres"], cap=3),
-        }
-    else:
-        components = {
-            "played same events": 0.40
-            * capped_overlap_score(source["events"], candidate["events"], cap=2),
-            "shared promoters": 0.25
-            * capped_overlap_score(source["promoters"], candidate["promoters"], cap=3),
-            "shared venues": 0.20
-            * capped_overlap_score(source["venues"], candidate["venues"], cap=3),
-            "shared genres": 0.15
-            * capped_overlap_score(source["genres"], candidate["genres"], cap=3),
-        }
-
-    reasons = [
-        label
-        for label, score in sorted(components.items(), key=lambda item: -item[1])
-        if score > 0
-    ][:3]
-    return sum(components.values()), reasons
-
-
-def rerank_hybrid_recommendations(
+def rerank_similar_entities(
     connection: Connection,
     *,
     entity_type: EntityType,
@@ -253,7 +213,11 @@ def rerank_hybrid_recommendations(
 
         graph_score, reasons = hybrid_graph_score(entity_type, source_features, candidate_features)
         semantic_score = item["score"]
-        final_score = 0.65 * semantic_score + 0.35 * graph_score
+        final_score = final_recommendation_score(
+            semantic_score,
+            graph_score,
+            DEFAULT_RECOMMENDATION_SCORING,
+        )
         rescored.append(
             {
                 **item,
@@ -270,13 +234,13 @@ def rerank_hybrid_recommendations(
     )[:limit]
 
 
-def build_recommendations_response(
+def build_similarity_response(
     connection: Connection,
     *,
     entity_type: EntityType,
     entity_id: int,
     limit: int,
-) -> RecommendationsResponse:
+) -> SimilarityResponse:
     config = EmbeddingConfig.from_env()
     candidate_limit = max(limit * 10, 100)
     source, ranked = rank_similar_embeddings(
@@ -296,7 +260,7 @@ def build_recommendations_response(
             ),
         )
 
-    reranked = rerank_hybrid_recommendations(
+    reranked = rerank_similar_entities(
         connection,
         entity_type=entity_type,
         entity_id=entity_id,
@@ -308,8 +272,8 @@ def build_recommendations_response(
         entity_type,
         [item["entity_id"] for item in reranked],
     )
-    recommendations = [
-        RecommendationItem(
+    similar = [
+        SimilarityItem(
             id=item["entity_id"],
             type=entity_type,
             name=metadata[item["entity_id"]]["name"],
@@ -324,12 +288,12 @@ def build_recommendations_response(
         if item["entity_id"] in metadata
     ]
 
-    return RecommendationsResponse(
+    return SimilarityResponse(
         entityId=entity_id,
         entityType=entity_type,
         model=source["model"],
         dimensions=source["dimensions"],
-        recommendations=recommendations,
+        similar=similar,
     )
 
 
@@ -367,16 +331,53 @@ async def list_venues(connection: Connection = Depends(get_db)) -> VenuesRespons
 
 
 @app.get(
-    "/api/recommendations/events/{event_id}",
-    response_model=RecommendationsResponse,
+    "/api/similar/events/{event_id}",
+    response_model=SimilarityResponse,
     response_model_exclude_none=True,
 )
-async def recommend_events(
+async def similar_events(
     event_id: int,
     limit: int = Query(default=10, ge=1, le=100),
     connection: Connection = Depends(get_db),
-) -> RecommendationsResponse:
-    return build_recommendations_response(
+) -> SimilarityResponse:
+    return build_similarity_response(
+        connection,
+        entity_type="event",
+        entity_id=event_id,
+        limit=limit,
+    )
+
+
+@app.get(
+    "/api/similar/artists/{artist_id}",
+    response_model=SimilarityResponse,
+    response_model_exclude_none=True,
+)
+async def similar_artists(
+    artist_id: int,
+    limit: int = Query(default=10, ge=1, le=100),
+    connection: Connection = Depends(get_db),
+) -> SimilarityResponse:
+    return build_similarity_response(
+        connection,
+        entity_type="artist",
+        entity_id=artist_id,
+        limit=limit,
+    )
+
+
+@app.get(
+    "/api/recommendations/events/{event_id}",
+    response_model=SimilarityResponse,
+    response_model_exclude_none=True,
+    include_in_schema=False,
+)
+async def recommend_events_alias(
+    event_id: int,
+    limit: int = Query(default=10, ge=1, le=100),
+    connection: Connection = Depends(get_db),
+) -> SimilarityResponse:
+    return build_similarity_response(
         connection,
         entity_type="event",
         entity_id=event_id,
@@ -386,15 +387,16 @@ async def recommend_events(
 
 @app.get(
     "/api/recommendations/artists/{artist_id}",
-    response_model=RecommendationsResponse,
+    response_model=SimilarityResponse,
     response_model_exclude_none=True,
+    include_in_schema=False,
 )
-async def recommend_artists(
+async def recommend_artists_alias(
     artist_id: int,
     limit: int = Query(default=10, ge=1, le=100),
     connection: Connection = Depends(get_db),
-) -> RecommendationsResponse:
-    return build_recommendations_response(
+) -> SimilarityResponse:
+    return build_similarity_response(
         connection,
         entity_type="artist",
         entity_id=artist_id,
