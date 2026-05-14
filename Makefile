@@ -2,7 +2,7 @@ COMPOSE := docker compose
 ENV_FILE := .env
 ENV_EXAMPLE := .env.example
 
-.PHONY: help env build up upd down stop restart logs ps health prisma-migrate prisma-studio db-shell import-events backfill-lineup-residual generate-embeddings import-dump clean list fclean
+.PHONY: help env build up upd down stop restart logs ps health prisma-migrate prisma-studio db-shell import-events backfill-normalized-texts backfill-lineup-residual backfill-artist-biographies generate-embeddings import-dump clean list fclean
 
 help:
 	@printf "\n"
@@ -22,7 +22,9 @@ help:
 	@printf "  make prisma-studio  Open Prisma Studio on localhost:5555\n"
 	@printf "  make db-shell Open a psql shell inside the Postgres container\n"
 	@printf "  make import-events Import backend/data/ra_berlin_past_events_2026.json\n"
+	@printf "  make backfill-normalized-texts Fill normalized lineup and biography text fields\n"
 	@printf "  make backfill-lineup-residual Fill events.lineup_residual_text from lineup_raw\n"
+	@printf "  make backfill-artist-biographies Fill artists.biography_normalized from biography\n"
 	@printf "  make generate-embeddings Generate OpenAI embeddings for recommendations\n"
 	@printf "  make import-dump   Import a local SQL dump; prompts before overwrite\n"
 	@printf "  make clean    Stop stack and remove volumes\n"
@@ -79,8 +81,14 @@ db-shell: env
 import-events: env
 	$(COMPOSE) exec backend python scripts/import_events.py
 
+backfill-normalized-texts: env
+	$(COMPOSE) exec backend python scripts/backfill_normalized_texts.py
+
 backfill-lineup-residual: env
-	$(COMPOSE) exec backend python scripts/backfill_lineup_residual.py
+	$(COMPOSE) exec backend python scripts/backfill_normalized_texts.py --target lineup
+
+backfill-artist-biographies: env
+	$(COMPOSE) exec backend python scripts/backfill_normalized_texts.py --target biography
 
 generate-embeddings: env
 	$(COMPOSE) exec backend python scripts/generate_embeddings.py

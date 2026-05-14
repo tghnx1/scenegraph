@@ -12,10 +12,11 @@ model Artist {
   name            String
   contentUrl      String?       @map("content_url")
   urlSafeName     String?       @map("url_safe_name")
-  biography       String?
-  biographyUrl    String?       @map("biography_url")
-  biographyStatus String?       @map("biography_status")
-  eventArtists    EventArtist[]
+  biography           String?
+  biographyNormalized String?       @map("biography_normalized")
+  biographyUrl        String?       @map("biography_url")
+  biographyStatus     String?       @map("biography_status")
+  eventArtists        EventArtist[]
 
   @@map("artists")
 }
