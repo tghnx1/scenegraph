@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from collections import Counter
 from collections.abc import Iterable, Sequence
 from typing import Any
@@ -9,12 +10,25 @@ from psycopg import Connection
 
 MAX_EVENT_CONTEXTS = 12
 MAX_RECURRING_NAMES = 12
+RA_BIOGRAPHY_PREFIX_RE = re.compile(
+    r"^[\s\u0338\u200b\u200c\u200d\u2060\ufeff]*(?:biography\b[:\-\s]*)+",
+    re.IGNORECASE,
+)
 
 
 def normalize_text(value: Any) -> str:
     if value is None:
         return ""
     return " ".join(str(value).split())
+
+
+def normalize_biography_text(value: Any) -> str:
+    text = normalize_text(value)
+    if not text:
+        return ""
+
+    text = RA_BIOGRAPHY_PREFIX_RE.sub("", text)
+    return normalize_text(text)
 
 
 def unique_texts(values: Iterable[Any], limit: int | None = None) -> list[str]:
@@ -103,7 +117,7 @@ def compose_artist_text_profile(
     return join_sections(
         [
             format_section("Artist name", artist.get("name", "")),
-            format_section("Biography", artist.get("biography", "")),
+            format_section("Biography", normalize_biography_text(artist.get("biography", ""))),
             format_section("Played event titles", event_titles),
             format_section("Played event descriptions", event_descriptions),
             format_section("Played event lineup context", event_lineups),
