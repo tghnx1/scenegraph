@@ -10,6 +10,11 @@ from psycopg import Connection
 
 MAX_EVENT_CONTEXTS = 12
 MAX_RECURRING_NAMES = 12
+MAX_EVENT_DESCRIPTION_CHARS = 3000
+MAX_EVENT_LINEUP_CHARS = 2000
+MAX_ARTIST_BIOGRAPHY_CHARS = 5000
+MAX_ARTIST_EVENT_DESCRIPTIONS_CHARS = 5000
+MAX_ARTIST_EVENT_LINEUPS_CHARS = 5000
 RA_BIOGRAPHY_PREFIX_RE = re.compile(
     r"^[\s\u0338\u200b\u200c\u200d\u2060\ufeff]*(?:biography\b[:\-\s]*)+",
     re.IGNORECASE,
@@ -31,6 +36,15 @@ def normalize_biography_text(value: Any) -> str:
     return normalize_text(text)
 
 
+def truncate_text(value: Any, max_chars: int) -> str:
+    text = normalize_text(value)
+    if len(text) <= max_chars:
+        return text
+
+    truncated = text[:max_chars].rsplit(" ", 1)[0].strip()
+    return f"{truncated}..."
+
+
 def unique_texts(values: Iterable[Any], limit: int | None = None) -> list[str]:
     seen: set[str] = set()
     result: list[str] = []
@@ -50,13 +64,16 @@ def unique_texts(values: Iterable[Any], limit: int | None = None) -> list[str]:
     return result
 
 
-def format_section(label: str, value: str | Sequence[str]) -> str:
+def format_section(label: str, value: str | Sequence[str], max_chars: int | None = None) -> str:
     if value is None:
         text = ""
     elif isinstance(value, str):
         text = normalize_text(value)
     else:
         text = ", ".join(unique_texts(value))
+
+    if max_chars is not None:
+        text = truncate_text(text, max_chars)
 
     if not text:
         return ""
@@ -84,11 +101,16 @@ def compose_event_text_profile(
     return join_sections(
         [
             format_section("Event title", event.get("title", "")),
-            format_section("Description", event.get("description_text", "")),
+            format_section(
+                "Description",
+                event.get("description_text", ""),
+                MAX_EVENT_DESCRIPTION_CHARS,
+            ),
             format_section("Structured lineup", artist_names),
             format_section(
                 "Lineup context",
                 event.get("lineup_residual_text") or event.get("lineup_raw", ""),
+                MAX_EVENT_LINEUP_CHARS,
             ),
             format_section("Venue", venue_name or event.get("venue_name", "")),
             format_section("Promoters", promoter_names),
@@ -121,10 +143,19 @@ def compose_artist_text_profile(
                 "Biography",
                 artist.get("biography_normalized")
                 or normalize_biography_text(artist.get("biography", "")),
+                MAX_ARTIST_BIOGRAPHY_CHARS,
             ),
             format_section("Played event titles", event_titles),
-            format_section("Played event descriptions", event_descriptions),
-            format_section("Played event lineup context", event_lineups),
+            format_section(
+                "Played event descriptions",
+                event_descriptions,
+                MAX_ARTIST_EVENT_DESCRIPTIONS_CHARS,
+            ),
+            format_section(
+                "Played event lineup context",
+                event_lineups,
+                MAX_ARTIST_EVENT_LINEUPS_CHARS,
+            ),
             format_section("Recurring venues", rank_recurring_names(venue_names)),
             format_section("Recurring promoters", rank_recurring_names(promoter_names)),
         ]

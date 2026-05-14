@@ -4,6 +4,7 @@ from app.text_profiles import (
     normalize_biography_text,
     normalize_text,
     rank_recurring_names,
+    truncate_text,
 )
 
 
@@ -19,6 +20,11 @@ def test_normalize_biography_text_drops_ra_prefix():
     )
     assert normalize_biography_text("Biography: Leftfield electro.") == "Leftfield electro."
     assert normalize_biography_text(None) == ""
+
+
+def test_truncate_text_caps_at_word_boundary():
+    assert truncate_text("one two three four", 11) == "one two..."
+    assert truncate_text("short text", 100) == "short text"
 
 
 def test_event_text_profile_uses_structured_and_residual_lineup():
@@ -89,6 +95,19 @@ def test_artist_text_profile_prefers_stored_normalized_biography():
 
     assert "Biography: Clean stored bio." in profile
     assert "Raw bio should not be used." not in profile
+
+
+def test_artist_text_profile_caps_long_biography():
+    profile = compose_artist_text_profile(
+        {
+            "name": "Long Bio Artist",
+            "biography": " ".join(["word"] * 2000),
+            "biography_normalized": None,
+        },
+    )
+
+    assert len(profile) < 5500
+    assert profile.endswith("...")
 
 
 def test_artist_text_profile_works_without_biography():
