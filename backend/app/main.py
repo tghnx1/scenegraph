@@ -191,6 +191,107 @@ def recommendation_feature_sets(
     }
 
 
+def artist_indirect_feature_sets(
+    connection: Connection,
+    *,
+    source_artist_id: int,
+    candidate_artist_ids: list[int],
+) -> dict[int, dict[str, set[int]]]:
+    if not candidate_artist_ids:
+        return {}
+
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT event_id
+            FROM event_artists
+            WHERE artist_id = %s
+            """,
+            (source_artist_id,),
+        )
+        source_event_ids = [row["event_id"] for row in cursor.fetchall()]
+
+    if not source_event_ids:
+        return {}
+
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            WITH source_events AS (
+                SELECT unnest(%(source_event_ids)s::bigint[]) AS event_id
+            )
+            SELECT
+                a.id,
+                array_remove(array_agg(DISTINCT ea.event_id), NULL) AS events,
+                array_remove(array_agg(DISTINCT e.venue_id), NULL) AS venues,
+                array_remove(array_agg(DISTINCT ep.promoter_id), NULL) AS promoters,
+                array_remove(array_agg(DISTINCT eg.genre_id), NULL) AS genres
+            FROM artists a
+            LEFT JOIN event_artists ea
+                ON ea.artist_id = a.id
+                AND NOT EXISTS (
+                    SELECT 1
+                    FROM source_events se
+                    WHERE se.event_id = ea.event_id
+                )
+            LEFT JOIN events e
+                ON e.id = ea.event_id
+            LEFT JOIN event_promoters ep
+                ON ep.event_id = ea.event_id
+            LEFT JOIN event_genres eg
+                ON eg.event_id = ea.event_id
+            WHERE a.id = ANY(%(candidate_artist_ids)s)
+               OR a.id = %(source_artist_id)s
+            GROUP BY a.id
+            """,
+            {
+                "source_artist_id": source_artist_id,
+                "source_event_ids": source_event_ids,
+                "candidate_artist_ids": candidate_artist_ids,
+            },
+        )
+        rows = cursor.fetchall()
+
+    return {
+        row["id"]: {
+            key: as_id_set(row.get(key))
+            for key in ("events", "venues", "promoters", "genres")
+        }
+        for row in rows
+    }
+
+
+def apply_artist_indirect_features(
+    connection: Connection,
+    *,
+    entity_type: EntityType,
+    entity_id: int,
+    candidate_ids: list[int],
+    features: dict[int, dict[str, set[int]]],
+) -> dict[int, dict[str, set[int]]]:
+    if entity_type != "artist":
+        return features
+    if entity_id not in features:
+        return features
+
+    indirect_features = artist_indirect_feature_sets(
+        connection,
+        source_artist_id=entity_id,
+        candidate_artist_ids=candidate_ids,
+    )
+    if entity_id in indirect_features:
+        for key in ("venues", "promoters", "genres"):
+            features[entity_id][key] = indirect_features[entity_id].get(key, set())
+
+    for candidate_id in candidate_ids:
+        if candidate_id not in features or candidate_id not in indirect_features:
+            continue
+        for key in ("venues", "promoters", "genres"):
+            features[candidate_id][key] = indirect_features[candidate_id].get(key, set())
+
+    return features
+
+
 def rerank_similar_entities(
     connection: Connection,
     *,
@@ -201,6 +302,13 @@ def rerank_similar_entities(
 ) -> list[dict]:
     candidate_ids = [item["entity_id"] for item in ranked]
     features = recommendation_feature_sets(connection, entity_type, [entity_id, *candidate_ids])
+    features = apply_artist_indirect_features(
+        connection,
+        entity_type=entity_type,
+        entity_id=entity_id,
+        candidate_ids=candidate_ids,
+        features=features,
+    )
     source_features = features.get(entity_id)
     if not source_features:
         return ranked[:limit]
