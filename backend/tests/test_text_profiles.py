@@ -49,7 +49,7 @@ def test_event_text_profile_uses_structured_and_residual_lineup():
     assert "Promoters: Emotional Voyage" in profile
 
 
-def test_artist_text_profile_combines_biography_and_event_context():
+def test_artist_text_profile_uses_intrinsic_artist_text_only():
     profile = compose_artist_text_profile(
         {
             "name": "BabaBass3000",
@@ -76,12 +76,12 @@ def test_artist_text_profile_combines_biography_and_event_context():
 
     assert "Artist name: BabaBass3000" in profile
     assert "Biography: Leftfield electro and bass-focused club music." in profile
-    assert "Played event titles: CYBERFLEX, Emotional Voyage" in profile
-    assert "Played event descriptions: Fast electro pressure." in profile
-    assert "Breaks, bass, and trippy club sounds." in profile
-    assert "Played event lineup context: Artist X, Artist Y live" in profile
-    assert "Recurring venues: Club Ost, RSO" in profile
-    assert "Recurring promoters: Emotional Voyage, CYBERFLEX" in profile
+    assert "Played event titles:" not in profile
+    assert "Played event descriptions:" not in profile
+    assert "Played event lineup context:" not in profile
+    assert "Recurring venues:" not in profile
+    assert "Recurring promoters:" not in profile
+    assert "CYBERFLEX" not in profile
 
 
 def test_artist_text_profile_prefers_stored_normalized_biography():
@@ -126,8 +126,8 @@ def test_artist_text_profile_works_without_biography():
 
     assert "Artist name: No Bio Artist" in profile
     assert "Biography:" not in profile
-    assert "Played event titles: Warehouse Night" in profile
-    assert "Played event descriptions: Industrial club music." in profile
+    assert "Played event titles:" not in profile
+    assert "Warehouse Night" not in profile
 
 
 def test_rank_recurring_names_sorts_by_frequency_then_name():
