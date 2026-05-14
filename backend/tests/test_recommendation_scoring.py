@@ -2,6 +2,7 @@ from app.recommendation_scoring import (
     DEFAULT_RECOMMENDATION_SCORING,
     final_recommendation_score,
     hybrid_graph_score,
+    is_similarity_candidate_eligible,
 )
 
 
@@ -69,3 +70,13 @@ def test_final_recommendation_score_mixes_semantic_and_graph_weights():
     score = final_recommendation_score(0.8, 0.4, DEFAULT_RECOMMENDATION_SCORING)
 
     assert score == 0.65 * 0.8 + 0.35 * 0.4
+
+
+def test_artist_similarity_requires_graph_or_strong_semantic_evidence():
+    assert not is_similarity_candidate_eligible("artist", 0.79, 0.0)
+    assert is_similarity_candidate_eligible("artist", 0.80, 0.0)
+    assert is_similarity_candidate_eligible("artist", 0.60, 0.1)
+
+
+def test_event_similarity_allows_semantic_only_candidates():
+    assert is_similarity_candidate_eligible("event", 0.60, 0.0)

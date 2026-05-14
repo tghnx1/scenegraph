@@ -22,6 +22,7 @@ class GraphFeatureWeight:
 class RecommendationScoringConfig:
     semantic_weight: float
     graph_weight: float
+    artist_semantic_only_threshold: float
     event_graph_weights: tuple[GraphFeatureWeight, ...]
     artist_graph_weights: tuple[GraphFeatureWeight, ...]
 
@@ -29,6 +30,7 @@ class RecommendationScoringConfig:
 DEFAULT_RECOMMENDATION_SCORING = RecommendationScoringConfig(
     semantic_weight=0.65,
     graph_weight=0.35,
+    artist_semantic_only_threshold=0.80,
     event_graph_weights=(
         GraphFeatureWeight("shared artists", "artists", 0.45, cap=3),
         GraphFeatureWeight("shared promoters", "promoters", 0.25, cap=2),
@@ -109,3 +111,15 @@ def final_recommendation_score(
     config: RecommendationScoringConfig = DEFAULT_RECOMMENDATION_SCORING,
 ) -> float:
     return config.semantic_weight * semantic_score + config.graph_weight * graph_score
+
+
+def is_similarity_candidate_eligible(
+    entity_type: EntityType,
+    semantic_score: float,
+    graph_score: float,
+    config: RecommendationScoringConfig = DEFAULT_RECOMMENDATION_SCORING,
+) -> bool:
+    if entity_type != "artist":
+        return True
+
+    return graph_score > 0 or semantic_score >= config.artist_semantic_only_threshold
