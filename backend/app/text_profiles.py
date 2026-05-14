@@ -117,7 +117,11 @@ def compose_artist_text_profile(
     return join_sections(
         [
             format_section("Artist name", artist.get("name", "")),
-            format_section("Biography", normalize_biography_text(artist.get("biography", ""))),
+            format_section(
+                "Biography",
+                artist.get("biography_normalized")
+                or normalize_biography_text(artist.get("biography", "")),
+            ),
             format_section("Played event titles", event_titles),
             format_section("Played event descriptions", event_descriptions),
             format_section("Played event lineup context", event_lineups),
@@ -188,7 +192,7 @@ def build_artist_text_profile(connection: Connection, artist_id: int) -> str:
     with connection.cursor() as cursor:
         cursor.execute(
             """
-            SELECT id, name, biography
+            SELECT id, name, biography, biography_normalized
             FROM artists
             WHERE id = %s
             """,

@@ -7,7 +7,7 @@ from scripts.backfill_normalized_texts import main as backfill_normalized_texts
 
 
 def main() -> None:
-    sys.argv = [sys.argv[0], "--target", "lineup"]
+    sys.argv = [sys.argv[0], "--target", "biography"]
     backfill_normalized_texts()
 
 

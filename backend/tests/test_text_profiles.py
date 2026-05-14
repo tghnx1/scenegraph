@@ -48,6 +48,7 @@ def test_artist_text_profile_combines_biography_and_event_context():
         {
             "name": "BabaBass3000",
             "biography": "Leftfield electro and bass-focused club music.",
+            "biography_normalized": None,
         },
         event_contexts=[
             {
@@ -75,6 +76,19 @@ def test_artist_text_profile_combines_biography_and_event_context():
     assert "Played event lineup context: Artist X, Artist Y live" in profile
     assert "Recurring venues: Club Ost, RSO" in profile
     assert "Recurring promoters: Emotional Voyage, CYBERFLEX" in profile
+
+
+def test_artist_text_profile_prefers_stored_normalized_biography():
+    profile = compose_artist_text_profile(
+        {
+            "name": "Stored Bio Artist",
+            "biography": "̸ BIOGRAPHY Raw bio should not be used.",
+            "biography_normalized": "Clean stored bio.",
+        },
+    )
+
+    assert "Biography: Clean stored bio." in profile
+    assert "Raw bio should not be used." not in profile
 
 
 def test_artist_text_profile_works_without_biography():
