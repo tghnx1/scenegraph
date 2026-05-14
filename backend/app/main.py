@@ -14,6 +14,7 @@ from app.recommendation_scoring import (
     DEFAULT_RECOMMENDATION_SCORING,
     final_recommendation_score,
     hybrid_graph_score,
+    is_similarity_candidate_eligible,
 )
 
 
@@ -321,6 +322,14 @@ def rerank_similar_entities(
 
         graph_score, reasons = hybrid_graph_score(entity_type, source_features, candidate_features)
         semantic_score = item["score"]
+        if not is_similarity_candidate_eligible(
+            entity_type,
+            semantic_score,
+            graph_score,
+            DEFAULT_RECOMMENDATION_SCORING,
+        ):
+            continue
+
         final_score = final_recommendation_score(
             semantic_score,
             graph_score,
@@ -350,7 +359,7 @@ def build_similarity_response(
     limit: int,
 ) -> SimilarityResponse:
     config = EmbeddingConfig.from_env()
-    candidate_limit = max(limit * 10, 100)
+    candidate_limit = 10_000 if entity_type == "artist" else max(limit * 10, 100)
     source, ranked = rank_similar_embeddings(
         connection,
         entity_type=entity_type,

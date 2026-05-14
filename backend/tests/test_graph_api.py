@@ -94,25 +94,35 @@ def test_graph_includes_promoter_relationships():
         assert link["target"] in node_ids
 
 
-def test_similar_artists_endpoint_shape():
-    response = client.get("/api/similar/artists/1", params={"limit": 3})
+def test_similar_events_endpoint_shape():
+    response = client.get("/api/similar/events/1", params={"limit": 3})
     assert response.status_code == 200
 
     data = response.json()
     assert data["entityId"] == 1
-    assert data["entityType"] == "artist"
+    assert data["entityType"] == "event"
     assert data["similar"]
     assert "recommendations" not in data
 
     first = data["similar"][0]
-    assert first["type"] == "artist"
+    assert first["type"] == "event"
     assert "score" in first
     assert "semanticScore" in first
     assert "graphScore" in first
     assert isinstance(first["reasons"], list)
 
 
+def test_similar_artists_endpoint_allows_empty_results_after_filtering():
+    response = client.get("/api/similar/artists/1", params={"limit": 3})
+    assert response.status_code == 200
+
+    data = response.json()
+    assert data["entityId"] == 1
+    assert data["entityType"] == "artist"
+    assert isinstance(data["similar"], list)
+
+
 def test_recommendations_endpoint_alias_still_works():
-    response = client.get("/api/recommendations/artists/1", params={"limit": 1})
+    response = client.get("/api/recommendations/events/1", params={"limit": 1})
     assert response.status_code == 200
     assert response.json()["similar"]
