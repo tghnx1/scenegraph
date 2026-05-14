@@ -45,6 +45,26 @@ def test_artist_graph_score_uses_default_config():
     assert reasons == ["2 played same events", "2 shared genres", "1 shared promoters"]
 
 
+def test_artist_graph_score_can_isolate_direct_event_overlap():
+    source = {
+        "events": {1, 2},
+        "promoters": set(),
+        "venues": set(),
+        "genres": set(),
+    }
+    candidate = {
+        "events": {1, 2},
+        "promoters": set(),
+        "venues": set(),
+        "genres": set(),
+    }
+
+    score, reasons = hybrid_graph_score("artist", source, candidate)
+
+    assert score == 0.40
+    assert reasons == ["2 played same events"]
+
+
 def test_final_recommendation_score_mixes_semantic_and_graph_weights():
     score = final_recommendation_score(0.8, 0.4, DEFAULT_RECOMMENDATION_SCORING)
 
