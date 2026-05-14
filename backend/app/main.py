@@ -65,6 +65,9 @@ class RecommendationItem(BaseModel):
     type: Literal["artist", "event"]
     name: str
     score: float
+    semanticScore: float
+    graphScore: float
+    reasons: list[str] = Field(default_factory=list)
     date: DateValue | None = None
     venueName: str | None = None
 
@@ -119,6 +122,154 @@ def recommendation_item_metadata(
     return {row["id"]: row for row in rows}
 
 
+def capped_overlap_score(left: set[int], right: set[int], cap: int = 3) -> float:
+    if not left or not right:
+        return 0.0
+    return min(len(left & right) / cap, 1.0)
+
+
+def boolean_overlap_score(left: set[int], right: set[int]) -> float:
+    return 1.0 if left and right and bool(left & right) else 0.0
+
+
+def as_id_set(values: list[int | None] | None) -> set[int]:
+    return {int(value) for value in values or [] if value is not None}
+
+
+def recommendation_feature_sets(
+    connection: Connection,
+    entity_type: EntityType,
+    entity_ids: list[int],
+) -> dict[int, dict[str, set[int]]]:
+    if not entity_ids:
+        return {}
+
+    if entity_type == "event":
+        query = """
+            SELECT
+                e.id,
+                array_remove(array_agg(DISTINCT ea.artist_id), NULL) AS artists,
+                array_remove(array_agg(DISTINCT ep.promoter_id), NULL) AS promoters,
+                array_remove(array_agg(DISTINCT eg.genre_id), NULL) AS genres,
+                array_remove(ARRAY[e.venue_id], NULL) AS venues
+            FROM events e
+            LEFT JOIN event_artists ea
+                ON ea.event_id = e.id
+            LEFT JOIN event_promoters ep
+                ON ep.event_id = e.id
+            LEFT JOIN event_genres eg
+                ON eg.event_id = e.id
+            WHERE e.id = ANY(%s)
+            GROUP BY e.id, e.venue_id
+        """
+    else:
+        query = """
+            SELECT
+                a.id,
+                array_remove(array_agg(DISTINCT ea.event_id), NULL) AS events,
+                array_remove(array_agg(DISTINCT e.venue_id), NULL) AS venues,
+                array_remove(array_agg(DISTINCT ep.promoter_id), NULL) AS promoters,
+                array_remove(array_agg(DISTINCT eg.genre_id), NULL) AS genres
+            FROM artists a
+            LEFT JOIN event_artists ea
+                ON ea.artist_id = a.id
+            LEFT JOIN events e
+                ON e.id = ea.event_id
+            LEFT JOIN event_promoters ep
+                ON ep.event_id = ea.event_id
+            LEFT JOIN event_genres eg
+                ON eg.event_id = ea.event_id
+            WHERE a.id = ANY(%s)
+            GROUP BY a.id
+        """
+
+    with connection.cursor() as cursor:
+        cursor.execute(query, (entity_ids,))
+        rows = cursor.fetchall()
+
+    return {
+        row["id"]: {
+            key: as_id_set(row.get(key))
+            for key in ("artists", "events", "venues", "promoters", "genres")
+        }
+        for row in rows
+    }
+
+
+def hybrid_graph_score(
+    entity_type: EntityType,
+    source: dict[str, set[int]],
+    candidate: dict[str, set[int]],
+) -> tuple[float, list[str]]:
+    if entity_type == "event":
+        components = {
+            "shared artists": 0.45
+            * capped_overlap_score(source["artists"], candidate["artists"], cap=3),
+            "shared promoters": 0.25
+            * capped_overlap_score(source["promoters"], candidate["promoters"], cap=2),
+            "same venue": 0.20 * boolean_overlap_score(source["venues"], candidate["venues"]),
+            "shared genres": 0.10
+            * capped_overlap_score(source["genres"], candidate["genres"], cap=3),
+        }
+    else:
+        components = {
+            "played same events": 0.40
+            * capped_overlap_score(source["events"], candidate["events"], cap=2),
+            "shared promoters": 0.25
+            * capped_overlap_score(source["promoters"], candidate["promoters"], cap=3),
+            "shared venues": 0.20
+            * capped_overlap_score(source["venues"], candidate["venues"], cap=3),
+            "shared genres": 0.15
+            * capped_overlap_score(source["genres"], candidate["genres"], cap=3),
+        }
+
+    reasons = [
+        label
+        for label, score in sorted(components.items(), key=lambda item: -item[1])
+        if score > 0
+    ][:3]
+    return sum(components.values()), reasons
+
+
+def rerank_hybrid_recommendations(
+    connection: Connection,
+    *,
+    entity_type: EntityType,
+    entity_id: int,
+    ranked: list[dict],
+    limit: int,
+) -> list[dict]:
+    candidate_ids = [item["entity_id"] for item in ranked]
+    features = recommendation_feature_sets(connection, entity_type, [entity_id, *candidate_ids])
+    source_features = features.get(entity_id)
+    if not source_features:
+        return ranked[:limit]
+
+    rescored = []
+    for item in ranked:
+        candidate_features = features.get(item["entity_id"])
+        if not candidate_features:
+            continue
+
+        graph_score, reasons = hybrid_graph_score(entity_type, source_features, candidate_features)
+        semantic_score = item["score"]
+        final_score = 0.65 * semantic_score + 0.35 * graph_score
+        rescored.append(
+            {
+                **item,
+                "score": final_score,
+                "semantic_score": semantic_score,
+                "graph_score": graph_score,
+                "reasons": reasons or ["semantic similarity"],
+            }
+        )
+
+    return sorted(
+        rescored,
+        key=lambda candidate: (-candidate["score"], candidate["entity_id"]),
+    )[:limit]
+
+
 def build_recommendations_response(
     connection: Connection,
     *,
@@ -127,12 +278,13 @@ def build_recommendations_response(
     limit: int,
 ) -> RecommendationsResponse:
     config = EmbeddingConfig.from_env()
+    candidate_limit = max(limit * 10, 100)
     source, ranked = rank_similar_embeddings(
         connection,
         entity_type=entity_type,
         entity_id=entity_id,
         config=config,
-        limit=limit,
+        limit=candidate_limit,
     )
 
     if source is None:
@@ -144,10 +296,17 @@ def build_recommendations_response(
             ),
         )
 
+    reranked = rerank_hybrid_recommendations(
+        connection,
+        entity_type=entity_type,
+        entity_id=entity_id,
+        ranked=ranked,
+        limit=limit,
+    )
     metadata = recommendation_item_metadata(
         connection,
         entity_type,
-        [item["entity_id"] for item in ranked],
+        [item["entity_id"] for item in reranked],
     )
     recommendations = [
         RecommendationItem(
@@ -155,10 +314,13 @@ def build_recommendations_response(
             type=entity_type,
             name=metadata[item["entity_id"]]["name"],
             score=item["score"],
+            semanticScore=item["semantic_score"],
+            graphScore=item["graph_score"],
+            reasons=item["reasons"],
             date=metadata[item["entity_id"]]["date"],
             venueName=metadata[item["entity_id"]]["venue_name"],
         )
-        for item in ranked
+        for item in reranked
         if item["entity_id"] in metadata
     ]
 
