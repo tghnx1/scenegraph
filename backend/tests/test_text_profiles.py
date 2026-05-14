@@ -1,6 +1,7 @@
 from app.text_profiles import (
     compose_artist_text_profile,
     compose_event_text_profile,
+    normalize_biography_text,
     normalize_text,
     rank_recurring_names,
 )
@@ -9,6 +10,15 @@ from app.text_profiles import (
 def test_normalize_text_collapses_whitespace():
     assert normalize_text("  dark\n\n electro\t night  ") == "dark electro night"
     assert normalize_text(None) == ""
+
+
+def test_normalize_biography_text_drops_ra_prefix():
+    assert (
+        normalize_biography_text("̸ BIOGRAPHY 🌙 MUTANTE DEL SWANA 🌙\nBlitz Munich resident.")
+        == "🌙 MUTANTE DEL SWANA 🌙 Blitz Munich resident."
+    )
+    assert normalize_biography_text("Biography: Leftfield electro.") == "Leftfield electro."
+    assert normalize_biography_text(None) == ""
 
 
 def test_event_text_profile_uses_structured_and_residual_lineup():
