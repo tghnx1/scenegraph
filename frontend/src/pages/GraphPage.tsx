@@ -3,12 +3,12 @@ import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useApi } from '../hooks/useApi.ts'
 import { fetchArtist, fetchSimilarArtists } from '../api/artists.ts'
-import { fetchGraph, type GraphParams } from '../api/graph.ts'
-import { fetchSearch } from '../api/search.ts'
+import { fetchEgoGraph, fetchGraph, type GraphParams } from '../api/graph.ts'
+import { fetchSearch, fetchSearchResultById } from '../api/search.ts'
 import { useGraphStore } from '../store/graphStore.ts'
 import type { Artist, SimilarArtist } from '../types/artist.ts'
 import type { GraphNode } from '../types/graph.ts'
-import type { SearchResponse, SearchResult } from '../types/search.ts'
+import type { SearchEntityType, SearchResponse, SearchResult } from '../types/search.ts'
 import { useDebouncedValue } from './hooks/useDebouncedValue.ts'
 import { useGraphHighlights } from './hooks/useGraphHighlights.ts'
 import { useGraphPhysics } from './hooks/useGraphPhysics.ts'
@@ -27,6 +27,10 @@ const NODE_LEGEND_ITEMS = [
   { type: 'event', label: 'Event' },
 ]
 
+function isSearchEntityType(value: string | null): value is SearchEntityType {
+  return value === 'artist' || value === 'venue' || value === 'promoter' || value === 'event'
+}
+
 export function GraphPage() {
   const graphRef = useRef<any>(null)
   const containerRef = useRef<HTMLDivElement | null>(null)
@@ -35,15 +39,28 @@ export function GraphPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const { setSelected, selectedNode } = useGraphStore()
   const submittedQuery = searchParams.get('q') ?? ''
+  const selectedTypeParam = searchParams.get('selectedType')
+  const selectedType = isSearchEntityType(selectedTypeParam) ? selectedTypeParam : null
+  const selectedId = searchParams.get('selectedId') ?? ''
   const [searchValue, setSearchValue] = useState(submittedQuery)
   const [selectedSearchResult, setSelectedSearchResult] = useState<SearchResult | null>(null)
   const debouncedSearchValue = useDebouncedValue(searchValue.trim(), 350)
-  const selectedArtistParam = searchParams.get('artist') ?? ''
   const selectedArtistId = selectedNode?.type === 'artist' ? selectedNode.id : null
 
   const { data, isLoading, error, refetch } = useApi(
-    () => fetchGraph(graphFilters),
-    [graphFilters.genre, graphFilters.dateFrom, graphFilters.dateTo, graphFilters.limit]
+    () => {
+      if (selectedType && selectedId) {
+        return fetchEgoGraph({
+          type: selectedType,
+          id: selectedId,
+          depth: 1,
+          limit: graphFilters.limit ?? DEFAULT_GRAPH_FILTERS.limit,
+        })
+      }
+
+      return fetchGraph(graphFilters)
+    },
+    [selectedType, selectedId, graphFilters.genre, graphFilters.dateFrom, graphFilters.dateTo, graphFilters.limit]
   )
 
   const { data: selectedArtist, isLoading: isArtistLoading, error: artistError } = useApi<Artist | null>(
@@ -70,12 +87,40 @@ export function GraphPage() {
     [debouncedSearchValue]
   )
 
+  const {
+    data: selectedResultFromUrl,
+    isLoading: isSelectedResultLoading,
+    error: selectedResultError,
+  } = useApi<SearchResult | null>(
+    () => (
+      selectedType && selectedId
+        ? fetchSearchResultById(selectedType, selectedId, submittedQuery)
+        : Promise.resolve(null)
+    ),
+    [selectedType, selectedId, submittedQuery]
+  )
+
   const { connectedNodes } = useGraphHighlights(selectedNode || null, data)
   useGraphPhysics(graphRef, data)
 
   useEffect(() => {
     setSearchValue(submittedQuery)
   }, [submittedQuery])
+
+  useEffect(() => {
+    if (!selectedType || !selectedId) {
+      setSelectedSearchResult(null)
+    }
+  }, [selectedType, selectedId])
+
+  useEffect(() => {
+    if (!selectedType || !selectedId || !data) return
+
+    const nextSelectedNode = data.nodes.find((node) => node.id === selectedId)
+    if (nextSelectedNode && selectedNode?.id !== nextSelectedNode.id) {
+      setSelected(nextSelectedNode)
+    }
+  }, [data, selectedId, selectedNode?.id, selectedType, setSelected])
 
   useEffect(() => {
     const container = containerRef.current
@@ -97,29 +142,16 @@ export function GraphPage() {
     return () => resizeObserver.disconnect()
   }, [])
 
-  useEffect(() => {
-    if (!selectedArtistParam || !data) return
-
-    const matchedNode = data.nodes?.find((node: any) => node.id === selectedArtistParam)
-    if (matchedNode && matchedNode.id !== selectedNode?.id) {
-      setSelected(matchedNode as GraphNode)
-    }
-  }, [data, selectedArtistParam, selectedNode?.id, setSelected])
-
   const handleNodeClick = useCallback(
     (node: object) => {
       const nextNode = node as GraphNode
       const nextParams = new URLSearchParams(searchParams)
-      nextParams.delete('q')
-      nextParams.delete('selectedType')
-      nextParams.delete('selectedId')
-      if (nextNode.type === 'artist') {
-        nextParams.set('artist', nextNode.id)
-      } else {
-        nextParams.delete('artist')
-      }
+      nextParams.set('q', nextNode.name)
+      nextParams.set('selectedType', nextNode.type)
+      nextParams.set('selectedId', nextNode.id)
+      nextParams.delete('artist')
 
-      setSearchParams(nextParams, { replace: true })
+      setSearchParams(nextParams, { replace: false })
       setSelectedSearchResult(null)
       setSelected(nextNode)
     },
@@ -169,7 +201,7 @@ export function GraphPage() {
       setSearchValue(result.label)
       setSelectedSearchResult(result)
       setSelected(null)
-      setSearchParams(nextParams, { replace: true })
+      setSearchParams(nextParams, { replace: false })
     },
     [searchParams, setSearchParams, setSelected]
   )
@@ -190,10 +222,16 @@ export function GraphPage() {
 
   const similarArtistLinks = similarArtists ?? []
   const searchResults = searchData?.results ?? []
+  const activeSelectedSearchResult =
+    selectedSearchResult?.type === selectedType && selectedSearchResult.id === selectedId
+      ? selectedSearchResult
+      : selectedResultFromUrl
   const trimmedSearchValue = searchValue.trim()
   const isDropdownWaiting = trimmedSearchValue.length >= 2 && debouncedSearchValue !== trimmedSearchValue
   const dropdownSearchResults = debouncedSearchValue === trimmedSearchValue ? dropdownSearchData?.results ?? [] : []
-  const detailSearchResults = selectedSearchResult ? [selectedSearchResult] : searchResults
+  const detailSearchResults = activeSelectedSearchResult ? [activeSelectedSearchResult] : searchResults
+  const detailsSearchError = selectedResultError ?? searchError
+  const isDetailsSearchLoading = isSelectedResultLoading || isSearchLoading
   const hasActiveSearchState = Boolean(searchValue || submittedQuery || selectedNode)
   const graphData = data || { nodes: [], links: [] }
   const nodeCount = graphData.nodes.length
@@ -223,9 +261,9 @@ export function GraphPage() {
           <GraphSidebarDetails
             searchQuery={submittedQuery}
             searchResults={detailSearchResults}
-            isSearchLoading={isSearchLoading}
-            searchError={searchError}
-            selectedNode={selectedNode}
+            isSearchLoading={isDetailsSearchLoading}
+            searchError={detailsSearchError}
+            selectedNode={activeSelectedSearchResult ? null : selectedNode}
             selectedArtist={selectedArtist}
             isArtistLoading={isArtistLoading}
             artistError={artistError}

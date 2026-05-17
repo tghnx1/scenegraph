@@ -79,6 +79,22 @@
   box-shadow: var(--surface-shadow);
 }
 
+@media (min-width: 900px) {
+  .graph-sidebar-search .search-query-form {
+    isolation: isolate;
+  }
+
+  .graph-sidebar-search .search-query-dropdown {
+    top: 25px;
+    left: calc(100% + 20px);
+    right: auto;
+    width: clamp(340px, 34vw, 500px);
+    max-height: min(360px, calc(100dvh - 170px));
+    background: rgba(46, 52, 64, 0.94);
+    backdrop-filter: blur(10px);
+  }
+}
+
 .search-query-dropdown-status {
   padding: 10px 12px;
   color: var(--nord-text-muted);

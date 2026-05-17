@@ -1,11 +1,18 @@
 import { api } from './client'
 import { MOCK_GRAPH } from './mock_data/mock'
-import type { GraphData, GraphNode, GraphEdge } from '../types/graph'
+import type { GraphData, GraphNode, GraphEdge, NodeType } from '../types/graph'
 
 export interface GraphParams {
   genre?: string
   dateFrom?: string
   dateTo?: string
+  limit?: number
+}
+
+export interface EgoGraphParams {
+  type: NodeType
+  id: string
+  depth?: number
   limit?: number
 }
 
@@ -20,6 +27,21 @@ function toQuery(params: GraphParams): string {
 
 export const fetchGraph = (params: GraphParams = {}): Promise<GraphData> =>
   api.get<GraphData>(`/graph${toQuery(params)}`)
+
+export const fetchEgoGraph = ({
+  type,
+  id,
+  depth = 1,
+  limit = 100,
+}: EgoGraphParams): Promise<GraphData> => {
+  const q = new URLSearchParams()
+  q.set('type', type)
+  q.set('id', id)
+  q.set('depth', String(depth))
+  q.set('limit', String(limit))
+
+  return api.get<GraphData>(`/graph/ego?${q.toString()}`)
+}
 
 export const fetchArtistEgoGraph = (artistId: string): Promise<GraphData> => {
   // Keep the ego graph mock-backed until the dedicated backend endpoint exists.
