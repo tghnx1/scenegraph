@@ -17,6 +17,8 @@ model Artist {
   biographyUrl        String?       @map("biography_url")
   biographyStatus     String?       @map("biography_status")
   eventArtists        EventArtist[]
+  extractedTags       ArtistExtractedTag[]
+  tagExtractionRuns   ArtistTagExtractionRun[]
 
   @@map("artists")
 }
@@ -159,4 +161,35 @@ model EntityEmbedding {
   @@unique([entityType, entityId, model, dimensions])
   @@index([entityType, model, dimensions])
   @@map("entity_embeddings")
+}
+
+model ArtistExtractedTag {
+  id         BigInt   @id @default(autoincrement())
+  artistId   BigInt   @map("artist_id")
+  tagType    String   @map("tag_type")
+  tagValue   String   @map("tag_value")
+  source     String   @default("biography")
+  confidence Float    @default(0)
+  extractor  String
+  evidence   String?
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  artist     Artist   @relation(fields: [artistId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([artistId, tagType])
+  @@map("artist_extracted_tags")
+}
+
+model ArtistTagExtractionRun {
+  id        BigInt   @id @default(autoincrement())
+  artistId  BigInt   @map("artist_id")
+  source    String   @default("biography")
+  extractor String
+  textHash  String   @map("text_hash")
+  tagCount  Int      @default(0) @map("tag_count")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  artist    Artist   @relation(fields: [artistId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@map("artist_tag_extraction_runs")
 }
