@@ -283,15 +283,6 @@ export function GraphPage() {
             {/* <p className="search-query-hint">Enter a name, then press Enter to update the search.</p> */}
           </div>
 
-          <GraphFilters
-            filters={graphFilters}
-            genres={genres ?? []}
-            isGenresLoading={isGenresLoading}
-            genresError={genresError}
-            displayedDateRange={displayedDateRange}
-            onChange={handleGraphFiltersChange}
-          />
-
           <GraphSidebarDetails
             searchQuery={submittedQuery}
             searchResults={detailSearchResults}
@@ -304,68 +295,81 @@ export function GraphPage() {
         </article>
       </aside>
 
-      <div ref={containerRef} className="graph-canvas graph-canvas--large">
-        {isLoading && !data && <div className="graph-canvas-status">Loading graph...</div>}
-        {error && (
-          <div className="graph-canvas-status error">
-            {error} <button onClick={refetch}>retry</button>
-          </div>
-        )}
-        <div className="graph-canvas-counts" aria-label={`${nodeCount} nodes and ${linkCount} links displayed`}>
-          <span>{nodeCount} nodes</span>
-          <span>{linkCount} links</span>
-        </div>
-        <div className="graph-legend" aria-label="Graph entity legend">
-          {NODE_LEGEND_ITEMS.map((item) => (
-            <div className="graph-legend-item" key={item.type}>
-              <span className={`graph-legend-marker graph-legend-marker--${item.type}`} aria-hidden="true" />
-              <span>{item.label}</span>
+      <section className="graph-main">
+        <article className="graph-filter-card">
+          <GraphFilters
+            filters={graphFilters}
+            genres={genres ?? []}
+            isGenresLoading={isGenresLoading}
+            genresError={genresError}
+            displayedDateRange={displayedDateRange}
+            onChange={handleGraphFiltersChange}
+          />
+        </article>
+
+        <div ref={containerRef} className="graph-canvas graph-canvas--large">
+          {isLoading && !data && <div className="graph-canvas-status">Loading graph...</div>}
+          {error && (
+            <div className="graph-canvas-status error">
+              {error} <button onClick={refetch}>retry</button>
             </div>
-          ))}
+          )}
+          <div className="graph-canvas-counts" aria-label={`${nodeCount} nodes and ${linkCount} links displayed`}>
+            <span>{nodeCount} nodes</span>
+            <span>{linkCount} links</span>
+          </div>
+          <div className="graph-legend" aria-label="Graph entity legend">
+            {NODE_LEGEND_ITEMS.map((item) => (
+              <div className="graph-legend-item" key={item.type}>
+                <span className={`graph-legend-marker graph-legend-marker--${item.type}`} aria-hidden="true" />
+                <span>{item.label}</span>
+              </div>
+            ))}
+          </div>
+          <ForceGraph2D
+            ref={graphRef}
+            width={graphSize.width || undefined}
+            height={graphSize.height || undefined}
+            graphData={graphData}
+            nodeCanvasObject={(node: any, ctx: CanvasRenderingContext2D) => {
+              drawNodeShape(ctx, node.x, node.y, 5, node.type, selectedNode?.id === node.id)
+            }}
+            nodeColor={() => 'transparent'}
+            nodeRelSize={3}
+            nodeVal={(n: any) => (selectedNode?.id === n.id ? 3 : 1)}
+            nodeLabel={(n: any) => n.name ?? n.label ?? n.id}
+            linkWidth={(l: any) => {
+              const source = typeof l.source === 'object' ? l.source.id : l.source
+              const target = typeof l.target === 'object' ? l.target.id : l.target
+              if (connectedNodes.has(source) && connectedNodes.has(target)) {
+                return Math.sqrt(l.value ?? l.weight ?? 1) * 2
+              }
+              return Math.sqrt(l.value ?? l.weight ?? 1)
+            }}
+            linkColor={(l: any) => {
+              const source = typeof l.source === 'object' ? l.source.id : l.source
+              const target = typeof l.target === 'object' ? l.target.id : l.target
+              if (connectedNodes.has(source) && connectedNodes.has(target)) {
+                return hexToRgba(LINK_HIGHLIGHT, 0.8)
+              }
+              return hexToRgba(LINK_DIM, 0.6)
+            }}
+            enableNodeDrag
+            onNodeDrag={(node: any) => {
+              node.fx = node.x
+              node.fy = node.y
+            }}
+            onNodeDragEnd={(node: any) => {
+              node.fx = null
+              node.fy = null
+            }}
+            onNodeClick={handleNodeClick}
+            backgroundColor={BACKGROUND}
+            warmupTicks={120}
+            cooldownTicks={180}
+          />
         </div>
-        <ForceGraph2D
-          ref={graphRef}
-          width={graphSize.width || undefined}
-          height={graphSize.height || undefined}
-          graphData={graphData}
-          nodeCanvasObject={(node: any, ctx: CanvasRenderingContext2D) => {
-            drawNodeShape(ctx, node.x, node.y, 5, node.type, selectedNode?.id === node.id)
-          }}
-          nodeColor={() => 'transparent'}
-          nodeRelSize={3}
-          nodeVal={(n: any) => (selectedNode?.id === n.id ? 3 : 1)}
-          nodeLabel={(n: any) => n.name ?? n.label ?? n.id}
-          linkWidth={(l: any) => {
-            const source = typeof l.source === 'object' ? l.source.id : l.source
-            const target = typeof l.target === 'object' ? l.target.id : l.target
-            if (connectedNodes.has(source) && connectedNodes.has(target)) {
-              return Math.sqrt(l.value ?? l.weight ?? 1) * 2
-            }
-            return Math.sqrt(l.value ?? l.weight ?? 1)
-          }}
-          linkColor={(l: any) => {
-            const source = typeof l.source === 'object' ? l.source.id : l.source
-            const target = typeof l.target === 'object' ? l.target.id : l.target
-            if (connectedNodes.has(source) && connectedNodes.has(target)) {
-              return hexToRgba(LINK_HIGHLIGHT, 0.8)
-            }
-            return hexToRgba(LINK_DIM, 0.6)
-          }}
-          enableNodeDrag
-          onNodeDrag={(node: any) => {
-            node.fx = node.x
-            node.fy = node.y
-          }}
-          onNodeDragEnd={(node: any) => {
-            node.fx = null
-            node.fy = null
-          }}
-          onNodeClick={handleNodeClick}
-          backgroundColor={BACKGROUND}
-          warmupTicks={120}
-          cooldownTicks={180}
-        />
-      </div>
+      </section>
     </div>
   )
 }

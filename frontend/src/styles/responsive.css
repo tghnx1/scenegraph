@@ -16,6 +16,14 @@
     height: auto;
   }
 
+  .graph-main {
+    min-height: auto;
+  }
+
+  .graph-filter-card .graph-filter-panel {
+    grid-template-columns: 1fr;
+  }
+
   .graph-canvas--large {
     min-height: 360px;
     height: min(560px, 62dvh);

@@ -8,7 +8,7 @@ const FALLBACK_GENRE_OPTIONS = [
   { label: 'Trance', value: 'trance' },
 ]
 
-const LIMIT_OPTIONS = [100, 250, 500, 1000]
+const LIMIT_OPTIONS = [100, 250, 500]
 
 interface GraphFiltersProps {
   filters: GraphParams
@@ -37,7 +37,7 @@ export function GraphFilters({
   return (
     <section className="graph-filter-panel" aria-label="Graph filters">
       <div className="graph-filter-group">
-        <span className="graph-filter-label">Genre</span>
+        <span className="graph-filter-label">Filter by Genre</span>
         <select
           className="graph-filter-select"
           value={filters.genre ?? ''}
@@ -60,7 +60,7 @@ export function GraphFilters({
       </div>
 
       <div className="graph-filter-group">
-        <span className="graph-filter-label">Date</span>
+        <span className="graph-filter-label">Filter by Date</span>
         <div className="graph-filter-date-row">
           <input
             className="graph-filter-date"
