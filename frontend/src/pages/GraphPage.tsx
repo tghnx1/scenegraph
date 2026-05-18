@@ -14,7 +14,7 @@ import { useDebouncedValue } from './hooks/useDebouncedValue.ts'
 import { useGraphHighlights } from './hooks/useGraphHighlights.ts'
 import { useGraphPhysics } from './hooks/useGraphPhysics.ts'
 import { drawNodeShape } from './GraphPage/drawNode.ts'
-import { LINK_HIGHLIGHT, LINK_DIM, BACKGROUND, hexToRgba } from '../styles/colors.ts'
+import { BACKGROUND, LINK_DIM, LINK_HIGHLIGHT, getCssVar, hexToRgba } from '../styles/colors.ts'
 import { GraphSidebarDetails } from './components/DetailsPanel.tsx'
 import { GraphFilters } from './components/GraphFilters.tsx'
 import { SearchQueryForm } from './components/SearchQueryForm.tsx'
@@ -32,7 +32,7 @@ function isSearchEntityType(value: string | null): value is SearchEntityType {
   return value === 'artist' || value === 'venue' || value === 'promoter' || value === 'event'
 }
 
-export function GraphPage() {
+export function GraphPage({ themeName }: { themeName?: string } = {}) {
   const graphRef = useRef<any>(null)
   const containerRef = useRef<HTMLDivElement | null>(null)
   const [graphSize, setGraphSize] = useState({ width: 0, height: 0 })
@@ -249,6 +249,9 @@ export function GraphPage() {
   const isDetailsSearchLoading = isSelectedResultLoading || isSearchLoading
   const hasActiveSearchState = Boolean(searchValue || submittedQuery || selectedNode)
   const graphData = data || { nodes: [], links: [] }
+  const graphBackground = getCssVar('--nord-background') || (themeName === 'dark' ? '#2d353b' : BACKGROUND)
+  const linkHighlight = getCssVar('--nord-link-highlight') || LINK_HIGHLIGHT
+  const linkDim = getCssVar('--nord-link-dim') || LINK_DIM
   const nodeCount = graphData.nodes.length
   const linkCount = graphData.links.length
   const displayedEventDates = graphData.nodes
@@ -350,9 +353,9 @@ export function GraphPage() {
               const source = typeof l.source === 'object' ? l.source.id : l.source
               const target = typeof l.target === 'object' ? l.target.id : l.target
               if (connectedNodes.has(source) && connectedNodes.has(target)) {
-                return hexToRgba(LINK_HIGHLIGHT, 0.8)
+                return hexToRgba(linkHighlight, 0.8)
               }
-              return hexToRgba(LINK_DIM, 0.6)
+              return hexToRgba(linkDim, 0.6)
             }}
             enableNodeDrag
             onNodeDrag={(node: any) => {
@@ -364,7 +367,7 @@ export function GraphPage() {
               node.fy = null
             }}
             onNodeClick={handleNodeClick}
-            backgroundColor={BACKGROUND}
+            backgroundColor={graphBackground}
             warmupTicks={120}
             cooldownTicks={180}
           />

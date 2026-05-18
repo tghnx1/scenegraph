@@ -3,14 +3,10 @@ import { Routes, Route, Navigate, NavLink, useLocation, useParams, useSearchPara
 import { GraphPage } from './pages/GraphPage'
 import { DashboardPage } from './pages/DashboardPage'
 import { ProfilePage } from './pages/ProfilePage'
-import {
-  hexToRgba,
-  LINK_HIGHLIGHT,
-  ACCENT_WARM,
-  BACKGROUND,
-  TEXT,
-  TEXT_MUTED,
-} from './styles/colors'
+import { applyTheme, getStoredTheme, type ThemeName } from './styles/colors'
+
+const colorVar = (name: string) => `var(${name})`
+const colorAlpha = (name: string, percent: number) => `color-mix(in srgb, var(${name}) ${percent}%, transparent)`
 
 function LegalPage({ section }: { section: string }) {
   const titles: Record<string, string> = {
@@ -24,7 +20,7 @@ function LegalPage({ section }: { section: string }) {
   return (
     <div style={{ padding: '40px', maxWidth: '800px', margin: '0 auto' }}>
       <h1>{titles[section] || 'Legal'}</h1>
-      <p style={{ color: TEXT_MUTED, marginTop: '20px' }}>
+      <p style={{ color: colorVar('--nord-text-muted'), marginTop: '20px' }}>
         This page is a placeholder for {titles[section]?.toLowerCase() || 'legal information'}.
       </p>
     </div>
@@ -48,14 +44,14 @@ const shellStyle: CSSProperties = {
   flexDirection: 'column',
   height: '100dvh',
   minHeight: '100vh',
-  color: TEXT,
-  background: `radial-gradient(1000px 520px at 12% -10%, ${hexToRgba(LINK_HIGHLIGHT, 0.18)}, transparent 60%), radial-gradient(900px 460px at 95% 0%, ${hexToRgba(ACCENT_WARM, 0.15)}, transparent 55%), ${BACKGROUND}`,
+  color: colorVar('--nord-text'),
+  background: `radial-gradient(1000px 520px at 12% -10%, ${colorAlpha('--nord-link-highlight', 18)}, transparent 60%), radial-gradient(900px 460px at 95% 0%, ${colorAlpha('--nord-accent-warm', 15)}, transparent 55%), ${colorVar('--nord-background')}`,
 }
 
 const navStyle: CSSProperties = {
   padding: '12px 20px',
-  borderBottom: `1px solid ${hexToRgba(TEXT, 0.18)}`,
-  background: hexToRgba(BACKGROUND, 0.55),
+  borderBottom: `1px solid ${colorAlpha('--nord-text', 18)}`,
+  background: colorAlpha('--nord-background', 55),
   backdropFilter: 'blur(6px)',
   display: 'flex',
   alignItems: 'center',
@@ -67,15 +63,15 @@ const footerStyle: CSSProperties = {
   alignItems: 'center',
   justifyContent: 'space-between',
   padding: '14px 20px',
-  borderTop: `1px solid ${hexToRgba(TEXT, 0.15)}`,
-  background: hexToRgba(BACKGROUND, 0.72),
-  color: TEXT_MUTED,
+  borderTop: `1px solid ${colorAlpha('--nord-text', 15)}`,
+  background: colorAlpha('--nord-background', 72),
+  color: colorVar('--nord-text-muted'),
   fontSize: 13,
 }
 
 const linkBaseStyle: CSSProperties = {
   textDecoration: 'none',
-  color: TEXT_MUTED,
+  color: colorVar('--nord-text-muted'),
   padding: '6px 10px',
   borderRadius: 8,
   fontSize: 14,
@@ -90,8 +86,8 @@ const navSpacerStyle: CSSProperties = {
 const authButtonStyle: CSSProperties = {
   ...linkBaseStyle,
   cursor: 'pointer',
-  border: `1px solid ${hexToRgba(TEXT, 0.18)}`,
-  background: hexToRgba(TEXT, 0.06),
+  border: `1px solid ${colorAlpha('--nord-text', 18)}`,
+  background: colorAlpha('--nord-text', 6),
   font: 'inherit',
   fontSize: 14,
 }
@@ -100,6 +96,7 @@ export default function App() {
   const location = useLocation()
   const isGraphActive = location.pathname === '/graph'
   const [isAuthenticated, setIsAuthenticated] = useState(() => Boolean(localStorage.getItem('token')))
+  const [themeName, setThemeName] = useState<ThemeName>(() => getStoredTheme())
 
   const handleAuthClick = () => {
     if (isAuthenticated) {
@@ -111,6 +108,12 @@ export default function App() {
     window.location.href = '/login'
   }
 
+  const handleThemeToggle = () => {
+    const nextTheme = themeName === 'light' ? 'dark' : 'light'
+    applyTheme(nextTheme)
+    setThemeName(nextTheme)
+  }
+
   return (
     <div style={shellStyle}>
       <nav style={navStyle}>
@@ -118,9 +121,9 @@ export default function App() {
           href="/graph"
           style={{
             ...linkBaseStyle,
-            background: isGraphActive ? hexToRgba(LINK_HIGHLIGHT, 0.2) : 'transparent',
-            color: isGraphActive ? TEXT : TEXT_MUTED,
-            border: isGraphActive ? `1px solid ${hexToRgba(LINK_HIGHLIGHT, 0.45)}` : '1px solid transparent',
+            background: isGraphActive ? colorAlpha('--nord-link-highlight', 20) : 'transparent',
+            color: isGraphActive ? colorVar('--nord-text') : colorVar('--nord-text-muted'),
+            border: isGraphActive ? `1px solid ${colorAlpha('--nord-link-highlight', 45)}` : '1px solid transparent',
           }}
         >
           Graph
@@ -129,9 +132,9 @@ export default function App() {
           to="/profile"
           style={({ isActive }) => ({
             ...linkBaseStyle,
-            background: isActive ? hexToRgba(ACCENT_WARM, 0.2) : 'transparent',
-            color: isActive ? TEXT : TEXT_MUTED,
-            border: isActive ? `1px solid ${hexToRgba(ACCENT_WARM, 0.45)}` : '1px solid transparent',
+            background: isActive ? colorAlpha('--nord-accent-warm', 20) : 'transparent',
+            color: isActive ? colorVar('--nord-text') : colorVar('--nord-text-muted'),
+            border: isActive ? `1px solid ${colorAlpha('--nord-accent-warm', 45)}` : '1px solid transparent',
           })}
         >
           Profile
@@ -140,14 +143,17 @@ export default function App() {
           to="/dashboard"
           style={({ isActive }) => ({
             ...linkBaseStyle,
-            background: isActive ? hexToRgba(ACCENT_WARM, 0.2) : 'transparent',
-            color: isActive ? TEXT : TEXT_MUTED,
-            border: isActive ? `1px solid ${hexToRgba(ACCENT_WARM, 0.45)}` : '1px solid transparent',
+            background: isActive ? colorAlpha('--nord-accent-warm', 20) : 'transparent',
+            color: isActive ? colorVar('--nord-text') : colorVar('--nord-text-muted'),
+            border: isActive ? `1px solid ${colorAlpha('--nord-accent-warm', 45)}` : '1px solid transparent',
           })}
         >
           Dashboard
         </NavLink>
         <span style={navSpacerStyle} />
+        <button type="button" style={authButtonStyle} onClick={handleThemeToggle}>
+          {themeName === 'light' ? 'Dark' : 'Light'}
+        </button>
         <button type="button" style={authButtonStyle} onClick={handleAuthClick}>
           {isAuthenticated ? 'Logout' : 'Login'}
         </button>
@@ -156,7 +162,7 @@ export default function App() {
       <main style={{ flex: 1, overflowX: 'hidden', overflowY: 'auto' }}>
         <Routes>
           <Route path="/" element={<Navigate to="/graph" />} />
-          <Route path="/graph" element={<GraphPage />} />
+          <Route path="/graph" element={<GraphPage themeName={themeName} />} />
           <Route path="/dashboard" element={<DashboardPage />} />
           <Route path="/profile" element={<ProfilePage />} />
           <Route path="/search" element={<SearchRedirect />} />
@@ -172,16 +178,16 @@ export default function App() {
       <footer style={footerStyle}>
         <span>© 2026 Scenegraph</span>
         <div style={{ display: 'flex', gap: '16px' }}>
-          <NavLink to="/privacy-policy" style={{ ...linkBaseStyle, color: TEXT_MUTED, fontSize: 12, padding: '4px 8px' }}>
+          <NavLink to="/privacy-policy" style={{ ...linkBaseStyle, color: colorVar('--nord-text-muted'), fontSize: 12, padding: '4px 8px' }}>
             Privacy Policy
           </NavLink>
-          <NavLink to="/terms-of-service" style={{ ...linkBaseStyle, color: TEXT_MUTED, fontSize: 12, padding: '4px 8px' }}>
+          <NavLink to="/terms-of-service" style={{ ...linkBaseStyle, color: colorVar('--nord-text-muted'), fontSize: 12, padding: '4px 8px' }}>
             Terms
           </NavLink>
-          <NavLink to="/impressum" style={{ ...linkBaseStyle, color: TEXT_MUTED, fontSize: 12, padding: '4px 8px' }}>
+          <NavLink to="/impressum" style={{ ...linkBaseStyle, color: colorVar('--nord-text-muted'), fontSize: 12, padding: '4px 8px' }}>
             Impressum
           </NavLink>
-          <NavLink to="/contact" style={{ ...linkBaseStyle, color: TEXT_MUTED, fontSize: 12, padding: '4px 8px' }}>
+          <NavLink to="/contact" style={{ ...linkBaseStyle, color: colorVar('--nord-text-muted'), fontSize: 12, padding: '4px 8px' }}>
             Contact
           </NavLink>
         </div>
