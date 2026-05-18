@@ -2,7 +2,7 @@ COMPOSE := docker compose
 ENV_FILE := .env
 ENV_EXAMPLE := .env.example
 
-.PHONY: help env build up upd down stop restart logs ps health frontend-dev prisma-migrate prisma-studio db-shell import-events import-dump clean list fclean
+.PHONY: help env build up upd down stop restart logs ps health prisma-migrate prisma-studio db-shell import-events backfill-normalized-texts backfill-lineup-residual backfill-artist-biographies generate-embeddings import-dump clean list fclean
 
 help:
 	@printf "\n"
@@ -12,7 +12,6 @@ help:
 	@printf "  make build    Build containers\n"
 	@printf "  make up       Start stack in foreground\n"
 	@printf "  make upd      Start stack in background\n"
-	@printf "  make frontend-dev Start live frontend dev container\n"
 	@printf "  make down     Stop and remove containers\n"
 	@printf "  make stop     Stop running containers\n"
 	@printf "  make restart  Restart the stack in background\n"
@@ -23,6 +22,10 @@ help:
 	@printf "  make prisma-studio  Open Prisma Studio on localhost:5555\n"
 	@printf "  make db-shell Open a psql shell inside the Postgres container\n"
 	@printf "  make import-events Import backend/data/ra_berlin_past_events_2026.json\n"
+	@printf "  make backfill-normalized-texts Fill normalized lineup and biography text fields\n"
+	@printf "  make backfill-lineup-residual Fill events.lineup_residual_text from lineup_raw\n"
+	@printf "  make backfill-artist-biographies Fill artists.biography_normalized from biography\n"
+	@printf "  make generate-embeddings Generate OpenAI embeddings for recommendations\n"
 	@printf "  make import-dump   Import a local SQL dump; prompts before overwrite\n"
 	@printf "  make clean    Stop stack and remove volumes\n"
 	@printf "  make list     List Docker resources\n"
@@ -54,9 +57,6 @@ stop:
 
 restart: down upd
 
-frontend-dev: env
-	$(COMPOSE) up -d frontend nginx
-
 logs:
 	$(COMPOSE) logs -f
 
@@ -80,6 +80,18 @@ db-shell: env
 
 import-events: env
 	$(COMPOSE) exec backend python scripts/import_events.py
+
+backfill-normalized-texts: env
+	$(COMPOSE) exec backend python scripts/backfill_normalized_tegit xts.py
+
+backfill-lineup-residual: env
+	$(COMPOSE) exec backend python scripts/backfill_normalized_texts.py --target lineup
+
+backfill-artist-biographies: env
+	$(COMPOSE) exec backend python scripts/backfill_normalized_texts.py --target biography
+
+generate-embeddings: env
+	$(COMPOSE) exec backend python scripts/generate_embeddings.py
 
 import-dump: env
 	DUMP="$(DUMP)" RESET_DB="$(RESET_DB)" ./scripts/import_dump.sh
