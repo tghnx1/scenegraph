@@ -63,7 +63,7 @@ export function GraphPage() {
     [selectedType, selectedId, graphFilters.genre, graphFilters.dateFrom, graphFilters.dateTo, graphFilters.limit]
   )
 
-  const { data: selectedArtist, isLoading: isArtistLoading, error: artistError } = useApi<Artist | null>(
+  const { data: selectedArtist } = useApi<Artist | null>(
     () => (selectedArtistId ? fetchArtist(selectedArtistId) : Promise.resolve(null)),
     [selectedArtistId]
   )
@@ -274,8 +274,6 @@ export function GraphPage() {
             searchError={detailsSearchError}
             selectedNode={activeSelectedSearchResult ? null : selectedNode}
             selectedArtist={selectedArtist}
-            isArtistLoading={isArtistLoading}
-            artistError={artistError}
             similarArtists={similarArtistLinks}
           />
         </article>
@@ -311,7 +309,7 @@ export function GraphPage() {
           nodeColor={() => 'transparent'}
           nodeRelSize={3}
           nodeVal={(n: any) => (selectedNode?.id === n.id ? 3 : 1)}
-          nodeLabel={(n: any) => n.label ?? n.id}
+          nodeLabel={(n: any) => n.name ?? n.label ?? n.id}
           linkWidth={(l: any) => {
             const source = typeof l.source === 'object' ? l.source.id : l.source
             const target = typeof l.target === 'object' ? l.target.id : l.target

@@ -129,8 +129,6 @@ export function ProfilePage() {
             searchError={searchError}
             selectedNode={null}
             selectedArtist={null}
-            isArtistLoading={false}
-            artistError={null}
             similarArtists={[]}
           />
         </article>
