@@ -139,7 +139,7 @@ export default function App() {
         >
           Profile
         </NavLink>
-        <NavLink
+       {/*  <NavLink
           to="/dashboard"
           style={({ isActive }) => ({
             ...linkBaseStyle,
@@ -149,7 +149,7 @@ export default function App() {
           })}
         >
           Dashboard
-        </NavLink>
+        </NavLink> */}
         <span style={navSpacerStyle} />
         <button type="button" style={authButtonStyle} onClick={handleThemeToggle}>
           {themeName === 'light' ? 'Dark' : 'Light'}
