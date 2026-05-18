@@ -2,8 +2,8 @@
 export type ThemeName = 'light' | 'dark'
 
 export const NODE_COLORS: Record<string, string> = {
-  artist:    '#df69ba',
-  venue:     '#8da101',
+  artist:    'rgb(223, 105, 186)',
+  venue:     '#3A94C5',
   promoter:  '#35a77c',
   event:     '#f85552',
   selection: '#dfa000',

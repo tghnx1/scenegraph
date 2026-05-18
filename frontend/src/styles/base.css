@@ -1,7 +1,7 @@
 :root {
   /* css vars mapped to the centralized palette, fallback */
   --nord-artist: #df69ba;
-  --nord-venue: #8da101;
+  --nord-venue: #3A94C5;
   --nord-promoter: #35a77c;
   --nord-event: #f85552;
   --nord-selection: #dfa000;
@@ -71,7 +71,7 @@
 :root[data-theme='dark'] {
   --nord-artist: #d699b6;
   --nord-venue: #a7c080;
-  --nord-promoter: #83c092;
+  --nord-promoter: #7FBBB3;
   --nord-event: #e67e80;
   --nord-selection: #dbbc7f;
   --nord-link-highlight: #dbbc7f;
