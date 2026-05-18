@@ -16,6 +16,7 @@ from app.recommendation_scoring import (
     hybrid_graph_score,
     is_similarity_candidate_eligible,
 )
+from app.style_tags import extract_style_tags, style_overlap_score
 
 
 app = FastAPI(title="Berlin Scene Graph API")
@@ -86,6 +87,24 @@ class SimilarityResponse(BaseModel):
     similar: list[SimilarityItem]
 
 
+class SemanticArtistItem(BaseModel):
+    id: int
+    type: Literal["artist"] = "artist"
+    name: str
+    score: float
+    embeddingScore: float
+    styleScore: float
+    sharedStyles: list[str] = Field(default_factory=list)
+
+
+class SemanticArtistResponse(BaseModel):
+    entityId: int
+    entityType: Literal["artist"] = "artist"
+    model: str
+    dimensions: int
+    similar: list[SemanticArtistItem]
+
+
 def graph_node_id(node_type: str, entity_id: int) -> str:
     return f"{node_type}-{entity_id}"
 
@@ -126,6 +145,115 @@ def recommendation_item_metadata(
         rows = cursor.fetchall()
 
     return {row["id"]: row for row in rows}
+
+
+def artist_semantic_metadata(
+    connection: Connection,
+    artist_ids: list[int],
+) -> dict[int, dict]:
+    if not artist_ids:
+        return {}
+
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT
+                id,
+                name,
+                COALESCE(biography_normalized, biography, '') AS biography
+            FROM artists
+            WHERE id = ANY(%s)
+            """,
+            (artist_ids,),
+        )
+        rows = cursor.fetchall()
+
+    return {
+        row["id"]: {
+            "id": row["id"],
+            "name": row["name"],
+            "style_tags": extract_style_tags(row["biography"]),
+        }
+        for row in rows
+    }
+
+
+def combined_semantic_score(embedding_score: float, style_score: float) -> float:
+    return 0.75 * embedding_score + 0.25 * style_score
+
+
+def build_artist_semantic_response(
+    connection: Connection,
+    *,
+    artist_id: int,
+    limit: int,
+) -> SemanticArtistResponse:
+    config = EmbeddingConfig.from_env()
+    source, ranked = rank_similar_embeddings(
+        connection,
+        entity_type="artist",
+        entity_id=artist_id,
+        config=config,
+        limit=10_000,
+    )
+
+    if source is None:
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                f"No {config.model} embedding found for artist {artist_id}. "
+                "Run scripts/generate_embeddings.py first."
+            ),
+        )
+
+    candidate_ids = [item["entity_id"] for item in ranked]
+    metadata = artist_semantic_metadata(connection, [artist_id, *candidate_ids])
+    source_metadata = metadata.get(artist_id)
+    if source_metadata is None:
+        raise HTTPException(status_code=404, detail=f"Artist {artist_id} not found")
+
+    source_tags = source_metadata["style_tags"]
+    scored = []
+    for item in ranked:
+        candidate_metadata = metadata.get(item["entity_id"])
+        if candidate_metadata is None:
+            continue
+
+        candidate_tags = candidate_metadata["style_tags"]
+        shared_styles = sorted(set(source_tags) & set(candidate_tags))
+        style_score = style_overlap_score(source_tags, candidate_tags)
+        embedding_score = item["score"]
+        scored.append(
+            {
+                "entity_id": item["entity_id"],
+                "name": candidate_metadata["name"],
+                "score": combined_semantic_score(embedding_score, style_score),
+                "embedding_score": embedding_score,
+                "style_score": style_score,
+                "shared_styles": shared_styles,
+            }
+        )
+
+    similar = [
+        SemanticArtistItem(
+            id=item["entity_id"],
+            name=item["name"],
+            score=item["score"],
+            embeddingScore=item["embedding_score"],
+            styleScore=item["style_score"],
+            sharedStyles=item["shared_styles"],
+        )
+        for item in sorted(scored, key=lambda candidate: (-candidate["score"], candidate["entity_id"]))[
+            :limit
+        ]
+    ]
+
+    return SemanticArtistResponse(
+        entityId=artist_id,
+        model=source["model"],
+        dimensions=source["dimensions"],
+        similar=similar,
+    )
 
 
 def as_id_set(values: list[int | None] | None) -> set[int]:
@@ -479,6 +607,23 @@ async def similar_artists(
         connection,
         entity_type="artist",
         entity_id=artist_id,
+        limit=limit,
+    )
+
+
+@app.get(
+    "/api/semantic/artists/{artist_id}",
+    response_model=SemanticArtistResponse,
+    response_model_exclude_none=True,
+)
+async def semantic_artists(
+    artist_id: int,
+    limit: int = Query(default=10, ge=1, le=100),
+    connection: Connection = Depends(get_db),
+) -> SemanticArtistResponse:
+    return build_artist_semantic_response(
+        connection,
+        artist_id=artist_id,
         limit=limit,
     )
 
