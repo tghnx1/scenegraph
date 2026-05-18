@@ -203,7 +203,8 @@
   color: var(--nord-text);
 }
 
-.graph-filter-date {
+.graph-filter-date,
+.graph-filter-select {
   min-width: 0;
   flex: 1 1 148px;
   border: 1px solid rgba(216, 222, 233, 0.16);
@@ -213,4 +214,43 @@
   font: inherit;
   font-size: 0.9rem;
   padding: 8px 10px;
+}
+
+.graph-filter-select {
+  width: 100%;
+  appearance: none;
+  background:
+    linear-gradient(45deg, transparent 50%, var(--nord-text-muted) 50%) calc(100% - 18px) 50% / 6px 6px no-repeat,
+    linear-gradient(135deg, var(--nord-text-muted) 50%, transparent 50%) calc(100% - 14px) 50% / 6px 6px no-repeat,
+    rgba(46, 52, 64, 0.94);
+  border-color: rgba(216, 222, 233, 0.18);
+  box-shadow: var(--surface-shadow);
+  color: var(--nord-text);
+  cursor: pointer;
+  font-size: 14px;
+  padding: 10px 36px 10px 12px;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.graph-filter-select:hover,
+.graph-filter-select:focus {
+  border-color: rgba(235, 203, 139, 0.45);
+  box-shadow: 0 0 0 3px rgba(235, 203, 139, 0.12), var(--surface-shadow);
+  outline: none;
+}
+
+.graph-filter-select option {
+  background: rgba(46, 52, 64, 0.98);
+  color: var(--nord-text);
+  font: inherit;
+}
+
+.graph-filter-select:disabled {
+  cursor: not-allowed;
+  opacity: 0.68;
+}
+
+.graph-filter-help {
+  color: var(--nord-text-muted);
+  font-size: 0.78rem;
 }
