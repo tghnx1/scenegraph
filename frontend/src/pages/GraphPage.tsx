@@ -214,7 +214,7 @@ export function GraphPage({ themeName }: { themeName?: string } = {}) {
       nextParams.set('selectedId', result.id)
       nextParams.delete('artist')
       setSearchValue(result.label)
-      setSelectedSearchResult(result)
+      setSelectedSearchResult(null)
       setSelected(null)
       setSearchParams(nextParams, { replace: false })
     },

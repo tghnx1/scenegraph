@@ -51,7 +51,7 @@ const ellerResult: SearchArtistResult = {
   type: 'artist',
   id: ellerArtist.id,
   label: ellerArtist.name,
-  genres: ellerArtist.genres.map((genre) => genre.name),
+  genres: ellerArtist.genres.map((genre) => typeof genre === 'string' ? genre : genre.name),
   bio: ellerArtist.bio,
   eventCount: ellerArtist.eventCount ?? 1,
   events: [unityEventSummary],
