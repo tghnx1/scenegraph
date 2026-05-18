@@ -98,6 +98,29 @@ def test_artist_text_profile_prefers_stored_normalized_biography():
     assert "Raw bio should not be used." not in profile
 
 
+def test_artist_text_profile_includes_extracted_tags():
+    profile = compose_artist_text_profile(
+        {
+            "name": "Tagged Artist",
+            "biography": "Dark disco producer.",
+            "biography_normalized": None,
+        },
+        extracted_tags={
+            "style": ["ebm"],
+            "label": ["Laut & Luise"],
+            "collective": ["Local Crew"],
+            "role": ["producer"],
+            "residency": ["Radio Night"],
+        },
+    )
+
+    assert "Styles: dark disco, ebm" in profile
+    assert "Labels: Laut & Luise" in profile
+    assert "Collectives: Local Crew" in profile
+    assert "Roles: producer" in profile
+    assert "Residencies: Radio Night" in profile
+
+
 def test_artist_text_profile_caps_long_biography():
     profile = compose_artist_text_profile(
         {

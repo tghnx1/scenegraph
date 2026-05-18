@@ -2,7 +2,7 @@ COMPOSE := docker compose
 ENV_FILE := .env
 ENV_EXAMPLE := .env.example
 
-.PHONY: help env build up upd down stop restart logs ps health prisma-migrate prisma-studio db-shell import-events backfill-normalized-texts backfill-lineup-residual backfill-artist-biographies generate-embeddings import-dump clean list fclean
+.PHONY: help env build up upd down stop restart logs ps health prisma-migrate prisma-studio db-shell import-events backfill-normalized-texts backfill-lineup-residual backfill-artist-biographies extract-artist-tags generate-embeddings import-dump clean list fclean
 
 help:
 	@printf "\n"
@@ -25,6 +25,7 @@ help:
 	@printf "  make backfill-normalized-texts Fill normalized lineup and biography text fields\n"
 	@printf "  make backfill-lineup-residual Fill events.lineup_residual_text from lineup_raw\n"
 	@printf "  make backfill-artist-biographies Fill artists.biography_normalized from biography\n"
+	@printf "  make extract-artist-tags Extract structured artist tags from biographies with an LLM\n"
 	@printf "  make generate-embeddings Generate OpenAI embeddings for recommendations\n"
 	@printf "  make import-dump   Import a local SQL dump; prompts before overwrite\n"
 	@printf "  make clean    Stop stack and remove volumes\n"
@@ -89,6 +90,9 @@ backfill-lineup-residual: env
 
 backfill-artist-biographies: env
 	$(COMPOSE) exec backend python scripts/backfill_normalized_texts.py --target biography
+
+extract-artist-tags: env
+	$(COMPOSE) exec backend python scripts/extract_artist_tags.py
 
 generate-embeddings: env
 	$(COMPOSE) exec backend python scripts/generate_embeddings.py

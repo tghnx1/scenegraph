@@ -136,7 +136,9 @@ def test_semantic_artists_endpoint_shape():
     assert "score" in first
     assert "embeddingScore" in first
     assert "styleScore" in first
+    assert "tagScore" in first
     assert isinstance(first["sharedStyles"], list)
+    assert isinstance(first["sharedTags"], dict)
 
 
 def test_recommendations_endpoint_alias_still_works():

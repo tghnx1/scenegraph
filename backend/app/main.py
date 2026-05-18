@@ -94,7 +94,9 @@ class SemanticArtistItem(BaseModel):
     score: float
     embeddingScore: float
     styleScore: float
+    tagScore: float = 0.0
     sharedStyles: list[str] = Field(default_factory=list)
+    sharedTags: dict[str, list[str]] = Field(default_factory=dict)
 
 
 class SemanticArtistResponse(BaseModel):
@@ -103,6 +105,21 @@ class SemanticArtistResponse(BaseModel):
     model: str
     dimensions: int
     similar: list[SemanticArtistItem]
+
+
+class ArtistTagItem(BaseModel):
+    type: Literal["style", "label", "collective", "role", "residency", "alias"]
+    value: str
+    source: str
+    confidence: float
+    extractor: str
+    evidence: str | None = None
+
+
+class ArtistTagsResponse(BaseModel):
+    artistId: int
+    artistName: str
+    tags: list[ArtistTagItem]
 
 
 def graph_node_id(node_type: str, entity_id: int) -> str:
@@ -168,18 +185,92 @@ def artist_semantic_metadata(
         )
         rows = cursor.fetchall()
 
-    return {
+        cursor.execute("SELECT to_regclass('public.artist_extracted_tags') AS table_name")
+        has_extracted_tags = cursor.fetchone()["table_name"] is not None
+
+        extracted_tags: dict[int, dict[str, list[str]]] = {}
+        if has_extracted_tags:
+            cursor.execute(
+                """
+                SELECT artist_id, tag_type, tag_value
+                FROM artist_extracted_tags
+                WHERE artist_id = ANY(%s)
+                  AND confidence >= 0.6
+                ORDER BY tag_type ASC, tag_value ASC
+                """,
+                (artist_ids,),
+            )
+            for tag in cursor.fetchall():
+                artist_tags = extracted_tags.setdefault(tag["artist_id"], {})
+                values = artist_tags.setdefault(tag["tag_type"], [])
+                normalized = tag["tag_value"].strip()
+                if normalized and normalized not in values:
+                    values.append(normalized)
+
+    metadata = {
         row["id"]: {
             "id": row["id"],
             "name": row["name"],
-            "style_tags": extract_style_tags(row["biography"]),
+            "tags": extracted_tags.get(row["id"], {}),
+            "style_tags": sorted(
+                set(extract_style_tags(row["biography"]))
+                | set(extracted_tags.get(row["id"], {}).get("style", []))
+            ),
         }
         for row in rows
     }
+    return metadata
 
 
-def combined_semantic_score(embedding_score: float, style_score: float) -> float:
-    return 0.75 * embedding_score + 0.25 * style_score
+def tag_overlap_score(source_tags: list[str], candidate_tags: list[str], cap: int = 1) -> float:
+    if not source_tags or not candidate_tags:
+        return 0.0
+
+    overlap = {tag.casefold() for tag in source_tags} & {tag.casefold() for tag in candidate_tags}
+    return min(len(overlap) / cap, 1.0)
+
+
+def shared_tag_values(source_tags: list[str], candidate_tags: list[str]) -> list[str]:
+    candidate_lookup = {tag.casefold(): tag for tag in candidate_tags}
+    return sorted(
+        candidate_lookup[key]
+        for key in ({tag.casefold() for tag in source_tags} & set(candidate_lookup.keys()))
+    )
+
+
+def extracted_tag_score(source_tags: dict[str, list[str]], candidate_tags: dict[str, list[str]]) -> float:
+    label_score = tag_overlap_score(source_tags.get("label", []), candidate_tags.get("label", []))
+    collective_score = tag_overlap_score(
+        source_tags.get("collective", []),
+        candidate_tags.get("collective", []),
+    )
+    residency_score = tag_overlap_score(
+        source_tags.get("residency", []),
+        candidate_tags.get("residency", []),
+    )
+    role_score = 0.5 * tag_overlap_score(
+        source_tags.get("role", []),
+        candidate_tags.get("role", []),
+        cap=2,
+    )
+
+    return max(label_score, collective_score, residency_score, role_score)
+
+
+def shared_extracted_tags(
+    source_tags: dict[str, list[str]],
+    candidate_tags: dict[str, list[str]],
+) -> dict[str, list[str]]:
+    shared: dict[str, list[str]] = {}
+    for tag_type in ("label", "collective", "role", "residency", "alias"):
+        values = shared_tag_values(source_tags.get(tag_type, []), candidate_tags.get(tag_type, []))
+        if values:
+            shared[tag_type] = values
+    return shared
+
+
+def combined_semantic_score(embedding_score: float, style_score: float, tag_score: float) -> float:
+    return 0.65 * embedding_score + 0.25 * style_score + 0.10 * tag_score
 
 
 def build_artist_semantic_response(
@@ -213,6 +304,7 @@ def build_artist_semantic_response(
         raise HTTPException(status_code=404, detail=f"Artist {artist_id} not found")
 
     source_tags = source_metadata["style_tags"]
+    source_extracted_tags = source_metadata["tags"]
     scored = []
     for item in ranked:
         candidate_metadata = metadata.get(item["entity_id"])
@@ -222,15 +314,19 @@ def build_artist_semantic_response(
         candidate_tags = candidate_metadata["style_tags"]
         shared_styles = sorted(set(source_tags) & set(candidate_tags))
         style_score = style_overlap_score(source_tags, candidate_tags)
+        tag_score = extracted_tag_score(source_extracted_tags, candidate_metadata["tags"])
+        shared_tags = shared_extracted_tags(source_extracted_tags, candidate_metadata["tags"])
         embedding_score = item["score"]
         scored.append(
             {
                 "entity_id": item["entity_id"],
                 "name": candidate_metadata["name"],
-                "score": combined_semantic_score(embedding_score, style_score),
+                "score": combined_semantic_score(embedding_score, style_score, tag_score),
                 "embedding_score": embedding_score,
                 "style_score": style_score,
+                "tag_score": tag_score,
                 "shared_styles": shared_styles,
+                "shared_tags": shared_tags,
             }
         )
 
@@ -241,7 +337,9 @@ def build_artist_semantic_response(
             score=item["score"],
             embeddingScore=item["embedding_score"],
             styleScore=item["style_score"],
+            tagScore=item["tag_score"],
             sharedStyles=item["shared_styles"],
+            sharedTags=item["shared_tags"],
         )
         for item in sorted(scored, key=lambda candidate: (-candidate["score"], candidate["entity_id"]))[
             :limit
@@ -625,6 +723,64 @@ async def semantic_artists(
         connection,
         artist_id=artist_id,
         limit=limit,
+    )
+
+
+@app.get(
+    "/api/artists/{artist_id}/tags",
+    response_model=ArtistTagsResponse,
+    response_model_exclude_none=True,
+)
+async def artist_tags(
+    artist_id: int,
+    min_confidence: float = Query(default=0.0, ge=0.0, le=1.0, alias="minConfidence"),
+    connection: Connection = Depends(get_db),
+) -> ArtistTagsResponse:
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT id, name
+            FROM artists
+            WHERE id = %s
+            """,
+            (artist_id,),
+        )
+        artist = cursor.fetchone()
+        if artist is None:
+            raise HTTPException(status_code=404, detail=f"Artist {artist_id} not found")
+
+        cursor.execute(
+            """
+            SELECT
+                tag_type,
+                tag_value,
+                source,
+                confidence,
+                extractor,
+                evidence
+            FROM artist_extracted_tags
+            WHERE artist_id = %s
+              AND confidence >= %s
+            ORDER BY tag_type ASC, confidence DESC, tag_value ASC
+            """,
+            (artist_id, min_confidence),
+        )
+        tags = cursor.fetchall()
+
+    return ArtistTagsResponse(
+        artistId=artist["id"],
+        artistName=artist["name"],
+        tags=[
+            ArtistTagItem(
+                type=tag["tag_type"],
+                value=tag["tag_value"],
+                source=tag["source"],
+                confidence=tag["confidence"],
+                extractor=tag["extractor"],
+                evidence=tag["evidence"],
+            )
+            for tag in tags
+        ],
     )
 
 
