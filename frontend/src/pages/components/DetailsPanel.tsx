@@ -26,11 +26,11 @@ function toSelectedArtistResult(
     type: 'artist',
     id: selectedArtist.id,
     label: selectedArtist.name,
-    genres: selectedArtist.genres.map((genre) => genre.name),
+    genres: selectedArtist.genres.map((genre) => typeof genre === 'string' ? genre : genre.name),
     bio: selectedArtist.bio,
     eventCount: selectedArtist.eventCount ?? selectedNode.eventCount ?? 0,
-    events: [],
-    connectedArtists: similarArtists.map((entry) => ({
+    events: selectedArtist.events ?? [],
+    connectedArtists: selectedArtist.connectedArtists ?? similarArtists.map((entry) => ({
       id: entry.artist.id,
       label: entry.artist.name,
       sharedEvents: entry.sharedEvents,

@@ -15,13 +15,13 @@ interface SearchQueryFormProps {
 
 function getResultMeta(result: SearchResult) {
   if (result.type === 'artist') {
-    return result.genres.join(' · ') || `${result.eventCount} events`
+    return result.genres.join(' · ') || (result.eventCount > 0 ? `${result.eventCount} events` : '')
   }
   if (result.type === 'venue') {
-    return [result.district, `${result.eventCount} events`].filter(Boolean).join(' · ')
+    return [result.district, result.eventCount > 0 ? `${result.eventCount} events` : ''].filter(Boolean).join(' · ')
   }
   if (result.type === 'promoter') {
-    return `${result.eventCount} events`
+    return result.eventCount > 0 ? `${result.eventCount} events` : ''
   }
   return result.date
 }
@@ -99,7 +99,7 @@ export function SearchQueryForm({
   return (
     <form className="search-query-form" onSubmit={handleSubmit}>
       <label className="search-query-label" htmlFor={inputId}>
-        Search Database
+        Scenegraph Database
       </label>
       <div className="search-query-box">
         <input
@@ -152,7 +152,7 @@ export function SearchQueryForm({
               >
                 <span>
                   <strong>{result.label}</strong>
-                  <small>{getResultMeta(result)}</small>
+                  {getResultMeta(result) && <small>{getResultMeta(result)}</small>}
                 </span>
                 <em>{result.type}</em>
               </button>
