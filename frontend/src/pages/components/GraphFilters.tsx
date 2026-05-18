@@ -15,14 +15,24 @@ interface GraphFiltersProps {
   genres: GenreOption[]
   isGenresLoading: boolean
   genresError: string | null
+  displayedDateRange: { from: string; to: string } | null
   onChange: (filters: GraphParams) => void
 }
 
-export function GraphFilters({ filters, genres, isGenresLoading, genresError, onChange }: GraphFiltersProps) {
+export function GraphFilters({
+  filters,
+  genres,
+  isGenresLoading,
+  genresError,
+  displayedDateRange,
+  onChange,
+}: GraphFiltersProps) {
   const updateFilter = (next: Partial<GraphParams>) => {
     onChange({ ...filters, ...next })
   }
   const genreOptions = genres.length > 0 ? genres : FALLBACK_GENRE_OPTIONS
+  const dateFromValue = filters.dateFrom ?? displayedDateRange?.from ?? ''
+  const dateToValue = filters.dateTo ?? displayedDateRange?.to ?? ''
 
   return (
     <section className="graph-filter-panel" aria-label="Graph filters">
@@ -55,16 +65,16 @@ export function GraphFilters({ filters, genres, isGenresLoading, genresError, on
           <input
             className="graph-filter-date"
             type="date"
-            value={filters.dateFrom ?? ''}
-            max={filters.dateTo}
+            value={dateFromValue}
+            max={dateToValue}
             onChange={(event) => updateFilter({ dateFrom: event.target.value || undefined })}
             aria-label="Date from"
           />
           <input
             className="graph-filter-date"
             type="date"
-            value={filters.dateTo ?? ''}
-            min={filters.dateFrom}
+            value={dateToValue}
+            min={dateFromValue}
             onChange={(event) => updateFilter({ dateTo: event.target.value || undefined })}
             aria-label="Date to"
           />

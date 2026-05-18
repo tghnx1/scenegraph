@@ -251,6 +251,18 @@ export function GraphPage() {
   const graphData = data || { nodes: [], links: [] }
   const nodeCount = graphData.nodes.length
   const linkCount = graphData.links.length
+  const displayedEventDates = graphData.nodes
+    .filter((node) => node.type === 'event')
+    .map((node) => node.startDate ?? node.date ?? node.endDate)
+    .filter((date): date is string => Boolean(date))
+    .sort()
+  const displayedDateRange =
+    displayedEventDates.length > 0
+      ? {
+          from: displayedEventDates[0],
+          to: displayedEventDates[displayedEventDates.length - 1],
+        }
+      : null
 
   return (
     <div className="graph-page-shell">
@@ -276,6 +288,7 @@ export function GraphPage() {
             genres={genres ?? []}
             isGenresLoading={isGenresLoading}
             genresError={genresError}
+            displayedDateRange={displayedDateRange}
             onChange={handleGraphFiltersChange}
           />
 
