@@ -47,6 +47,9 @@ def test_tag_extraction_config_reads_azure_responses_url(monkeypatch):
     )
     monkeypatch.setenv("AZURE_OPENAI_RESPONSES_MODEL", "gpt-4.1-mini")
     monkeypatch.delenv("EXTRACTION_API", raising=False)
+    monkeypatch.delenv("AZURE_OPENAI_EXTRACTION_DEPLOYMENT", raising=False)
+    monkeypatch.delenv("AZURE_OPENAI_CHAT_DEPLOYMENT", raising=False)
+    monkeypatch.delenv("OPENAI_EXTRACTION_MODEL", raising=False)
 
     config = TagExtractionConfig.from_env()
 
@@ -121,6 +124,21 @@ def test_parse_tags_response_normalizes_and_deduplicates():
     assert tags[0].evidence == "EBM and dark disco"
 
 
+def test_parse_tags_response_deduplicates_canonical_scene_entities():
+    tags = parse_tags_response(
+        {
+            "tags": [
+                {"type": "collective", "value": "Holyberg music association"},
+                {"type": "collective", "value": "holyberg"},
+            ]
+        },
+        artist_name="Holywanderer",
+        max_tags=10,
+    )
+
+    assert [(tag.tag_type, tag.tag_value) for tag in tags] == [("collective", "Holyberg")]
+
+
 def test_parse_tags_response_caps_to_max_tags():
     tags = parse_tags_response(
         {
@@ -140,6 +158,17 @@ def test_parse_tags_response_caps_to_max_tags():
 def test_normalize_tag_value_preserves_label_case():
     assert normalize_tag_value("label", "  Laut & Luise /  ") == "Laut & Luise"
     assert normalize_tag_value("style", "  Dark Disco  ") == "dark disco"
+
+
+def test_normalize_tag_value_canonicalizes_scene_entities():
+    assert normalize_tag_value("collective", "  holyberg music association ") == "holyberg"
+    assert normalize_tag_value("collective", "The Holyberg Music Association") == "Holyberg"
+    assert normalize_tag_value("collective", "member of the Holyberg music association") == "Holyberg"
+    assert normalize_tag_value("label", "Laut & Luise Records") == "Laut & Luise"
+    assert normalize_tag_value("label", "Music From Memory") == "Music From Memory"
+    assert normalize_tag_value("residency", "The Bunker New York") == "The Bunker New York"
+    assert normalize_tag_value("residency", "MatreshkaBerlin resident") == "MatreshkaBerlin"
+    assert normalize_tag_value("residency", "Resident at Sameheads") == "Sameheads"
 
 
 def test_tag_extraction_text_hash_normalizes_biography():
