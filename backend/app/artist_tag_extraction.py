@@ -34,6 +34,53 @@ ALLOWED_TAG_TYPES: set[str] = {
 }
 
 LOW_CONFIDENCE_TYPES = {"alias", "residency"}
+SCENE_ENTITY_TAG_TYPES = {"label", "collective", "residency"}
+
+GENERIC_ENTITY_SUFFIXES_BY_TYPE: dict[str, tuple[str, ...]] = {
+    "label": (
+        "record label",
+        "recording label",
+        "label",
+        "records",
+        "recordings",
+        "rec",
+        "rec.",
+        "imprint",
+    ),
+    "collective": (
+        "music association e.v.",
+        "music association",
+        "music collective",
+        "artist collective",
+        "art collective",
+        "artistic collective",
+        "association",
+        "collective",
+        "community",
+        "crew",
+        "group",
+    ),
+    "residency": (
+        "resident dj",
+        "resident",
+        "residents",
+        "residency",
+    ),
+}
+
+ENTITY_VALUE_PREFIX_RE = re.compile(
+    r"(?i)^(?:"
+    r"resident(?:\s+dj)?\s+(?:at|of|for)\s+|"
+    r"residency\s+(?:at|of|for)\s+|"
+    r"member\s+of\s+|"
+    r"co-?founder\s+of\s+|"
+    r"founder\s+of\s+|"
+    r"part\s+of\s+|"
+    r"signed\s+to\s+|"
+    r"released\s+on\s+|"
+    r"affiliated\s+with\s+"
+    r")"
+)
 
 
 @dataclass(frozen=True)
@@ -200,7 +247,48 @@ def normalize_tag_value(tag_type: str, value: Any) -> str:
     text = re.sub(r"\s+", " ", text)
     if tag_type in {"style", "role"}:
         text = text.lower()
+    elif tag_type in SCENE_ENTITY_TAG_TYPES:
+        text = normalize_scene_entity_tag(tag_type, text)
     return text[:120].strip()
+
+
+def normalize_scene_entity_tag(tag_type: str, value: str) -> str:
+    text = value.strip(" \t\n\r,.;:|/\\")
+    text = re.sub(
+        r"(?i)\s+\((?:record label|label|imprint|collective|crew|resident|residency)\)$",
+        "",
+        text,
+    ).strip(" \t\n\r,.;:|/\\")
+
+    while True:
+        without_prefix = ENTITY_VALUE_PREFIX_RE.sub("", text).strip(" \t\n\r,.;:|/\\")
+        if without_prefix == text:
+            break
+        text = without_prefix
+
+    suffix_removed = False
+    suffixes = GENERIC_ENTITY_SUFFIXES_BY_TYPE.get(tag_type, ())
+    while True:
+        changed = False
+        for suffix in sorted(suffixes, key=len, reverse=True):
+            pattern = re.compile(rf"(?i)(?:[\s-]+){re.escape(suffix)}\.?$")
+            match = pattern.search(text)
+            if not match:
+                continue
+            candidate = text[: match.start()].strip(" \t\n\r,.;:|/\\-")
+            if len(candidate) < 2:
+                continue
+            text = candidate
+            suffix_removed = True
+            changed = True
+            break
+        if not changed:
+            break
+
+    if suffix_removed:
+        text = re.sub(r"(?i)^the\s+", "", text).strip(" \t\n\r,.;:|/\\")
+
+    return text
 
 
 def normalize_confidence(value: Any, *, tag_type: str) -> float:
