@@ -7,6 +7,8 @@ from typing import Any
 
 from psycopg import Connection
 
+from app.style_tags import extract_style_tags
+
 
 MAX_EVENT_CONTEXTS = 12
 MAX_RECURRING_NAMES = 12
@@ -124,14 +126,18 @@ def compose_artist_text_profile(
     promoter_names: Iterable[Any] = (),
 ) -> str:
     _ = (event_contexts, venue_names, promoter_names)
+    biography = artist.get("biography_normalized") or normalize_biography_text(
+        artist.get("biography", "")
+    )
+    style_tags = extract_style_tags(biography)
 
     return join_sections(
         [
             format_section("Artist name", artist.get("name", "")),
+            format_section("Styles", style_tags),
             format_section(
                 "Biography",
-                artist.get("biography_normalized")
-                or normalize_biography_text(artist.get("biography", "")),
+                biography,
                 MAX_ARTIST_BIOGRAPHY_CHARS,
             ),
         ]

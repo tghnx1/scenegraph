@@ -76,6 +76,7 @@ def test_artist_text_profile_uses_intrinsic_artist_text_only():
 
     assert "Artist name: BabaBass3000" in profile
     assert "Biography: Leftfield electro and bass-focused club music." in profile
+    assert "Styles: bass, electro, leftfield" in profile
     assert "Played event titles:" not in profile
     assert "Played event descriptions:" not in profile
     assert "Played event lineup context:" not in profile
