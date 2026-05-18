@@ -2,6 +2,7 @@ import { useState, type CSSProperties } from 'react'
 import { Routes, Route, Navigate, NavLink, useLocation, useParams, useSearchParams } from 'react-router-dom'
 import { GraphPage } from './pages/GraphPage'
 import { DashboardPage } from './pages/DashboardPage'
+import { ProfilePage } from './pages/ProfilePage'
 import {
   hexToRgba,
   LINK_HIGHLIGHT,
@@ -124,7 +125,17 @@ export default function App() {
         >
           Graph
         </a>
-
+        <NavLink
+          to="/profile"
+          style={({ isActive }) => ({
+            ...linkBaseStyle,
+            background: isActive ? hexToRgba(ACCENT_WARM, 0.2) : 'transparent',
+            color: isActive ? TEXT : TEXT_MUTED,
+            border: isActive ? `1px solid ${hexToRgba(ACCENT_WARM, 0.45)}` : '1px solid transparent',
+          })}
+        >
+          Profile
+        </NavLink>
         <NavLink
           to="/dashboard"
           style={({ isActive }) => ({
@@ -147,6 +158,7 @@ export default function App() {
           <Route path="/" element={<Navigate to="/graph" />} />
           <Route path="/graph" element={<GraphPage />} />
           <Route path="/dashboard" element={<DashboardPage />} />
+          <Route path="/profile" element={<ProfilePage />} />
           <Route path="/search" element={<SearchRedirect />} />
           <Route path="/artist/:id" element={<ArtistRedirect />} />
           <Route path="/privacy-policy" element={<LegalPage section="privacy" />} />

@@ -1,214 +1,178 @@
-import { useCallback, useEffect, useState, type FormEvent } from 'react'
-import { useSearchParams } from 'react-router-dom'
-import { fetchSearch } from '../api/search.ts'
-import { useApi } from '../hooks/useApi.ts'
-import { useGraphStore } from '../store/graphStore.ts'
-import type { SearchResponse, SearchResult } from '../types/search.ts'
-import { GraphSidebarDetails } from './components/DetailsPanel.tsx'
-import { SearchQueryForm } from './components/SearchQueryForm.tsx'
-import { useDebouncedValue } from './hooks/useDebouncedValue.ts'
-
-const stats = [
-  { label: 'Connected nodes', value: '0' },
-  { label: 'Shared events', value: '0' },
-  { label: 'Recommendations', value: '0' },
+const overviewStats = [
+  { label: 'Events', value: '2,486', note: '+184 this import' },
+  { label: 'Artists', value: '5,621', note: '438 newly linked' },
+  { label: 'Venues', value: '312', note: '29 missing coordinates' },
+  { label: 'Promoters', value: '1,048', note: '76 active this month' },
+  { label: 'Genres', value: '18', note: 'Source tags' },
+  { label: 'Last import', value: '14:32', note: 'Mocked status' },
 ]
 
-const legendItems = [
-  { label: 'Artists', className: 'artist' },
-  { label: 'Venues', className: 'venue' },
-  { label: 'Events', className: 'event' },
+const importRuns = [
+  { source: 'Resident Advisor', status: 'Successful', processed: '1,250', changed: '184 new / 312 updated', finished: 'Today, 14:32' },
+  { source: 'Artist biographies', status: 'Needs review', processed: '421', changed: '38 skipped', finished: 'Today, 11:08' },
+  { source: 'Venue enrichment', status: 'Queued', processed: '-', changed: 'Waiting for worker', finished: 'Not started' },
+]
+
+const qualityItems = [
+  { label: 'Events without artists', value: '42', tone: 'warning' },
+  { label: 'Events without genres', value: '17', tone: 'good' },
+  { label: 'Venues missing address', value: '29', tone: 'warning' },
+  { label: 'Possible duplicate artists', value: '64', tone: 'danger' },
+  { label: 'Isolated graph nodes', value: '118', tone: 'warning' },
+]
+
+const graphMetrics = [
+  { label: 'Artist nodes', value: '5,621' },
+  { label: 'Event nodes', value: '2,486' },
+  { label: 'Venue nodes', value: '312' },
+  { label: 'Promoter nodes', value: '1,048' },
+  { label: 'Edges', value: '18,904' },
+  { label: 'Avg. artist degree', value: '6.4' },
+]
+
+const entityRows = [
+  { type: 'Event', name: 'SIGNALS with BabaBass3000', status: 'Visible', updated: '14:32' },
+  { type: 'Artist', name: 'Charleen Herzig', status: 'Needs biography', updated: '13:41' },
+  { type: 'Venue', name: 'Lokschuppen Berlin', status: 'Missing area note', updated: '12:09' },
+  { type: 'Promoter', name: 'SIGNALSBERLINEVENT', status: 'Visible', updated: '11:56' },
+]
+
+const recommendationRows = [
+  { artist: 'BabaBass3000', target: 'Lokschuppen Berlin', score: '92', reason: 'Shared techno events, recurring promoter' },
+  { artist: 'Acidheaven', target: 'Arkaoda', score: '87', reason: 'House and trance overlap, recent lineup graph' },
+  { artist: 'Flo Masse', target: 'Manolita', score: '81', reason: 'Promoter connection and similar event genres' },
+]
+
+const userRows = [
+  { user: 'admin@scenegraph.local', role: 'Admin', status: 'Active' },
+  { user: 'artist.claim.demo', role: 'Artist', status: 'Pending claim' },
+  { user: 'moderator.demo', role: 'Moderator', status: 'Active' },
 ]
 
 export function DashboardPage() {
-  const [searchParams, setSearchParams] = useSearchParams()
-  const { setSelected, selectedNode } = useGraphStore()
-  const submittedQuery = searchParams.get('q') ?? ''
-  const [searchValue, setSearchValue] = useState(submittedQuery)
-  const [selectedSearchResult, setSelectedSearchResult] = useState<SearchResult | null>(null)
-  const debouncedSearchValue = useDebouncedValue(searchValue.trim(), 350)
-
-  const {
-    data: searchData,
-    isLoading: isSearchLoading,
-    error: searchError,
-  } = useApi<SearchResponse>(
-    () => (submittedQuery ? fetchSearch(submittedQuery) : Promise.resolve({ query: '', results: [] })),
-    [submittedQuery]
-  )
-
-  const { data: dropdownSearchData, isLoading: isDropdownSearchLoading } = useApi<SearchResponse>(
-    () => (debouncedSearchValue.length >= 2 ? fetchSearch(debouncedSearchValue) : Promise.resolve({ query: '', results: [] })),
-    [debouncedSearchValue]
-  )
-
-  useEffect(() => {
-    setSearchValue(submittedQuery)
-  }, [submittedQuery])
-
-  const handleSearchSubmit = useCallback(
-    (event: FormEvent<HTMLFormElement>) => {
-      event.preventDefault()
-      const nextQuery = searchValue.trim()
-      if (!nextQuery) return
-      const nextParams = new URLSearchParams(searchParams)
-      nextParams.set('q', nextQuery)
-      nextParams.delete('artist')
-      nextParams.delete('selectedType')
-      nextParams.delete('selectedId')
-      setSelectedSearchResult(null)
-      setSelected(null)
-      setSearchParams(nextParams, { replace: true })
-    },
-    [searchParams, searchValue, setSearchParams, setSelected]
-  )
-
-  const handleClearSearch = useCallback(() => {
-    setSearchValue('')
-    const nextParams = new URLSearchParams(searchParams)
-    nextParams.delete('q')
-    nextParams.delete('artist')
-    nextParams.delete('selectedType')
-    nextParams.delete('selectedId')
-    setSearchParams(nextParams, { replace: true })
-    setSelectedSearchResult(null)
-    setSelected(null)
-  }, [searchParams, setSearchParams, setSelected])
-
-  const handleSearchValueChange = useCallback((nextValue: string) => {
-    setSearchValue(nextValue)
-  }, [])
-
-  const handleSelectSearchResult = useCallback(
-    (result: SearchResult) => {
-      const nextParams = new URLSearchParams(searchParams)
-      nextParams.set('q', result.label)
-      nextParams.set('selectedType', result.type)
-      nextParams.set('selectedId', result.id)
-      nextParams.delete('artist')
-      setSearchValue(result.label)
-      setSelectedSearchResult(result)
-      setSelected(null)
-      setSearchParams(nextParams, { replace: true })
-    },
-    [searchParams, setSearchParams, setSelected]
-  )
-
-  const searchResults = searchData?.results ?? []
-  const trimmedSearchValue = searchValue.trim()
-  const isDropdownWaiting = trimmedSearchValue.length >= 2 && debouncedSearchValue !== trimmedSearchValue
-  const dropdownSearchResults = debouncedSearchValue === trimmedSearchValue ? dropdownSearchData?.results ?? [] : []
-  const detailSearchResults = selectedSearchResult ? [selectedSearchResult] : searchResults
-  const hasActiveSearchState = Boolean(searchValue || submittedQuery || selectedNode)
-
   return (
     <div className="dashboard-page">
-      <section className="dashboard-grid" aria-label="Dashboard overview">
-        <article className="dashboard-panel profile-panel">
-          <div className="panel-heading">
-            <span className="search-query-label">Profile</span>
-            <button type="button">Edit</button>
-          </div>
-          <h2>Artist biography</h2>
-          <p>Self biography and claimed account fields appear here.</p>
-          <div className="profile-fields">
-            <span>Name</span>
-            <span>Genres</span>
-            <span>Location</span>
-          </div>
-        </article>
+      <header className="dashboard-header">
+        <div>
+          <span className="search-query-label">Admin dashboard</span>
+          <h1>SceneGraph operations</h1>
+          <p>Mock admin controls for imports, graph health, data quality, entities, users, and recommendation debugging.</p>
+        </div>
+        <div className="dashboard-header-actions">
+          <button type="button">Run import</button>
+          <button type="button">View logs</button>
+        </div>
+      </header>
 
-        <article className="dashboard-panel context-panel">
-          <div className="panel-heading">
-            <span className="search-query-label">Node details</span>
-          </div>
-          <GraphSidebarDetails
-            searchQuery={submittedQuery}
-            searchResults={detailSearchResults}
-            isSearchLoading={isSearchLoading}
-            searchError={searchError}
-            selectedNode={null}
-            selectedArtist={null}
-            isArtistLoading={false}
-            artistError={null}
-            similarArtists={[]}
-          />
-        </article>
+      <section className="dashboard-overview" aria-label="SceneGraph overview">
+        {overviewStats.map((item) => (
+          <article key={item.label} className="dashboard-stat-card dashboard-mock-element">
+            <span>{item.label}</span>
+            <strong>{item.value}</strong>
+            <small>{item.note}</small>
+          </article>
+        ))}
+      </section>
 
-        <article className="dashboard-panel side-panel recommendations-panel">
+      <section className="dashboard-admin-grid" aria-label="Admin dashboard sections">
+        <article className="dashboard-panel dashboard-panel-wide dashboard-mock-element">
           <div className="panel-heading">
-            <span className="search-query-label">Recommendations</span>
-            {/* <span className="panel-status">Draft</span> */}
+            <span className="search-query-label">Import monitor</span>
+            <span className="panel-status">Mock data</span>
           </div>
-          <div className="placeholder-list">
-            <span>Recommended names</span>
-            <span>A list of names/connections.</span>
-          </div>
-        </article>
-
-        <article className="dashboard-panel stats-panel">
-          <div className="panel-heading">
-            <span className="search-query-label">Statistics</span>
-            {/* <span className="panel-status">Overview</span> */}
-          </div>
-          <div className="stat-grid">
-            {stats.map((item) => (
-              <div key={item.label} className="stat-tile">
-                <strong>{item.value}</strong>
-                <span>{item.label}</span>
+          <div className="dashboard-table">
+            {importRuns.map((run) => (
+              <div key={run.source} className="dashboard-table-row">
+                <strong>{run.source}</strong>
+                <span>{run.status}</span>
+                <span>{run.processed} processed</span>
+                <span>{run.changed}</span>
+                <span>{run.finished}</span>
               </div>
             ))}
           </div>
-          <div className="chart-placeholder" aria-label="Chart placeholder" />
         </article>
 
-        <section className="graph-workspace" aria-label="Dashboard graph workspace">
-          <article className="dashboard-panel graph-panel">
-            <SearchQueryForm
-              inputId="dashboard-search-query-input"
-              value={searchValue}
-              onChange={handleSearchValueChange}
-              onSubmit={handleSearchSubmit}
-              onClear={handleClearSearch}
-              showClear={hasActiveSearchState}
-              results={dropdownSearchResults}
-              isLoading={isDropdownWaiting || isDropdownSearchLoading}
-              onSelectResult={handleSelectSearchResult}
-            />
-
-            <div className="panel-heading">
-              <span className="search-query-label">Graph display</span>
-              <div className="graph-panel-actions">
-                <button type="button">Filter by date</button>
-                <button type="button">Filter by limit</button>
-              </div>
-            </div>
-            <div className="dashboard-graph-placeholder" />
-            <div className="legend-bar">
-              <strong>Legends bar</strong>
-              <div>
-                {legendItems.map((item) => (
-                  <span key={item.label} className={`legend-dot ${item.className}`}>
-                    {item.label}
-                  </span>
-                ))}
-              </div>
-            </div>
-          </article>
-        </section>
-
-        <article className="dashboard-panel side-panel communications-panel">
+        <article className="dashboard-panel dashboard-mock-element">
           <div className="panel-heading">
-            <span className="search-query-label">Communications</span>
-            {/* <span className="panel-status">Inbox</span> */}
+            <span className="search-query-label">Data quality</span>
+            <span className="panel-status">Review queue</span>
           </div>
-          <div className="placeholder-list">
-            <span>Clickable contact names</span>
-            <span>Open a chat</span>
+          <div className="quality-list">
+            {qualityItems.map((item) => (
+              <div key={item.label} className={`quality-item ${item.tone}`}>
+                <span>{item.label}</span>
+                <strong>{item.value}</strong>
+              </div>
+            ))}
           </div>
         </article>
 
-        <article className="dashboard-panel empty-panel" aria-label="Empty dashboard panel" />
+        <article className="dashboard-panel dashboard-mock-element">
+          <div className="panel-heading">
+            <span className="search-query-label">Graph health</span>
+            <span className="panel-status">Current snapshot</span>
+          </div>
+          <div className="graph-health-grid">
+            {graphMetrics.map((metric) => (
+              <div key={metric.label}>
+                <strong>{metric.value}</strong>
+                <span>{metric.label}</span>
+              </div>
+            ))}
+          </div>
+          <div className="admin-graph-preview" aria-label="Graph health preview" />
+        </article>
+
+        <article className="dashboard-panel dashboard-panel-wide dashboard-mock-element">
+          <div className="panel-heading">
+            <span className="search-query-label">Entity browser</span>
+            <button type="button">Search entities</button>
+          </div>
+          <div className="dashboard-table">
+            {entityRows.map((row) => (
+              <div key={`${row.type}-${row.name}`} className="dashboard-table-row">
+                <strong>{row.type}</strong>
+                <span>{row.name}</span>
+                <span>{row.status}</span>
+                <span>{row.updated}</span>
+              </div>
+            ))}
+          </div>
+        </article>
+
+        <article className="dashboard-panel dashboard-panel-wide dashboard-mock-element">
+          <div className="panel-heading">
+            <span className="search-query-label">Recommendation debug</span>
+            <span className="panel-status">Explainability mock</span>
+          </div>
+          <div className="dashboard-table recommendation-table">
+            {recommendationRows.map((row) => (
+              <div key={`${row.artist}-${row.target}`} className="dashboard-table-row">
+                <strong>{row.artist}</strong>
+                <span>{row.target}</span>
+                <span>{row.score}</span>
+                <span>{row.reason}</span>
+              </div>
+            ))}
+          </div>
+        </article>
+
+        <article className="dashboard-panel dashboard-mock-element">
+          <div className="panel-heading">
+            <span className="search-query-label">Users and roles</span>
+            <button type="button">Invite</button>
+          </div>
+          <div className="dashboard-table compact">
+            {userRows.map((row) => (
+              <div key={row.user} className="dashboard-table-row">
+                <strong>{row.user}</strong>
+                <span>{row.role}</span>
+                <span>{row.status}</span>
+              </div>
+            ))}
+          </div>
+        </article>
       </section>
     </div>
   )

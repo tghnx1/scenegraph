@@ -4,7 +4,7 @@ import { BrowserRouter } from 'react-router-dom'
 import App from './App.tsx'
 import './styles/base.css' //tokens, global reset, typography
 import './styles/graph.css' //graph page layout, graph canvas, filter controls
-import './styles/dashboard.css' //dashboard page shell and panels
+import './styles/dashboard.css' //dashboard and profile page shells and panels
 import './styles/search-results.css' //search input, result cards, detail panel pieces
 import './styles/responsive.css' //mobile overrides
 import { applyCssVars } from './styles/colors'
