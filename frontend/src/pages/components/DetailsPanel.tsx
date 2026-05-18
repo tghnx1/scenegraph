@@ -10,8 +10,6 @@ interface GraphSidebarDetailsProps {
   searchError: string | null
   selectedNode: GraphNode | null
   selectedArtist: Artist | null
-  isArtistLoading: boolean
-  artistError: string | null
   similarArtists: SimilarArtist[]
 }
 
@@ -47,36 +45,12 @@ export function GraphSidebarDetails({
   searchError,
   selectedNode,
   selectedArtist,
-  isArtistLoading,
-  artistError,
   similarArtists,
 }: GraphSidebarDetailsProps) {
   const activeSearchResult = searchResults[0] ?? null
   const selectedArtistResult = toSelectedArtistResult(selectedNode, selectedArtist, similarArtists)
 
   if (selectedNode) {
-    if (selectedNode.type === 'artist' && isArtistLoading) {
-      return (
-        <div className="graph-sidebar-content">
-          <div className="empty-state">
-            <h3>Loading biography...</h3>
-            <p>Fetching the selected artist details.</p>
-          </div>
-        </div>
-      )
-    }
-
-    if (selectedNode.type === 'artist' && artistError) {
-      return (
-        <div className="graph-sidebar-content">
-          <div className="empty-state">
-            <h3>Could not load biography</h3>
-            <p className="error">{artistError}</p>
-          </div>
-        </div>
-      )
-    }
-
     if (selectedNode.type === 'artist' && selectedArtistResult) {
       return (
         <div className="graph-sidebar-content">
@@ -98,13 +72,6 @@ export function GraphSidebarDetails({
             </div>
             <span className="result-badge">{selectedNode.eventCount ?? 0} events</span>
           </div>
-
-          <section className="result-section">
-            <h3>Overview</h3>
-            <p className="result-description">
-              Click an artist node to open biography and linked entities. Search results stay in the same panel above.
-            </p>
-          </section>
 
           <section className="result-section">
             <h3>Details</h3>
