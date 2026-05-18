@@ -1,44 +1,52 @@
 import type { GraphParams } from '../../api/graph.ts'
+import type { GenreOption } from '../../api/genres.ts'
 
-const GENRE_OPTIONS = [
-  { label: 'All', value: '' },
-  { label: 'Techno', value: 'techno' },
-  { label: 'House', value: 'house' },
-  { label: 'Trance', value: 'trance' },
+const FALLBACK_GENRE_OPTIONS = [
   { label: 'Disco', value: 'disco' },
+  { label: 'House', value: 'house' },
+  { label: 'Techno', value: 'techno' },
+  { label: 'Trance', value: 'trance' },
 ]
 
 const LIMIT_OPTIONS = [100, 250, 500, 1000]
 
 interface GraphFiltersProps {
   filters: GraphParams
+  genres: GenreOption[]
+  isGenresLoading: boolean
+  genresError: string | null
   onChange: (filters: GraphParams) => void
 }
 
-export function GraphFilters({ filters, onChange }: GraphFiltersProps) {
+export function GraphFilters({ filters, genres, isGenresLoading, genresError, onChange }: GraphFiltersProps) {
   const updateFilter = (next: Partial<GraphParams>) => {
     onChange({ ...filters, ...next })
   }
+  const genreOptions = genres.length > 0 ? genres : FALLBACK_GENRE_OPTIONS
 
   return (
     <section className="graph-filter-panel" aria-label="Graph filters">
       <div className="graph-filter-group">
         <span className="graph-filter-label">Genre</span>
-        <div className="graph-filter-buttons">
-          {GENRE_OPTIONS.map((option) => {
-            const isActive = (filters.genre ?? '') === option.value
-            return (
-              <button
-                key={option.value || 'all'}
-                type="button"
-                className={`graph-filter-button${isActive ? ' active' : ''}`}
-                onClick={() => updateFilter({ genre: option.value || undefined })}
-              >
-                {option.label}
-              </button>
-            )
-          })}
-        </div>
+        <select
+          className="graph-filter-select"
+          value={filters.genre ?? ''}
+          onChange={(event) => updateFilter({ genre: event.target.value || undefined })}
+          disabled={isGenresLoading && genreOptions.length === 0}
+          aria-label="Genre"
+        >
+          <option value="">
+            {isGenresLoading && genres.length === 0 ? 'Loading genres...' : 'All genres'}
+          </option>
+          {genreOptions.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+        {genresError && (
+          <span className="graph-filter-help">Using fallback genres until the backend genre list is available.</span>
+        )}
       </div>
 
       <div className="graph-filter-group">

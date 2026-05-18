@@ -4,6 +4,7 @@ import { useSearchParams } from 'react-router-dom'
 import { useApi } from '../hooks/useApi.ts'
 import { fetchArtist, fetchSimilarArtists } from '../api/artists.ts'
 import { fetchEgoGraph, fetchGraph, type GraphParams } from '../api/graph.ts'
+import { fetchGenres } from '../api/genres.ts'
 import { fetchSearch, fetchSearchResultById } from '../api/search.ts'
 import { useGraphStore } from '../store/graphStore.ts'
 import type { Artist, SimilarArtist } from '../types/artist.ts'
@@ -71,6 +72,11 @@ export function GraphPage() {
   const { data: similarArtists } = useApi<SimilarArtist[]>(
     () => (selectedArtistId ? fetchSimilarArtists(selectedArtistId) : Promise.resolve([] as SimilarArtist[])),
     [selectedArtistId]
+  )
+
+  const { data: genres, isLoading: isGenresLoading, error: genresError } = useApi(
+    () => fetchGenres(),
+    []
   )
 
   const {
@@ -265,7 +271,13 @@ export function GraphPage() {
             {/* <p className="search-query-hint">Enter a name, then press Enter to update the search.</p> */}
           </div>
 
-          <GraphFilters filters={graphFilters} onChange={handleGraphFiltersChange} />
+          <GraphFilters
+            filters={graphFilters}
+            genres={genres ?? []}
+            isGenresLoading={isGenresLoading}
+            genresError={genresError}
+            onChange={handleGraphFiltersChange}
+          />
 
           <GraphSidebarDetails
             searchQuery={submittedQuery}
