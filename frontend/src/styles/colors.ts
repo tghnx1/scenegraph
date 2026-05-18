@@ -1,23 +1,30 @@
-//centralized color palette (Nord)
+// centralized color palette (Everforest Light Medium fallback)
+export type ThemeName = 'light' | 'dark'
+
 export const NODE_COLORS: Record<string, string> = {
-  artist:    '#B48EAD',
-  venue:     '#A3BE8C',
-  promoter:  '#88C0D0',
-  event:     '#BF616A',
-  selection: '#EBCB8B',
+  artist:    '#df69ba',
+  venue:     '#8da101',
+  promoter:  '#35a77c',
+  event:     '#f85552',
+  selection: '#dfa000',
 }
 
-export const LINK_HIGHLIGHT = '#EBCB8B'
-export const LINK_DIM = '#D8DEE9'
-export const BACKGROUND = '#3B4252'
-export const TEXT = '#EBF3EF'
-export const TEXT_MUTED = '#C9D6D1'
-export const ACCENT = '#7FE0D2'
-export const ACCENT_WARM = '#D08770'
+export function getStoredTheme(): ThemeName {
+  if (typeof localStorage === 'undefined') return 'light'
+  return localStorage.getItem('scenegraph-theme') === 'dark' ? 'dark' : 'light'
+}
+
+export const LINK_HIGHLIGHT = '#dfa000'
+export const LINK_DIM = '#939f91'
+export const BACKGROUND = '#fdf6e3'
+export const TEXT = '#5c6a72'
+export const TEXT_MUTED = '#829181'
+export const ACCENT = '#35a77c'
+export const ACCENT_WARM = '#f57d26'
 export const SHADOW = '#000000'
-export const GRADIENT_START = '#071117'
-export const GRADIENT_MID = '#0f2733'
-export const GRADIENT_END = '#16384a'
+export const GRADIENT_START = '#fdf6e3'
+export const GRADIENT_MID = '#f4f0d9'
+export const GRADIENT_END = '#f2efdf'
 
 export const PALETTE: Record<string, string> = {
   '--nord-artist': NODE_COLORS.artist,
@@ -41,7 +48,13 @@ export const PALETTE: Record<string, string> = {
 export function applyCssVars() {
   if (typeof document === 'undefined') return
   const root = document.documentElement
-  Object.entries(PALETTE).forEach(([k, v]) => root.style.setProperty(k, v))
+  root.dataset.theme = getStoredTheme()
+}
+
+export function applyTheme(theme: ThemeName) {
+  if (typeof document === 'undefined') return
+  document.documentElement.dataset.theme = theme
+  localStorage.setItem('scenegraph-theme', theme)
 }
 
 export const getCssVar = (name: string) => {
@@ -73,6 +86,8 @@ export default {
   GRADIENT_END,
   PALETTE,
   applyCssVars,
+  applyTheme,
+  getStoredTheme,
   getCssVar,
   hexToRgba,
 }

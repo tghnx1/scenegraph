@@ -17,14 +17,14 @@
   gap: 10px;
   padding: 10px 12px;
   border-radius: 14px;
-  background: rgba(46, 52, 64, 0.42);
-  border: 1px solid rgba(216, 222, 233, 0.16);
+  background: var(--surface-input);
+  border: 1px solid var(--control-border);
   transition: border-color 120ms ease, box-shadow 120ms ease;
 }
 
 .search-query-box:focus-within {
-  border-color: rgba(235, 203, 139, 0.45);
-  box-shadow: 0 0 0 3px rgba(235, 203, 139, 0.12);
+  border-color: var(--focus-border);
+  box-shadow: 0 0 0 3px var(--focus-ring);
 }
 
 .search-query-input {
@@ -39,12 +39,12 @@
 }
 
 .search-query-input::placeholder {
-  color: rgba(235, 243, 239, 0.55);
+  color: var(--text-placeholder);
 }
 
 .search-query-clear {
   border: 0;
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--control-bg);
   color: var(--nord-text-muted);
   border-radius: 50%;
   width: 28px;
@@ -59,7 +59,7 @@
 
 .search-query-clear:hover {
   color: var(--nord-text);
-  background: rgba(255, 255, 255, 0.12);
+  background: var(--control-hover);
 }
 
 .search-query-dropdown {
@@ -74,8 +74,8 @@
   padding: 6px;
   overflow-y: auto;
   border-radius: 14px;
-  background: rgba(46, 52, 64, 0.98);
-  border: 1px solid rgba(216, 222, 233, 0.18);
+  background: var(--surface-dropdown);
+  border: 1px solid var(--surface-border);
   box-shadow: var(--surface-shadow);
 }
 
@@ -90,7 +90,7 @@
     right: auto;
     width: clamp(340px, 34vw, 500px);
     max-height: min(360px, calc(100dvh - 170px));
-    background: rgba(46, 52, 64, 0.94);
+    background: var(--surface-panel);
     backdrop-filter: blur(10px);
   }
 }
@@ -120,7 +120,7 @@
 .search-query-option:hover,
 .search-query-option:focus-visible,
 .search-query-option--active {
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--control-bg);
   outline: none;
 }
 
@@ -232,7 +232,7 @@
 .result-badge {
   padding: 8px 12px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--control-bg);
   color: var(--nord-text);
   white-space: nowrap;
 }
@@ -277,8 +277,8 @@
   gap: 8px;
   padding: 8px 12px;
   border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--control-bg);
+  background: var(--control-soft);
   color: var(--nord-text);
   text-decoration: none;
 }
@@ -302,5 +302,5 @@
 
 .error {
   margin-top: 20px;
-  color: #ff9e91;
+  color: var(--nord-event);
 }

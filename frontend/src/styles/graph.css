@@ -100,17 +100,17 @@
   z-index: 2;
   padding: 10px 12px;
   border-radius: 12px;
-  background: rgba(46, 52, 64, 0.82);
-  border: 1px solid rgba(216, 222, 233, 0.16);
+  background: var(--surface-overlay);
+  border: 1px solid var(--control-border);
   color: var(--nord-text-muted);
   font-size: 0.9rem;
 }
 
 .graph-canvas-status button {
   margin-left: 8px;
-  border: 1px solid rgba(216, 222, 233, 0.16);
+  border: 1px solid var(--control-border);
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--control-bg);
   color: var(--nord-text);
   cursor: pointer;
 }
@@ -124,8 +124,8 @@
   gap: 10px;
   padding: 9px 12px;
   border-radius: 999px;
-  background: rgba(46, 52, 64, 0.82);
-  border: 1px solid rgba(216, 222, 233, 0.16);
+  background: var(--surface-overlay);
+  border: 1px solid var(--control-border);
   color: var(--nord-text-muted);
   font-size: 0.86rem;
   backdrop-filter: blur(6px);
@@ -141,8 +141,8 @@
   gap: 8px 14px;
   padding: 10px 12px;
   border-radius: 14px;
-  background: rgba(46, 52, 64, 0.82);
-  border: 1px solid rgba(216, 222, 233, 0.16);
+  background: var(--surface-overlay);
+  border: 1px solid var(--control-border);
   color: var(--nord-text-muted);
   font-size: 0.82rem;
   backdrop-filter: blur(6px);
@@ -209,9 +209,9 @@
 }
 
 .graph-filter-button {
-  border: 1px solid rgba(216, 222, 233, 0.14);
+  border: 1px solid var(--control-border-subtle);
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--control-soft);
   color: var(--nord-text-muted);
   cursor: pointer;
   font: inherit;
@@ -222,8 +222,8 @@
 
 .graph-filter-button:hover,
 .graph-filter-button.active {
-  background: rgba(235, 203, 139, 0.16);
-  border-color: rgba(235, 203, 139, 0.42);
+  background: var(--selection-soft);
+  border-color: var(--selection-border);
   color: var(--nord-text);
 }
 
@@ -231,9 +231,9 @@
 .graph-filter-select {
   min-width: 0;
   flex: 1 1 148px;
-  border: 1px solid rgba(216, 222, 233, 0.16);
+  border: 1px solid var(--control-border);
   border-radius: 12px;
-  background: rgba(46, 52, 64, 0.42);
+  background: var(--surface-input);
   color: var(--nord-text);
   font: inherit;
   font-size: 0.9rem;
@@ -246,8 +246,8 @@
   background:
     linear-gradient(45deg, transparent 50%, var(--nord-text-muted) 50%) calc(100% - 18px) 50% / 6px 6px no-repeat,
     linear-gradient(135deg, var(--nord-text-muted) 50%, transparent 50%) calc(100% - 14px) 50% / 6px 6px no-repeat,
-    rgba(46, 52, 64, 0.94);
-  border-color: rgba(216, 222, 233, 0.18);
+    var(--surface-panel);
+  border-color: var(--surface-border);
   box-shadow: var(--surface-shadow);
   color: var(--nord-text);
   cursor: pointer;
@@ -258,13 +258,13 @@
 
 .graph-filter-select:hover,
 .graph-filter-select:focus {
-  border-color: rgba(235, 203, 139, 0.45);
-  box-shadow: 0 0 0 3px rgba(235, 203, 139, 0.12), var(--surface-shadow);
+  border-color: var(--focus-border);
+  box-shadow: 0 0 0 3px var(--focus-ring), var(--surface-shadow);
   outline: none;
 }
 
 .graph-filter-select option {
-  background: rgba(46, 52, 64, 0.98);
+  background: var(--surface-dropdown);
   color: var(--nord-text);
   font: inherit;
 }
