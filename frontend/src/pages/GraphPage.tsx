@@ -147,15 +147,24 @@ export function GraphPage() {
       const nextNode = node as GraphNode
       const nextParams = new URLSearchParams(searchParams)
       nextParams.set('q', nextNode.name)
-      nextParams.set('selectedType', nextNode.type)
-      nextParams.set('selectedId', nextNode.id)
       nextParams.delete('artist')
+
+      const isSameSelectedNode = selectedNode?.id === nextNode.id
+      const isCurrentEgoGraph = selectedType === nextNode.type && selectedId === nextNode.id
+
+      if (isSameSelectedNode && !isCurrentEgoGraph) {
+        nextParams.set('selectedType', nextNode.type)
+        nextParams.set('selectedId', nextNode.id)
+      } else {
+        nextParams.delete('selectedType')
+        nextParams.delete('selectedId')
+      }
 
       setSearchParams(nextParams, { replace: false })
       setSelectedSearchResult(null)
       setSelected(nextNode)
     },
-    [searchParams, setSearchParams, setSelected]
+    [searchParams, selectedId, selectedNode?.id, selectedType, setSearchParams, setSelected]
   )
 
   const handleSearchSubmit = useCallback(
