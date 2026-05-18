@@ -2,6 +2,7 @@ import pytest
 
 from app.artist_tag_extraction import (
     TagExtractionConfig,
+    extract_responses_output_text,
     extract_json_object,
     normalize_tag_value,
     parse_tags_response,
@@ -18,8 +19,9 @@ def test_tag_extraction_config_reads_openai_env(monkeypatch):
 
     assert config.provider == "openai"
     assert config.model == "gpt-4.1-nano"
+    assert config.api == "chat_completions"
     assert config.max_tags == 12
-    assert config.extractor_key == "llm_artist_tags_v1:openai:gpt-4.1-nano"
+    assert config.extractor_key == "llm_artist_tags_v1:openai:chat_completions:gpt-4.1-nano"
 
 
 def test_tag_extraction_config_reads_azure_env(monkeypatch):
@@ -30,7 +32,31 @@ def test_tag_extraction_config_reads_azure_env(monkeypatch):
 
     assert config.provider == "azure"
     assert config.model == "scenegraph-gpt-41-mini"
-    assert config.extractor_key == "llm_artist_tags_v1:azure:scenegraph-gpt-41-mini"
+    assert config.api == "chat_completions"
+    assert (
+        config.extractor_key
+        == "llm_artist_tags_v1:azure:chat_completions:scenegraph-gpt-41-mini"
+    )
+
+
+def test_tag_extraction_config_reads_azure_responses_url(monkeypatch):
+    monkeypatch.setenv("EXTRACTION_PROVIDER", "azure")
+    monkeypatch.setenv(
+        "AZURE_OPENAI_RESPONSES_URL",
+        "https://example.cognitiveservices.azure.com/openai/responses?api-version=2025-04-01-preview",
+    )
+    monkeypatch.setenv("AZURE_OPENAI_RESPONSES_MODEL", "gpt-4.1-mini")
+    monkeypatch.delenv("EXTRACTION_API", raising=False)
+
+    config = TagExtractionConfig.from_env()
+
+    assert config.provider == "azure"
+    assert config.api == "responses"
+    assert config.model == "gpt-4.1-mini"
+    assert config.azure_responses_url == (
+        "https://example.cognitiveservices.azure.com/openai/responses?api-version=2025-04-01-preview"
+    )
+    assert config.extractor_key == "llm_artist_tags_v1:azure:responses:gpt-4.1-mini"
 
 
 def test_tag_extraction_config_requires_azure_deployment(monkeypatch):
@@ -46,6 +72,26 @@ def test_extract_json_object_handles_surrounding_text():
     payload = extract_json_object('Here: {"tags": [{"type": "style", "value": "EBM"}]}')
 
     assert payload == {"tags": [{"type": "style", "value": "EBM"}]}
+
+
+def test_extract_responses_output_text_from_output_array():
+    content = extract_responses_output_text(
+        {
+            "output": [
+                {
+                    "type": "message",
+                    "content": [
+                        {
+                            "type": "output_text",
+                            "text": '{"tags": [{"type": "style", "value": "EBM"}]}',
+                        }
+                    ],
+                }
+            ]
+        }
+    )
+
+    assert content == '{"tags": [{"type": "style", "value": "EBM"}]}'
 
 
 def test_parse_tags_response_normalizes_and_deduplicates():

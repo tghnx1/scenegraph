@@ -11,7 +11,7 @@ sys.path.append(str(Path(__file__).resolve().parents[1]))
 
 from app.artist_tag_extraction import (
     TagExtractionConfig,
-    create_chat_client,
+    create_extraction_client,
     extract_artist_tags_with_llm,
     fetch_artist_biographies,
     has_current_artist_tag_extraction,
@@ -45,7 +45,10 @@ def ensure_provider_env(config: TagExtractionConfig) -> None:
     if config.provider == "azure":
         if not os.environ.get("AZURE_OPENAI_API_KEY"):
             raise SystemExit("AZURE_OPENAI_API_KEY must be set for Azure tag extraction")
-        if not os.environ.get("AZURE_OPENAI_ENDPOINT"):
+        if config.api == "responses":
+            if not config.azure_responses_url:
+                raise SystemExit("AZURE_OPENAI_RESPONSES_URL must be set for Azure Responses tag extraction")
+        elif not os.environ.get("AZURE_OPENAI_ENDPOINT"):
             raise SystemExit("AZURE_OPENAI_ENDPOINT must be set for Azure tag extraction")
 
 
@@ -57,7 +60,7 @@ def main() -> None:
     if args.limit is not None and args.limit < 1:
         raise ValueError("--limit must be at least 1")
 
-    client = create_chat_client(config)
+    client = create_extraction_client(config)
     processed = 0
     skipped = 0
     failed = 0

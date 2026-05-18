@@ -7,6 +7,7 @@ import re
 from dataclasses import dataclass
 from typing import Any, Literal
 
+import httpx
 from openai import AzureOpenAI, OpenAI
 from psycopg import Connection
 
@@ -14,10 +15,12 @@ from app.text_profiles import normalize_biography_text, normalize_text, truncate
 
 
 ExtractionProvider = Literal["openai", "azure"]
+ExtractionApi = Literal["chat_completions", "responses"]
 TagType = Literal["style", "label", "collective", "role", "residency", "alias"]
 
 DEFAULT_EXTRACTION_MODEL = "gpt-4.1-mini"
 DEFAULT_AZURE_CHAT_API_VERSION = "2025-01-01-preview"
+DEFAULT_AZURE_RESPONSES_API_VERSION = "2025-04-01-preview"
 MAX_BIOGRAPHY_CHARS = 6000
 MAX_TAGS_PER_ARTIST = 32
 
@@ -45,6 +48,8 @@ class ArtistTag:
 class TagExtractionConfig:
     provider: ExtractionProvider = "openai"
     model: str = DEFAULT_EXTRACTION_MODEL
+    api: ExtractionApi = "chat_completions"
+    azure_responses_url: str | None = None
     max_biography_chars: int = MAX_BIOGRAPHY_CHARS
     max_tags: int = MAX_TAGS_PER_ARTIST
 
@@ -54,14 +59,24 @@ class TagExtractionConfig:
         if provider not in {"openai", "azure"}:
             raise ValueError("EXTRACTION_PROVIDER must be either 'openai' or 'azure'")
 
+        azure_responses_url = os.environ.get("AZURE_OPENAI_RESPONSES_URL", "").strip()
+        api = os.environ.get("EXTRACTION_API", "").strip().lower()
+        if not api:
+            api = "responses" if provider == "azure" and azure_responses_url else "chat_completions"
+        if api not in {"chat_completions", "responses"}:
+            raise ValueError("EXTRACTION_API must be either 'chat_completions' or 'responses'")
+
         if provider == "azure":
             model = (
                 os.environ.get("AZURE_OPENAI_EXTRACTION_DEPLOYMENT", "").strip()
+                or os.environ.get("AZURE_OPENAI_RESPONSES_MODEL", "").strip()
                 or os.environ.get("AZURE_OPENAI_CHAT_DEPLOYMENT", "").strip()
+                or os.environ.get("OPENAI_EXTRACTION_MODEL", "").strip()
             )
             if not model:
                 raise ValueError(
-                    "AZURE_OPENAI_EXTRACTION_DEPLOYMENT must be set when EXTRACTION_PROVIDER=azure"
+                    "AZURE_OPENAI_EXTRACTION_DEPLOYMENT or AZURE_OPENAI_RESPONSES_MODEL "
+                    "must be set when EXTRACTION_PROVIDER=azure"
                 )
         else:
             model = (
@@ -72,6 +87,8 @@ class TagExtractionConfig:
         return cls(
             provider=provider,  # type: ignore[arg-type]
             model=model,
+            api=api,  # type: ignore[arg-type]
+            azure_responses_url=azure_responses_url or None,
             max_biography_chars=int(
                 os.environ.get("ARTIST_TAG_EXTRACTION_MAX_BIO_CHARS", MAX_BIOGRAPHY_CHARS)
             ),
@@ -80,14 +97,21 @@ class TagExtractionConfig:
 
     @property
     def extractor_key(self) -> str:
-        return f"llm_artist_tags_v1:{self.provider}:{self.model}"
+        return f"llm_artist_tags_v1:{self.provider}:{self.api}:{self.model}"
 
 
 def tag_extraction_text_hash(text: str) -> str:
     return hashlib.sha256(normalize_biography_text(text).encode("utf-8")).hexdigest()
 
 
-def create_chat_client(config: TagExtractionConfig) -> OpenAI | AzureOpenAI:
+def create_extraction_client(config: TagExtractionConfig) -> OpenAI | AzureOpenAI | None:
+    if config.provider == "azure" and config.api == "responses":
+        if not os.environ.get("AZURE_OPENAI_API_KEY"):
+            raise RuntimeError("AZURE_OPENAI_API_KEY must be set for Azure tag extraction")
+        if not config.azure_responses_url:
+            raise RuntimeError("AZURE_OPENAI_RESPONSES_URL must be set for Azure Responses tag extraction")
+        return None
+
     if config.provider == "azure":
         if not os.environ.get("AZURE_OPENAI_API_KEY"):
             raise RuntimeError("AZURE_OPENAI_API_KEY must be set for Azure tag extraction")
@@ -104,6 +128,10 @@ def create_chat_client(config: TagExtractionConfig) -> OpenAI | AzureOpenAI:
     if not os.environ.get("OPENAI_API_KEY"):
         raise RuntimeError("OPENAI_API_KEY must be set for OpenAI tag extraction")
     return OpenAI()
+
+
+def create_chat_client(config: TagExtractionConfig) -> OpenAI | AzureOpenAI | None:
+    return create_extraction_client(config)
 
 
 def system_prompt() -> str:
@@ -226,8 +254,65 @@ def parse_tags_response(payload: dict[str, Any], *, artist_name: str, max_tags: 
     return tags
 
 
+def extract_responses_output_text(payload: dict[str, Any]) -> str:
+    output_text = payload.get("output_text")
+    if isinstance(output_text, str):
+        return output_text
+
+    chunks: list[str] = []
+    for output_item in payload.get("output", []):
+        if not isinstance(output_item, dict):
+            continue
+        for content_item in output_item.get("content", []):
+            if not isinstance(content_item, dict):
+                continue
+            text = content_item.get("text")
+            if isinstance(text, str):
+                chunks.append(text)
+
+    return "\n".join(chunks)
+
+
+def create_azure_responses_completion(
+    *,
+    artist_name: str,
+    biography: str,
+    config: TagExtractionConfig,
+) -> str:
+    if not config.azure_responses_url:
+        raise RuntimeError("AZURE_OPENAI_RESPONSES_URL must be set for Azure Responses tag extraction")
+
+    response = httpx.post(
+        config.azure_responses_url,
+        headers={
+            "api-key": os.environ["AZURE_OPENAI_API_KEY"],
+            "Content-Type": "application/json",
+        },
+        json={
+            "model": config.model,
+            "instructions": system_prompt(),
+            "input": user_prompt(artist_name, biography, config.max_tags),
+            "store": False,
+            "temperature": 0,
+            "text": {"format": {"type": "json_object"}},
+        },
+        timeout=60,
+    )
+    try:
+        response.raise_for_status()
+    except httpx.HTTPStatusError as exc:
+        raise RuntimeError(
+            f"Azure Responses API failed with HTTP {response.status_code}: {response.text[:500]}"
+        ) from exc
+
+    content = extract_responses_output_text(response.json())
+    if not content:
+        raise RuntimeError("Azure Responses API returned no output text")
+    return content
+
+
 def extract_artist_tags_with_llm(
-    client: OpenAI | AzureOpenAI,
+    client: OpenAI | AzureOpenAI | None,
     *,
     artist_name: str,
     biography: str,
@@ -240,16 +325,26 @@ def extract_artist_tags_with_llm(
     if not normalized_biography:
         return []
 
-    response = client.chat.completions.create(
-        model=config.model,
-        temperature=0,
-        response_format={"type": "json_object"},
-        messages=[
-            {"role": "system", "content": system_prompt()},
-            {"role": "user", "content": user_prompt(artist_name, normalized_biography, config.max_tags)},
-        ],
-    )
-    content = response.choices[0].message.content or "{}"
+    if config.provider == "azure" and config.api == "responses":
+        content = create_azure_responses_completion(
+            artist_name=artist_name,
+            biography=normalized_biography,
+            config=config,
+        )
+    else:
+        if client is None:
+            raise RuntimeError("Chat completions extraction requires a client")
+        response = client.chat.completions.create(
+            model=config.model,
+            temperature=0,
+            response_format={"type": "json_object"},
+            messages=[
+                {"role": "system", "content": system_prompt()},
+                {"role": "user", "content": user_prompt(artist_name, normalized_biography, config.max_tags)},
+            ],
+        )
+        content = response.choices[0].message.content or "{}"
+
     payload = extract_json_object(content)
     return parse_tags_response(payload, artist_name=artist_name, max_tags=config.max_tags)
 
