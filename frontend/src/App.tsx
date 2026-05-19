@@ -132,9 +132,9 @@ export default function App() {
           to="/profile"
           style={({ isActive }) => ({
             ...linkBaseStyle,
-            background: isActive ? colorAlpha('--accent-warm', 20) : 'transparent',
+            background: isActive ? colorAlpha('--link-highlight', 20) : 'transparent',
             color: isActive ? colorVar('--text') : colorVar('--text-muted'),
-            border: isActive ? `1px solid ${colorAlpha('--accent-warm', 45)}` : '1px solid transparent',
+            border: isActive ? `1px solid ${colorAlpha('--link-highlight', 45)}` : '1px solid transparent',
           })}
         >
           Profile
@@ -143,9 +143,9 @@ export default function App() {
           to="/dashboard"
           style={({ isActive }) => ({
             ...linkBaseStyle,
-            background: isActive ? colorAlpha('--accent-warm', 20) : 'transparent',
+            background: isActive ? colorAlpha('--link-highlight', 20) : 'transparent',
             color: isActive ? colorVar('--text') : colorVar('--text-muted'),
-            border: isActive ? `1px solid ${colorAlpha('--accent-warm', 45)}` : '1px solid transparent',
+            border: isActive ? `1px solid ${colorAlpha('--link-highlight', 45)}` : '1px solid transparent',
           })}
         >
           Dashboard
