@@ -21,6 +21,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+from app.search_routes import router as search_router
+app.include_router(search_router, prefix="/api")
 
 class Venue(BaseModel):
     id: int
