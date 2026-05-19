@@ -7,7 +7,7 @@
 .search-query-label {
   text-transform: uppercase;
   letter-spacing: 0.14em;
-  color: var(--nord-accent);
+  color: var(--accent);
   font-size: 0.75rem;
 }
 
@@ -32,7 +32,7 @@
   min-width: 0;
   border: 0;
   background: transparent;
-  color: var(--nord-text);
+  color: var(--text);
   font: inherit;
   font-size: 14px;
   outline: none;
@@ -45,7 +45,7 @@
 .search-query-clear {
   border: 0;
   background: var(--control-bg);
-  color: var(--nord-text-muted);
+  color: var(--text-muted);
   border-radius: 50%;
   width: 28px;
   height: 28px;
@@ -58,7 +58,7 @@
 }
 
 .search-query-clear:hover {
-  color: var(--nord-text);
+  color: var(--text);
   background: var(--control-hover);
 }
 
@@ -97,7 +97,7 @@
 
 .search-query-dropdown-status {
   padding: 10px 12px;
-  color: var(--nord-text-muted);
+  color: var(--text-muted);
   font-size: 0.9rem;
 }
 
@@ -111,7 +111,7 @@
   border: 0;
   border-radius: 10px;
   background: transparent;
-  color: var(--nord-text);
+  color: var(--text);
   cursor: pointer;
   font: inherit;
   text-align: left;
@@ -139,7 +139,7 @@
 
 .search-query-option small,
 .search-query-option em {
-  color: var(--nord-text-muted);
+  color: var(--text-muted);
   font-size: 0.82rem;
 }
 
@@ -151,7 +151,7 @@
 
 .search-query-hint {
   margin: 0;
-  color: var(--nord-text-muted);
+  color: var(--text-muted);
   font-size: 0.92rem;
 }
 
@@ -192,14 +192,14 @@
 
 .result-subheading {
   margin: 0 0 8px;
-  color: var(--nord-text-muted);
+  color: var(--text-muted);
   font-size: 0.84rem;
   text-transform: uppercase;
   letter-spacing: 0.12em;
 }
 
 .result-empty-inline {
-  color: var(--nord-text-muted);
+  color: var(--text-muted);
   font-size: 0.92rem;
 }
 
@@ -219,21 +219,21 @@
   display: block;
   text-transform: uppercase;
   letter-spacing: 0.14em;
-  color: var(--nord-accent);
+  color: var(--accent);
   font-size: 0.75rem;
 }
 
 .result-meta,
 .result-description {
   margin: 0;
-  color: var(--nord-text-muted);
+  color: var(--text-muted);
 }
 
 .result-badge {
   padding: 8px 12px;
   border-radius: 999px;
   background: var(--control-bg);
-  color: var(--nord-text);
+  color: var(--text);
   white-space: nowrap;
 }
 
@@ -243,7 +243,7 @@
 
 .result-section h3 {
   margin: 0 0 10px;
-  color: var(--nord-text);
+  color: var(--text);
 }
 
 .result-list {
@@ -258,11 +258,11 @@
   border-radius: 16px;
   background: var(--surface-panel-soft);
   border: 1px solid var(--surface-border-soft);
-  color: var(--nord-text-muted);
+  color: var(--text-muted);
 }
 
 .result-tile strong {
-  color: var(--nord-text);
+  color: var(--text);
 }
 
 .result-pills {
@@ -279,28 +279,28 @@
   border-radius: 999px;
   border: 1px solid var(--control-bg);
   background: var(--control-soft);
-  color: var(--nord-text);
+  color: var(--text);
   text-decoration: none;
 }
 
 .result-pill span {
-  color: var(--nord-text-muted);
+  color: var(--text-muted);
   font-size: 0.85rem;
 }
 
 .result-pill.muted {
-  color: var(--nord-text-muted);
+  color: var(--text-muted);
 }
 
 .empty-state {
   padding: 18px;
   border-radius: 18px;
-  color: var(--nord-text-muted);
+  color: var(--text-muted);
   background: var(--surface-panel-soft);
   border: 1px solid var(--surface-border-soft);
 }
 
 .error {
   margin-top: 20px;
-  color: var(--nord-event);
+  color: var(--event);
 }

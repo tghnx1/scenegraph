@@ -27,22 +27,22 @@ export const GRADIENT_MID = '#f4f0d9'
 export const GRADIENT_END = '#f2efdf'
 
 export const PALETTE: Record<string, string> = {
-  '--nord-artist': NODE_COLORS.artist,
-  '--nord-venue': NODE_COLORS.venue,
-  '--nord-promoter': NODE_COLORS.promoter,
-  '--nord-event': NODE_COLORS.event,
-  '--nord-selection': NODE_COLORS.selection,
-  '--nord-link-highlight': LINK_HIGHLIGHT,
-  '--nord-link-dim': LINK_DIM,
-  '--nord-background': BACKGROUND,
-  '--nord-text': TEXT,
-  '--nord-text-muted': TEXT_MUTED,
-  '--nord-accent': ACCENT,
-  '--nord-accent-warm': ACCENT_WARM,
-  '--nord-shadow': SHADOW,
-  '--nord-gradient-start': GRADIENT_START,
-  '--nord-gradient-mid': GRADIENT_MID,
-  '--nord-gradient-end': GRADIENT_END,
+  '--artist': NODE_COLORS.artist,
+  '--venue': NODE_COLORS.venue,
+  '--promoter': NODE_COLORS.promoter,
+  '--event': NODE_COLORS.event,
+  '--selection': NODE_COLORS.selection,
+  '--link-highlight': LINK_HIGHLIGHT,
+  '--link-dim': LINK_DIM,
+  '--background': BACKGROUND,
+  '--text': TEXT,
+  '--text-muted': TEXT_MUTED,
+  '--accent': ACCENT,
+  '--accent-warm': ACCENT_WARM,
+  '--shadow': SHADOW,
+  '--gradient-1': GRADIENT_START,
+  '--gradient-2': GRADIENT_MID,
+  '--gradient-3': GRADIENT_END,
 }
 
 export function applyCssVars() {

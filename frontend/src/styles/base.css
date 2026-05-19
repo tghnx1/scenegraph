@@ -1,20 +1,20 @@
 :root {
   /* css vars mapped to the centralized palette, fallback */
-  --nord-artist: #df69ba;
-  --nord-venue: #3A94C5;
-  --nord-promoter: #35a77c;
-  --nord-event: #f85552;
-  --nord-selection: #dfa000;
-  --nord-link-highlight: #dfa000;
-  --nord-link-dim: #939f91;
-  --nord-background: #fdf6e3;
-  --nord-text: #5c6a72;
-  --nord-text-muted: #829181;
-  --nord-accent: #35a77c;
-  --nord-accent-warm: #f57d26;
-  --nord-gradient-1: #fdf6e3;
-  --nord-gradient-2: #f4f0d9;
-  --nord-gradient-3: #f2efdf;
+  --artist: #df69ba;
+  --venue: #3A94C5;
+  --promoter: #35a77c;
+  --event: #f85552;
+  --selection: #dfa000;
+  --link-highlight: #dfa000;
+  --link-dim: #939f91;
+  --background: #fdf6e3;
+  --text: #5c6a72;
+  --text-muted: #829181;
+  --accent: #35a77c;
+  --accent-warm: #f57d26;
+  --gradient-1: #fdf6e3;
+  --gradient-2: #f4f0d9;
+  --gradient-3: #f2efdf;
   --surface-strong: rgba(255, 249, 232, 0.92);
   --surface-panel: rgba(255, 249, 232, 0.94);
   --surface-panel-soft: rgba(92, 106, 114, 0.06);
@@ -60,30 +60,30 @@
   --background-glow: rgba(53, 167, 124, 0.18);
 
   font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  color: var(--nord-text);
+  color: var(--text);
   background:
     radial-gradient(circle at top left, var(--background-glow), transparent 30%),
-    linear-gradient(160deg, var(--nord-gradient-1) 0%, var(--nord-gradient-2) 52%, var(--nord-gradient-3) 100%);
+    linear-gradient(160deg, var(--gradient-1) 0%, var(--gradient-2) 52%, var(--gradient-3) 100%);
   line-height: 1.5;
   font-weight: 400;
 }
 
 :root[data-theme='dark'] {
-  --nord-artist: #d699b6;
-  --nord-venue: #a7c080;
-  --nord-promoter: #7FBBB3;
-  --nord-event: #e67e80;
-  --nord-selection: #dbbc7f;
-  --nord-link-highlight: #dbbc7f;
-  --nord-link-dim: #859289;
-  --nord-background: #2d353b;
-  --nord-text: #d3c6aa;
-  --nord-text-muted: #9da9a0;
-  --nord-accent: #83c092;
-  --nord-accent-warm: #e69875;
-  --nord-gradient-1: #2d353b;
-  --nord-gradient-2: #343f44;
-  --nord-gradient-3: #3d484d;
+  --artist: #d699b6;
+  --venue: #a7c080;
+  --promoter: #7FBBB3;
+  --event: #e67e80;
+  --selection: #dbbc7f;
+  --link-highlight: #dbbc7f;
+  --link-dim: #859289;
+  --background: #2d353b;
+  --text: #d3c6aa;
+  --text-muted: #9da9a0;
+  --accent: #83c092;
+  --accent-warm: #e69875;
+  --gradient-1: #2d353b;
+  --gradient-2: #343f44;
+  --gradient-3: #3d484d;
   --surface-strong: rgba(45, 53, 59, 0.92);
   --surface-panel: rgba(52, 63, 68, 0.94);
   --surface-panel-soft: rgba(211, 198, 170, 0.07);
@@ -174,12 +174,12 @@ h3 {
   margin: 0 0 12px;
   text-transform: uppercase;
   letter-spacing: 0.14em;
-  color: var(--nord-accent);
+  color: var(--accent);
   font-size: 0.8rem;
 }
 
 .lead {
-  color: var(--nord-text-muted);
+  color: var(--text-muted);
   margin: 16px 0 28px;
   max-width: 60ch;
 }
