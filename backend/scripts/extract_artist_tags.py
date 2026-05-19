@@ -13,9 +13,11 @@ from app.artist_tag_extraction import (
     TagExtractionConfig,
     create_extraction_client,
     extract_artist_tag_batch_with_llm,
+    extract_artist_tags_with_chunked_fallback,
     extract_artist_tags_with_llm,
     fetch_artist_biographies,
     has_current_artist_tag_extraction,
+    is_content_filter_error,
     replace_artist_tags,
     tag_extraction_text_hash,
 )
@@ -37,6 +39,11 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--force", action="store_true", help="Re-extract even if the biography hash is unchanged.")
     parser.add_argument("--dry-run", action="store_true", help="Print extracted tags without writing to the database.")
+    parser.add_argument(
+        "--no-chunk-fallback",
+        action="store_true",
+        help="Disable chunked retry when the provider blocks a full biography with content_filter.",
+    )
     parser.add_argument(
         "--continue-on-error",
         action="store_true",
@@ -86,25 +93,24 @@ def main() -> None:
         def write_artist_tags(artist: dict, tags: list) -> None:
             nonlocal processed
             if args.dry_run:
-                print(
-                    json.dumps(
+                output = {
+                    "artistId": artist["id"],
+                    "artistName": artist["name"],
+                    "extractor": config.extractor_key,
+                    "mode": artist.get("_extraction_mode", "full"),
+                    "tags": [
                         {
-                            "artistId": artist["id"],
-                            "artistName": artist["name"],
-                            "extractor": config.extractor_key,
-                            "tags": [
-                                {
-                                    "type": tag.tag_type,
-                                    "value": tag.tag_value,
-                                    "confidence": tag.confidence,
-                                    "evidence": tag.evidence,
-                                }
-                                for tag in tags
-                            ],
-                        },
-                        ensure_ascii=False,
-                    )
-                )
+                            "type": tag.tag_type,
+                            "value": tag.tag_value,
+                            "confidence": tag.confidence,
+                            "evidence": tag.evidence,
+                        }
+                        for tag in tags
+                    ],
+                }
+                if "_chunk_fallback" in artist:
+                    output["chunkFallback"] = artist["_chunk_fallback"]
+                print(json.dumps(output, ensure_ascii=False))
             else:
                 replace_artist_tags(
                     connection,
@@ -128,11 +134,56 @@ def main() -> None:
                     config=config,
                 )
             except Exception as exc:
-                failed += 1
-                print(f"Failed artist {artist['id']} {artist['name']}: {exc}", file=sys.stderr)
-                if not args.continue_on_error:
-                    raise
-                return False
+                if not args.no_chunk_fallback and is_content_filter_error(exc):
+                    try:
+                        fallback = extract_artist_tags_with_chunked_fallback(
+                            client,
+                            artist_name=artist["name"],
+                            biography=artist["biography"],
+                            config=config,
+                        )
+                    except Exception as fallback_exc:
+                        failed += 1
+                        print(
+                            f"Failed chunked fallback artist {artist['id']} {artist['name']}: "
+                            f"{fallback_exc}",
+                            file=sys.stderr,
+                        )
+                        if not args.continue_on_error:
+                            raise
+                        return False
+
+                    if fallback.processed_chunks > 0:
+                        tags = fallback.tags
+                        artist["_extraction_mode"] = "chunked_fallback"
+                        artist["_chunk_fallback"] = {
+                            "totalChunks": fallback.total_chunks,
+                            "processedChunks": fallback.processed_chunks,
+                            "skippedChunks": fallback.skipped_chunks,
+                        }
+                        print(
+                            f"Chunked fallback artist {artist['id']} {artist['name']}: "
+                            f"processed_chunks={fallback.processed_chunks}/"
+                            f"{fallback.total_chunks}; skipped_chunks={fallback.skipped_chunks}; "
+                            f"tags={len(tags)}",
+                            file=sys.stderr,
+                        )
+                    else:
+                        failed += 1
+                        print(
+                            f"Failed artist {artist['id']} {artist['name']}: "
+                            "all biography chunks were blocked by content_filter",
+                            file=sys.stderr,
+                        )
+                        if not args.continue_on_error:
+                            raise
+                        return False
+                else:
+                    failed += 1
+                    print(f"Failed artist {artist['id']} {artist['name']}: {exc}", file=sys.stderr)
+                    if not args.continue_on_error:
+                        raise
+                    return False
 
             write_artist_tags(artist, tags)
             return True
