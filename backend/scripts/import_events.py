@@ -1,6 +1,8 @@
 import argparse
+import html
 import json
 import os
+import re
 from collections.abc import Iterable
 from datetime import datetime, timezone
 from pathlib import Path
@@ -11,6 +13,63 @@ from psycopg.rows import dict_row
 
 
 DATABASE_URL = os.environ["DATABASE_URL"]
+ARTIST_TAG_RE = re.compile(
+    r"<artist\s+id=(?P<quote>[\"']).*?(?P=quote)\s*>(?P<name>.*?)</artist>",
+    re.IGNORECASE | re.DOTALL,
+)
+HTML_TAG_RE = re.compile(r"<[^>]+>")
+LINE_BREAK_RE = re.compile(r"(?:\r\n|\r|\n|\u2028|\u2029|¶|<br\s*/?>|</p>|</div>)", re.IGNORECASE)
+ZERO_WIDTH_RE = re.compile(r"[\u200b-\u200f\u2060\ufeff]")
+EDGE_DECOR_RE = re.compile(r"^[\s+*•·▪▫▣□■◆◇●○★✦◢◤¤‼️🦋-]+|[\s+*•·▪▫▣□■◆◇●○★✦◢◤¤‼️🦋-]+$")
+SOCIAL_HANDLE_AT_RE = re.compile(r"(?<!\S)@(?=[\wÀ-ÖØ-öø-ÿ])")
+TRAILING_STANDALONE_AT_RE = re.compile(r"\s+@$")
+ROLE_PREFIX_RE = re.compile(r"^(?:djs?|show|live)\s*:\s*", re.IGNORECASE)
+EMPTY_CONNECTOR_PARENS_RE = re.compile(
+    r"\(\s*(?:(?:and|with|b2b|back\s*to\s*back|vs\.?|x)\b|[&+,/|:;\-\s])+\)",
+    re.IGNORECASE,
+)
+CONTEXT_RE = re.compile(
+    r"(?<!\w)(?:b2b|back\s*to\s*back|live|hosted\s+by|hosts?|performs?|presents?|vs\.?)(?!\w)",
+    re.IGNORECASE,
+)
+TIME_PREFIX_RE = re.compile(
+    r"^\s*\d{1,2}[:.]\d{2}\s*(?:[-–—]\s*(?:\d{1,2}[:.]\d{2}|open\s*end|end|xxx))?\s*",
+    re.IGNORECASE,
+)
+ROOM_TIME_RE = re.compile(r"^[\w .&/+-]{2,45}:\s*\d{1,2}[:.]\d{2}$", re.IGNORECASE)
+ROOM_SLOT_RE = re.compile(r".*\bfloor\b.*\b\d{1,2}\s*[-–—]\s*\d{1,2}\b", re.IGNORECASE)
+TBA_RE = re.compile(r"^(?:more\s+)?t\.?\s*b\.?\s*a\.?\.?$", re.IGNORECASE)
+PARENTHETICAL_NOTE_RE = re.compile(r"^\([^()/&]{1,40}\)$")
+DAY_HEADER_RE = re.compile(
+    r"^(?:mon(?:day)?|tue(?:sday)?|wed(?:nesday)?|thu(?:rsday)?|fri(?:day)?|"
+    r"sat(?:urday)?|sun(?:day)?|montag|dienstag|mittwoch|donnerstag|freitag|samstag|sonntag)$",
+    re.IGNORECASE,
+)
+CREDIT_LABEL_RE = re.compile(
+    r"^(?:concept(?:,\s*choreography)?|choreograph(?:y|ies)(?:\s+by)?|performance|choir|dramaturgy|research|"
+    r"light(?:ing)? design|styling|original costume|carpet design|compositional coaching|"
+    r"distribution|production|curated by|awareness|lights?|visuals?|tarot card reading)\s*:",
+    re.IGNORECASE,
+)
+CREDIT_PROSE_RE = re.compile(r"^(?:choreograph(?:y|ies)\s+by|curated\s+by)\b", re.IGNORECASE)
+MARKETING_LINE_RE = re.compile(
+    r"^(?:free entry|sunshine incoming|open air magic|get ready|the last gatherings|"
+    r"alle gäste|nachweis|gratis|solange)\b",
+    re.IGNORECASE,
+)
+SECTION_HEADER_RE = re.compile(
+    r"^(?:line[- ]?up|guests?(?:\s*<3)?|crew|support|friends?|freunde|"
+    r"main(?:\s*floor)?|mainfloor|floor|lobby floor|mdf floor|dancefloor|"
+    r"dungeon|garden|halle|säule|globus|robus|tresor|schmiede|lager|berghain|panorama bar|aurora bar|"
+    r"live concert|dance|performances?|stations?|workshops?|open decks(?:\b.*)?)"
+    r"(?:\s*\([^)]*\))?$",
+    re.IGNORECASE,
+)
+ORPHAN_CONNECTOR_RE = re.compile(
+    r"^(?:\b(?:aka|and|with|b2b|back\s*to\s*back|vs\.?|x)\b|&|\+|,|[-/|:;])+\s*"
+    r"|\s*(?:\b(?:aka|and|with|b2b|back\s*to\s*back|vs\.?|x)\b|&|\+|,|[-/|:;])+$",
+    re.IGNORECASE,
+)
 
 
 class ImportValidationError(ValueError):
@@ -60,6 +119,108 @@ def clean_payload(value: Any) -> Any:
     if isinstance(value, list):
         return [clean_payload(item) for item in value]
     return value
+
+
+def strip_time_prefix(value: str) -> str:
+    stripped = TIME_PREFIX_RE.sub("", value, count=1).strip()
+    return stripped
+
+
+def strip_tba_prefix(value: str) -> str:
+    if value.lower().startswith("tba") and len(value) > 3 and value[3].isupper():
+        return value[3:].strip()
+    return value
+
+
+def is_lineup_noise(value: str) -> bool:
+    line = value.strip()
+    if not line:
+        return True
+
+    line_without_decoration = EDGE_DECOR_RE.sub("", line).strip()
+    if not line_without_decoration:
+        return True
+
+    if not re.search(r"[A-Za-zÀ-ÖØ-öø-ÿ0-9]", line_without_decoration):
+        return True
+    if PARENTHETICAL_NOTE_RE.fullmatch(line_without_decoration):
+        return True
+    if line_without_decoration.lower() in {"end", "background music"}:
+        return True
+    if TBA_RE.fullmatch(line_without_decoration):
+        return True
+    if DAY_HEADER_RE.fullmatch(line_without_decoration):
+        return True
+    if DAY_HEADER_RE.match(line_without_decoration.split("/")[0].strip()) and "/" in line_without_decoration:
+        return True
+    if ROOM_TIME_RE.fullmatch(line_without_decoration):
+        return True
+    if ROOM_SLOT_RE.fullmatch(line_without_decoration):
+        return True
+    if CREDIT_LABEL_RE.match(line_without_decoration) or CREDIT_PROSE_RE.match(line_without_decoration):
+        return True
+    if MARKETING_LINE_RE.match(line_without_decoration):
+        return True
+    if SECTION_HEADER_RE.fullmatch(line_without_decoration):
+        return True
+
+    words = line_without_decoration.split()
+    sentence_like = bool(re.search(r"[.!?]\s+[A-ZÀ-ÖØ-Þ]", line_without_decoration))
+    if len(line_without_decoration) > 180 and sentence_like:
+        return True
+    if len(line_without_decoration) > 120 and len(words) > 18 and re.search(r"[.!?]", line_without_decoration):
+        return True
+    if len(words) > 28 and re.search(r"[.!?]", line_without_decoration):
+        return True
+
+    return False
+
+
+def normalize_lineup_text(value: str | None) -> str | None:
+    if not value:
+        return None
+
+    normalized = html.unescape(value)
+    normalized = ZERO_WIDTH_RE.sub("", normalized)
+    normalized = LINE_BREAK_RE.sub("\n", normalized)
+    lines: list[str] = []
+
+    for raw_line in normalized.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+
+        line_ended_with_colon = line.endswith(":")
+        outside_artist_tags = ARTIST_TAG_RE.sub(" ", line)
+        keep_tagged_names = bool(CONTEXT_RE.search(outside_artist_tags))
+
+        def replace_artist_tag(match: re.Match[str]) -> str:
+            if keep_tagged_names:
+                return html.unescape(match.group("name")).strip()
+            return " "
+
+        cleaned = ARTIST_TAG_RE.sub(replace_artist_tag, line)
+        cleaned = HTML_TAG_RE.sub(" ", cleaned)
+        cleaned = cleaned.replace("*", " ")
+        cleaned = EMPTY_CONNECTOR_PARENS_RE.sub(" ", cleaned)
+        cleaned = ROLE_PREFIX_RE.sub("", cleaned)
+        cleaned = SOCIAL_HANDLE_AT_RE.sub("", cleaned)
+        cleaned = TRAILING_STANDALONE_AT_RE.sub("", cleaned)
+        cleaned = EDGE_DECOR_RE.sub("", cleaned)
+        cleaned = re.sub(r"\s+", " ", cleaned).strip()
+        cleaned = strip_tba_prefix(cleaned)
+        cleaned = strip_time_prefix(cleaned)
+        cleaned = EDGE_DECOR_RE.sub("", cleaned)
+        cleaned = re.sub(r"\s+", " ", cleaned).strip()
+        cleaned = ORPHAN_CONNECTOR_RE.sub("", cleaned).strip()
+
+        if line_ended_with_colon and not keep_tagged_names and len(cleaned.split()) <= 3:
+            continue
+        if cleaned and not is_lineup_noise(cleaned):
+            lines.append(cleaned)
+
+    residual = "\n".join(lines).strip()
+    return residual or None
 
 
 def validate_event(event: dict[str, Any], index: int) -> None:
@@ -186,15 +347,16 @@ def import_event(cursor: psycopg.Cursor, event: dict[str, Any]) -> None:
     cursor.execute(
         """
         INSERT INTO events (
-            ra_event_id, title, description_text, lineup_raw, content_url, event_date,
+            ra_event_id, title, description_text, lineup_raw, lineup_residual_text, content_url, event_date,
             start_time, end_time, minimum_age, cost_text, interested_count, is_ticketed,
             is_festival, live, has_secret_venue, date_posted, date_updated, venue_id
         )
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         ON CONFLICT (ra_event_id) DO UPDATE SET
             title = EXCLUDED.title,
             description_text = EXCLUDED.description_text,
             lineup_raw = EXCLUDED.lineup_raw,
+            lineup_residual_text = EXCLUDED.lineup_residual_text,
             content_url = EXCLUDED.content_url,
             event_date = EXCLUDED.event_date,
             start_time = EXCLUDED.start_time,
@@ -216,6 +378,7 @@ def import_event(cursor: psycopg.Cursor, event: dict[str, Any]) -> None:
             event["title"],
             event.get("content"),
             event.get("lineup"),
+            normalize_lineup_text(event.get("lineup")),
             event.get("contentUrl"),
             parse_datetime(event.get("date")),
             parse_datetime(event.get("startTime")),

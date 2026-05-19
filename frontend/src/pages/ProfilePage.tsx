@@ -1,19 +1,25 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { useApi } from '../hooks/useApi'
 import { fetchEntityDetail } from '../api/entityDetails'
 import { fetchArtist, fetchSimilarArtists } from '../api/artists'
 import { fetchSearch } from '../api/search'
+import { useApi } from '../hooks/useApi'
 import { useGraphStore } from '../store/graphStore'
 import type { Artist, SimilarArtist } from '../types/artist'
 import type { NodeType } from '../types/graph'
 import type { SearchResponse, SearchResult } from '../types/search'
-import { useDebouncedValue } from './hooks/useDebouncedValue'
 import { GraphSidebarDetails } from './components/DetailsPanel.tsx'
 import { ScenegraphMapPanel } from './components/ScenegraphMapPanel.tsx'
 import { SearchQueryForm } from './components/SearchQueryForm.tsx'
+import { useDebouncedValue } from './hooks/useDebouncedValue'
 
-export function GraphPage() {
+const stats = [
+  { label: 'Connected nodes', value: '0' },
+  { label: 'Shared events', value: '0' },
+  { label: 'Recommendations', value: '0' },
+]
+
+export function ProfilePage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const { setSelected, selectedNode } = useGraphStore()
   const submittedQuery = searchParams.get('q') ?? ''
@@ -22,6 +28,15 @@ export function GraphPage() {
   const selectedArtistId = selectedNode?.type === 'artist' ? selectedNode.id : null
   const selectedDetailType = selectedNode && selectedNode.type !== 'artist' ? selectedNode.type : null
   const selectedDetailId = selectedDetailType ? selectedNode?.id ?? null : null
+
+  const {
+    data: searchData,
+    isLoading: isSearchLoading,
+    error: searchError,
+  } = useApi<SearchResponse>(
+    () => (submittedQuery ? fetchSearch(submittedQuery) : Promise.resolve({ query: '', results: [] })),
+    [submittedQuery]
+  )
 
   const { data: selectedArtist } = useApi<Artist | null>(
     () => (selectedArtistId ? fetchArtist(selectedArtistId) : Promise.resolve(null)),
@@ -33,24 +48,6 @@ export function GraphPage() {
     [selectedArtistId]
   )
 
-  const { data: selectedEntityDetail, isLoading: isSelectedEntityDetailLoading } = useApi<SearchResult | null>(
-    () => (
-      selectedDetailType && selectedDetailId
-        ? fetchEntityDetail(selectedDetailType as Exclude<NodeType, 'artist'>, selectedDetailId)
-        : Promise.resolve(null)
-    ),
-    [selectedDetailType, selectedDetailId]
-  )
-
-  const {
-    data: searchData,
-    isLoading: isSearchLoading,
-    error: searchError,
-  } = useApi<SearchResponse>(
-    () => (submittedQuery ? fetchSearch(submittedQuery) : Promise.resolve({ query: '', results: [] })),
-    [submittedQuery]
-  )
-
   const { data: dropdownSearchData, isLoading: isDropdownSearchLoading } = useApi<SearchResponse>(
     () => (
       debouncedSearchValue.length >= 2 &&
@@ -60,6 +57,15 @@ export function GraphPage() {
         : Promise.resolve({ query: '', results: [] })
     ),
     [debouncedSearchValue, searchValue, submittedQuery]
+  )
+
+  const { data: selectedEntityDetail, isLoading: isSelectedEntityDetailLoading } = useApi(
+    () => (
+      selectedDetailType && selectedDetailId
+        ? fetchEntityDetail(selectedDetailType as Exclude<NodeType, 'artist'>, selectedDetailId)
+        : Promise.resolve(null)
+    ),
+    [selectedDetailType, selectedDetailId]
   )
 
   useEffect(() => {
@@ -111,7 +117,6 @@ export function GraphPage() {
     [searchParams, setSearchParams, setSelected]
   )
 
-  const similarArtistLinks = similarArtists ?? []
   const searchResults = searchData?.results ?? []
   const trimmedSearchValue = searchValue.trim()
   const trimmedSubmittedQuery = submittedQuery.trim()
@@ -127,24 +132,25 @@ export function GraphPage() {
   const hasActiveSearchState = Boolean(searchValue || submittedQuery || selectedNode)
 
   return (
-    <div className="graph-page-shell">
-      <aside className="graph-sidebar">
-        <article className="graph-sidebar-card">
-          <div className="graph-sidebar-search">
-            <SearchQueryForm
-              inputId="graph-search-query-input"
-              value={searchValue}
-              onChange={handleSearchValueChange}
-              onSubmit={handleSearchSubmit}
-              onClear={handleClearSearch}
-              showClear={hasActiveSearchState}
-              results={dropdownSearchResults}
-              isLoading={isDropdownWaiting || isDropdownSearchLoading}
-              onSelectResult={handleSelectSearchResult}
-            />
-            {/* <p className="search-query-hint">Enter a name, then press Enter to update the search.</p> */}
-          </div>
+    <div className="profile-page">
+      <section className="profile-grid" aria-label="Profile overview">
+        <article className="profile-card context-panel">
+          <SearchQueryForm
+            inputId="profile-details-search-query-input"
+            label="Search database"
+            value={searchValue}
+            onChange={handleSearchValueChange}
+            onSubmit={handleSearchSubmit}
+            onClear={handleClearSearch}
+            showClear={hasActiveSearchState}
+            results={dropdownSearchResults}
+            isLoading={isDropdownWaiting || isDropdownSearchLoading}
+            onSelectResult={handleSelectSearchResult}
+          />
 
+          {/* <div className="panel-heading">
+            <span className="search-query-label">Node details</span>
+          </div> */}
           <GraphSidebarDetails
             searchQuery={submittedQuery}
             searchResults={detailSearchResults}
@@ -152,13 +158,67 @@ export function GraphPage() {
             searchError={detailsSearchError}
             selectedNode={selectedEntityDetail ? null : selectedNode}
             selectedArtist={selectedArtist}
-            similarArtists={similarArtistLinks}
+            similarArtists={similarArtists ?? []}
           />
         </article>
-      </aside>
 
-      <section className="graph-main">
-        <ScenegraphMapPanel />
+        <section className="graph-workspace" aria-label="Profile graph workspace">
+          <article className="profile-card graph-panel">
+            <ScenegraphMapPanel /* title="Scenegraph Database" */ />
+          </article>
+        </section>
+
+        <article className="profile-card profile-summary-panel">
+          <div className="panel-heading">
+            <span className="search-query-label">Profile</span>
+            <button type="button">Edit</button>
+          </div>
+          <h2>Artist biography</h2>
+          <p>Self biography and claimed profile fields appear here.</p>
+          <div className="profile-fields">
+            <span>Name</span>
+            <span>Genres</span>
+            <span>Location</span>
+          </div>
+        </article>
+
+        <article className="profile-card stats-panel">
+          <div className="panel-heading">
+            <span className="search-query-label">Statistics</span>
+            {/* <span className="panel-status">Overview</span> */}
+          </div>
+          <div className="stat-grid">
+            {stats.map((item) => (
+              <div key={item.label} className="stat-tile">
+                <strong>{item.value}</strong>
+                <span>{item.label}</span>
+              </div>
+            ))}
+          </div>
+          <div className="chart-placeholder" aria-label="Chart placeholder" />
+        </article>
+
+        <article className="profile-card side-panel recommendations-panel">
+          <div className="panel-heading">
+            <span className="search-query-label">Recommendations</span>
+            {/* <span className="panel-status">Draft</span> */}
+          </div>
+          <div className="placeholder-list">
+            <span>Recommended names</span>
+            <span>A list of names/connections.</span>
+          </div>
+        </article>
+
+        <article className="profile-card side-panel communications-panel">
+          <div className="panel-heading">
+            <span className="search-query-label">Communications</span>
+            {/* <span className="panel-status">Inbox</span> */}
+          </div>
+          <div className="placeholder-list">
+            <span>Clickable contact names</span>
+            <span>Open a chat</span>
+          </div>
+        </article>
       </section>
     </div>
   )

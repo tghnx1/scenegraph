@@ -23,6 +23,7 @@ export interface GraphEdge {
 }
 
 export interface GraphData {
+  centerNodeId?: string
   nodes: GraphNode[]
   links: GraphEdge[]
 }

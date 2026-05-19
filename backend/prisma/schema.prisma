@@ -12,10 +12,11 @@ model Artist {
   name            String
   contentUrl      String?       @map("content_url")
   urlSafeName     String?       @map("url_safe_name")
-  biography       String?
-  biographyUrl    String?       @map("biography_url")
-  biographyStatus String?       @map("biography_status")
-  eventArtists    EventArtist[]
+  biography           String?
+  biographyNormalized String?       @map("biography_normalized")
+  biographyUrl        String?       @map("biography_url")
+  biographyStatus     String?       @map("biography_status")
+  eventArtists        EventArtist[]
 
   @@map("artists")
 }
@@ -26,6 +27,7 @@ model Event {
   title               String
   descriptionText     String?               @map("description_text")
   lineupRaw           String?               @map("lineup_raw")
+  lineupResidualText  String?               @map("lineup_residual_text")
   contentUrl          String?               @map("content_url")
   eventDate           DateTime?             @map("event_date") @db.Timestamptz(6)
   startTime           DateTime?             @map("start_time") @db.Timestamptz(6)
@@ -140,4 +142,21 @@ model EventSourcePayload {
   event         Event    @relation(fields: [eventId], references: [id], onDelete: Restrict, onUpdate: Cascade)
 
   @@map("event_source_payloads")
+}
+
+model EntityEmbedding {
+  id          BigInt   @id @default(autoincrement())
+  entityType  String   @map("entity_type")
+  entityId    BigInt   @map("entity_id")
+  model       String
+  dimensions  Int
+  textHash    String   @map("text_hash")
+  textProfile String   @map("text_profile")
+  embedding   Float[]
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([entityType, entityId, model, dimensions])
+  @@index([entityType, model, dimensions])
+  @@map("entity_embeddings")
 }
