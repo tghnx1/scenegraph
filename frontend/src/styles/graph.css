@@ -167,7 +167,23 @@
   display: inline-flex;
   align-items: center;
   gap: 8px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  padding: 4px 6px;
   white-space: nowrap;
+  opacity: 0.5;
+  transition: background 120ms ease, border-color 120ms ease, opacity 120ms ease;
+}
+
+.graph-legend-item:hover,
+.graph-legend-item.active {
+  background: var(--selection-soft);
+  border-color: var(--selection-border);
+  opacity: 1;
 }
 
 .graph-legend-marker {

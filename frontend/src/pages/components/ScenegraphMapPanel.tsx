@@ -1,12 +1,12 @@
 import ForceGraph2D from 'react-force-graph-2d'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { fetchEgoGraph, fetchGraph, type GraphParams } from '../../api/graph.ts'
 import { fetchGenres } from '../../api/genres.ts'
 import { useApi } from '../../hooks/useApi.ts'
 import { useGraphStore } from '../../store/graphStore.ts'
 import { BACKGROUND, LINK_DIM, LINK_HIGHLIGHT, getCssVar, hexToRgba } from '../../styles/colors.ts'
-import type { GraphData, GraphNode } from '../../types/graph.ts'
+import type { GraphData, GraphNode, NodeType } from '../../types/graph.ts'
 import type { SearchEntityType } from '../../types/search.ts'
 import { drawNodeShape } from '../hooks/drawNode.ts'
 import { useGraphHighlights } from '../hooks/useGraphHighlights.ts'
@@ -15,15 +15,23 @@ import { GraphFilters } from './GraphFilters.tsx'
 
 const MIN_GRAPH_HEIGHT = 320
 const DEFAULT_GRAPH_FILTERS: GraphParams = { limit: 100 }
+const EMPTY_GRAPH_DATA: GraphData = { nodes: [], links: [] }
 const NODE_LEGEND_ITEMS = [
   { type: 'artist', label: 'Artist' },
   { type: 'venue', label: 'Venue' },
   { type: 'promoter', label: 'Promoter' },
   { type: 'event', label: 'Event' },
-]
+] satisfies Array<{ type: NodeType; label: string }>
+
+const DEFAULT_VISIBLE_NODE_TYPES = new Set<NodeType>(NODE_LEGEND_ITEMS.map((item) => item.type))
+type LinkEndpoint = string | { id: string }
 
 function isSearchEntityType(value: string | null): value is SearchEntityType {
   return value === 'artist' || value === 'venue' || value === 'promoter' || value === 'event'
+}
+
+function getLinkNodeId(endpoint: LinkEndpoint) {
+  return typeof endpoint === 'object' && endpoint !== null ? endpoint.id : endpoint
 }
 
 interface ScenegraphMapPanelProps {
@@ -36,6 +44,7 @@ export function ScenegraphMapPanel({ title, themeName }: ScenegraphMapPanelProps
   const containerRef = useRef<HTMLDivElement | null>(null)
   const [graphSize, setGraphSize] = useState({ width: 0, height: 0 })
   const [graphFilters, setGraphFilters] = useState<GraphParams>(DEFAULT_GRAPH_FILTERS)
+  const [visibleNodeTypes, setVisibleNodeTypes] = useState<Set<NodeType>>(() => new Set(DEFAULT_VISIBLE_NODE_TYPES))
   const [searchParams, setSearchParams] = useSearchParams()
   const { setSelected, selectedNode } = useGraphStore()
   const selectedTypeParam = searchParams.get('selectedType')
@@ -63,8 +72,23 @@ export function ScenegraphMapPanel({ title, themeName }: ScenegraphMapPanelProps
     []
   )
 
-  const { connectedNodes } = useGraphHighlights(selectedNode || null, data)
-  useGraphPhysics(graphRef, data)
+  const rawGraphData = data || EMPTY_GRAPH_DATA
+  const graphData = useMemo<GraphData>(() => {
+    const visibleNodes = rawGraphData.nodes.filter((node) => visibleNodeTypes.has(node.type))
+    const visibleNodeIds = new Set(visibleNodes.map((node) => node.id))
+    const visibleLinks = rawGraphData.links.filter((link) => (
+      visibleNodeIds.has(getLinkNodeId(link.source as LinkEndpoint)) && visibleNodeIds.has(getLinkNodeId(link.target as LinkEndpoint))
+    ))
+
+    return {
+      centerNodeId: rawGraphData.centerNodeId,
+      nodes: visibleNodes,
+      links: visibleLinks,
+    }
+  }, [rawGraphData, visibleNodeTypes])
+
+  const { connectedNodes } = useGraphHighlights(selectedNode || null, graphData)
+  useGraphPhysics(graphRef, graphData)
 
   useEffect(() => {
     if (!selectedType || !selectedId || !data) return
@@ -133,7 +157,18 @@ export function ScenegraphMapPanel({ title, themeName }: ScenegraphMapPanelProps
     [searchParams, setSearchParams, setSelected]
   )
 
-  const graphData = data || { nodes: [], links: [] }
+  const handleLegendToggle = useCallback((type: NodeType) => {
+    setVisibleNodeTypes((currentTypes) => {
+      const nextTypes = new Set(currentTypes)
+      if (nextTypes.has(type)) {
+        nextTypes.delete(type)
+      } else {
+        nextTypes.add(type)
+      }
+      return nextTypes
+    })
+  }, [])
+
   const graphBackground = getCssVar('--background') || (themeName === 'dark' ? '#2d353b' : BACKGROUND)
   const linkHighlight = getCssVar('--link-highlight') || LINK_HIGHLIGHT
   const linkDim = getCssVar('--link-dim') || LINK_DIM
@@ -181,12 +216,18 @@ export function ScenegraphMapPanel({ title, themeName }: ScenegraphMapPanelProps
           <span>{nodeCount} nodes</span>
           <span>{linkCount} links</span>
         </div>
-        <div className="graph-legend" aria-label="Graph entity legend">
+        <div className="graph-legend" aria-label="Filter graph by entity type">
           {NODE_LEGEND_ITEMS.map((item) => (
-            <div className="graph-legend-item" key={item.type}>
+            <button
+              type="button"
+              className={`graph-legend-item${visibleNodeTypes.has(item.type) ? ' active' : ''}`}
+              key={item.type}
+              onClick={() => handleLegendToggle(item.type)}
+              aria-pressed={visibleNodeTypes.has(item.type)}
+            >
               <span className={`graph-legend-marker graph-legend-marker--${item.type}`} aria-hidden="true" />
               <span>{item.label}</span>
-            </div>
+            </button>
           ))}
         </div>
         <ForceGraph2D
