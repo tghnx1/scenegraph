@@ -1,14 +1,17 @@
+import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { fetchEntityDetail } from '../api/entityDetails.ts'
-import { fetchArtist, fetchSimilarArtists } from '../api/artists.ts'
-import { fetchSearch } from '../api/search.ts'
-import { useApi } from '../hooks/useApi.ts'
-import { useGraphStore } from '../store/graphStore.ts'
-import type { Artist, SimilarArtist } from '../types/artist.ts'
-import type { NodeType } from '../types/graph.ts'
-import type { SearchResponse } from '../types/search.ts'
+import { fetchEntityDetail } from '../api/entityDetails'
+import { fetchArtist, fetchSimilarArtists } from '../api/artists'
+import { fetchSearch } from '../api/search'
+import { useApi } from '../hooks/useApi'
+import { useGraphStore } from '../store/graphStore'
+import type { Artist, SimilarArtist } from '../types/artist'
+import type { NodeType } from '../types/graph'
+import type { SearchResponse, SearchResult } from '../types/search'
 import { GraphSidebarDetails } from './components/DetailsPanel.tsx'
 import { ScenegraphMapPanel } from './components/ScenegraphMapPanel.tsx'
+import { SearchQueryForm } from './components/SearchQueryForm.tsx'
+import { useDebouncedValue } from './hooks/useDebouncedValue'
 
 const stats = [
   { label: 'Connected nodes', value: '0' },
@@ -16,10 +19,12 @@ const stats = [
   { label: 'Recommendations', value: '0' },
 ]
 
-export function ProfilePage({ themeName }: { themeName?: string } = {}) {
-  const [searchParams] = useSearchParams()
-  const { selectedNode } = useGraphStore()
+export function ProfilePage() {
+  const [searchParams, setSearchParams] = useSearchParams()
+  const { setSelected, selectedNode } = useGraphStore()
   const submittedQuery = searchParams.get('q') ?? ''
+  const [searchValue, setSearchValue] = useState(submittedQuery)
+  const debouncedSearchValue = useDebouncedValue(searchValue.trim(), 350)
   const selectedArtistId = selectedNode?.type === 'artist' ? selectedNode.id : null
   const selectedDetailType = selectedNode && selectedNode.type !== 'artist' ? selectedNode.type : null
   const selectedDetailId = selectedDetailType ? selectedNode?.id ?? null : null
@@ -43,6 +48,17 @@ export function ProfilePage({ themeName }: { themeName?: string } = {}) {
     [selectedArtistId]
   )
 
+  const { data: dropdownSearchData, isLoading: isDropdownSearchLoading } = useApi<SearchResponse>(
+    () => (
+      debouncedSearchValue.length >= 2 &&
+        debouncedSearchValue === searchValue.trim() &&
+        debouncedSearchValue !== submittedQuery.trim()
+        ? fetchSearch(debouncedSearchValue)
+        : Promise.resolve({ query: '', results: [] })
+    ),
+    [debouncedSearchValue, searchValue, submittedQuery]
+  )
+
   const { data: selectedEntityDetail, isLoading: isSelectedEntityDetailLoading } = useApi(
     () => (
       selectedDetailType && selectedDetailId
@@ -52,18 +68,89 @@ export function ProfilePage({ themeName }: { themeName?: string } = {}) {
     [selectedDetailType, selectedDetailId]
   )
 
+  useEffect(() => {
+    setSearchValue(submittedQuery)
+  }, [submittedQuery])
+
+  const handleSearchSubmit = useCallback(
+    (event: FormEvent<HTMLFormElement>) => {
+      event.preventDefault()
+      const nextQuery = searchValue.trim()
+      if (!nextQuery) return
+      const nextParams = new URLSearchParams(searchParams)
+      nextParams.set('q', nextQuery)
+      nextParams.delete('artist')
+      nextParams.delete('selectedType')
+      nextParams.delete('selectedId')
+      setSelected(null)
+      setSearchParams(nextParams, { replace: true })
+    },
+    [searchParams, searchValue, setSearchParams, setSelected]
+  )
+
+  const handleClearSearch = useCallback(() => {
+    setSearchValue('')
+    const nextParams = new URLSearchParams(searchParams)
+    nextParams.delete('q')
+    nextParams.delete('artist')
+    nextParams.delete('selectedType')
+    nextParams.delete('selectedId')
+    setSearchParams(nextParams, { replace: true })
+    setSelected(null)
+  }, [searchParams, setSearchParams, setSelected])
+
+  const handleSearchValueChange = useCallback((nextValue: string) => {
+    setSearchValue(nextValue)
+  }, [])
+
+  const handleSelectSearchResult = useCallback(
+    (result: SearchResult) => {
+      const nextParams = new URLSearchParams(searchParams)
+      nextParams.set('q', result.label)
+      nextParams.set('selectedType', result.type)
+      nextParams.set('selectedId', result.id)
+      nextParams.delete('artist')
+      setSearchValue(result.label)
+      setSelected(null)
+      setSearchParams(nextParams, { replace: false })
+    },
+    [searchParams, setSearchParams, setSelected]
+  )
+
   const searchResults = searchData?.results ?? []
+  const trimmedSearchValue = searchValue.trim()
+  const trimmedSubmittedQuery = submittedQuery.trim()
+  const isDropdownWaiting = trimmedSearchValue.length >= 2 && debouncedSearchValue !== trimmedSearchValue
+  const shouldFetchDropdownSearch =
+    debouncedSearchValue.length >= 2 &&
+    debouncedSearchValue === trimmedSearchValue &&
+    debouncedSearchValue !== trimmedSubmittedQuery
+  const dropdownSearchResults = shouldFetchDropdownSearch ? dropdownSearchData?.results ?? [] : []
   const detailSearchResults = selectedEntityDetail ? [selectedEntityDetail] : searchResults
   const detailsSearchError = searchError
   const isDetailsSearchLoading = isSearchLoading || isSelectedEntityDetailLoading
+  const hasActiveSearchState = Boolean(searchValue || submittedQuery || selectedNode)
 
   return (
     <div className="profile-page">
       <section className="profile-grid" aria-label="Profile overview">
         <article className="profile-card context-panel">
-          <div className="panel-heading">
+          <SearchQueryForm
+            inputId="profile-details-search-query-input"
+            label="Search database"
+            value={searchValue}
+            onChange={handleSearchValueChange}
+            onSubmit={handleSearchSubmit}
+            onClear={handleClearSearch}
+            showClear={hasActiveSearchState}
+            results={dropdownSearchResults}
+            isLoading={isDropdownWaiting || isDropdownSearchLoading}
+            onSelectResult={handleSelectSearchResult}
+          />
+
+          {/* <div className="panel-heading">
             <span className="search-query-label">Node details</span>
-          </div>
+          </div> */}
           <GraphSidebarDetails
             searchQuery={submittedQuery}
             searchResults={detailSearchResults}
@@ -77,7 +164,7 @@ export function ProfilePage({ themeName }: { themeName?: string } = {}) {
 
         <section className="graph-workspace" aria-label="Profile graph workspace">
           <article className="profile-card graph-panel">
-            <ScenegraphMapPanel title="Scenegraph Database" themeName={themeName} />
+            <ScenegraphMapPanel /* title="Scenegraph Database" */ />
           </article>
         </section>
 

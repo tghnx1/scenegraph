@@ -1,5 +1,5 @@
-import type { GraphParams } from '../../api/graph.ts'
-import type { GenreOption } from '../../api/genres.ts'
+import type { GraphParams } from '../../api/graph'
+import type { GenreOption } from '../../api/genres'
 
 const FALLBACK_GENRE_OPTIONS = [
   { label: 'Disco', value: 'disco' },
@@ -55,7 +55,7 @@ export function GraphFilters({
           ))}
         </select>
         {genresError && (
-          <span className="graph-filter-help">Using fallback genres until the backend genre list is available.</span>
+          <span className="graph-filter-help">Using fallback genres.</span>
         )}
       </div>
 

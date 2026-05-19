@@ -1,11 +1,11 @@
-import { getCssVar, NODE_COLORS } from '../../styles/colors'
+import { getCssVar } from '../../styles/colors'
 
 function getNodeColor(type: string, isSelected: boolean) {
   if (isSelected) {
-    return getCssVar('--selection') || NODE_COLORS.selection
+    return getCssVar('--selection')
   }
 
-  return getCssVar(`--${type}`) || NODE_COLORS[type as keyof typeof NODE_COLORS] || NODE_COLORS.promoter
+  return getCssVar(`--${type}`)
 }
 
 export const drawNodeShape = (ctx: CanvasRenderingContext2D, x: number, y: number, size: number, type: string, isSelected: boolean) => {
