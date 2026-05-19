@@ -1,9 +1,11 @@
 import { useSearchParams } from 'react-router-dom'
+import { fetchEntityDetail } from '../api/entityDetails.ts'
 import { fetchArtist, fetchSimilarArtists } from '../api/artists.ts'
 import { fetchSearch } from '../api/search.ts'
 import { useApi } from '../hooks/useApi.ts'
 import { useGraphStore } from '../store/graphStore.ts'
 import type { Artist, SimilarArtist } from '../types/artist.ts'
+import type { NodeType } from '../types/graph.ts'
 import type { SearchResponse } from '../types/search.ts'
 import { GraphSidebarDetails } from './components/DetailsPanel.tsx'
 import { ScenegraphMapPanel } from './components/ScenegraphMapPanel.tsx'
@@ -19,6 +21,8 @@ export function ProfilePage({ themeName }: { themeName?: string } = {}) {
   const { selectedNode } = useGraphStore()
   const submittedQuery = searchParams.get('q') ?? ''
   const selectedArtistId = selectedNode?.type === 'artist' ? selectedNode.id : null
+  const selectedDetailType = selectedNode && selectedNode.type !== 'artist' ? selectedNode.type : null
+  const selectedDetailId = selectedDetailType ? selectedNode?.id ?? null : null
 
   const {
     data: searchData,
@@ -39,10 +43,19 @@ export function ProfilePage({ themeName }: { themeName?: string } = {}) {
     [selectedArtistId]
   )
 
+  const { data: selectedEntityDetail, isLoading: isSelectedEntityDetailLoading } = useApi(
+    () => (
+      selectedDetailType && selectedDetailId
+        ? fetchEntityDetail(selectedDetailType as Exclude<NodeType, 'artist'>, selectedDetailId)
+        : Promise.resolve(null)
+    ),
+    [selectedDetailType, selectedDetailId]
+  )
+
   const searchResults = searchData?.results ?? []
-  const detailSearchResults = searchResults
+  const detailSearchResults = selectedEntityDetail ? [selectedEntityDetail] : searchResults
   const detailsSearchError = searchError
-  const isDetailsSearchLoading = isSearchLoading
+  const isDetailsSearchLoading = isSearchLoading || isSelectedEntityDetailLoading
 
   return (
     <div className="profile-page">
@@ -56,7 +69,7 @@ export function ProfilePage({ themeName }: { themeName?: string } = {}) {
             searchResults={detailSearchResults}
             isSearchLoading={isDetailsSearchLoading}
             searchError={detailsSearchError}
-            selectedNode={selectedNode}
+            selectedNode={selectedEntityDetail ? null : selectedNode}
             selectedArtist={selectedArtist}
             similarArtists={similarArtists ?? []}
           />

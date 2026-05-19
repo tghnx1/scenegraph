@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useApi } from '../hooks/useApi.ts'
+import { fetchEntityDetail } from '../api/entityDetails.ts'
 import { fetchArtist, fetchSimilarArtists } from '../api/artists.ts'
 import { fetchSearch } from '../api/search.ts'
 import { useGraphStore } from '../store/graphStore.ts'
 import type { Artist, SimilarArtist } from '../types/artist.ts'
+import type { NodeType } from '../types/graph.ts'
 import type { SearchResponse, SearchResult } from '../types/search.ts'
 import { useDebouncedValue } from './hooks/useDebouncedValue.ts'
 import { GraphSidebarDetails } from './components/DetailsPanel.tsx'
@@ -18,6 +20,8 @@ export function GraphPage({ themeName }: { themeName?: string } = {}) {
   const [searchValue, setSearchValue] = useState(submittedQuery)
   const debouncedSearchValue = useDebouncedValue(searchValue.trim(), 350)
   const selectedArtistId = selectedNode?.type === 'artist' ? selectedNode.id : null
+  const selectedDetailType = selectedNode && selectedNode.type !== 'artist' ? selectedNode.type : null
+  const selectedDetailId = selectedDetailType ? selectedNode?.id ?? null : null
 
   const { data: selectedArtist } = useApi<Artist | null>(
     () => (selectedArtistId ? fetchArtist(selectedArtistId) : Promise.resolve(null)),
@@ -27,6 +31,15 @@ export function GraphPage({ themeName }: { themeName?: string } = {}) {
   const { data: similarArtists } = useApi<SimilarArtist[]>(
     () => (selectedArtistId ? fetchSimilarArtists(selectedArtistId) : Promise.resolve([] as SimilarArtist[])),
     [selectedArtistId]
+  )
+
+  const { data: selectedEntityDetail, isLoading: isSelectedEntityDetailLoading } = useApi<SearchResult | null>(
+    () => (
+      selectedDetailType && selectedDetailId
+        ? fetchEntityDetail(selectedDetailType as Exclude<NodeType, 'artist'>, selectedDetailId)
+        : Promise.resolve(null)
+    ),
+    [selectedDetailType, selectedDetailId]
   )
 
   const {
@@ -108,9 +121,9 @@ export function GraphPage({ themeName }: { themeName?: string } = {}) {
     debouncedSearchValue === trimmedSearchValue &&
     debouncedSearchValue !== trimmedSubmittedQuery
   const dropdownSearchResults = shouldFetchDropdownSearch ? dropdownSearchData?.results ?? [] : []
-  const detailSearchResults = searchResults
+  const detailSearchResults = selectedEntityDetail ? [selectedEntityDetail] : searchResults
   const detailsSearchError = searchError
-  const isDetailsSearchLoading = isSearchLoading
+  const isDetailsSearchLoading = isSearchLoading || isSelectedEntityDetailLoading
   const hasActiveSearchState = Boolean(searchValue || submittedQuery || selectedNode)
 
   return (
@@ -137,7 +150,7 @@ export function GraphPage({ themeName }: { themeName?: string } = {}) {
             searchResults={detailSearchResults}
             isSearchLoading={isDetailsSearchLoading}
             searchError={detailsSearchError}
-            selectedNode={selectedNode}
+            selectedNode={selectedEntityDetail ? null : selectedNode}
             selectedArtist={selectedArtist}
             similarArtists={similarArtistLinks}
           />
