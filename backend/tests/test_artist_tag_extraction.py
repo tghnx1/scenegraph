@@ -2,9 +2,11 @@ import pytest
 
 from app.artist_tag_extraction import (
     TagExtractionConfig,
+    batch_user_prompt,
     extract_responses_output_text,
     extract_json_object,
     normalize_tag_value,
+    parse_artist_batch_response,
     parse_tags_response,
     tag_extraction_text_hash,
 )
@@ -97,6 +99,21 @@ def test_extract_responses_output_text_from_output_array():
     assert content == '{"tags": [{"type": "style", "value": "EBM"}]}'
 
 
+def test_batch_user_prompt_includes_artist_ids():
+    prompt = batch_user_prompt(
+        [
+            {"id": 2178, "name": "Holywanderer", "biography": "Dark Disco."},
+            {"id": 42, "name": "Other", "biography": "Electro."},
+        ],
+        max_tags=4,
+    )
+
+    assert "Artist ID: 2178" in prompt
+    assert "Artist ID: 42" in prompt
+    assert '"artistId": 123' in prompt
+    assert "Keep at most 4 tags per artist" in prompt
+
+
 def test_parse_tags_response_normalizes_and_deduplicates():
     tags = parse_tags_response(
         {
@@ -122,6 +139,34 @@ def test_parse_tags_response_normalizes_and_deduplicates():
         ("label", "Laut & Luise", 0.8),
     ]
     assert tags[0].evidence == "EBM and dark disco"
+
+
+def test_parse_artist_batch_response_normalizes_by_artist_id():
+    results = parse_artist_batch_response(
+        {
+            "artists": [
+                {
+                    "artistId": 2178,
+                    "tags": [
+                        {"type": "style", "value": "Dark Disco"},
+                        {"type": "collective", "value": "Holyberg music association"},
+                        {"type": "label", "value": "Bandcamp"},
+                        {"type": "residency", "value": "Berlin"},
+                    ],
+                },
+                {"artistId": 9999, "tags": [{"type": "style", "value": "drop me"}]},
+                {"artistId": "bad", "tags": [{"type": "style", "value": "drop me"}]},
+            ]
+        },
+        artists=[{"id": 2178, "name": "Holywanderer"}],
+        max_tags=10,
+    )
+
+    assert list(results) == [2178]
+    assert [(tag.tag_type, tag.tag_value) for tag in results[2178]] == [
+        ("style", "dark disco"),
+        ("collective", "Holyberg"),
+    ]
 
 
 def test_parse_tags_response_deduplicates_canonical_scene_entities():

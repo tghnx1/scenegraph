@@ -68,6 +68,32 @@ GENERIC_ENTITY_SUFFIXES_BY_TYPE: dict[str, tuple[str, ...]] = {
     ),
 }
 
+GENERIC_TAG_VALUES_BY_TYPE: dict[str, set[str]] = {
+    "label": {
+        "apple music",
+        "bandcamp",
+        "beatport",
+        "discogs",
+        "facebook",
+        "instagram",
+        "mixcloud",
+        "resident advisor",
+        "ra",
+        "soundcloud",
+        "spotify",
+        "tidal",
+        "youtube",
+    },
+    "residency": {
+        "berlin",
+        "germany",
+        "london",
+        "new york",
+        "paris",
+        "tokyo",
+    },
+}
+
 ENTITY_VALUE_PREFIX_RE = re.compile(
     r"(?i)^(?:"
     r"resident(?:\s+dj)?\s+(?:at|of|for)\s+|"
@@ -216,7 +242,60 @@ Extraction rules:
 - role: artist roles such as DJ, producer, live act, vocalist, promoter, curator, resident.
 - residency: a named party, venue, radio show, or platform where the biography says the artist is/was resident.
 - alias: alternate artist names only when the biography clearly presents them as aliases.
+- Do not extract websites or generic platforms such as Bandcamp, SoundCloud, Spotify, Instagram, YouTube, RA, or Discogs.
+- Do not extract cities, countries, regions, or scenes as residency tags.
 - Keep at most {max_tags} tags total.
+- Prefer fewer high-confidence tags over many weak tags.
+""".strip()
+
+
+def batch_user_prompt(artists: list[dict[str, Any]], max_tags: int) -> str:
+    artist_blocks = []
+    for artist in artists:
+        artist_blocks.append(
+            f"""
+Artist ID: {artist["id"]}
+Artist name: {artist["name"]}
+
+Biography:
+{artist["biography"]}
+""".strip()
+        )
+    artist_text = "\n\n---\n\n".join(artist_blocks)
+
+    return f"""
+Artists:
+
+{artist_text}
+
+Return JSON in this exact shape:
+{{
+  "artists": [
+    {{
+      "artistId": 123,
+      "tags": [
+        {{
+          "type": "style|label|collective|role|residency|alias",
+          "value": "short normalized tag",
+          "confidence": 0.0,
+          "evidence": "short phrase from that artist biography"
+        }}
+      ]
+    }}
+  ]
+}}
+
+Extraction rules:
+- Extract tags independently for each artist ID.
+- style: genres or sound descriptors such as dark disco, EBM, electro, industrial, minimal, house.
+- label: record labels, imprints, release platforms, or label affiliations.
+- collective: crews, groups, communities, or artistic collectives.
+- role: artist roles such as DJ, producer, live act, vocalist, promoter, curator, resident.
+- residency: a named party, venue, radio show, or platform where the biography says the artist is/was resident.
+- alias: alternate artist names only when the biography clearly presents them as aliases.
+- Do not extract websites or generic platforms such as Bandcamp, SoundCloud, Spotify, Instagram, YouTube, RA, or Discogs.
+- Do not extract cities, countries, regions, or scenes as residency tags.
+- Keep at most {max_tags} tags per artist.
 - Prefer fewer high-confidence tags over many weak tags.
 """.strip()
 
@@ -320,6 +399,8 @@ def parse_tags_response(payload: dict[str, Any], *, artist_name: str, max_tags: 
         tag_value = normalize_tag_value(tag_type, item.get("value"))
         if len(tag_value) < 2 or tag_value.casefold() == artist_name_key:
             continue
+        if is_generic_tag_value(tag_type, tag_value):
+            continue
 
         key = (tag_type, tag_value.casefold())
         if key in seen:
@@ -342,6 +423,49 @@ def parse_tags_response(payload: dict[str, Any], *, artist_name: str, max_tags: 
     return tags
 
 
+def is_generic_tag_value(tag_type: str, tag_value: str) -> bool:
+    values = GENERIC_TAG_VALUES_BY_TYPE.get(tag_type)
+    if not values:
+        return False
+    return tag_value.casefold() in values
+
+
+def parse_artist_batch_response(
+    payload: dict[str, Any],
+    *,
+    artists: list[dict[str, Any]],
+    max_tags: int,
+) -> dict[int, list[ArtistTag]]:
+    raw_artists = payload.get("artists", [])
+    if not isinstance(raw_artists, list):
+        return {}
+
+    artist_names = {int(artist["id"]): artist["name"] for artist in artists}
+    results: dict[int, list[ArtistTag]] = {}
+
+    for item in raw_artists:
+        if not isinstance(item, dict):
+            continue
+
+        raw_artist_id = item.get("artistId", item.get("artist_id", item.get("id")))
+        try:
+            artist_id = int(raw_artist_id)
+        except (TypeError, ValueError):
+            continue
+
+        artist_name = artist_names.get(artist_id)
+        if not artist_name:
+            continue
+
+        results[artist_id] = parse_tags_response(
+            {"tags": item.get("tags", [])},
+            artist_name=artist_name,
+            max_tags=max_tags,
+        )
+
+    return results
+
+
 def extract_responses_output_text(payload: dict[str, Any]) -> str:
     output_text = payload.get("output_text")
     if isinstance(output_text, str):
@@ -361,12 +485,7 @@ def extract_responses_output_text(payload: dict[str, Any]) -> str:
     return "\n".join(chunks)
 
 
-def create_azure_responses_completion(
-    *,
-    artist_name: str,
-    biography: str,
-    config: TagExtractionConfig,
-) -> str:
+def create_azure_responses_completion(*, prompt: str, config: TagExtractionConfig) -> str:
     if not config.azure_responses_url:
         raise RuntimeError("AZURE_OPENAI_RESPONSES_URL must be set for Azure Responses tag extraction")
 
@@ -379,7 +498,7 @@ def create_azure_responses_completion(
         json={
             "model": config.model,
             "instructions": system_prompt(),
-            "input": user_prompt(artist_name, biography, config.max_tags),
+            "input": prompt,
             "store": False,
             "temperature": 0,
             "text": {"format": {"type": "json_object"}},
@@ -399,6 +518,27 @@ def create_azure_responses_completion(
     return content
 
 
+def create_chat_completion(
+    client: OpenAI | AzureOpenAI | None,
+    *,
+    prompt: str,
+    config: TagExtractionConfig,
+) -> str:
+    if client is None:
+        raise RuntimeError("Chat completions extraction requires a client")
+
+    response = client.chat.completions.create(
+        model=config.model,
+        temperature=0,
+        response_format={"type": "json_object"},
+        messages=[
+            {"role": "system", "content": system_prompt()},
+            {"role": "user", "content": prompt},
+        ],
+    )
+    return response.choices[0].message.content or "{}"
+
+
 def extract_artist_tags_with_llm(
     client: OpenAI | AzureOpenAI | None,
     *,
@@ -415,26 +555,57 @@ def extract_artist_tags_with_llm(
 
     if config.provider == "azure" and config.api == "responses":
         content = create_azure_responses_completion(
-            artist_name=artist_name,
-            biography=normalized_biography,
+            prompt=user_prompt(artist_name, normalized_biography, config.max_tags),
             config=config,
         )
     else:
-        if client is None:
-            raise RuntimeError("Chat completions extraction requires a client")
-        response = client.chat.completions.create(
-            model=config.model,
-            temperature=0,
-            response_format={"type": "json_object"},
-            messages=[
-                {"role": "system", "content": system_prompt()},
-                {"role": "user", "content": user_prompt(artist_name, normalized_biography, config.max_tags)},
-            ],
+        content = create_chat_completion(
+            client,
+            prompt=user_prompt(artist_name, normalized_biography, config.max_tags),
+            config=config,
         )
-        content = response.choices[0].message.content or "{}"
 
     payload = extract_json_object(content)
     return parse_tags_response(payload, artist_name=artist_name, max_tags=config.max_tags)
+
+
+def extract_artist_tag_batch_with_llm(
+    client: OpenAI | AzureOpenAI | None,
+    *,
+    artists: list[dict[str, Any]],
+    config: TagExtractionConfig,
+) -> dict[int, list[ArtistTag]]:
+    prepared_artists = []
+    for artist in artists:
+        normalized_biography = truncate_text(
+            normalize_biography_text(artist["biography"]),
+            config.max_biography_chars,
+        )
+        if not normalized_biography:
+            continue
+        prepared_artists.append(
+            {
+                "id": artist["id"],
+                "name": artist["name"],
+                "biography": normalized_biography,
+            }
+        )
+
+    if not prepared_artists:
+        return {}
+
+    prompt = batch_user_prompt(prepared_artists, config.max_tags)
+    if config.provider == "azure" and config.api == "responses":
+        content = create_azure_responses_completion(prompt=prompt, config=config)
+    else:
+        content = create_chat_completion(client, prompt=prompt, config=config)
+
+    payload = extract_json_object(content)
+    return parse_artist_batch_response(
+        payload,
+        artists=prepared_artists,
+        max_tags=config.max_tags,
+    )
 
 
 def fetch_artist_biographies(
