@@ -23,6 +23,7 @@ DEFAULT_AZURE_CHAT_API_VERSION = "2025-01-01-preview"
 DEFAULT_AZURE_RESPONSES_API_VERSION = "2025-04-01-preview"
 MAX_BIOGRAPHY_CHARS = 6000
 MAX_TAGS_PER_ARTIST = 32
+CHUNK_FALLBACK_CHARS = 600
 
 ALLOWED_TAG_TYPES: set[str] = {
     "style",
@@ -118,6 +119,14 @@ class ArtistTag:
 
 
 @dataclass(frozen=True)
+class ChunkedTagExtractionResult:
+    tags: list[ArtistTag]
+    total_chunks: int
+    processed_chunks: int
+    skipped_chunks: int
+
+
+@dataclass(frozen=True)
 class TagExtractionConfig:
     provider: ExtractionProvider = "openai"
     model: str = DEFAULT_EXTRACTION_MODEL
@@ -125,6 +134,7 @@ class TagExtractionConfig:
     azure_responses_url: str | None = None
     max_biography_chars: int = MAX_BIOGRAPHY_CHARS
     max_tags: int = MAX_TAGS_PER_ARTIST
+    chunk_chars: int = CHUNK_FALLBACK_CHARS
 
     @classmethod
     def from_env(cls) -> "TagExtractionConfig":
@@ -166,6 +176,9 @@ class TagExtractionConfig:
                 os.environ.get("ARTIST_TAG_EXTRACTION_MAX_BIO_CHARS", MAX_BIOGRAPHY_CHARS)
             ),
             max_tags=int(os.environ.get("ARTIST_TAG_EXTRACTION_MAX_TAGS", MAX_TAGS_PER_ARTIST)),
+            chunk_chars=int(
+                os.environ.get("ARTIST_TAG_EXTRACTION_CHUNK_CHARS", CHUNK_FALLBACK_CHARS)
+            ),
         )
 
     @property
@@ -318,6 +331,15 @@ def extract_json_object(value: str) -> dict[str, Any]:
     return parsed
 
 
+def is_content_filter_error(error: BaseException) -> bool:
+    message = str(error).casefold()
+    return (
+        "content_filter" in message
+        or "responsibleaipolicyviolation" in message
+        or "content management policy" in message
+    )
+
+
 def normalize_tag_value(tag_type: str, value: Any) -> str:
     text = normalize_text(value).strip(" \t\n\r,.;:|/\\")
     if not text:
@@ -421,6 +443,23 @@ def parse_tags_response(payload: dict[str, Any], *, artist_name: str, max_tags: 
             break
 
     return tags
+
+
+def merge_artist_tags(tag_groups: list[list[ArtistTag]], *, max_tags: int) -> list[ArtistTag]:
+    merged: dict[tuple[str, str], ArtistTag] = {}
+    order: list[tuple[str, str]] = []
+
+    for tags in tag_groups:
+        for tag in tags:
+            key = (tag.tag_type, tag.tag_value.casefold())
+            existing = merged.get(key)
+            if existing is None:
+                order.append(key)
+                merged[key] = tag
+            elif tag.confidence > existing.confidence:
+                merged[key] = tag
+
+    return [merged[key] for key in order[:max_tags]]
 
 
 def is_generic_tag_value(tag_type: str, tag_value: str) -> bool:
@@ -539,6 +578,58 @@ def create_chat_completion(
     return response.choices[0].message.content or "{}"
 
 
+SENTENCE_BOUNDARY_RE = re.compile(r"(?<=[.!?])\s+")
+
+
+def split_biography_chunks(value: str, *, max_chars: int) -> list[str]:
+    if max_chars < 80:
+        raise ValueError("Chunk size must be at least 80 characters")
+
+    text = normalize_biography_text(value)
+    if not text:
+        return []
+
+    chunks: list[str] = []
+    current = ""
+
+    def append_piece(piece: str) -> None:
+        nonlocal current
+        piece = piece.strip()
+        if not piece:
+            return
+
+        if len(piece) > max_chars:
+            if current:
+                chunks.append(current)
+                current = ""
+            remaining = piece
+            while len(remaining) > max_chars:
+                chunk = remaining[:max_chars].rsplit(" ", 1)[0].strip()
+                if not chunk:
+                    chunk = remaining[:max_chars].strip()
+                chunks.append(chunk)
+                remaining = remaining[len(chunk) :].strip()
+            current = remaining
+            return
+
+        candidate = f"{current} {piece}".strip() if current else piece
+        if len(candidate) <= max_chars:
+            current = candidate
+            return
+
+        if current:
+            chunks.append(current)
+        current = piece
+
+    for sentence in SENTENCE_BOUNDARY_RE.split(text):
+        append_piece(sentence)
+
+    if current:
+        chunks.append(current)
+
+    return chunks
+
+
 def extract_artist_tags_with_llm(
     client: OpenAI | AzureOpenAI | None,
     *,
@@ -567,6 +658,41 @@ def extract_artist_tags_with_llm(
 
     payload = extract_json_object(content)
     return parse_tags_response(payload, artist_name=artist_name, max_tags=config.max_tags)
+
+
+def extract_artist_tags_with_chunked_fallback(
+    client: OpenAI | AzureOpenAI | None,
+    *,
+    artist_name: str,
+    biography: str,
+    config: TagExtractionConfig,
+) -> ChunkedTagExtractionResult:
+    chunks = split_biography_chunks(biography, max_chars=config.chunk_chars)
+    tag_groups: list[list[ArtistTag]] = []
+    skipped_chunks = 0
+
+    for chunk in chunks:
+        try:
+            tag_groups.append(
+                extract_artist_tags_with_llm(
+                    client,
+                    artist_name=artist_name,
+                    biography=chunk,
+                    config=config,
+                )
+            )
+        except Exception as exc:
+            if not is_content_filter_error(exc):
+                raise
+            skipped_chunks += 1
+
+    processed_chunks = len(chunks) - skipped_chunks
+    return ChunkedTagExtractionResult(
+        tags=merge_artist_tags(tag_groups, max_tags=config.max_tags),
+        total_chunks=len(chunks),
+        processed_chunks=processed_chunks,
+        skipped_chunks=skipped_chunks,
+    )
 
 
 def extract_artist_tag_batch_with_llm(

@@ -1,13 +1,17 @@
 import pytest
 
 from app.artist_tag_extraction import (
+    ArtistTag,
     TagExtractionConfig,
     batch_user_prompt,
     extract_responses_output_text,
     extract_json_object,
+    is_content_filter_error,
+    merge_artist_tags,
     normalize_tag_value,
     parse_artist_batch_response,
     parse_tags_response,
+    split_biography_chunks,
     tag_extraction_text_hash,
 )
 
@@ -77,6 +81,12 @@ def test_extract_json_object_handles_surrounding_text():
     payload = extract_json_object('Here: {"tags": [{"type": "style", "value": "EBM"}]}')
 
     assert payload == {"tags": [{"type": "style", "value": "EBM"}]}
+
+
+def test_is_content_filter_error_detects_azure_messages():
+    assert is_content_filter_error(RuntimeError("code: content_filter"))
+    assert is_content_filter_error(RuntimeError("ResponsibleAIPolicyViolation"))
+    assert not is_content_filter_error(RuntimeError("rate limit"))
 
 
 def test_extract_responses_output_text_from_output_array():
@@ -184,6 +194,27 @@ def test_parse_tags_response_deduplicates_canonical_scene_entities():
     assert [(tag.tag_type, tag.tag_value) for tag in tags] == [("collective", "Holyberg")]
 
 
+def test_merge_artist_tags_deduplicates_and_keeps_highest_confidence():
+    tags = merge_artist_tags(
+        [
+            [
+                ArtistTag("style", "ebm", 0.5, "first"),
+                ArtistTag("role", "dj", 1.0),
+            ],
+            [
+                ArtistTag("style", "EBM", 0.9, "better"),
+                ArtistTag("style", "dark disco", 0.8),
+            ],
+        ],
+        max_tags=2,
+    )
+
+    assert [(tag.tag_type, tag.tag_value, tag.confidence, tag.evidence) for tag in tags] == [
+        ("style", "EBM", 0.9, "better"),
+        ("role", "dj", 1.0, None),
+    ]
+
+
 def test_parse_tags_response_caps_to_max_tags():
     tags = parse_tags_response(
         {
@@ -214,6 +245,19 @@ def test_normalize_tag_value_canonicalizes_scene_entities():
     assert normalize_tag_value("residency", "The Bunker New York") == "The Bunker New York"
     assert normalize_tag_value("residency", "MatreshkaBerlin resident") == "MatreshkaBerlin"
     assert normalize_tag_value("residency", "Resident at Sameheads") == "Sameheads"
+
+
+def test_split_biography_chunks_covers_text_with_bounded_chunks():
+    text = (
+        "Biography: First sentence about dark disco. "
+        "Second sentence about EBM and labels. "
+        "Third sentence is intentionally longer than the previous two so it should be moved."
+    )
+
+    chunks = split_biography_chunks(text, max_chars=80)
+
+    assert all(len(chunk) <= 80 for chunk in chunks)
+    assert " ".join(chunks) == text.replace("Biography: ", "")
 
 
 def test_tag_extraction_text_hash_normalizes_biography():
