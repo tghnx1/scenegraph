@@ -1,10 +1,10 @@
 import { useSearchParams } from 'react-router-dom'
 import { fetchArtist, fetchSimilarArtists } from '../api/artists.ts'
-import { fetchSearch, fetchSearchResultById } from '../api/search.ts'
+import { fetchSearch } from '../api/search.ts'
 import { useApi } from '../hooks/useApi.ts'
 import { useGraphStore } from '../store/graphStore.ts'
 import type { Artist, SimilarArtist } from '../types/artist.ts'
-import type { SearchEntityType, SearchResponse } from '../types/search.ts'
+import type { SearchResponse } from '../types/search.ts'
 import { GraphSidebarDetails } from './components/DetailsPanel.tsx'
 import { ScenegraphMapPanel } from './components/ScenegraphMapPanel.tsx'
 
@@ -14,17 +14,10 @@ const stats = [
   { label: 'Recommendations', value: '0' },
 ]
 
-function isSearchEntityType(value: string | null): value is SearchEntityType {
-  return value === 'artist' || value === 'venue' || value === 'promoter' || value === 'event'
-}
-
 export function ProfilePage({ themeName }: { themeName?: string } = {}) {
   const [searchParams] = useSearchParams()
   const { selectedNode } = useGraphStore()
   const submittedQuery = searchParams.get('q') ?? ''
-  const selectedTypeParam = searchParams.get('selectedType')
-  const selectedType = isSearchEntityType(selectedTypeParam) ? selectedTypeParam : null
-  const selectedId = searchParams.get('selectedId') ?? ''
   const selectedArtistId = selectedNode?.type === 'artist' ? selectedNode.id : null
 
   const {
@@ -46,23 +39,10 @@ export function ProfilePage({ themeName }: { themeName?: string } = {}) {
     [selectedArtistId]
   )
 
-  const {
-    data: selectedResultFromUrl,
-    isLoading: isSelectedResultLoading,
-    error: selectedResultError,
-  } = useApi(
-    () => (
-      selectedType && selectedId
-        ? fetchSearchResultById(selectedType, selectedId, submittedQuery)
-        : Promise.resolve(null)
-    ),
-    [selectedType, selectedId, submittedQuery]
-  )
-
   const searchResults = searchData?.results ?? []
-  const detailSearchResults = selectedResultFromUrl ? [selectedResultFromUrl] : searchResults
-  const detailsSearchError = selectedResultError ?? searchError
-  const isDetailsSearchLoading = isSelectedResultLoading || isSearchLoading
+  const detailSearchResults = searchResults
+  const detailsSearchError = searchError
+  const isDetailsSearchLoading = isSearchLoading
 
   return (
     <div className="profile-page">
@@ -76,7 +56,7 @@ export function ProfilePage({ themeName }: { themeName?: string } = {}) {
             searchResults={detailSearchResults}
             isSearchLoading={isDetailsSearchLoading}
             searchError={detailsSearchError}
-            selectedNode={selectedResultFromUrl ? null : selectedNode}
+            selectedNode={selectedNode}
             selectedArtist={selectedArtist}
             similarArtists={similarArtists ?? []}
           />

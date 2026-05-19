@@ -2,7 +2,7 @@ import { api } from './client'
 import type { Artist, SimilarArtist } from '../types/artist'
 
 export const fetchArtist = (id: string) => //fetch one artist's full profile
-  api.get<Artist>(`/artist?${encodeURIComponent(id)}`) //calls GET /api/artist?<artist-node-id>
+  api.get<Artist>(`/artist?id=${encodeURIComponent(id)}`) //calls GET /api/artist?id=<artist-node-id>
 
 export const fetchSimilarArtists = (_id: string) =>
   Promise.resolve([] as SimilarArtist[]) //rich artist detail includes connectedArtists; keep signature for callers

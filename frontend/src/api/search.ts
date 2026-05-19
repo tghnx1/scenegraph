@@ -74,23 +74,3 @@ export const fetchSearch = async (query: string, limit = 8): Promise<SearchRespo
     results: response.results.map(toSearchResult),
   }
 }
-
-export const fetchSearchResultById = (
-  _type: SearchEntityType,
-  _id: string,
-  _query = ''
-): Promise<SearchResult | null> => {
-  // TODO: swap to a backend detail endpoint, for example:
-  // return api.get<SearchResult>(`/entities/${type}/${encodeURIComponent(id)}`)
-  // const queryMatch = getMockSearchResponse(query).results.find((result) => result.type === type && result.id === id)
-
-  // if (queryMatch) {
-  //   return Promise.resolve(queryMatch)
-  // }
-
-  // const result = Object.values(MOCK_SEARCH_RESPONSES)
-  //   .flatMap((response) => response.results)
-  //   .find((entry) => entry.type === type && entry.id === id)
-
-  return Promise.resolve(null)
-}

@@ -123,7 +123,7 @@ export function ScenegraphMapPanel({ title, themeName }: ScenegraphMapPanelProps
     (node: object) => {
       const nextNode = node as GraphNode
       const nextParams = new URLSearchParams(searchParams)
-      nextParams.set('q', nextNode.name)
+      nextParams.delete('q')
       nextParams.delete('artist')
 
       const isSameSelectedNode = selectedNode?.id === nextNode.id
