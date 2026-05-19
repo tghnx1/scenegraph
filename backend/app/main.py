@@ -15,6 +15,8 @@ from app.recommendation_scoring import (
     final_recommendation_score,
     hybrid_graph_score,
     is_similarity_candidate_eligible,
+    semantic_artist_score,
+    semantic_artist_scoring_from_env,
 )
 from app.style_tags import extract_style_tags, style_overlap_score
 
@@ -269,10 +271,6 @@ def shared_extracted_tags(
     return shared
 
 
-def combined_semantic_score(embedding_score: float, style_score: float, tag_score: float) -> float:
-    return 0.65 * embedding_score + 0.25 * style_score + 0.10 * tag_score
-
-
 def build_artist_semantic_response(
     connection: Connection,
     *,
@@ -280,6 +278,7 @@ def build_artist_semantic_response(
     limit: int,
 ) -> SemanticArtistResponse:
     config = EmbeddingConfig.from_env()
+    scoring_config = semantic_artist_scoring_from_env()
     source, ranked = rank_similar_embeddings(
         connection,
         entity_type="artist",
@@ -321,7 +320,12 @@ def build_artist_semantic_response(
             {
                 "entity_id": item["entity_id"],
                 "name": candidate_metadata["name"],
-                "score": combined_semantic_score(embedding_score, style_score, tag_score),
+                "score": semantic_artist_score(
+                    embedding_score,
+                    style_score,
+                    tag_score,
+                    scoring_config,
+                ),
                 "embedding_score": embedding_score,
                 "style_score": style_score,
                 "tag_score": tag_score,

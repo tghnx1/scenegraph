@@ -1,8 +1,12 @@
 from app.recommendation_scoring import (
     DEFAULT_RECOMMENDATION_SCORING,
+    SemanticArtistScoringConfig,
     final_recommendation_score,
     hybrid_graph_score,
     is_similarity_candidate_eligible,
+    normalized_weights,
+    semantic_artist_score,
+    semantic_artist_scoring_from_env,
 )
 
 
@@ -70,6 +74,44 @@ def test_final_recommendation_score_mixes_semantic_and_graph_weights():
     score = final_recommendation_score(0.8, 0.4, DEFAULT_RECOMMENDATION_SCORING)
 
     assert score == 0.65 * 0.8 + 0.35 * 0.4
+
+
+def test_semantic_artist_score_uses_configured_weights():
+    score = semantic_artist_score(
+        0.8,
+        0.5,
+        0.25,
+        SemanticArtistScoringConfig(
+            embedding_weight=0.5,
+            style_weight=0.3,
+            tag_weight=0.2,
+        ),
+    )
+
+    assert score == 0.5 * 0.8 + 0.3 * 0.5 + 0.2 * 0.25
+
+
+def test_semantic_artist_scoring_reads_and_normalizes_env(monkeypatch):
+    monkeypatch.setenv("SEMANTIC_ARTIST_EMBEDDING_WEIGHT", "65")
+    monkeypatch.setenv("SEMANTIC_ARTIST_STYLE_WEIGHT", "25")
+    monkeypatch.setenv("SEMANTIC_ARTIST_TAG_WEIGHT", "10")
+
+    config = semantic_artist_scoring_from_env()
+
+    assert config == SemanticArtistScoringConfig(
+        embedding_weight=0.65,
+        style_weight=0.25,
+        tag_weight=0.10,
+    )
+
+
+def test_normalized_weights_rejects_zero_total():
+    try:
+        normalized_weights((0, 0, 0))
+    except ValueError as exc:
+        assert "greater than zero" in str(exc)
+    else:
+        raise AssertionError("Expected ValueError")
 
 
 def test_artist_similarity_requires_graph_or_strong_semantic_evidence():
