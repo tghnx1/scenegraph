@@ -1,0 +1,237 @@
+import ForceGraph2D from 'react-force-graph-2d'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
+import { fetchEgoGraph, fetchGraph, type GraphParams } from '../../api/graph.ts'
+import { fetchGenres } from '../../api/genres.ts'
+import { useApi } from '../../hooks/useApi.ts'
+import { useGraphStore } from '../../store/graphStore.ts'
+import { BACKGROUND, LINK_DIM, LINK_HIGHLIGHT, getCssVar, hexToRgba } from '../../styles/colors.ts'
+import type { GraphData, GraphNode } from '../../types/graph.ts'
+import type { SearchEntityType } from '../../types/search.ts'
+import { drawNodeShape } from '../hooks/drawNode.ts'
+import { useGraphHighlights } from '../hooks/useGraphHighlights.ts'
+import { useGraphPhysics } from '../hooks/useGraphPhysics.ts'
+import { GraphFilters } from './GraphFilters.tsx'
+
+const MIN_GRAPH_HEIGHT = 320
+const DEFAULT_GRAPH_FILTERS: GraphParams = { limit: 100 }
+const NODE_LEGEND_ITEMS = [
+  { type: 'artist', label: 'Artist' },
+  { type: 'venue', label: 'Venue' },
+  { type: 'promoter', label: 'Promoter' },
+  { type: 'event', label: 'Event' },
+]
+
+function isSearchEntityType(value: string | null): value is SearchEntityType {
+  return value === 'artist' || value === 'venue' || value === 'promoter' || value === 'event'
+}
+
+interface ScenegraphMapPanelProps {
+  title?: string
+  themeName?: string
+}
+
+export function ScenegraphMapPanel({ title, themeName }: ScenegraphMapPanelProps) {
+  const graphRef = useRef<any>(null)
+  const containerRef = useRef<HTMLDivElement | null>(null)
+  const [graphSize, setGraphSize] = useState({ width: 0, height: 0 })
+  const [graphFilters, setGraphFilters] = useState<GraphParams>(DEFAULT_GRAPH_FILTERS)
+  const [searchParams, setSearchParams] = useSearchParams()
+  const { setSelected, selectedNode } = useGraphStore()
+  const selectedTypeParam = searchParams.get('selectedType')
+  const selectedType = isSearchEntityType(selectedTypeParam) ? selectedTypeParam : null
+  const selectedId = searchParams.get('selectedId') ?? ''
+
+  const { data, isLoading, error, refetch } = useApi<GraphData>(
+    () => {
+      if (selectedType && selectedId) {
+        return fetchEgoGraph({
+          type: selectedType,
+          id: selectedId,
+          depth: 1,
+          limit: graphFilters.limit ?? DEFAULT_GRAPH_FILTERS.limit,
+        })
+      }
+
+      return fetchGraph(graphFilters)
+    },
+    [selectedType, selectedId, graphFilters.genre, graphFilters.dateFrom, graphFilters.dateTo, graphFilters.limit]
+  )
+
+  const { data: genres, isLoading: isGenresLoading, error: genresError } = useApi(
+    () => fetchGenres(),
+    []
+  )
+
+  const { connectedNodes } = useGraphHighlights(selectedNode || null, data)
+  useGraphPhysics(graphRef, data)
+
+  useEffect(() => {
+    if (!selectedType || !selectedId || !data) return
+
+    const nextSelectedNode = data.nodes.find((node) => node.id === selectedId)
+    if (nextSelectedNode && selectedNode?.id !== nextSelectedNode.id) {
+      setSelected(nextSelectedNode)
+    }
+  }, [data, selectedId, selectedNode?.id, selectedType, setSelected])
+
+  useEffect(() => {
+    const container = containerRef.current
+    if (!container) return
+
+    const updateSize = () => {
+      const rect = container.getBoundingClientRect()
+      setGraphSize({
+        width: Math.floor(rect.width),
+        height: Math.max(Math.floor(rect.height), MIN_GRAPH_HEIGHT),
+      })
+    }
+
+    updateSize()
+
+    const resizeObserver = new ResizeObserver(updateSize)
+    resizeObserver.observe(container)
+
+    return () => resizeObserver.disconnect()
+  }, [])
+
+  const handleNodeClick = useCallback(
+    (node: object) => {
+      const nextNode = node as GraphNode
+      const nextParams = new URLSearchParams(searchParams)
+      nextParams.set('q', nextNode.name)
+      nextParams.delete('artist')
+
+      const isSameSelectedNode = selectedNode?.id === nextNode.id
+      const isCurrentEgoGraph = selectedType === nextNode.type && selectedId === nextNode.id
+
+      if (isSameSelectedNode && !isCurrentEgoGraph) {
+        nextParams.set('selectedType', nextNode.type)
+        nextParams.set('selectedId', nextNode.id)
+      } else {
+        nextParams.delete('selectedType')
+        nextParams.delete('selectedId')
+      }
+
+      setSearchParams(nextParams, { replace: false })
+      setSelected(nextNode)
+    },
+    [searchParams, selectedId, selectedNode?.id, selectedType, setSearchParams, setSelected]
+  )
+
+  const handleGraphFiltersChange = useCallback(
+    (nextFilters: GraphParams) => {
+      setGraphFilters(nextFilters)
+      setSelected(null)
+
+      if (searchParams.has('artist')) {
+        const nextParams = new URLSearchParams(searchParams)
+        nextParams.delete('artist')
+        setSearchParams(nextParams, { replace: true })
+      }
+    },
+    [searchParams, setSearchParams, setSelected]
+  )
+
+  const graphData = data || { nodes: [], links: [] }
+  const graphBackground = getCssVar('--background') || (themeName === 'dark' ? '#2d353b' : BACKGROUND)
+  const linkHighlight = getCssVar('--link-highlight') || LINK_HIGHLIGHT
+  const linkDim = getCssVar('--link-dim') || LINK_DIM
+  const nodeCount = graphData.nodes.length
+  const linkCount = graphData.links.length
+  const displayedEventDates = graphData.nodes
+    .filter((node) => node.type === 'event')
+    .map((node) => node.startDate ?? node.date ?? node.endDate)
+    .filter((date): date is string => Boolean(date))
+    .sort()
+  const displayedDateRange =
+    displayedEventDates.length > 0
+      ? {
+          from: displayedEventDates[0],
+          to: displayedEventDates[displayedEventDates.length - 1],
+        }
+      : null
+
+  return (
+    <section className={`scenegraph-map-panel${title ? ' has-heading' : ''}`} aria-label="Scenegraph database">
+      {title && (
+        <div className="scenegraph-map-heading">
+          <span className="search-query-label">{title}</span>
+        </div>
+      )}
+      <article className="graph-filter-card scenegraph-map-filters">
+        <GraphFilters
+          filters={graphFilters}
+          genres={genres ?? []}
+          isGenresLoading={isGenresLoading}
+          genresError={genresError}
+          displayedDateRange={displayedDateRange}
+          onChange={handleGraphFiltersChange}
+        />
+      </article>
+
+      <div ref={containerRef} className="graph-canvas graph-canvas--large">
+        {isLoading && !data && <div className="graph-canvas-status">Loading graph...</div>}
+        {error && (
+          <div className="graph-canvas-status error">
+            {error} <button onClick={refetch}>retry</button>
+          </div>
+        )}
+        <div className="graph-canvas-counts" aria-label={`${nodeCount} nodes and ${linkCount} links displayed`}>
+          <span>{nodeCount} nodes</span>
+          <span>{linkCount} links</span>
+        </div>
+        <div className="graph-legend" aria-label="Graph entity legend">
+          {NODE_LEGEND_ITEMS.map((item) => (
+            <div className="graph-legend-item" key={item.type}>
+              <span className={`graph-legend-marker graph-legend-marker--${item.type}`} aria-hidden="true" />
+              <span>{item.label}</span>
+            </div>
+          ))}
+        </div>
+        <ForceGraph2D
+          ref={graphRef}
+          width={graphSize.width || undefined}
+          height={graphSize.height || undefined}
+          graphData={graphData}
+          nodeCanvasObject={(node: any, ctx: CanvasRenderingContext2D) => {
+            drawNodeShape(ctx, node.x, node.y, 5, node.type, selectedNode?.id === node.id)
+          }}
+          nodeColor={() => 'transparent'}
+          nodeRelSize={3}
+          nodeVal={(n: any) => (selectedNode?.id === n.id ? 3 : 1)}
+          nodeLabel={(n: any) => n.name ?? n.label ?? n.id}
+          linkWidth={(l: any) => {
+            const source = typeof l.source === 'object' ? l.source.id : l.source
+            const target = typeof l.target === 'object' ? l.target.id : l.target
+            if (connectedNodes.has(source) && connectedNodes.has(target)) {
+              return Math.sqrt(l.value ?? l.weight ?? 1) * 2
+            }
+            return Math.sqrt(l.value ?? l.weight ?? 1)
+          }}
+          linkColor={(l: any) => {
+            const source = typeof l.source === 'object' ? l.source.id : l.source
+            const target = typeof l.target === 'object' ? l.target.id : l.target
+            if (connectedNodes.has(source) && connectedNodes.has(target)) {
+              return hexToRgba(linkHighlight, 0.8)
+            }
+            return hexToRgba(linkDim, 0.6)
+          }}
+          enableNodeDrag
+          onNodeDrag={(node: any) => {
+            node.fx = node.x
+            node.fy = node.y
+          }}
+          onNodeDragEnd={(node: any) => {
+            node.fx = null
+            node.fy = null
+          }}
+          onNodeClick={handleNodeClick}
+          backgroundColor={graphBackground}
+          warmupTicks={120}
+          cooldownTicks={180}
+        />
+      </div>
+    </section>
+  )
+}

@@ -1,42 +1,21 @@
-import ForceGraph2D from 'react-force-graph-2d'
-import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useApi } from '../hooks/useApi.ts'
 import { fetchArtist, fetchSimilarArtists } from '../api/artists.ts'
-import { fetchEgoGraph, fetchGraph, type GraphParams } from '../api/graph.ts'
-import { fetchGenres } from '../api/genres.ts'
 import { fetchSearch, fetchSearchResultById } from '../api/search.ts'
 import { useGraphStore } from '../store/graphStore.ts'
 import type { Artist, SimilarArtist } from '../types/artist.ts'
-import type { GraphNode } from '../types/graph.ts'
 import type { SearchEntityType, SearchResponse, SearchResult } from '../types/search.ts'
 import { useDebouncedValue } from './hooks/useDebouncedValue.ts'
-import { useGraphHighlights } from './hooks/useGraphHighlights.ts'
-import { useGraphPhysics } from './hooks/useGraphPhysics.ts'
-import { drawNodeShape } from './GraphPage/drawNode.ts'
-import { BACKGROUND, LINK_DIM, LINK_HIGHLIGHT, getCssVar, hexToRgba } from '../styles/colors.ts'
 import { GraphSidebarDetails } from './components/DetailsPanel.tsx'
-import { GraphFilters } from './components/GraphFilters.tsx'
+import { ScenegraphMapPanel } from './components/ScenegraphMapPanel.tsx'
 import { SearchQueryForm } from './components/SearchQueryForm.tsx'
-
-const MIN_GRAPH_HEIGHT = 320
-const DEFAULT_GRAPH_FILTERS: GraphParams = { limit: 100 }
-const NODE_LEGEND_ITEMS = [
-  { type: 'artist', label: 'Artist' },
-  { type: 'venue', label: 'Venue' },
-  { type: 'promoter', label: 'Promoter' },
-  { type: 'event', label: 'Event' },
-]
 
 function isSearchEntityType(value: string | null): value is SearchEntityType {
   return value === 'artist' || value === 'venue' || value === 'promoter' || value === 'event'
 }
 
 export function GraphPage({ themeName }: { themeName?: string } = {}) {
-  const graphRef = useRef<any>(null)
-  const containerRef = useRef<HTMLDivElement | null>(null)
-  const [graphSize, setGraphSize] = useState({ width: 0, height: 0 })
-  const [graphFilters, setGraphFilters] = useState<GraphParams>(DEFAULT_GRAPH_FILTERS)
   const [searchParams, setSearchParams] = useSearchParams()
   const { setSelected, selectedNode } = useGraphStore()
   const submittedQuery = searchParams.get('q') ?? ''
@@ -48,22 +27,6 @@ export function GraphPage({ themeName }: { themeName?: string } = {}) {
   const debouncedSearchValue = useDebouncedValue(searchValue.trim(), 350)
   const selectedArtistId = selectedNode?.type === 'artist' ? selectedNode.id : null
 
-  const { data, isLoading, error, refetch } = useApi(
-    () => {
-      if (selectedType && selectedId) {
-        return fetchEgoGraph({
-          type: selectedType,
-          id: selectedId,
-          depth: 1,
-          limit: graphFilters.limit ?? DEFAULT_GRAPH_FILTERS.limit,
-        })
-      }
-
-      return fetchGraph(graphFilters)
-    },
-    [selectedType, selectedId, graphFilters.genre, graphFilters.dateFrom, graphFilters.dateTo, graphFilters.limit]
-  )
-
   const { data: selectedArtist } = useApi<Artist | null>(
     () => (selectedArtistId ? fetchArtist(selectedArtistId) : Promise.resolve(null)),
     [selectedArtistId]
@@ -72,11 +35,6 @@ export function GraphPage({ themeName }: { themeName?: string } = {}) {
   const { data: similarArtists } = useApi<SimilarArtist[]>(
     () => (selectedArtistId ? fetchSimilarArtists(selectedArtistId) : Promise.resolve([] as SimilarArtist[])),
     [selectedArtistId]
-  )
-
-  const { data: genres, isLoading: isGenresLoading, error: genresError } = useApi(
-    () => fetchGenres(),
-    []
   )
 
   const {
@@ -106,9 +64,6 @@ export function GraphPage({ themeName }: { themeName?: string } = {}) {
     [selectedType, selectedId, submittedQuery]
   )
 
-  const { connectedNodes } = useGraphHighlights(selectedNode || null, data)
-  useGraphPhysics(graphRef, data)
-
   useEffect(() => {
     setSearchValue(submittedQuery)
   }, [submittedQuery])
@@ -118,60 +73,6 @@ export function GraphPage({ themeName }: { themeName?: string } = {}) {
       setSelectedSearchResult(null)
     }
   }, [selectedType, selectedId])
-
-  useEffect(() => {
-    if (!selectedType || !selectedId || !data) return
-
-    const nextSelectedNode = data.nodes.find((node) => node.id === selectedId)
-    if (nextSelectedNode && selectedNode?.id !== nextSelectedNode.id) {
-      setSelected(nextSelectedNode)
-    }
-  }, [data, selectedId, selectedNode?.id, selectedType, setSelected])
-
-  useEffect(() => {
-    const container = containerRef.current
-    if (!container) return
-
-    const updateSize = () => {
-      const rect = container.getBoundingClientRect()
-      setGraphSize({
-        width: Math.floor(rect.width),
-        height: Math.max(Math.floor(rect.height), MIN_GRAPH_HEIGHT),
-      })
-    }
-
-    updateSize()
-
-    const resizeObserver = new ResizeObserver(updateSize)
-    resizeObserver.observe(container)
-
-    return () => resizeObserver.disconnect()
-  }, [])
-
-  const handleNodeClick = useCallback(
-    (node: object) => {
-      const nextNode = node as GraphNode
-      const nextParams = new URLSearchParams(searchParams)
-      nextParams.set('q', nextNode.name)
-      nextParams.delete('artist')
-
-      const isSameSelectedNode = selectedNode?.id === nextNode.id
-      const isCurrentEgoGraph = selectedType === nextNode.type && selectedId === nextNode.id
-
-      if (isSameSelectedNode && !isCurrentEgoGraph) {
-        nextParams.set('selectedType', nextNode.type)
-        nextParams.set('selectedId', nextNode.id)
-      } else {
-        nextParams.delete('selectedType')
-        nextParams.delete('selectedId')
-      }
-
-      setSearchParams(nextParams, { replace: false })
-      setSelectedSearchResult(null)
-      setSelected(nextNode)
-    },
-    [searchParams, selectedId, selectedNode?.id, selectedType, setSearchParams, setSelected]
-  )
 
   const handleSearchSubmit = useCallback(
     (event: FormEvent<HTMLFormElement>) => {
@@ -221,20 +122,6 @@ export function GraphPage({ themeName }: { themeName?: string } = {}) {
     [searchParams, setSearchParams, setSelected]
   )
 
-  const handleGraphFiltersChange = useCallback(
-    (nextFilters: GraphParams) => {
-      setGraphFilters(nextFilters)
-      setSelected(null)
-
-      if (searchParams.has('artist')) {
-        const nextParams = new URLSearchParams(searchParams)
-        nextParams.delete('artist')
-        setSearchParams(nextParams, { replace: true })
-      }
-    },
-    [searchParams, setSearchParams, setSelected]
-  )
-
   const similarArtistLinks = similarArtists ?? []
   const searchResults = searchData?.results ?? []
   const activeSelectedSearchResult =
@@ -248,24 +135,6 @@ export function GraphPage({ themeName }: { themeName?: string } = {}) {
   const detailsSearchError = selectedResultError ?? searchError
   const isDetailsSearchLoading = isSelectedResultLoading || isSearchLoading
   const hasActiveSearchState = Boolean(searchValue || submittedQuery || selectedNode)
-  const graphData = data || { nodes: [], links: [] }
-  const graphBackground = getCssVar('--background') || (themeName === 'dark' ? '#2d353b' : BACKGROUND)
-  const linkHighlight = getCssVar('--link-highlight') || LINK_HIGHLIGHT
-  const linkDim = getCssVar('--link-dim') || LINK_DIM
-  const nodeCount = graphData.nodes.length
-  const linkCount = graphData.links.length
-  const displayedEventDates = graphData.nodes
-    .filter((node) => node.type === 'event')
-    .map((node) => node.startDate ?? node.date ?? node.endDate)
-    .filter((date): date is string => Boolean(date))
-    .sort()
-  const displayedDateRange =
-    displayedEventDates.length > 0
-      ? {
-          from: displayedEventDates[0],
-          to: displayedEventDates[displayedEventDates.length - 1],
-        }
-      : null
 
   return (
     <div className="graph-page-shell">
@@ -299,79 +168,7 @@ export function GraphPage({ themeName }: { themeName?: string } = {}) {
       </aside>
 
       <section className="graph-main">
-        <article className="graph-filter-card">
-          <GraphFilters
-            filters={graphFilters}
-            genres={genres ?? []}
-            isGenresLoading={isGenresLoading}
-            genresError={genresError}
-            displayedDateRange={displayedDateRange}
-            onChange={handleGraphFiltersChange}
-          />
-        </article>
-
-        <div ref={containerRef} className="graph-canvas graph-canvas--large">
-          {isLoading && !data && <div className="graph-canvas-status">Loading graph...</div>}
-          {error && (
-            <div className="graph-canvas-status error">
-              {error} <button onClick={refetch}>retry</button>
-            </div>
-          )}
-          <div className="graph-canvas-counts" aria-label={`${nodeCount} nodes and ${linkCount} links displayed`}>
-            <span>{nodeCount} nodes</span>
-            <span>{linkCount} links</span>
-          </div>
-          <div className="graph-legend" aria-label="Graph entity legend">
-            {NODE_LEGEND_ITEMS.map((item) => (
-              <div className="graph-legend-item" key={item.type}>
-                <span className={`graph-legend-marker graph-legend-marker--${item.type}`} aria-hidden="true" />
-                <span>{item.label}</span>
-              </div>
-            ))}
-          </div>
-          <ForceGraph2D
-            ref={graphRef}
-            width={graphSize.width || undefined}
-            height={graphSize.height || undefined}
-            graphData={graphData}
-            nodeCanvasObject={(node: any, ctx: CanvasRenderingContext2D) => {
-              drawNodeShape(ctx, node.x, node.y, 5, node.type, selectedNode?.id === node.id)
-            }}
-            nodeColor={() => 'transparent'}
-            nodeRelSize={3}
-            nodeVal={(n: any) => (selectedNode?.id === n.id ? 3 : 1)}
-            nodeLabel={(n: any) => n.name ?? n.label ?? n.id}
-            linkWidth={(l: any) => {
-              const source = typeof l.source === 'object' ? l.source.id : l.source
-              const target = typeof l.target === 'object' ? l.target.id : l.target
-              if (connectedNodes.has(source) && connectedNodes.has(target)) {
-                return Math.sqrt(l.value ?? l.weight ?? 1) * 2
-              }
-              return Math.sqrt(l.value ?? l.weight ?? 1)
-            }}
-            linkColor={(l: any) => {
-              const source = typeof l.source === 'object' ? l.source.id : l.source
-              const target = typeof l.target === 'object' ? l.target.id : l.target
-              if (connectedNodes.has(source) && connectedNodes.has(target)) {
-                return hexToRgba(linkHighlight, 0.8)
-              }
-              return hexToRgba(linkDim, 0.6)
-            }}
-            enableNodeDrag
-            onNodeDrag={(node: any) => {
-              node.fx = node.x
-              node.fy = node.y
-            }}
-            onNodeDragEnd={(node: any) => {
-              node.fx = null
-              node.fy = null
-            }}
-            onNodeClick={handleNodeClick}
-            backgroundColor={graphBackground}
-            warmupTicks={120}
-            cooldownTicks={180}
-          />
-        </div>
+        <ScenegraphMapPanel themeName={themeName} />
       </section>
     </div>
   )
