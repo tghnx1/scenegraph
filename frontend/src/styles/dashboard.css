@@ -12,7 +12,7 @@
 .graph-panel-actions button {
   border: 1px solid var(--artist-border);
   background: var(--artist-soft);
-  color: var(--nord-text);
+  color: var(--text);
   border-radius: 6px;
   padding: 8px 12px;
   font: inherit;
@@ -32,11 +32,10 @@
   min-height: 100%;
   display: grid;
   grid-template-columns: minmax(280px, 0.95fr) minmax(320px, 1.02fr) minmax(300px, 1.04fr);
-  grid-template-rows: repeat(3, minmax(380px, var(--profile-panel-height)));
+  grid-template-rows: repeat(2, minmax(380px, var(--profile-panel-height)));
   grid-template-areas:
-    "profile context recommendations"
-    "stats graph communications"
-    "empty . .";
+    "profile context graph"
+    "stats recommendations communications";
   gap: 12px;
 }
 
@@ -58,7 +57,7 @@
 
 .profile-card p {
   margin: 10px 0 0;
-  color: var(--nord-text-muted);
+  color: var(--text-muted);
 }
 
 .profile-summary-panel {
@@ -96,11 +95,6 @@
   grid-area: communications;
 }
 
-.empty-panel {
-  grid-area: empty;
-  min-height: var(--profile-panel-height);
-}
-
 .side-panel {
   background: var(--event-soft);
   border-color: var(--event-border);
@@ -114,7 +108,7 @@
 }
 
 .panel-status {
-  color: var(--nord-text-muted);
+  color: var(--text-muted);
   font-size: 0.86rem;
   font-weight: 700;
 }
@@ -124,7 +118,7 @@
   display: grid;
   gap: 8px;
   margin-top: 18px;
-  color: var(--nord-text-muted);
+  color: var(--text-muted);
 }
 
 .profile-fields span,
@@ -155,7 +149,7 @@
 }
 
 .stat-tile span {
-  color: var(--nord-text-muted);
+  color: var(--text-muted);
   font-size: 0.84rem;
 }
 
@@ -200,12 +194,12 @@
   min-height: 160px;
   border-radius: 8px;
   background:
-    radial-gradient(circle at 20% 30%, var(--nord-artist) 0 5px, transparent 6px),
-    radial-gradient(circle at 44% 42%, var(--nord-event) 0 5px, transparent 6px),
-    radial-gradient(circle at 68% 34%, var(--nord-venue) 0 5px, transparent 6px),
+    radial-gradient(circle at 20% 30%, var(--artist) 0 5px, transparent 6px),
+    radial-gradient(circle at 44% 42%, var(--event) 0 5px, transparent 6px),
+    radial-gradient(circle at 68% 34%, var(--venue) 0 5px, transparent 6px),
     linear-gradient(28deg, transparent 0 38%, var(--graph-line) 38% 39%, transparent 39%),
     linear-gradient(152deg, transparent 0 45%, var(--graph-line-soft) 45% 46%, transparent 46%),
-    var(--nord-gradient-2);
+    var(--gradient-2);
   border: 1px solid var(--control-border-subtle);
 }
 
@@ -230,7 +224,7 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  color: var(--nord-text-muted);
+  color: var(--text-muted);
   font-size: 0.84rem;
 }
 
@@ -239,19 +233,19 @@
   width: 9px;
   height: 9px;
   border-radius: 50%;
-  background: var(--nord-text-muted);
+  background: var(--text-muted);
 }
 
 .legend-dot.artist::before {
-  background: var(--nord-artist);
+  background: var(--artist);
 }
 
 .legend-dot.venue::before {
-  background: var(--nord-venue);
+  background: var(--venue);
 }
 
 .legend-dot.event::before {
-  background: var(--nord-event);
+  background: var(--event);
 }
 
 .dashboard-page {
@@ -281,7 +275,7 @@
 .dashboard-header p {
   max-width: 76ch;
   margin: 10px 0 0;
-  color: var(--nord-text-muted);
+  color: var(--text-muted);
 }
 
 .dashboard-header-actions {
@@ -295,7 +289,7 @@
 .dashboard-panel button {
   border: 1px solid var(--promoter-border);
   background: var(--promoter-soft);
-  color: var(--nord-text);
+  color: var(--text);
   border-radius: 6px;
   padding: 8px 12px;
   font: inherit;
@@ -340,7 +334,7 @@
 .dashboard-stat-card small,
 .dashboard-table-row span,
 .graph-health-grid span {
-  color: var(--nord-text-muted);
+  color: var(--text-muted);
 }
 
 .dashboard-stat-card strong {
@@ -446,10 +440,10 @@
   margin-top: 14px;
   border-radius: 8px;
   background:
-    radial-gradient(circle at 18% 35%, var(--nord-artist) 0 5px, transparent 6px),
-    radial-gradient(circle at 39% 24%, var(--nord-event) 0 5px, transparent 6px),
-    radial-gradient(circle at 60% 48%, var(--nord-venue) 0 5px, transparent 6px),
-    radial-gradient(circle at 78% 32%, var(--nord-promoter) 0 5px, transparent 6px),
+    radial-gradient(circle at 18% 35%, var(--artist) 0 5px, transparent 6px),
+    radial-gradient(circle at 39% 24%, var(--event) 0 5px, transparent 6px),
+    radial-gradient(circle at 60% 48%, var(--venue) 0 5px, transparent 6px),
+    radial-gradient(circle at 78% 32%, var(--promoter) 0 5px, transparent 6px),
     linear-gradient(22deg, transparent 0 34%, var(--graph-line-mid) 34% 35%, transparent 35%),
     linear-gradient(135deg, transparent 0 47%, var(--selection-soft) 47% 48%, transparent 48%),
     var(--surface-input);

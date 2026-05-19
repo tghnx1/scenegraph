@@ -133,33 +133,6 @@ export function ProfilePage() {
           />
         </article>
 
-        <article className="profile-card side-panel recommendations-panel">
-          <div className="panel-heading">
-            <span className="search-query-label">Recommendations</span>
-            {/* <span className="panel-status">Draft</span> */}
-          </div>
-          <div className="placeholder-list">
-            <span>Recommended names</span>
-            <span>A list of names/connections.</span>
-          </div>
-        </article>
-
-        <article className="profile-card stats-panel">
-          <div className="panel-heading">
-            <span className="search-query-label">Statistics</span>
-            {/* <span className="panel-status">Overview</span> */}
-          </div>
-          <div className="stat-grid">
-            {stats.map((item) => (
-              <div key={item.label} className="stat-tile">
-                <strong>{item.value}</strong>
-                <span>{item.label}</span>
-              </div>
-            ))}
-          </div>
-          <div className="chart-placeholder" aria-label="Chart placeholder" />
-        </article>
-
         <section className="graph-workspace" aria-label="Profile graph workspace">
           <article className="profile-card graph-panel">
             <SearchQueryForm
@@ -195,6 +168,33 @@ export function ProfilePage() {
           </article>
         </section>
 
+        <article className="profile-card stats-panel">
+          <div className="panel-heading">
+            <span className="search-query-label">Statistics</span>
+            {/* <span className="panel-status">Overview</span> */}
+          </div>
+          <div className="stat-grid">
+            {stats.map((item) => (
+              <div key={item.label} className="stat-tile">
+                <strong>{item.value}</strong>
+                <span>{item.label}</span>
+              </div>
+            ))}
+          </div>
+          <div className="chart-placeholder" aria-label="Chart placeholder" />
+        </article>
+
+        <article className="profile-card side-panel recommendations-panel">
+          <div className="panel-heading">
+            <span className="search-query-label">Recommendations</span>
+            {/* <span className="panel-status">Draft</span> */}
+          </div>
+          <div className="placeholder-list">
+            <span>Recommended names</span>
+            <span>A list of names/connections.</span>
+          </div>
+        </article>
+
         <article className="profile-card side-panel communications-panel">
           <div className="panel-heading">
             <span className="search-query-label">Communications</span>
@@ -205,8 +205,6 @@ export function ProfilePage() {
             <span>Open a chat</span>
           </div>
         </article>
-
-        <article className="profile-card empty-panel" aria-label="Empty profile panel" />
       </section>
     </div>
   )

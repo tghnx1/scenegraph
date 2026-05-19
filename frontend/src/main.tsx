@@ -5,8 +5,8 @@ import App from './App.tsx'
 import './styles/base.css' //tokens, global reset, typography
 import './styles/graph.css' //graph page layout, graph canvas, filter controls
 import './styles/dashboard.css' //dashboard and profile page shells and panels
-import './styles/search-results.css' //search input, result cards, detail panel pieces
-import './styles/responsive.css' //mobile overrides
+import './styles/search.css' //search input, result cards, detail panel pieces
+import './styles/mobile.css' //mobile overrides
 import { applyCssVars } from './styles/colors'
 
 //apply ts defined palette to css vars before app mounts

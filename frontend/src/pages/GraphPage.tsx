@@ -249,9 +249,9 @@ export function GraphPage({ themeName }: { themeName?: string } = {}) {
   const isDetailsSearchLoading = isSelectedResultLoading || isSearchLoading
   const hasActiveSearchState = Boolean(searchValue || submittedQuery || selectedNode)
   const graphData = data || { nodes: [], links: [] }
-  const graphBackground = getCssVar('--nord-background') || (themeName === 'dark' ? '#2d353b' : BACKGROUND)
-  const linkHighlight = getCssVar('--nord-link-highlight') || LINK_HIGHLIGHT
-  const linkDim = getCssVar('--nord-link-dim') || LINK_DIM
+  const graphBackground = getCssVar('--background') || (themeName === 'dark' ? '#2d353b' : BACKGROUND)
+  const linkHighlight = getCssVar('--link-highlight') || LINK_HIGHLIGHT
+  const linkDim = getCssVar('--link-dim') || LINK_DIM
   const nodeCount = graphData.nodes.length
   const linkCount = graphData.links.length
   const displayedEventDates = graphData.nodes

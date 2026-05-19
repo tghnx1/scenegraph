@@ -20,7 +20,7 @@ function LegalPage({ section }: { section: string }) {
   return (
     <div style={{ padding: '40px', maxWidth: '800px', margin: '0 auto' }}>
       <h1>{titles[section] || 'Legal'}</h1>
-      <p style={{ color: colorVar('--nord-text-muted'), marginTop: '20px' }}>
+      <p style={{ color: colorVar('--text-muted'), marginTop: '20px' }}>
         This page is a placeholder for {titles[section]?.toLowerCase() || 'legal information'}.
       </p>
     </div>
@@ -44,14 +44,14 @@ const shellStyle: CSSProperties = {
   flexDirection: 'column',
   height: '100dvh',
   minHeight: '100vh',
-  color: colorVar('--nord-text'),
-  background: `radial-gradient(1000px 520px at 12% -10%, ${colorAlpha('--nord-link-highlight', 18)}, transparent 60%), radial-gradient(900px 460px at 95% 0%, ${colorAlpha('--nord-accent-warm', 15)}, transparent 55%), ${colorVar('--nord-background')}`,
+  color: colorVar('--text'),
+  background: `radial-gradient(1000px 520px at 12% -10%, ${colorAlpha('--link-highlight', 18)}, transparent 60%), radial-gradient(900px 460px at 95% 0%, ${colorAlpha('--accent-warm', 15)}, transparent 55%), ${colorVar('--background')}`,
 }
 
 const navStyle: CSSProperties = {
   padding: '12px 20px',
-  borderBottom: `1px solid ${colorAlpha('--nord-text', 18)}`,
-  background: colorAlpha('--nord-background', 55),
+  borderBottom: `1px solid ${colorAlpha('--text', 18)}`,
+  background: colorAlpha('--background', 55),
   backdropFilter: 'blur(6px)',
   display: 'flex',
   alignItems: 'center',
@@ -63,15 +63,15 @@ const footerStyle: CSSProperties = {
   alignItems: 'center',
   justifyContent: 'space-between',
   padding: '14px 20px',
-  borderTop: `1px solid ${colorAlpha('--nord-text', 15)}`,
-  background: colorAlpha('--nord-background', 72),
-  color: colorVar('--nord-text-muted'),
+  borderTop: `1px solid ${colorAlpha('--text', 15)}`,
+  background: colorAlpha('--background', 72),
+  color: colorVar('--text-muted'),
   fontSize: 13,
 }
 
 const linkBaseStyle: CSSProperties = {
   textDecoration: 'none',
-  color: colorVar('--nord-text-muted'),
+  color: colorVar('--text-muted'),
   padding: '6px 10px',
   borderRadius: 8,
   fontSize: 14,
@@ -86,8 +86,8 @@ const navSpacerStyle: CSSProperties = {
 const authButtonStyle: CSSProperties = {
   ...linkBaseStyle,
   cursor: 'pointer',
-  border: `1px solid ${colorAlpha('--nord-text', 18)}`,
-  background: colorAlpha('--nord-text', 6),
+  border: `1px solid ${colorAlpha('--text', 18)}`,
+  background: colorAlpha('--text', 6),
   font: 'inherit',
   fontSize: 14,
 }
@@ -121,9 +121,9 @@ export default function App() {
           href="/graph"
           style={{
             ...linkBaseStyle,
-            background: isGraphActive ? colorAlpha('--nord-link-highlight', 20) : 'transparent',
-            color: isGraphActive ? colorVar('--nord-text') : colorVar('--nord-text-muted'),
-            border: isGraphActive ? `1px solid ${colorAlpha('--nord-link-highlight', 45)}` : '1px solid transparent',
+            background: isGraphActive ? colorAlpha('--link-highlight', 20) : 'transparent',
+            color: isGraphActive ? colorVar('--text') : colorVar('--text-muted'),
+            border: isGraphActive ? `1px solid ${colorAlpha('--link-highlight', 45)}` : '1px solid transparent',
           }}
         >
           Graph
@@ -132,24 +132,24 @@ export default function App() {
           to="/profile"
           style={({ isActive }) => ({
             ...linkBaseStyle,
-            background: isActive ? colorAlpha('--nord-accent-warm', 20) : 'transparent',
-            color: isActive ? colorVar('--nord-text') : colorVar('--nord-text-muted'),
-            border: isActive ? `1px solid ${colorAlpha('--nord-accent-warm', 45)}` : '1px solid transparent',
+            background: isActive ? colorAlpha('--accent-warm', 20) : 'transparent',
+            color: isActive ? colorVar('--text') : colorVar('--text-muted'),
+            border: isActive ? `1px solid ${colorAlpha('--accent-warm', 45)}` : '1px solid transparent',
           })}
         >
           Profile
         </NavLink>
-       {/*  <NavLink
+        <NavLink
           to="/dashboard"
           style={({ isActive }) => ({
             ...linkBaseStyle,
-            background: isActive ? colorAlpha('--nord-accent-warm', 20) : 'transparent',
-            color: isActive ? colorVar('--nord-text') : colorVar('--nord-text-muted'),
-            border: isActive ? `1px solid ${colorAlpha('--nord-accent-warm', 45)}` : '1px solid transparent',
+            background: isActive ? colorAlpha('--accent-warm', 20) : 'transparent',
+            color: isActive ? colorVar('--text') : colorVar('--text-muted'),
+            border: isActive ? `1px solid ${colorAlpha('--accent-warm', 45)}` : '1px solid transparent',
           })}
         >
           Dashboard
-        </NavLink> */}
+        </NavLink>
         <span style={navSpacerStyle} />
         <button type="button" style={authButtonStyle} onClick={handleThemeToggle}>
           {themeName === 'light' ? 'Dark' : 'Light'}
@@ -178,16 +178,16 @@ export default function App() {
       <footer style={footerStyle}>
         <span>© 2026 Scenegraph</span>
         <div style={{ display: 'flex', gap: '16px' }}>
-          <NavLink to="/privacy-policy" style={{ ...linkBaseStyle, color: colorVar('--nord-text-muted'), fontSize: 12, padding: '4px 8px' }}>
+          <NavLink to="/privacy-policy" style={{ ...linkBaseStyle, color: colorVar('--text-muted'), fontSize: 12, padding: '4px 8px' }}>
             Privacy Policy
           </NavLink>
-          <NavLink to="/terms-of-service" style={{ ...linkBaseStyle, color: colorVar('--nord-text-muted'), fontSize: 12, padding: '4px 8px' }}>
+          <NavLink to="/terms-of-service" style={{ ...linkBaseStyle, color: colorVar('--text-muted'), fontSize: 12, padding: '4px 8px' }}>
             Terms
           </NavLink>
-          <NavLink to="/impressum" style={{ ...linkBaseStyle, color: colorVar('--nord-text-muted'), fontSize: 12, padding: '4px 8px' }}>
+          <NavLink to="/impressum" style={{ ...linkBaseStyle, color: colorVar('--text-muted'), fontSize: 12, padding: '4px 8px' }}>
             Impressum
           </NavLink>
-          <NavLink to="/contact" style={{ ...linkBaseStyle, color: colorVar('--nord-text-muted'), fontSize: 12, padding: '4px 8px' }}>
+          <NavLink to="/contact" style={{ ...linkBaseStyle, color: colorVar('--text-muted'), fontSize: 12, padding: '4px 8px' }}>
             Contact
           </NavLink>
         </div>
