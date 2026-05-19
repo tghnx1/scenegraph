@@ -164,7 +164,7 @@ export default function App() {
           <Route path="/" element={<Navigate to="/graph" />} />
           <Route path="/graph" element={<GraphPage themeName={themeName} />} />
           <Route path="/dashboard" element={<DashboardPage />} />
-          <Route path="/profile" element={<ProfilePage />} />
+          <Route path="/profile" element={<ProfilePage themeName={themeName} />} />
           <Route path="/search" element={<SearchRedirect />} />
           <Route path="/artist/:id" element={<ArtistRedirect />} />
           <Route path="/privacy-policy" element={<LegalPage section="privacy" />} />

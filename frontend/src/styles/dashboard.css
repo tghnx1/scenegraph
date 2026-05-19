@@ -31,11 +31,12 @@
 .profile-grid {
   min-height: 100%;
   display: grid;
-  grid-template-columns: minmax(280px, 0.95fr) minmax(320px, 1.02fr) minmax(300px, 1.04fr);
-  grid-template-rows: repeat(2, minmax(380px, var(--profile-panel-height)));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-rows: repeat(3, minmax(380px, var(--profile-panel-height)));
   grid-template-areas:
-    "profile context graph"
-    "stats recommendations communications";
+    "context graph graph"
+    "profile stats recommendations"
+    "communications . .";
   gap: 12px;
 }
 
@@ -169,12 +170,25 @@
 }
 
 .graph-panel {
-  display: grid;
+  display: block;
   height: 100%;
-  grid-template-rows: auto auto minmax(0, 1fr) auto;
-  gap: 12px;
-  background: var(--info-soft);
-  border-color: var(--info-border);
+  padding: 12px;
+  background: var(--surface-panel);
+  border-color: var(--surface-border);
+}
+
+.graph-panel .scenegraph-map-panel {
+  height: 100%;
+}
+
+.graph-panel .graph-filter-card {
+  padding: 12px;
+  border-radius: 8px;
+  box-shadow: none;
+}
+
+.graph-panel .graph-canvas--large {
+  border-radius: 8px;
 }
 
 .graph-panel .search-query-form {

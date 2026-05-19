@@ -1,8 +1,8 @@
 :root {
   /* css vars mapped to the centralized palette, fallback */
   --artist: #df69ba;
-  --venue: #3A94C5;
-  --promoter: #35a77c;
+  --venue: #35a77c;
+  --promoter: #3A94C5;
   --event: #f85552;
   --selection: #dfa000;
   --link-highlight: #dfa000;

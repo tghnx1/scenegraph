@@ -51,9 +51,9 @@
     grid-template-columns: 1fr;
     grid-template-rows: repeat(6, minmax(360px, var(--profile-panel-height)));
     grid-template-areas:
-      "profile"
       "context"
       "graph"
+      "profile"
       "stats"
       "recommendations"
       "communications";

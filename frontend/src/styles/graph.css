@@ -43,8 +43,23 @@
   min-width: 0;
   min-height: 0;
   display: grid;
+}
+
+.scenegraph-map-panel {
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  display: grid;
   grid-template-rows: auto minmax(0, 1fr);
   gap: 12px;
+}
+
+.scenegraph-map-panel.has-heading {
+  grid-template-rows: auto auto minmax(0, 1fr);
+}
+
+.scenegraph-map-heading {
+  min-width: 0;
 }
 
 .graph-filter-card {
