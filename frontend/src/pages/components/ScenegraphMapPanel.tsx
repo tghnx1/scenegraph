@@ -1,16 +1,16 @@
 import ForceGraph2D from 'react-force-graph-2d'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { fetchEgoGraph, fetchGraph, type GraphParams } from '../../api/graph.ts'
-import { fetchGenres } from '../../api/genres.ts'
-import { useApi } from '../../hooks/useApi.ts'
-import { useGraphStore } from '../../store/graphStore.ts'
-import { BACKGROUND, LINK_DIM, LINK_HIGHLIGHT, getCssVar, hexToRgba } from '../../styles/colors.ts'
-import type { GraphData, GraphNode, NodeType } from '../../types/graph.ts'
-import type { SearchEntityType } from '../../types/search.ts'
-import { drawNodeShape } from '../hooks/drawNode.ts'
-import { useGraphHighlights } from '../hooks/useGraphHighlights.ts'
-import { useGraphPhysics } from '../hooks/useGraphPhysics.ts'
+import { fetchEgoGraph, fetchGraph, type GraphParams } from '../../api/graph'
+import { fetchGenres } from '../../api/genres'
+import { useApi } from '../../hooks/useApi'
+import { useGraphStore } from '../../store/graphStore'
+import { getCssVar, hexToRgba } from '../../styles/colors'
+import type { GraphData, GraphNode, NodeType } from '../../types/graph'
+import type { SearchEntityType } from '../../types/search'
+import { drawNodeShape } from '../hooks/drawNode'
+import { useGraphHighlights } from '../hooks/useGraphHighlights'
+import { useGraphPhysics } from '../hooks/useGraphPhysics'
 import { GraphFilters } from './GraphFilters.tsx'
 
 const MIN_GRAPH_HEIGHT = 320
@@ -36,10 +36,9 @@ function getLinkNodeId(endpoint: LinkEndpoint) {
 
 interface ScenegraphMapPanelProps {
   title?: string
-  themeName?: string
 }
 
-export function ScenegraphMapPanel({ title, themeName }: ScenegraphMapPanelProps) {
+export function ScenegraphMapPanel({ title }: ScenegraphMapPanelProps) {
   const graphRef = useRef<any>(null)
   const containerRef = useRef<HTMLDivElement | null>(null)
   const [graphSize, setGraphSize] = useState({ width: 0, height: 0 })
@@ -169,9 +168,9 @@ export function ScenegraphMapPanel({ title, themeName }: ScenegraphMapPanelProps
     })
   }, [])
 
-  const graphBackground = getCssVar('--background') || (themeName === 'dark' ? '#2d353b' : BACKGROUND)
-  const linkHighlight = getCssVar('--link-highlight') || LINK_HIGHLIGHT
-  const linkDim = getCssVar('--link-dim') || LINK_DIM
+  const graphBackground = getCssVar('--background')
+  const linkHighlight = getCssVar('--link-highlight')
+  const linkDim = getCssVar('--link-dim')
   const nodeCount = graphData.nodes.length
   const linkCount = graphData.links.length
   const displayedEventDates = graphData.nodes

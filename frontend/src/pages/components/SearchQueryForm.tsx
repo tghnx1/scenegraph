@@ -1,8 +1,9 @@
 import { useEffect, useState, type FormEvent, type KeyboardEvent } from 'react'
-import type { SearchResult } from '../../types/search.ts'
+import type { SearchResult } from '../../types/search'
 
 interface SearchQueryFormProps {
   inputId: string
+  label?: string
   value: string
   onChange: (value: string) => void
   onSubmit: (event: FormEvent<HTMLFormElement>) => void
@@ -28,6 +29,7 @@ function getResultMeta(result: SearchResult) {
 
 export function SearchQueryForm({
   inputId,
+  label = 'Search Database',
   value,
   onChange,
   onSubmit,
@@ -99,7 +101,7 @@ export function SearchQueryForm({
   return (
     <form className="search-query-form" onSubmit={handleSubmit}>
       <label className="search-query-label" htmlFor={inputId}>
-        Scenegraph Database
+        {label}
       </label>
       <div className="search-query-box">
         <input

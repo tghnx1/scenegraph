@@ -1,5 +1,5 @@
 :root {
-  /* css vars mapped to the centralized palette, fallback */
+  /* Theme tokens */
   --artist: #df69ba;
   --venue: #35a77c;
   --promoter: #3A94C5;

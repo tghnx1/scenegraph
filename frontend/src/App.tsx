@@ -162,9 +162,9 @@ export default function App() {
       <main style={{ flex: 1, overflowX: 'hidden', overflowY: 'auto' }}>
         <Routes>
           <Route path="/" element={<Navigate to="/graph" />} />
-          <Route path="/graph" element={<GraphPage themeName={themeName} />} />
+          <Route path="/graph" element={<GraphPage />} />
           <Route path="/dashboard" element={<DashboardPage />} />
-          <Route path="/profile" element={<ProfilePage themeName={themeName} />} />
+          <Route path="/profile" element={<ProfilePage />} />
           <Route path="/search" element={<SearchRedirect />} />
           <Route path="/artist/:id" element={<ArtistRedirect />} />
           <Route path="/privacy-policy" element={<LegalPage section="privacy" />} />

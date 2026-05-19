@@ -8,13 +8,13 @@ import type {
   SearchEventSummary,
 } from '../../types/search'
 
-function getMockArtist(artistId: string, fallbackLabel: string) {
+function getMockArtist(artistId: string, defaultLabel: string) {
   const artist = MOCK_ARTISTS[artistId]
 
   if (!artist) {
     return {
       id: artistId,
-      name: fallbackLabel,
+      name: defaultLabel,
       genres: [],
       bio: '',
       eventCount: 0,

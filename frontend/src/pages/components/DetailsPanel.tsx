@@ -1,7 +1,7 @@
 import { SearchResultCard } from './SearchResultCard.tsx'
-import type { Artist, SimilarArtist } from '../../types/artist.ts'
-import type { GraphNode } from '../../types/graph.ts'
-import type { SearchArtistResult, SearchResult } from '../../types/search.ts'
+import type { Artist, SimilarArtist } from '../../types/artist'
+import type { GraphNode } from '../../types/graph'
+import type { SearchArtistResult, SearchResult } from '../../types/search'
 
 interface GraphSidebarDetailsProps {
   searchQuery: string

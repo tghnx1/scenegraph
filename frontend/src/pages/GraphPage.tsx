@@ -1,19 +1,19 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { useApi } from '../hooks/useApi.ts'
-import { fetchEntityDetail } from '../api/entityDetails.ts'
-import { fetchArtist, fetchSimilarArtists } from '../api/artists.ts'
-import { fetchSearch } from '../api/search.ts'
-import { useGraphStore } from '../store/graphStore.ts'
-import type { Artist, SimilarArtist } from '../types/artist.ts'
-import type { NodeType } from '../types/graph.ts'
-import type { SearchResponse, SearchResult } from '../types/search.ts'
-import { useDebouncedValue } from './hooks/useDebouncedValue.ts'
+import { useApi } from '../hooks/useApi'
+import { fetchEntityDetail } from '../api/entityDetails'
+import { fetchArtist, fetchSimilarArtists } from '../api/artists'
+import { fetchSearch } from '../api/search'
+import { useGraphStore } from '../store/graphStore'
+import type { Artist, SimilarArtist } from '../types/artist'
+import type { NodeType } from '../types/graph'
+import type { SearchResponse, SearchResult } from '../types/search'
+import { useDebouncedValue } from './hooks/useDebouncedValue'
 import { GraphSidebarDetails } from './components/DetailsPanel.tsx'
 import { ScenegraphMapPanel } from './components/ScenegraphMapPanel.tsx'
 import { SearchQueryForm } from './components/SearchQueryForm.tsx'
 
-export function GraphPage({ themeName }: { themeName?: string } = {}) {
+export function GraphPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const { setSelected, selectedNode } = useGraphStore()
   const submittedQuery = searchParams.get('q') ?? ''
@@ -158,7 +158,7 @@ export function GraphPage({ themeName }: { themeName?: string } = {}) {
       </aside>
 
       <section className="graph-main">
-        <ScenegraphMapPanel themeName={themeName} />
+        <ScenegraphMapPanel />
       </section>
     </div>
   )
