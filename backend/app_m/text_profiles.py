@@ -7,6 +7,8 @@ from typing import Any
 
 from psycopg import Connection
 
+from app.style_tags import extract_style_tags
+
 
 MAX_EVENT_CONTEXTS = 12
 MAX_RECURRING_NAMES = 12
@@ -122,16 +124,26 @@ def compose_artist_text_profile(
     event_contexts: Iterable[dict[str, Any]] = (),
     venue_names: Iterable[Any] = (),
     promoter_names: Iterable[Any] = (),
+    extracted_tags: dict[str, list[str]] | None = None,
 ) -> str:
     _ = (event_contexts, venue_names, promoter_names)
+    extracted_tags = extracted_tags or {}
+    biography = artist.get("biography_normalized") or normalize_biography_text(
+        artist.get("biography", "")
+    )
+    style_tags = sorted(set(extract_style_tags(biography)) | set(extracted_tags.get("style", [])))
 
     return join_sections(
         [
             format_section("Artist name", artist.get("name", "")),
+            format_section("Styles", style_tags),
+            format_section("Labels", extracted_tags.get("label", [])),
+            format_section("Collectives", extracted_tags.get("collective", [])),
+            format_section("Roles", extracted_tags.get("role", [])),
+            format_section("Residencies", extracted_tags.get("residency", [])),
             format_section(
                 "Biography",
-                artist.get("biography_normalized")
-                or normalize_biography_text(artist.get("biography", "")),
+                biography,
                 MAX_ARTIST_BIOGRAPHY_CHARS,
             ),
         ]
@@ -261,9 +273,29 @@ def build_artist_text_profile(connection: Connection, artist_id: int) -> str:
         )
         promoter_names = [row["name"] for row in cursor.fetchall()]
 
+        cursor.execute("SELECT to_regclass('public.artist_extracted_tags') AS table_name")
+        has_extracted_tags = cursor.fetchone()["table_name"] is not None
+        extracted_tags: dict[str, list[str]] = {}
+        if has_extracted_tags:
+            cursor.execute(
+                """
+                SELECT tag_type, tag_value
+                FROM artist_extracted_tags
+                WHERE artist_id = %s
+                  AND confidence >= 0.6
+                ORDER BY tag_type ASC, tag_value ASC
+                """,
+                (artist_id,),
+            )
+            for row in cursor.fetchall():
+                values = extracted_tags.setdefault(row["tag_type"], [])
+                if row["tag_value"] not in values:
+                    values.append(row["tag_value"])
+
     return compose_artist_text_profile(
         artist,
         event_contexts=event_contexts,
         venue_names=venue_names,
         promoter_names=promoter_names,
+        extracted_tags=extracted_tags,
     )

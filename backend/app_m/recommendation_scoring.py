@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from typing import Literal
 
@@ -27,6 +28,20 @@ class RecommendationScoringConfig:
     artist_graph_weights: tuple[GraphFeatureWeight, ...]
 
 
+@dataclass(frozen=True)
+class SemanticArtistScoringConfig:
+    embedding_weight: float
+    style_weight: float
+    tag_weight: float
+
+
+DEFAULT_SEMANTIC_ARTIST_SCORING = SemanticArtistScoringConfig(
+    embedding_weight=0.65,
+    style_weight=0.25,
+    tag_weight=0.10,
+)
+
+
 DEFAULT_RECOMMENDATION_SCORING = RecommendationScoringConfig(
     semantic_weight=0.65,
     graph_weight=0.35,
@@ -44,6 +59,63 @@ DEFAULT_RECOMMENDATION_SCORING = RecommendationScoringConfig(
         GraphFeatureWeight("shared genres", "genres", 0.15, cap=3),
     ),
 )
+
+
+def normalized_weights(values: tuple[float, ...]) -> tuple[float, ...]:
+    if any(value < 0 for value in values):
+        raise ValueError("Scoring weights must be non-negative")
+
+    total = sum(values)
+    if total <= 0:
+        raise ValueError("At least one scoring weight must be greater than zero")
+
+    return tuple(value / total for value in values)
+
+
+def env_float(name: str, default: float) -> float:
+    raw = os.environ.get(name)
+    if raw is None or not raw.strip():
+        return default
+    return float(raw)
+
+
+def semantic_artist_scoring_from_env() -> SemanticArtistScoringConfig:
+    weights = normalized_weights(
+        (
+            env_float(
+                "SEMANTIC_ARTIST_EMBEDDING_WEIGHT",
+                DEFAULT_SEMANTIC_ARTIST_SCORING.embedding_weight,
+            ),
+            env_float(
+                "SEMANTIC_ARTIST_STYLE_WEIGHT",
+                DEFAULT_SEMANTIC_ARTIST_SCORING.style_weight,
+            ),
+            env_float(
+                "SEMANTIC_ARTIST_TAG_WEIGHT",
+                DEFAULT_SEMANTIC_ARTIST_SCORING.tag_weight,
+            ),
+        )
+    )
+
+    return SemanticArtistScoringConfig(
+        embedding_weight=weights[0],
+        style_weight=weights[1],
+        tag_weight=weights[2],
+    )
+
+
+def semantic_artist_score(
+    embedding_score: float,
+    style_score: float,
+    tag_score: float,
+    config: SemanticArtistScoringConfig | None = None,
+) -> float:
+    config = config or DEFAULT_SEMANTIC_ARTIST_SCORING
+    return (
+        config.embedding_weight * embedding_score
+        + config.style_weight * style_score
+        + config.tag_weight * tag_score
+    )
 
 
 def capped_overlap_score(left: set[int], right: set[int], cap: int) -> float:
