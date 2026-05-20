@@ -298,6 +298,7 @@ def recommendation_item_metadata(
         query = """
             SELECT
                 e.id,
+                e.ra_event_id,
                 e.title AS name,
                 e.event_date::date AS date,
                 v.name AS venue_name,
@@ -324,6 +325,7 @@ def recommendation_item_metadata(
         query = """
             SELECT
                 id,
+                NULL::text AS ra_event_id,
                 name,
                 NULL::date AS date,
                 NULL::text AS venue_name,
@@ -2461,6 +2463,18 @@ def rerank_similar_entities(
     source_features = features.get(entity_id)
     if not source_features:
         return ranked[:limit]
+    interested_counts: dict[int, int] = {}
+    if entity_type == "event":
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id, COALESCE(interested_count, 0)::int AS interested_count
+                FROM events
+                WHERE id = ANY(%s)
+                """,
+                ([entity_id, *candidate_ids],),
+            )
+            interested_counts = {int(row["id"]): int(row["interested_count"]) for row in cursor.fetchall()}
 
     rescored = []
     for item in ranked:
@@ -2488,6 +2502,39 @@ def rerank_similar_entities(
             graph_score,
             scoring_config,
         )
+        event_rerank_adjustments: dict[str, float] = {}
+        if entity_type == "event":
+            extracted_overlap = len(source_features.get("extracted_styles", set()) & candidate_features.get("extracted_styles", set()))
+            artist_overlap = len(source_features.get("artists", set()) & candidate_features.get("artists", set()))
+            if graph_score < scoring_config.event_rerank_min_graph_for_neutral:
+                event_rerank_adjustments["lowGraphPenalty"] = -scoring_config.event_rerank_low_graph_penalty
+            if extracted_overlap >= scoring_config.event_rerank_extracted_genres_bonus_threshold:
+                event_rerank_adjustments["extractedGenresBonus"] = scoring_config.event_rerank_extracted_genres_bonus
+            if artist_overlap > 0:
+                event_rerank_adjustments["sharedArtistsBonus"] = scoring_config.event_rerank_shared_artists_bonus
+            source_interested_count = interested_counts.get(entity_id, 0)
+            candidate_interested_count = interested_counts.get(item["entity_id"], 0)
+            interested_relative_diff = None
+            if source_interested_count > 0 and candidate_interested_count > 0:
+                interested_relative_diff = (
+                    abs(source_interested_count - candidate_interested_count)
+                    / max(source_interested_count, candidate_interested_count)
+                )
+                if (
+                    interested_relative_diff
+                    <= scoring_config.event_rerank_interested_match_relative_diff_max
+                ):
+                    event_rerank_adjustments["interestedCountMatchBonus"] = (
+                        scoring_config.event_rerank_interested_count_match_bonus
+                    )
+                elif (
+                    interested_relative_diff
+                    >= scoring_config.event_rerank_interested_mismatch_relative_diff_min
+                ):
+                    event_rerank_adjustments["interestedCountMismatchPenalty"] = (
+                        -scoring_config.event_rerank_interested_count_mismatch_penalty
+                    )
+            final_score += sum(event_rerank_adjustments.values())
         rescored.append(
             {
                 **item,
@@ -2495,6 +2542,10 @@ def rerank_similar_entities(
                 "semantic_score": semantic_score,
                 "graph_score": graph_score,
                 "reasons": reasons or ["semantic similarity"],
+                "rerank_adjustments": event_rerank_adjustments if entity_type == "event" else {},
+                "source_interested_count": interested_counts.get(entity_id) if entity_type == "event" else None,
+                "candidate_interested_count": interested_counts.get(item["entity_id"]) if entity_type == "event" else None,
+                "interested_count_relative_diff": interested_relative_diff if entity_type == "event" else None,
             }
         )
 
@@ -2550,6 +2601,7 @@ def build_similarity_response(
     )
     candidate_ids = [item["entity_id"] for item in reranked if item["entity_id"] in metadata]
     feature_sets = recommendation_feature_sets(connection, entity_type, [entity_id, *candidate_ids])
+    source_metadata = recommendation_item_metadata(connection, entity_type, [entity_id]).get(entity_id, {})
     source_features = feature_sets.get(entity_id, {})
     source_promoters = source_features.get("promoters", set())
     similar: list[SimilarityItem] = []
@@ -2570,6 +2622,15 @@ def build_similarity_response(
             "semantic": scoring_config.semantic_weight * item["semantic_score"],
             "graph": scoring_config.graph_weight * item["graph_score"],
         }
+        dominant_signal: Literal["semantic", "graph", "mixed"]
+        semantic_contribution = score_breakdown["semantic"]
+        graph_contribution = score_breakdown["graph"]
+        if semantic_contribution > graph_contribution * 1.15:
+            dominant_signal = "semantic"
+        elif graph_contribution > semantic_contribution * 1.15:
+            dominant_signal = "graph"
+        else:
+            dominant_signal = "mixed"
         graph_components = similarity_graph_debug_components(
             entity_type=entity_type,
             source_features=source_features,
@@ -2596,14 +2657,26 @@ def build_similarity_response(
                 promoterId=metadata[candidate_id]["promoter_id"],
                 promoterName=metadata[candidate_id]["promoter_name"],
                 debug={
+                    "raEventId": metadata[candidate_id].get("ra_event_id") if entity_type == "event" else None,
+                    "sourceRaEventId": source_metadata.get("ra_event_id") if entity_type == "event" else None,
                     "rawSignals": {
                         "semanticScore": item["semantic_score"],
                         "graphScore": item["graph_score"],
                     },
                     "graphComponents": graph_components,
                     "sharedExtractedGenres": shared_extracted_styles if entity_type == "event" else None,
+                    "sourceInterestedCount": item.get("source_interested_count") if entity_type == "event" else None,
+                    "candidateInterestedCount": item.get("candidate_interested_count")
+                    if entity_type == "event"
+                    else None,
+                    "interestedCountRelativeDiff": item.get("interested_count_relative_diff")
+                    if entity_type == "event"
+                    else None,
+                    "dominantSignal": dominant_signal,
+                    "rerankAdjustments": item.get("rerank_adjustments") if entity_type == "event" else None,
                     "weightedScores": {
                         **score_breakdown,
+                        "adjustments": sum((item.get("rerank_adjustments") or {}).values()),
                         "total": item["score"],
                     },
                 }

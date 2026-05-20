@@ -233,13 +233,20 @@ def test_event_similarity_endpoint_debug_includes_detailed_scores():
     first = data["similar"][0]
     assert "debug" in first
     assert set(first["debug"]) == {
+        "raEventId",
+        "sourceRaEventId",
         "rawSignals",
         "graphComponents",
         "sharedExtractedGenres",
+        "sourceInterestedCount",
+        "candidateInterestedCount",
+        "interestedCountRelativeDiff",
+        "dominantSignal",
+        "rerankAdjustments",
         "weightedScores",
     }
     assert set(first["debug"]["rawSignals"]) == {"semanticScore", "graphScore"}
-    assert set(first["debug"]["weightedScores"]) == {"semantic", "graph", "total"}
+    assert set(first["debug"]["weightedScores"]) == {"semantic", "graph", "adjustments", "total"}
     assert {"artists", "promoters", "venues", "abstract_genres", "extracted_genres"} <= set(
         first["debug"]["graphComponents"].keys()
     )
