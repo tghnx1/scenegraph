@@ -138,6 +138,31 @@ class ArtistRecommendationResponse(BaseModel):
     recommendations: list[ArtistRecommendationItem]
 
 
+class PromoterRecommendationItem(BaseModel):
+    id: int
+    type: Literal["promoter"] = "promoter"
+    name: str
+    score: float
+    semanticScore: float
+    strengthScore: float
+    activityScore: float
+    recencyScore: float
+    scoreBreakdown: dict[str, float] = Field(default_factory=dict)
+    reasons: list[str] = Field(default_factory=list)
+    matchedArtistCount: int
+    eventCount: int
+    latestEventDate: DateValue | None = None
+
+
+class PromoterRecommendationResponse(BaseModel):
+    entityId: int
+    entityType: Literal["artist"] = "artist"
+    model: str
+    dimensions: int
+    recommendations: list[PromoterRecommendationItem]
+    graph: GraphResponse
+
+
 class ArtistTagItem(BaseModel):
     type: Literal["style", "label", "collective", "role", "residency", "alias"]
     value: str
@@ -571,6 +596,283 @@ def build_artist_recommendation_response(
             recommendations,
             key=lambda recommendation: (-recommendation.score, recommendation.id),
         )[:limit],
+    )
+
+
+def date_recency_score(value: DateValue | datetime | None) -> float:
+    if value is None:
+        return 0.0
+    event_date = value.date() if isinstance(value, datetime) else value
+    age_days = max((DateValue.today() - event_date).days, 0)
+    return max(0.0, 1.0 - age_days / 365)
+
+
+def promoter_recommendation_reasons(row: dict) -> list[str]:
+    reasons = [
+        f"{row['matched_artist_count']} similar artists connected",
+        f"{row['event_count']} related promoter events",
+    ]
+    if row["latest_event_date"] is not None:
+        reasons.append(f"latest related event on {row['latest_event_date']}")
+    return reasons
+
+
+def promoter_recommendation_graph(
+    *,
+    source_artist_id: int,
+    source_artist_name: str,
+    recommendations: list[PromoterRecommendationItem],
+    evidence_rows: list[dict],
+) -> GraphResponse:
+    nodes: dict[str, GraphNode] = {
+        graph_node_id("artist", source_artist_id): GraphNode(
+            id=graph_node_id("artist", source_artist_id),
+            entityId=source_artist_id,
+            type="artist",
+            name=source_artist_name,
+        )
+    }
+    links: list[GraphLink] = []
+    seen_links: set[tuple[str, str, str]] = set()
+
+    for recommendation in recommendations:
+        promoter_node_id = graph_node_id("promoter", recommendation.id)
+        nodes[promoter_node_id] = GraphNode(
+            id=promoter_node_id,
+            entityId=recommendation.id,
+            type="promoter",
+            name=recommendation.name,
+            eventCount=recommendation.eventCount,
+        )
+
+    def add_link(source: str, target: str, relationship: str, weight: int = 1) -> None:
+        key = (source, target, relationship)
+        if key in seen_links:
+            return
+        seen_links.add(key)
+        links.append(GraphLink(source=source, target=target, relationship=relationship, weight=weight))
+
+    for row in evidence_rows:
+        promoter_node_id = graph_node_id("promoter", row["promoter_id"])
+        artist_node_id = graph_node_id("artist", row["artist_id"])
+        event_node_id = graph_node_id("event", row["event_id"])
+
+        nodes[artist_node_id] = GraphNode(
+            id=artist_node_id,
+            entityId=row["artist_id"],
+            type="artist",
+            name=row["artist_name"],
+        )
+        nodes[event_node_id] = GraphNode(
+            id=event_node_id,
+            entityId=row["event_id"],
+            type="event",
+            name=row["event_title"],
+            date=row["event_date"],
+        )
+
+        add_link(
+            graph_node_id("artist", source_artist_id),
+            artist_node_id,
+            "semantic match",
+            max(1, round(row["semantic_score"] * 10)),
+        )
+        add_link(artist_node_id, event_node_id, "played")
+        add_link(promoter_node_id, event_node_id, "organized")
+
+        if row["venue_id"] is not None:
+            venue_node_id = graph_node_id("venue", row["venue_id"])
+            nodes[venue_node_id] = GraphNode(
+                id=venue_node_id,
+                entityId=row["venue_id"],
+                type="venue",
+                name=row["venue_name"],
+            )
+            add_link(event_node_id, venue_node_id, "at")
+
+    return GraphResponse(nodes=list(nodes.values()), links=links)
+
+
+def promoter_recommendation_evidence(
+    connection: Connection,
+    *,
+    promoter_ids: list[int],
+    semantic_scores: dict[int, float],
+) -> list[dict]:
+    if not promoter_ids:
+        return []
+
+    artist_ids = list(semantic_scores.keys())
+    artist_scores = [semantic_scores[artist_id] for artist_id in artist_ids]
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            WITH semantic_candidates AS (
+                SELECT *
+                FROM unnest(%(artist_ids)s::bigint[], %(artist_scores)s::double precision[])
+                    AS candidate(artist_id, semantic_score)
+            ),
+            ranked_evidence AS (
+                SELECT
+                    ep.promoter_id,
+                    a.id AS artist_id,
+                    a.name AS artist_name,
+                    e.id AS event_id,
+                    e.title AS event_title,
+                    e.event_date::date AS event_date,
+                    e.venue_id,
+                    v.name AS venue_name,
+                    sc.semantic_score,
+                    row_number() OVER (
+                        PARTITION BY ep.promoter_id
+                        ORDER BY sc.semantic_score DESC, e.event_date DESC NULLS LAST, e.id DESC
+                    ) AS row_number
+                FROM semantic_candidates sc
+                JOIN artists a
+                    ON a.id = sc.artist_id
+                JOIN event_artists ea
+                    ON ea.artist_id = sc.artist_id
+                JOIN events e
+                    ON e.id = ea.event_id
+                JOIN event_promoters ep
+                    ON ep.event_id = e.id
+                LEFT JOIN venues v
+                    ON v.id = e.venue_id
+                WHERE ep.promoter_id = ANY(%(promoter_ids)s)
+            )
+            SELECT *
+            FROM ranked_evidence
+            WHERE row_number <= 5
+            ORDER BY promoter_id ASC, row_number ASC
+            """,
+            {
+                "artist_ids": artist_ids,
+                "artist_scores": artist_scores,
+                "promoter_ids": promoter_ids,
+            },
+        )
+        return cursor.fetchall()
+
+
+def build_artist_promoter_recommendation_response(
+    connection: Connection,
+    *,
+    artist_id: int,
+    limit: int,
+) -> PromoterRecommendationResponse:
+    source, semantic_candidates = build_artist_semantic_candidates(
+        connection,
+        artist_id=artist_id,
+        debug=False,
+    )
+    source_metadata = recommendation_item_metadata(connection, "artist", [artist_id])
+    source_artist = source_metadata.get(artist_id)
+    if source_artist is None:
+        raise HTTPException(status_code=404, detail=f"Artist {artist_id} not found")
+
+    candidate_scores = {
+        item["entity_id"]: item["score"]
+        for item in semantic_candidates[:500]
+        if item["score"] > 0
+    }
+    if not candidate_scores:
+        return PromoterRecommendationResponse(
+            entityId=artist_id,
+            model=source["model"],
+            dimensions=source["dimensions"],
+            recommendations=[],
+            graph=GraphResponse(nodes=[], links=[]),
+        )
+
+    artist_ids = list(candidate_scores.keys())
+    artist_scores = [candidate_scores[artist_id] for artist_id in artist_ids]
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            WITH semantic_candidates AS (
+                SELECT *
+                FROM unnest(%(artist_ids)s::bigint[], %(artist_scores)s::double precision[])
+                    AS candidate(artist_id, semantic_score)
+            )
+            SELECT
+                p.id,
+                p.name,
+                count(DISTINCT sc.artist_id)::int AS matched_artist_count,
+                count(DISTINCT e.id)::int AS event_count,
+                max(sc.semantic_score)::double precision AS semantic_score,
+                max(e.event_date)::date AS latest_event_date
+            FROM semantic_candidates sc
+            JOIN event_artists ea
+                ON ea.artist_id = sc.artist_id
+            JOIN events e
+                ON e.id = ea.event_id
+            JOIN event_promoters ep
+                ON ep.event_id = e.id
+            JOIN promoters p
+                ON p.id = ep.promoter_id
+            GROUP BY p.id, p.name
+            ORDER BY semantic_score DESC, event_count DESC, p.id ASC
+            LIMIT 200
+            """,
+            {
+                "artist_ids": artist_ids,
+                "artist_scores": artist_scores,
+            },
+        )
+        rows = cursor.fetchall()
+
+    recommendations = []
+    for row in rows:
+        strength_score = min(
+            (row["matched_artist_count"] / 5 * 0.6) + (row["event_count"] / 20 * 0.4),
+            1.0,
+        )
+        activity_score = min(row["event_count"] / 25, 1.0)
+        recency_score = date_recency_score(row["latest_event_date"])
+        score_breakdown = {
+            "semantic": 0.45 * row["semantic_score"],
+            "strength": 0.25 * strength_score,
+            "activity": 0.20 * activity_score,
+            "recency": 0.10 * recency_score,
+        }
+        recommendations.append(
+            PromoterRecommendationItem(
+                id=row["id"],
+                name=row["name"],
+                score=sum(score_breakdown.values()),
+                semanticScore=row["semantic_score"],
+                strengthScore=strength_score,
+                activityScore=activity_score,
+                recencyScore=recency_score,
+                scoreBreakdown=score_breakdown,
+                reasons=promoter_recommendation_reasons(row),
+                matchedArtistCount=row["matched_artist_count"],
+                eventCount=row["event_count"],
+                latestEventDate=row["latest_event_date"],
+            )
+        )
+
+    recommendations = sorted(
+        recommendations,
+        key=lambda recommendation: (-recommendation.score, recommendation.id),
+    )[:limit]
+    evidence = promoter_recommendation_evidence(
+        connection,
+        promoter_ids=[recommendation.id for recommendation in recommendations],
+        semantic_scores=candidate_scores,
+    )
+
+    return PromoterRecommendationResponse(
+        entityId=artist_id,
+        model=source["model"],
+        dimensions=source["dimensions"],
+        recommendations=recommendations,
+        graph=promoter_recommendation_graph(
+            source_artist_id=artist_id,
+            source_artist_name=source_artist["name"],
+            recommendations=recommendations,
+            evidence_rows=evidence,
+        ),
     )
 
 
@@ -1107,6 +1409,23 @@ async def recommend_events_alias(
         connection,
         entity_type="event",
         entity_id=event_id,
+        limit=limit,
+    )
+
+
+@app.get(
+    "/api/recommendations/artists/{artist_id}/promoters",
+    response_model=PromoterRecommendationResponse,
+    response_model_exclude_none=True,
+)
+async def recommend_promoters_for_artist(
+    artist_id: int,
+    limit: int = Query(default=10, ge=1, le=50),
+    connection: Connection = Depends(get_db),
+) -> PromoterRecommendationResponse:
+    return build_artist_promoter_recommendation_response(
+        connection,
+        artist_id=artist_id,
         limit=limit,
     )
 
