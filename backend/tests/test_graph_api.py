@@ -191,6 +191,30 @@ def test_artist_recommendations_endpoint_uses_recommendation_contract():
     assert isinstance(first["sharedTags"], dict)
 
 
+def test_artist_promoter_recommendations_include_graph_payload():
+    response = client.get("/api/recommendations/artists/2178/promoters", params={"limit": 3})
+    assert response.status_code == 200
+
+    data = response.json()
+    assert data["entityId"] == 2178
+    assert data["entityType"] == "artist"
+    assert data["recommendations"]
+    assert "graph" in data
+
+    first = data["recommendations"][0]
+    assert first["type"] == "promoter"
+    assert "score" in first
+    assert set(first["scoreBreakdown"]) == {"semantic", "strength", "activity", "recency"}
+    assert first["matchedArtistCount"] >= 1
+    assert first["eventCount"] >= 1
+    assert isinstance(first["reasons"], list)
+
+    graph = data["graph"]
+    assert graph["nodes"]
+    assert graph["links"]
+    assert any(node["type"] == "promoter" for node in graph["nodes"])
+
+
 def test_recommendation_feedback_can_be_upserted_and_listed():
     delete_feedback_fixture()
     payload = {
