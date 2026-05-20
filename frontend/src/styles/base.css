@@ -169,17 +169,3 @@ h2 {
 h3 {
   font-size: 0.95rem;
 }
-
-.eyebrow {
-  margin: 0 0 12px;
-  text-transform: uppercase;
-  letter-spacing: 0.14em;
-  color: var(--accent);
-  font-size: 0.8rem;
-}
-
-.lead {
-  color: var(--text-muted);
-  margin: 16px 0 28px;
-  max-width: 60ch;
-}
