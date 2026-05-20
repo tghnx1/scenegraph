@@ -1,11 +1,13 @@
 from app.recommendation_scoring import (
     DEFAULT_RECOMMENDATION_SCORING,
+    PromoterRecommendationScoringConfig,
     SemanticArtistScoringConfig,
     SemanticArtistTagScoringConfig,
     final_recommendation_score,
     hybrid_graph_score,
     is_similarity_candidate_eligible,
     normalized_weights,
+    promoter_recommendation_scoring_from_env,
     semantic_artist_score,
     semantic_artist_scoring_from_env,
     semantic_artist_tag_scoring_from_env,
@@ -123,6 +125,63 @@ def test_semantic_artist_tag_scoring_reads_and_normalizes_env(monkeypatch):
         role_weight=0.10,
         role_overlap_cap=3,
     )
+
+
+def test_promoter_recommendation_scoring_reads_and_normalizes_env(monkeypatch):
+    monkeypatch.setenv("PROMOTER_REC_SEMANTIC_WEIGHT", "35")
+    monkeypatch.setenv("PROMOTER_REC_STRENGTH_WEIGHT", "18")
+    monkeypatch.setenv("PROMOTER_REC_DIRECT_CONNECTION_WEIGHT", "15")
+    monkeypatch.setenv("PROMOTER_REC_WARM_NETWORK_WEIGHT", "12")
+    monkeypatch.setenv("PROMOTER_REC_ACTIVITY_WEIGHT", "12")
+    monkeypatch.setenv("PROMOTER_REC_RECENCY_WEIGHT", "8")
+    monkeypatch.setenv("PROMOTER_REC_STRENGTH_MATCHED_ARTIST_WEIGHT", "70")
+    monkeypatch.setenv("PROMOTER_REC_STRENGTH_EVENT_WEIGHT", "30")
+    monkeypatch.setenv("PROMOTER_REC_STRENGTH_MATCHED_ARTIST_CAP", "6")
+    monkeypatch.setenv("PROMOTER_REC_STRENGTH_EVENT_CAP", "24")
+    monkeypatch.setenv("PROMOTER_REC_DIRECT_CONNECTION_CAP", "4")
+    monkeypatch.setenv("PROMOTER_REC_WARM_CONNECTION_CAP", "5")
+    monkeypatch.setenv("PROMOTER_REC_ACTIVITY_EVENT_CAP", "30")
+    monkeypatch.setenv("PROMOTER_REC_EXISTING_PARTNER_DIRECT_MIN", "2")
+    monkeypatch.setenv("PROMOTER_REC_WARM_RELEVANT_CONNECTION_MIN", "1")
+    monkeypatch.setenv("PROMOTER_REC_DIRECT_EDGE_STRENGTH_MIN", "0.75")
+    monkeypatch.setenv("PROMOTER_REC_DIRECT_EDGE_STRENGTH_MAX", "0.95")
+    monkeypatch.setenv("PROMOTER_REC_WARM_EDGE_STRENGTH_MIN", "0.45")
+    monkeypatch.setenv("PROMOTER_REC_WARM_EDGE_STRENGTH_MAX", "0.78")
+
+    config = promoter_recommendation_scoring_from_env()
+
+    assert config == PromoterRecommendationScoringConfig(
+        semantic_weight=0.35,
+        strength_weight=0.18,
+        direct_connection_weight=0.15,
+        warm_network_weight=0.12,
+        activity_weight=0.12,
+        recency_weight=0.08,
+        strength_matched_artist_weight=0.70,
+        strength_event_weight=0.30,
+        strength_matched_artist_cap=6,
+        strength_event_cap=24,
+        direct_connection_cap=4,
+        warm_connection_cap=5,
+        activity_event_cap=30,
+        existing_partner_direct_min=2,
+        warm_relevant_connection_min=1,
+        direct_edge_strength_min=0.75,
+        direct_edge_strength_max=0.95,
+        warm_edge_strength_min=0.45,
+        warm_edge_strength_max=0.78,
+    )
+
+
+def test_promoter_recommendation_scoring_rejects_invalid_warm_range(monkeypatch):
+    monkeypatch.setenv("PROMOTER_REC_WARM_EDGE_STRENGTH_MIN", "0.9")
+    monkeypatch.setenv("PROMOTER_REC_WARM_EDGE_STRENGTH_MAX", "0.7")
+    try:
+        promoter_recommendation_scoring_from_env()
+    except ValueError as exc:
+        assert "PROMOTER_REC_WARM_EDGE_STRENGTH_MIN" in str(exc)
+    else:
+        raise AssertionError("Expected ValueError")
 
 
 def test_normalized_weights_rejects_zero_total():

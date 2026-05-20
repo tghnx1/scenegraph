@@ -49,6 +49,7 @@ class PromoterRecommendationScoringConfig:
     semantic_weight: float
     strength_weight: float
     direct_connection_weight: float
+    warm_network_weight: float
     activity_weight: float
     recency_weight: float
     strength_matched_artist_weight: float
@@ -56,10 +57,14 @@ class PromoterRecommendationScoringConfig:
     strength_matched_artist_cap: int
     strength_event_cap: int
     direct_connection_cap: int
+    warm_connection_cap: int
     activity_event_cap: int
     existing_partner_direct_min: int
+    warm_relevant_connection_min: int
     direct_edge_strength_min: float
     direct_edge_strength_max: float
+    warm_edge_strength_min: float
+    warm_edge_strength_max: float
 
 
 DEFAULT_SEMANTIC_ARTIST_SCORING = SemanticArtistScoringConfig(
@@ -98,20 +103,25 @@ DEFAULT_RECOMMENDATION_SCORING = RecommendationScoringConfig(
 
 
 DEFAULT_PROMOTER_RECOMMENDATION_SCORING = PromoterRecommendationScoringConfig(
-    semantic_weight=0.40,
-    strength_weight=0.20,
+    semantic_weight=0.35,
+    strength_weight=0.18,
     direct_connection_weight=0.15,
-    activity_weight=0.15,
-    recency_weight=0.10,
+    warm_network_weight=0.12,
+    activity_weight=0.12,
+    recency_weight=0.08,
     strength_matched_artist_weight=0.60,
     strength_event_weight=0.40,
     strength_matched_artist_cap=5,
     strength_event_cap=20,
     direct_connection_cap=3,
+    warm_connection_cap=3,
     activity_event_cap=25,
     existing_partner_direct_min=1,
+    warm_relevant_connection_min=1,
     direct_edge_strength_min=0.8,
     direct_edge_strength_max=1.0,
+    warm_edge_strength_min=0.5,
+    warm_edge_strength_max=0.8,
 )
 
 
@@ -218,6 +228,10 @@ def promoter_recommendation_scoring_from_env() -> PromoterRecommendationScoringC
                 DEFAULT_PROMOTER_RECOMMENDATION_SCORING.direct_connection_weight,
             ),
             env_float(
+                "PROMOTER_REC_WARM_NETWORK_WEIGHT",
+                DEFAULT_PROMOTER_RECOMMENDATION_SCORING.warm_network_weight,
+            ),
+            env_float(
                 "PROMOTER_REC_ACTIVITY_WEIGHT",
                 DEFAULT_PROMOTER_RECOMMENDATION_SCORING.activity_weight,
             ),
@@ -252,6 +266,10 @@ def promoter_recommendation_scoring_from_env() -> PromoterRecommendationScoringC
         "PROMOTER_REC_DIRECT_CONNECTION_CAP",
         DEFAULT_PROMOTER_RECOMMENDATION_SCORING.direct_connection_cap,
     )
+    warm_connection_cap = env_int(
+        "PROMOTER_REC_WARM_CONNECTION_CAP",
+        DEFAULT_PROMOTER_RECOMMENDATION_SCORING.warm_connection_cap,
+    )
     activity_event_cap = env_int(
         "PROMOTER_REC_ACTIVITY_EVENT_CAP",
         DEFAULT_PROMOTER_RECOMMENDATION_SCORING.activity_event_cap,
@@ -259,6 +277,10 @@ def promoter_recommendation_scoring_from_env() -> PromoterRecommendationScoringC
     existing_partner_direct_min = env_int(
         "PROMOTER_REC_EXISTING_PARTNER_DIRECT_MIN",
         DEFAULT_PROMOTER_RECOMMENDATION_SCORING.existing_partner_direct_min,
+    )
+    warm_relevant_connection_min = env_int(
+        "PROMOTER_REC_WARM_RELEVANT_CONNECTION_MIN",
+        DEFAULT_PROMOTER_RECOMMENDATION_SCORING.warm_relevant_connection_min,
     )
     direct_edge_strength_min = env_float(
         "PROMOTER_REC_DIRECT_EDGE_STRENGTH_MIN",
@@ -268,6 +290,14 @@ def promoter_recommendation_scoring_from_env() -> PromoterRecommendationScoringC
         "PROMOTER_REC_DIRECT_EDGE_STRENGTH_MAX",
         DEFAULT_PROMOTER_RECOMMENDATION_SCORING.direct_edge_strength_max,
     )
+    warm_edge_strength_min = env_float(
+        "PROMOTER_REC_WARM_EDGE_STRENGTH_MIN",
+        DEFAULT_PROMOTER_RECOMMENDATION_SCORING.warm_edge_strength_min,
+    )
+    warm_edge_strength_max = env_float(
+        "PROMOTER_REC_WARM_EDGE_STRENGTH_MAX",
+        DEFAULT_PROMOTER_RECOMMENDATION_SCORING.warm_edge_strength_max,
+    )
 
     if strength_matched_artist_cap <= 0:
         raise ValueError("PROMOTER_REC_STRENGTH_MATCHED_ARTIST_CAP must be greater than zero")
@@ -275,10 +305,14 @@ def promoter_recommendation_scoring_from_env() -> PromoterRecommendationScoringC
         raise ValueError("PROMOTER_REC_STRENGTH_EVENT_CAP must be greater than zero")
     if direct_connection_cap <= 0:
         raise ValueError("PROMOTER_REC_DIRECT_CONNECTION_CAP must be greater than zero")
+    if warm_connection_cap <= 0:
+        raise ValueError("PROMOTER_REC_WARM_CONNECTION_CAP must be greater than zero")
     if activity_event_cap <= 0:
         raise ValueError("PROMOTER_REC_ACTIVITY_EVENT_CAP must be greater than zero")
     if existing_partner_direct_min <= 0:
         raise ValueError("PROMOTER_REC_EXISTING_PARTNER_DIRECT_MIN must be greater than zero")
+    if warm_relevant_connection_min <= 0:
+        raise ValueError("PROMOTER_REC_WARM_RELEVANT_CONNECTION_MIN must be greater than zero")
     if not (0.0 <= direct_edge_strength_min <= 1.0):
         raise ValueError("PROMOTER_REC_DIRECT_EDGE_STRENGTH_MIN must be between 0 and 1")
     if not (0.0 <= direct_edge_strength_max <= 1.0):
@@ -288,22 +322,36 @@ def promoter_recommendation_scoring_from_env() -> PromoterRecommendationScoringC
             "PROMOTER_REC_DIRECT_EDGE_STRENGTH_MIN must be less than or equal to "
             "PROMOTER_REC_DIRECT_EDGE_STRENGTH_MAX"
         )
+    if not (0.0 <= warm_edge_strength_min <= 1.0):
+        raise ValueError("PROMOTER_REC_WARM_EDGE_STRENGTH_MIN must be between 0 and 1")
+    if not (0.0 <= warm_edge_strength_max <= 1.0):
+        raise ValueError("PROMOTER_REC_WARM_EDGE_STRENGTH_MAX must be between 0 and 1")
+    if warm_edge_strength_min > warm_edge_strength_max:
+        raise ValueError(
+            "PROMOTER_REC_WARM_EDGE_STRENGTH_MIN must be less than or equal to "
+            "PROMOTER_REC_WARM_EDGE_STRENGTH_MAX"
+        )
 
     return PromoterRecommendationScoringConfig(
         semantic_weight=weights[0],
         strength_weight=weights[1],
         direct_connection_weight=weights[2],
-        activity_weight=weights[3],
-        recency_weight=weights[4],
+        warm_network_weight=weights[3],
+        activity_weight=weights[4],
+        recency_weight=weights[5],
         strength_matched_artist_weight=strength_weights[0],
         strength_event_weight=strength_weights[1],
         strength_matched_artist_cap=strength_matched_artist_cap,
         strength_event_cap=strength_event_cap,
         direct_connection_cap=direct_connection_cap,
+        warm_connection_cap=warm_connection_cap,
         activity_event_cap=activity_event_cap,
         existing_partner_direct_min=existing_partner_direct_min,
+        warm_relevant_connection_min=warm_relevant_connection_min,
         direct_edge_strength_min=direct_edge_strength_min,
         direct_edge_strength_max=direct_edge_strength_max,
+        warm_edge_strength_min=warm_edge_strength_min,
+        warm_edge_strength_max=warm_edge_strength_max,
     )
 
 
