@@ -83,9 +83,11 @@ class SimilarityItem(BaseModel):
     score: float
     semanticScore: float
     graphScore: float
+    scoreBreakdown: dict[str, float] = Field(default_factory=dict)
     reasons: list[str] = Field(default_factory=list)
     date: DateValue | None = None
     venueName: str | None = None
+    debug: dict[str, object] | None = None
 
 
 class SimilarityResponse(BaseModel):
@@ -166,6 +168,7 @@ class PromoterRecommendationItem(BaseModel):
     warmConnectionCount: int = 0
     directConnectionCount: int = 0
     evidence: list[RecommendationEvidenceItem] = Field(default_factory=list)
+    debug: dict[str, object] | None = None
 
 
 class PromoterRecommendationResponse(BaseModel):
@@ -175,6 +178,31 @@ class PromoterRecommendationResponse(BaseModel):
     dimensions: int
     recommendations: list[PromoterRecommendationItem]
     graph: GraphResponse
+
+
+class ArtistSimilarEventItem(BaseModel):
+    id: int
+    type: Literal["event"] = "event"
+    name: str
+    score: float
+    scoreBreakdown: dict[str, float] = Field(default_factory=dict)
+    eventDate: DateValue | None = None
+    venueName: str | None = None
+    promoterId: int | None = None
+    promoterName: str | None = None
+    sourceEventId: int
+    sourceEventName: str
+    sourceEventDate: DateValue | None = None
+    reasons: list[str] = Field(default_factory=list)
+    debug: dict[str, object] | None = None
+
+
+class ArtistSimilarEventsResponse(BaseModel):
+    entityId: int
+    entityType: Literal["artist"] = "artist"
+    model: str
+    dimensions: int | None = None
+    similarEvents: list[ArtistSimilarEventItem]
 
 
 class ArtistTagItem(BaseModel):
@@ -1437,12 +1465,311 @@ def promoter_event_embedding_similarity(
     return scores
 
 
+def event_embedding_similarity_by_candidate(
+    connection: Connection,
+    *,
+    source_event_ids: list[int],
+    candidate_event_ids: list[int],
+) -> tuple[dict[int, float], int | None]:
+    if not source_event_ids or not candidate_event_ids:
+        return {}, None
+
+    config = EmbeddingConfig.from_env()
+    target_event_ids = set(source_event_ids) | set(candidate_event_ids)
+    dimensions_filter = ""
+    params: list[object] = ["event", list(target_event_ids), config.provider_model_key]
+    if config.dimensions is not None:
+        dimensions_filter = "AND dimensions = %s"
+        params.append(config.dimensions)
+
+    with connection.cursor() as cursor:
+        cursor.execute(
+            f"""
+            SELECT DISTINCT ON (entity_id)
+                entity_id,
+                embedding
+            FROM entity_embeddings
+            WHERE entity_type = %s
+              AND entity_id = ANY(%s)
+              AND model = %s
+              {dimensions_filter}
+            ORDER BY entity_id ASC, updated_at DESC
+            """,
+            params,
+        )
+        embedding_rows = cursor.fetchall()
+
+    dimensions: int | None = None
+    embeddings_by_event_id: dict[int, list[float]] = {}
+    for row in embedding_rows:
+        event_embedding = row["embedding"]
+        if dimensions is None:
+            dimensions = len(event_embedding)
+        embeddings_by_event_id[int(row["entity_id"])] = event_embedding
+
+    source_vectors = [
+        embeddings_by_event_id[event_id]
+        for event_id in source_event_ids
+        if event_id in embeddings_by_event_id
+    ]
+    if not source_vectors:
+        return {}, dimensions
+
+    scores: dict[int, float] = {}
+    for event_id in candidate_event_ids:
+        target_vector = embeddings_by_event_id.get(event_id)
+        if target_vector is None:
+            continue
+        scores[event_id] = max(
+            max(cosine_similarity(source_vector, target_vector), 0.0) for source_vector in source_vectors
+        )
+    return scores, dimensions
+
+
+def artist_event_similarity_candidates(
+    connection: Connection,
+    *,
+    source_artist_id: int,
+    limit: int,
+    exclude_same_promoter: bool,
+) -> list[dict]:
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            WITH source_events AS (
+                SELECT DISTINCT
+                    e.id AS source_event_id,
+                    e.title AS source_event_title,
+                    e.event_date::date AS source_event_date,
+                    e.venue_id AS source_venue_id
+                FROM event_artists ea
+                JOIN events e
+                    ON e.id = ea.event_id
+                WHERE ea.artist_id = %(source_artist_id)s
+            ),
+            source_promoters AS (
+                SELECT DISTINCT ep.promoter_id
+                FROM source_events se
+                JOIN event_promoters ep
+                    ON ep.event_id = se.source_event_id
+            ),
+            similarity_paths AS (
+                SELECT
+                    se.source_event_id,
+                    se.source_event_title,
+                    se.source_event_date,
+                    e.id AS candidate_event_id,
+                    e.title AS candidate_event_title,
+                    e.event_date::date AS candidate_event_date,
+                    e.venue_id AS candidate_venue_id,
+                    v.name AS candidate_venue_name,
+                    promoter.promoter_id,
+                    promoter.promoter_name,
+                    CASE WHEN e.venue_id IS NOT NULL AND e.venue_id = se.source_venue_id THEN 1.0 ELSE 0.0 END
+                        AS same_venue_score,
+                    (
+                        SELECT count(DISTINCT eg_source.genre_id)::int
+                        FROM event_genres eg_source
+                        JOIN event_genres eg_candidate
+                          ON eg_candidate.genre_id = eg_source.genre_id
+                        WHERE eg_source.event_id = se.source_event_id
+                          AND eg_candidate.event_id = e.id
+                    ) AS shared_genre_count,
+                    (
+                        SELECT count(DISTINCT ea_source.artist_id)::int
+                        FROM event_artists ea_source
+                        JOIN event_artists ea_candidate
+                          ON ea_candidate.artist_id = ea_source.artist_id
+                        WHERE ea_source.event_id = se.source_event_id
+                          AND ea_candidate.event_id = e.id
+                          AND ea_source.artist_id <> %(source_artist_id)s
+                    ) AS shared_lineup_count
+                FROM source_events se
+                JOIN events e
+                    ON e.id <> se.source_event_id
+                LEFT JOIN venues v
+                    ON v.id = e.venue_id
+                LEFT JOIN LATERAL (
+                    SELECT
+                        p.id AS promoter_id,
+                        p.name AS promoter_name
+                    FROM event_promoters ep
+                    JOIN promoters p
+                        ON p.id = ep.promoter_id
+                    WHERE ep.event_id = e.id
+                    ORDER BY p.id ASC
+                    LIMIT 1
+                ) promoter
+                    ON true
+                WHERE (
+                    NOT %(exclude_same_promoter)s
+                    OR NOT EXISTS (
+                        SELECT 1
+                        FROM event_promoters ep_same
+                        JOIN source_promoters sp
+                            ON sp.promoter_id = ep_same.promoter_id
+                        WHERE ep_same.event_id = e.id
+                    )
+                )
+            ),
+            scored_paths AS (
+                SELECT
+                    *,
+                    (
+                        0.5 * same_venue_score
+                        + 0.3 * CASE WHEN shared_genre_count > 0 THEN 1.0 ELSE 0.0 END
+                        + 0.2 * CASE WHEN shared_lineup_count > 0 THEN 1.0 ELSE 0.0 END
+                    )::double precision AS symbolic_score
+                FROM similarity_paths
+            ),
+            matched_paths AS (
+                SELECT *
+                FROM scored_paths
+                WHERE symbolic_score > 0
+            ),
+            ranked_paths AS (
+                SELECT
+                    *,
+                    row_number() OVER (
+                        PARTITION BY candidate_event_id
+                        ORDER BY symbolic_score DESC, source_event_date DESC NULLS LAST, source_event_id DESC
+                    ) AS row_number
+                FROM matched_paths
+            )
+            SELECT *
+            FROM ranked_paths
+            WHERE row_number = 1
+            ORDER BY symbolic_score DESC, candidate_event_date DESC NULLS LAST, candidate_event_id DESC
+            LIMIT %(limit)s
+            """,
+            {
+                "source_artist_id": source_artist_id,
+                "limit": max(limit, 1),
+                "exclude_same_promoter": exclude_same_promoter,
+            },
+        )
+        return cursor.fetchall()
+
+
+def build_artist_similar_events_response(
+    connection: Connection,
+    *,
+    artist_id: int,
+    limit: int,
+    debug: bool,
+    exclude_same_promoter: bool,
+) -> ArtistSimilarEventsResponse:
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT id, name
+            FROM artists
+            WHERE id = %s
+            """,
+            (artist_id,),
+        )
+        artist = cursor.fetchone()
+    if artist is None:
+        raise HTTPException(status_code=404, detail=f"Artist {artist_id} not found")
+
+    config = EmbeddingConfig.from_env()
+    scoring_config = promoter_recommendation_scoring_from_env()
+    candidate_rows = artist_event_similarity_candidates(
+        connection,
+        source_artist_id=artist_id,
+        limit=max(limit * 20, 200),
+        exclude_same_promoter=exclude_same_promoter,
+    )
+    if not candidate_rows:
+        return ArtistSimilarEventsResponse(
+            entityId=artist_id,
+            model=config.provider_model_key,
+            dimensions=config.dimensions,
+            similarEvents=[],
+        )
+
+    source_event_ids = sorted({int(row["source_event_id"]) for row in candidate_rows})
+    candidate_event_ids = [int(row["candidate_event_id"]) for row in candidate_rows]
+    embedding_scores, embedding_dimensions = event_embedding_similarity_by_candidate(
+        connection,
+        source_event_ids=source_event_ids,
+        candidate_event_ids=candidate_event_ids,
+    )
+
+    similar_events: list[ArtistSimilarEventItem] = []
+    for row in candidate_rows:
+        symbolic_score = float(row["symbolic_score"])
+        embedding_score = float(embedding_scores.get(row["candidate_event_id"], 0.0))
+        score_breakdown = {
+            "symbolic": scoring_config.event_similarity_symbolic_weight * symbolic_score,
+            "embedding": scoring_config.event_similarity_embedding_weight * embedding_score,
+        }
+        reasons: list[str] = []
+        if row["same_venue_score"] > 0:
+            reasons.append("same venue as one of your events")
+        if row["shared_genre_count"] > 0:
+            reasons.append(f"shares {row['shared_genre_count']} genres with your event history")
+        if row["shared_lineup_count"] > 0:
+            reasons.append(f"shares {row['shared_lineup_count']} lineup artists with your events")
+        if embedding_score >= 0.6:
+            reasons.append("high semantic event profile similarity")
+
+        similar_events.append(
+            ArtistSimilarEventItem(
+                id=row["candidate_event_id"],
+                name=row["candidate_event_title"],
+                score=sum(score_breakdown.values()),
+                scoreBreakdown=score_breakdown,
+                eventDate=row["candidate_event_date"],
+                venueName=row["candidate_venue_name"],
+                promoterId=row["promoter_id"],
+                promoterName=row["promoter_name"],
+                sourceEventId=row["source_event_id"],
+                sourceEventName=row["source_event_title"],
+                sourceEventDate=row["source_event_date"],
+                reasons=reasons[:4] if reasons else ["event-level scene overlap"],
+                debug={
+                    "components": {
+                        "sameVenueScore": row["same_venue_score"],
+                        "sharedGenreCount": row["shared_genre_count"],
+                        "sharedLineupCount": row["shared_lineup_count"],
+                        "symbolicScore": symbolic_score,
+                        "embeddingScore": embedding_score,
+                    },
+                    "weights": {
+                        "symbolic": scoring_config.event_similarity_symbolic_weight,
+                        "embedding": scoring_config.event_similarity_embedding_weight,
+                    },
+                    "weightedScores": {
+                        "symbolic": score_breakdown["symbolic"],
+                        "embedding": score_breakdown["embedding"],
+                        "total": sum(score_breakdown.values()),
+                    },
+                }
+                if debug
+                else None,
+            )
+        )
+
+    similar_events = sorted(
+        similar_events,
+        key=lambda item: (-item.score, item.id),
+    )[:limit]
+    return ArtistSimilarEventsResponse(
+        entityId=artist_id,
+        model=config.provider_model_key,
+        dimensions=embedding_dimensions if embedding_dimensions is not None else config.dimensions,
+        similarEvents=similar_events,
+    )
+
+
 def build_artist_promoter_recommendation_response(
     connection: Connection,
     *,
     artist_id: int,
     limit: int,
     exclude_existing: bool,
+    debug: bool,
 ) -> PromoterRecommendationResponse:
     scoring_config = promoter_recommendation_scoring_from_env()
     source, semantic_candidates = build_artist_semantic_candidates(
@@ -1714,11 +2041,12 @@ def build_artist_promoter_recommendation_response(
             "activity": scoring_config.activity_weight * activity_score,
             "recency": scoring_config.recency_weight * recency_score,
         }
+        total_score = sum(score_breakdown.values())
         recommendations.append(
             PromoterRecommendationItem(
                 id=row["id"],
                 name=row["name"],
-                score=sum(score_breakdown.values()),
+                score=total_score,
                 semanticScore=row["semantic_score"],
                 strengthScore=strength_score,
                 activityScore=activity_score,
@@ -1732,6 +2060,32 @@ def build_artist_promoter_recommendation_response(
                 warmConnectionCount=row["warm_connection_count"],
                 directConnectionCount=row["direct_connection_count"],
                 evidence=promoter_recommendation_item_evidence(row),
+                debug={
+                    "rawSignals": {
+                        "semanticScore": row["semantic_score"],
+                        "matchedArtistCount": row["matched_artist_count"],
+                        "eventCount": row["event_count"],
+                        "directConnectionCount": row["direct_connection_count"],
+                        "warmConnectionCount": row["warm_connection_count"],
+                        "eventSimilarityCount": row["event_similarity_count"],
+                        "eventSimilaritySymbolicScore": event_similarity_symbolic_score,
+                        "eventSimilarityEmbeddingScore": event_similarity_embedding_score,
+                    },
+                    "normalizedScores": {
+                        "strength": strength_score,
+                        "directConnection": direct_connection_score,
+                        "warmNetwork": warm_network_score,
+                        "eventSimilarity": event_similarity_score,
+                        "activity": activity_score,
+                        "recency": recency_score,
+                    },
+                    "weightedScores": {
+                        **score_breakdown,
+                        "total": total_score,
+                    },
+                }
+                if debug
+                else None,
             )
         )
 
@@ -1794,6 +2148,41 @@ def build_artist_promoter_recommendation_response(
 
 def as_id_set(values: list[int | None] | None) -> set[int]:
     return {int(value) for value in values or [] if value is not None}
+
+
+def similarity_graph_debug_components(
+    *,
+    entity_type: EntityType,
+    source_features: dict[str, set[int]],
+    candidate_features: dict[str, set[int]],
+) -> dict[str, dict[str, float | int | bool | None]]:
+    weights = (
+        DEFAULT_RECOMMENDATION_SCORING.event_graph_weights
+        if entity_type == "event"
+        else DEFAULT_RECOMMENDATION_SCORING.artist_graph_weights
+    )
+    components: dict[str, dict[str, float | int | bool | None]] = {}
+    for weight in weights:
+        source_values = source_features.get(weight.feature, set())
+        candidate_values = candidate_features.get(weight.feature, set())
+        overlap_count = len(source_values & candidate_values)
+
+        if weight.boolean:
+            normalized = 1.0 if overlap_count > 0 else 0.0
+        else:
+            if weight.cap is None:
+                raise ValueError(f"Graph feature {weight.label} requires cap for non-boolean scoring")
+            normalized = min(overlap_count / weight.cap, 1.0)
+
+        components[weight.feature] = {
+            "weight": weight.weight,
+            "overlapCount": overlap_count,
+            "cap": weight.cap,
+            "boolean": weight.boolean,
+            "normalizedScore": normalized,
+            "graphContribution": weight.weight * normalized,
+        }
+    return components
 
 
 def recommendation_feature_sets(
@@ -2021,6 +2410,8 @@ def build_similarity_response(
     entity_type: EntityType,
     entity_id: int,
     limit: int,
+    debug: bool = False,
+    exclude_same_promoter: bool = False,
 ) -> SimilarityResponse:
     config = EmbeddingConfig.from_env()
     candidate_limit = 10_000 if entity_type == "artist" else max(limit * 10, 100)
@@ -2053,21 +2444,60 @@ def build_similarity_response(
         entity_type,
         [item["entity_id"] for item in reranked],
     )
-    similar = [
-        SimilarityItem(
-            id=item["entity_id"],
-            type=entity_type,
-            name=metadata[item["entity_id"]]["name"],
-            score=item["score"],
-            semanticScore=item["semantic_score"],
-            graphScore=item["graph_score"],
-            reasons=item["reasons"],
-            date=metadata[item["entity_id"]]["date"],
-            venueName=metadata[item["entity_id"]]["venue_name"],
+    candidate_ids = [item["entity_id"] for item in reranked if item["entity_id"] in metadata]
+    feature_sets = recommendation_feature_sets(connection, entity_type, [entity_id, *candidate_ids])
+    source_features = feature_sets.get(entity_id, {})
+    source_promoters = source_features.get("promoters", set())
+    similar: list[SimilarityItem] = []
+    for item in reranked:
+        candidate_id = item["entity_id"]
+        if candidate_id not in metadata:
+            continue
+
+        candidate_features = feature_sets.get(candidate_id, {})
+        if (
+            entity_type == "event"
+            and exclude_same_promoter
+            and bool(source_promoters & candidate_features.get("promoters", set()))
+        ):
+            continue
+
+        score_breakdown = {
+            "semantic": DEFAULT_RECOMMENDATION_SCORING.semantic_weight * item["semantic_score"],
+            "graph": DEFAULT_RECOMMENDATION_SCORING.graph_weight * item["graph_score"],
+        }
+        graph_components = similarity_graph_debug_components(
+            entity_type=entity_type,
+            source_features=source_features,
+            candidate_features=candidate_features,
         )
-        for item in reranked
-        if item["entity_id"] in metadata
-    ]
+        similar.append(
+            SimilarityItem(
+                id=candidate_id,
+                type=entity_type,
+                name=metadata[candidate_id]["name"],
+                score=item["score"],
+                semanticScore=item["semantic_score"],
+                graphScore=item["graph_score"],
+                scoreBreakdown=score_breakdown,
+                reasons=item["reasons"],
+                date=metadata[candidate_id]["date"],
+                venueName=metadata[candidate_id]["venue_name"],
+                debug={
+                    "rawSignals": {
+                        "semanticScore": item["semantic_score"],
+                        "graphScore": item["graph_score"],
+                    },
+                    "graphComponents": graph_components,
+                    "weightedScores": {
+                        **score_breakdown,
+                        "total": item["score"],
+                    },
+                }
+                if debug
+                else None,
+            )
+        )
 
     return SimilarityResponse(
         entityId=entity_id,
@@ -2319,6 +2749,8 @@ async def list_recommendation_feedback(
 async def recommend_events_alias(
     event_id: int,
     limit: int = Query(default=10, ge=1, le=100),
+    debug: bool = Query(default=False),
+    exclude_same_promoter: bool = Query(default=True),
     connection: Connection = Depends(get_db),
 ) -> SimilarityResponse:
     return build_similarity_response(
@@ -2326,6 +2758,51 @@ async def recommend_events_alias(
         entity_type="event",
         entity_id=event_id,
         limit=limit,
+        debug=debug,
+        exclude_same_promoter=exclude_same_promoter,
+    )
+
+
+@app.get(
+    "/api/recommendations/events/{event_id}/similar-events",
+    response_model=SimilarityResponse,
+    response_model_exclude_none=True,
+)
+async def recommend_similar_events(
+    event_id: int,
+    limit: int = Query(default=10, ge=1, le=100),
+    debug: bool = Query(default=False),
+    exclude_same_promoter: bool = Query(default=True),
+    connection: Connection = Depends(get_db),
+) -> SimilarityResponse:
+    return build_similarity_response(
+        connection,
+        entity_type="event",
+        entity_id=event_id,
+        limit=limit,
+        debug=debug,
+        exclude_same_promoter=exclude_same_promoter,
+    )
+
+
+@app.get(
+    "/api/recommendations/artists/{artist_id}/similar-events",
+    response_model=ArtistSimilarEventsResponse,
+    response_model_exclude_none=True,
+)
+async def recommend_similar_events_for_artist(
+    artist_id: int,
+    limit: int = Query(default=10, ge=1, le=100),
+    debug: bool = Query(default=False),
+    exclude_same_promoter: bool = Query(default=True),
+    connection: Connection = Depends(get_db),
+) -> ArtistSimilarEventsResponse:
+    return build_artist_similar_events_response(
+        connection,
+        artist_id=artist_id,
+        limit=limit,
+        debug=debug,
+        exclude_same_promoter=exclude_same_promoter,
     )
 
 
@@ -2338,6 +2815,7 @@ async def recommend_promoters_for_artist(
     artist_id: int,
     limit: int = Query(default=10, ge=1, le=50),
     exclude_existing: bool = Query(default=True),
+    debug: bool = Query(default=False),
     connection: Connection = Depends(get_db),
 ) -> PromoterRecommendationResponse:
     return build_artist_promoter_recommendation_response(
@@ -2345,6 +2823,7 @@ async def recommend_promoters_for_artist(
         artist_id=artist_id,
         limit=limit,
         exclude_existing=exclude_existing,
+        debug=debug,
     )
 
 

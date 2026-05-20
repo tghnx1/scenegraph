@@ -164,9 +164,145 @@ def test_extracted_tag_score_uses_weighted_type_overlap():
 
 
 def test_recommendations_endpoint_alias_still_works():
-    response = client.get("/api/recommendations/events/1", params={"limit": 1})
+    response = client.get(
+        "/api/recommendations/events/1",
+        params={"limit": 1, "exclude_same_promoter": "false"},
+    )
     assert response.status_code == 200
     assert response.json()["similar"]
+
+
+def test_event_similarity_endpoint_shape():
+    response = client.get("/api/recommendations/events/1/similar-events", params={"limit": 2})
+    assert response.status_code == 200
+
+    data = response.json()
+    assert data["entityId"] == 1
+    assert data["entityType"] == "event"
+    assert "similar" in data
+    assert isinstance(data["similar"], list)
+    if data["similar"]:
+        first = data["similar"][0]
+        assert first["type"] == "event"
+        assert set(first["scoreBreakdown"]) == {"semantic", "graph"}
+        assert isinstance(first["reasons"], list)
+
+
+def test_event_similarity_endpoint_excludes_same_promoters_by_default():
+    response = client.get("/api/recommendations/events/1/similar-events", params={"limit": 20})
+    assert response.status_code == 200
+    data = response.json()
+
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT DISTINCT promoter_id
+                FROM event_promoters
+                WHERE event_id = %s
+                """,
+                (1,),
+            )
+            source_promoters = {row["promoter_id"] for row in cursor.fetchall()}
+
+            for item in data["similar"]:
+                cursor.execute(
+                    """
+                    SELECT DISTINCT promoter_id
+                    FROM event_promoters
+                    WHERE event_id = %s
+                    """,
+                    (item["id"],),
+                )
+                candidate_promoters = {row["promoter_id"] for row in cursor.fetchall()}
+                assert not (source_promoters & candidate_promoters)
+
+
+def test_event_similarity_endpoint_debug_includes_detailed_scores():
+    response = client.get(
+        "/api/recommendations/events/1/similar-events",
+        params={"limit": 1, "debug": "true"},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    if not data["similar"]:
+        return
+
+    first = data["similar"][0]
+    assert "debug" in first
+    assert set(first["debug"]) == {"rawSignals", "graphComponents", "weightedScores"}
+    assert set(first["debug"]["rawSignals"]) == {"semanticScore", "graphScore"}
+    assert set(first["debug"]["weightedScores"]) == {"semantic", "graph", "total"}
+    assert {"artists", "promoters", "venues", "genres"} <= set(first["debug"]["graphComponents"].keys())
+
+
+def test_artist_similar_events_endpoint_shape():
+    response = client.get("/api/recommendations/artists/2178/similar-events", params={"limit": 3})
+    assert response.status_code == 200
+
+    data = response.json()
+    assert data["entityId"] == 2178
+    assert data["entityType"] == "artist"
+    assert "similarEvents" in data
+    assert isinstance(data["similarEvents"], list)
+
+    if data["similarEvents"]:
+        first = data["similarEvents"][0]
+        assert first["type"] == "event"
+        assert "score" in first
+        assert set(first["scoreBreakdown"]) == {"symbolic", "embedding"}
+        assert "sourceEventId" in first
+        assert "sourceEventName" in first
+        assert isinstance(first["reasons"], list)
+
+
+def test_artist_similar_events_exclude_same_promoters_by_default():
+    response = client.get("/api/recommendations/artists/2178/similar-events", params={"limit": 15})
+    assert response.status_code == 200
+    data = response.json()
+
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT DISTINCT ep.promoter_id
+                FROM event_artists ea
+                JOIN event_promoters ep
+                    ON ep.event_id = ea.event_id
+                WHERE ea.artist_id = %s
+                """,
+                (2178,),
+            )
+            source_promoters = {row["promoter_id"] for row in cursor.fetchall()}
+
+            for item in data["similarEvents"]:
+                if item["promoterId"] is None:
+                    continue
+                assert item["promoterId"] not in source_promoters
+
+
+def test_artist_similar_events_endpoint_debug_includes_component_scores():
+    response = client.get(
+        "/api/recommendations/artists/2178/similar-events",
+        params={"limit": 1, "debug": "true"},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    if not data["similarEvents"]:
+        return
+
+    first = data["similarEvents"][0]
+    assert "debug" in first
+    assert set(first["debug"]) == {"components", "weights", "weightedScores"}
+    assert set(first["debug"]["components"]) == {
+        "sameVenueScore",
+        "sharedGenreCount",
+        "sharedLineupCount",
+        "symbolicScore",
+        "embeddingScore",
+    }
+    assert set(first["debug"]["weights"]) == {"symbolic", "embedding"}
+    assert set(first["debug"]["weightedScores"]) == {"symbolic", "embedding", "total"}
 
 
 def test_artist_recommendations_endpoint_uses_recommendation_contract():
@@ -238,6 +374,23 @@ def test_artist_promoter_recommendations_include_graph_payload():
     assert semantic_link["style"] in {"solid", "dashed", "dotted"}
     assert isinstance(semantic_link["strength"], (int, float))
     assert 0.0 <= semantic_link["strength"] <= 1.0
+
+
+def test_artist_promoter_recommendations_include_debug_when_requested():
+    response = client.get(
+        "/api/recommendations/artists/2178/promoters",
+        params={"limit": 1, "exclude_existing": "false", "debug": "true"},
+    )
+    assert response.status_code == 200
+
+    data = response.json()
+    assert data["recommendations"]
+    first = data["recommendations"][0]
+    assert "debug" in first
+    assert set(first["debug"]) == {"rawSignals", "normalizedScores", "weightedScores"}
+    assert "eventSimilarityEmbeddingScore" in first["debug"]["rawSignals"]
+    assert "eventSimilarity" in first["debug"]["normalizedScores"]
+    assert "total" in first["debug"]["weightedScores"]
 
 
 def test_artist_promoter_recommendations_include_direct_connections():
