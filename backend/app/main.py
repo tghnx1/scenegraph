@@ -1775,10 +1775,10 @@ def build_artist_similar_events_response(
         if row["same_venue_score"] > 0:
             reasons.append("same venue as one of your events")
         if row["shared_genre_count"] > 0:
-            reasons.append(f"shares {row['shared_genre_count']} genres with your event history")
+            reasons.append(f"shares {row['shared_genre_count']} abstract genres with your event history")
         if shared_extracted_styles:
             reasons.append(
-                f"{len(shared_extracted_styles)} shared extracted styles: "
+                f"{len(shared_extracted_styles)} shared extracted genres: "
                 f"{', '.join(shared_extracted_styles[:5])}"
             )
         if row["shared_lineup_count"] > 0:
@@ -1804,7 +1804,7 @@ def build_artist_similar_events_response(
                     "components": {
                         "sameVenueScore": row["same_venue_score"],
                         "sharedGenreCount": row["shared_genre_count"],
-                        "sharedExtractedStyles": shared_extracted_styles,
+                        "sharedExtractedGenres": shared_extracted_styles,
                         "sharedLineupCount": row["shared_lineup_count"],
                         "extractedStyleScore": extracted_style_score,
                         "symbolicScore": symbolic_score,
@@ -2237,13 +2237,13 @@ def similarity_graph_debug_components(
     source_features: dict[str, set[int]],
     candidate_features: dict[str, set[int]],
     scoring_config=DEFAULT_RECOMMENDATION_SCORING,
-) -> dict[str, dict[str, float | int | bool | None]]:
+) -> dict[str, dict[str, object]]:
     weights = (
         scoring_config.event_graph_weights
         if entity_type == "event"
         else scoring_config.artist_graph_weights
     )
-    components: dict[str, dict[str, float | int | bool | None]] = {}
+    components: dict[str, dict[str, object]] = {}
     for weight in weights:
         source_values = source_features.get(weight.feature, set())
         candidate_values = candidate_features.get(weight.feature, set())
@@ -2571,6 +2571,11 @@ def build_similarity_response(
             candidate_features=candidate_features,
             scoring_config=scoring_config,
         )
+        shared_extracted_styles: list[str] = []
+        if entity_type == "event":
+            source_styles = source_features.get("extracted_styles", set())
+            candidate_styles = candidate_features.get("extracted_styles", set())
+            shared_extracted_styles = sorted(source_styles & candidate_styles)[:10]
         similar.append(
             SimilarityItem(
                 id=candidate_id,
@@ -2591,6 +2596,7 @@ def build_similarity_response(
                         "graphScore": item["graph_score"],
                     },
                     "graphComponents": graph_components,
+                    "sharedExtractedGenres": shared_extracted_styles if entity_type == "event" else None,
                     "weightedScores": {
                         **score_breakdown,
                         "total": item["score"],
