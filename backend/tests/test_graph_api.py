@@ -1,9 +1,24 @@
 from fastapi.testclient import TestClient
+from app.db import get_connection
 from app.main import app, extracted_tag_score
 from app.recommendation_scoring import DEFAULT_SEMANTIC_ARTIST_TAG_SCORING
 
 # docker compose exec backend sh -lc 'cd /app && pytest tests/test_graph_api.py -q'
 client = TestClient(app)
+
+
+def delete_feedback_fixture() -> None:
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                DELETE FROM recommendation_feedback
+                WHERE source_entity_type = 'artist'
+                  AND source_entity_id = 2178
+                  AND candidate_entity_type = 'artist'
+                  AND candidate_entity_id = 2829
+                """
+            )
 
 
 def test_graph_smoke():
@@ -180,3 +195,63 @@ def test_recommendations_endpoint_alias_still_works():
     response = client.get("/api/recommendations/events/1", params={"limit": 1})
     assert response.status_code == 200
     assert response.json()["similar"]
+
+
+def test_recommendation_feedback_can_be_upserted_and_listed():
+    delete_feedback_fixture()
+    payload = {
+        "sourceEntityType": "artist",
+        "sourceEntityId": 2178,
+        "candidateEntityType": "artist",
+        "candidateEntityId": 2829,
+        "feedback": "positive",
+        "reason": "strong style overlap",
+    }
+
+    response = client.post("/api/recommendation-feedback", json=payload)
+    assert response.status_code == 200
+    created = response.json()
+    assert created["sourceEntityType"] == "artist"
+    assert created["candidateEntityId"] == 2829
+    assert created["feedback"] == "positive"
+    assert created["reason"] == "strong style overlap"
+
+    update_response = client.post(
+        "/api/recommendation-feedback",
+        json={**payload, "feedback": "hidden", "reason": "testing upsert"},
+    )
+    assert update_response.status_code == 200
+    updated = update_response.json()
+    assert updated["id"] == created["id"]
+    assert updated["feedback"] == "hidden"
+    assert updated["reason"] == "testing upsert"
+
+    list_response = client.get(
+        "/api/recommendation-feedback",
+        params={
+            "sourceEntityType": "artist",
+            "sourceEntityId": 2178,
+            "candidateEntityType": "artist",
+            "candidateEntityId": 2829,
+        },
+    )
+    assert list_response.status_code == 200
+    items = list_response.json()["feedback"]
+    assert items
+    assert items[0]["id"] == created["id"]
+    delete_feedback_fixture()
+
+
+def test_recommendation_feedback_rejects_missing_entities():
+    response = client.post(
+        "/api/recommendation-feedback",
+        json={
+            "sourceEntityType": "artist",
+            "sourceEntityId": 999999999,
+            "candidateEntityType": "artist",
+            "candidateEntityId": 2829,
+            "feedback": "negative",
+        },
+    )
+
+    assert response.status_code == 404
