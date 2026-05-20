@@ -90,18 +90,20 @@
 
   .dashboard-overview,
   .dashboard-admin-grid,
+  .dashboard-management-stack,
+  .quality-list,
   .graph-health-grid {
     grid-template-columns: 1fr;
   }
 
-  .dashboard-panel-wide {
+  .dashboard-panel-wide,
+  .dashboard-panel-full {
     grid-column: auto;
   }
 
   .dashboard-table-row,
-  .dashboard-panel-wide:nth-of-type(4) .dashboard-table-row,
-  .recommendation-table .dashboard-table-row,
-  .dashboard-table.compact .dashboard-table-row {
+  .dashboard-table--management-log .dashboard-table-row,
+  .dashboard-table--claims .dashboard-table-row {
     grid-template-columns: 1fr;
   }
 }
@@ -112,7 +114,17 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .dashboard-panel-wide {
+  .dashboard-panel-wide,
+  .dashboard-panel-full {
     grid-column: span 2;
+  }
+
+  .quality-list,
+  .graph-health-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .dashboard-management-stack {
+    grid-template-columns: 1fr;
   }
 }
