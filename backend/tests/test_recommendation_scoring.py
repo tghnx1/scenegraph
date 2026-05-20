@@ -132,14 +132,18 @@ def test_promoter_recommendation_scoring_reads_and_normalizes_env(monkeypatch):
     monkeypatch.setenv("PROMOTER_REC_STRENGTH_WEIGHT", "18")
     monkeypatch.setenv("PROMOTER_REC_DIRECT_CONNECTION_WEIGHT", "15")
     monkeypatch.setenv("PROMOTER_REC_WARM_NETWORK_WEIGHT", "12")
-    monkeypatch.setenv("PROMOTER_REC_ACTIVITY_WEIGHT", "12")
-    monkeypatch.setenv("PROMOTER_REC_RECENCY_WEIGHT", "8")
+    monkeypatch.setenv("PROMOTER_REC_EVENT_SIMILARITY_WEIGHT", "5")
+    monkeypatch.setenv("PROMOTER_REC_ACTIVITY_WEIGHT", "10")
+    monkeypatch.setenv("PROMOTER_REC_RECENCY_WEIGHT", "5")
     monkeypatch.setenv("PROMOTER_REC_STRENGTH_MATCHED_ARTIST_WEIGHT", "70")
     monkeypatch.setenv("PROMOTER_REC_STRENGTH_EVENT_WEIGHT", "30")
     monkeypatch.setenv("PROMOTER_REC_STRENGTH_MATCHED_ARTIST_CAP", "6")
     monkeypatch.setenv("PROMOTER_REC_STRENGTH_EVENT_CAP", "24")
     monkeypatch.setenv("PROMOTER_REC_DIRECT_CONNECTION_CAP", "4")
     monkeypatch.setenv("PROMOTER_REC_WARM_CONNECTION_CAP", "5")
+    monkeypatch.setenv("PROMOTER_REC_EVENT_SIMILARITY_COUNT_CAP", "9")
+    monkeypatch.setenv("PROMOTER_REC_EVENT_SIMILARITY_SYMBOLIC_WEIGHT", "55")
+    monkeypatch.setenv("PROMOTER_REC_EVENT_SIMILARITY_EMBEDDING_WEIGHT", "45")
     monkeypatch.setenv("PROMOTER_REC_ACTIVITY_EVENT_CAP", "30")
     monkeypatch.setenv("PROMOTER_REC_EXISTING_PARTNER_DIRECT_MIN", "2")
     monkeypatch.setenv("PROMOTER_REC_WARM_RELEVANT_CONNECTION_MIN", "1")
@@ -147,6 +151,8 @@ def test_promoter_recommendation_scoring_reads_and_normalizes_env(monkeypatch):
     monkeypatch.setenv("PROMOTER_REC_DIRECT_EDGE_STRENGTH_MAX", "0.95")
     monkeypatch.setenv("PROMOTER_REC_WARM_EDGE_STRENGTH_MIN", "0.45")
     monkeypatch.setenv("PROMOTER_REC_WARM_EDGE_STRENGTH_MAX", "0.78")
+    monkeypatch.setenv("PROMOTER_REC_EVENT_SIMILARITY_EDGE_STRENGTH_MIN", "0.22")
+    monkeypatch.setenv("PROMOTER_REC_EVENT_SIMILARITY_EDGE_STRENGTH_MAX", "0.66")
 
     config = promoter_recommendation_scoring_from_env()
 
@@ -155,14 +161,18 @@ def test_promoter_recommendation_scoring_reads_and_normalizes_env(monkeypatch):
         strength_weight=0.18,
         direct_connection_weight=0.15,
         warm_network_weight=0.12,
-        activity_weight=0.12,
-        recency_weight=0.08,
+        event_similarity_weight=0.05,
+        activity_weight=0.10,
+        recency_weight=0.05,
         strength_matched_artist_weight=0.70,
         strength_event_weight=0.30,
         strength_matched_artist_cap=6,
         strength_event_cap=24,
         direct_connection_cap=4,
         warm_connection_cap=5,
+        event_similarity_count_cap=9,
+        event_similarity_symbolic_weight=0.55,
+        event_similarity_embedding_weight=0.45,
         activity_event_cap=30,
         existing_partner_direct_min=2,
         warm_relevant_connection_min=1,
@@ -170,6 +180,8 @@ def test_promoter_recommendation_scoring_reads_and_normalizes_env(monkeypatch):
         direct_edge_strength_max=0.95,
         warm_edge_strength_min=0.45,
         warm_edge_strength_max=0.78,
+        event_similarity_edge_strength_min=0.22,
+        event_similarity_edge_strength_max=0.66,
     )
 
 
