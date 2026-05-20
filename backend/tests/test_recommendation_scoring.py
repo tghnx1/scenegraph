@@ -144,6 +144,10 @@ def test_promoter_recommendation_scoring_reads_and_normalizes_env(monkeypatch):
     monkeypatch.setenv("PROMOTER_REC_EVENT_SIMILARITY_COUNT_CAP", "9")
     monkeypatch.setenv("PROMOTER_REC_EVENT_SIMILARITY_SYMBOLIC_WEIGHT", "55")
     monkeypatch.setenv("PROMOTER_REC_EVENT_SIMILARITY_EMBEDDING_WEIGHT", "45")
+    monkeypatch.setenv("PROMOTER_REC_EVENT_SIMILARITY_SAME_VENUE_WEIGHT", "40")
+    monkeypatch.setenv("PROMOTER_REC_EVENT_SIMILARITY_SHARED_GENRE_WEIGHT", "10")
+    monkeypatch.setenv("PROMOTER_REC_EVENT_SIMILARITY_SHARED_LINEUP_WEIGHT", "30")
+    monkeypatch.setenv("PROMOTER_REC_EVENT_SIMILARITY_EXTRACTED_STYLE_WEIGHT", "20")
     monkeypatch.setenv("PROMOTER_REC_ACTIVITY_EVENT_CAP", "30")
     monkeypatch.setenv("PROMOTER_REC_EXISTING_PARTNER_DIRECT_MIN", "2")
     monkeypatch.setenv("PROMOTER_REC_WARM_RELEVANT_CONNECTION_MIN", "1")
@@ -173,6 +177,10 @@ def test_promoter_recommendation_scoring_reads_and_normalizes_env(monkeypatch):
         event_similarity_count_cap=9,
         event_similarity_symbolic_weight=0.55,
         event_similarity_embedding_weight=0.45,
+        event_similarity_same_venue_weight=0.40,
+        event_similarity_shared_genre_weight=0.10,
+        event_similarity_shared_lineup_weight=0.30,
+        event_similarity_extracted_style_weight=0.20,
         activity_event_cap=30,
         existing_partner_direct_min=2,
         warm_relevant_connection_min=1,
