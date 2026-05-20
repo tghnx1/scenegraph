@@ -49,7 +49,10 @@
 
   .profile-grid {
     grid-template-columns: 1fr;
-    grid-template-rows: repeat(6, minmax(360px, var(--profile-panel-height)));
+    grid-template-rows:
+      minmax(360px, var(--profile-panel-height))
+      minmax(560px, 78dvh)
+      repeat(4, minmax(360px, var(--profile-panel-height)));
     grid-template-areas:
       "context"
       "graph"
@@ -61,6 +64,11 @@
 
   .context-panel {
     height: auto;
+  }
+
+  .profile-page .graph-canvas--large {
+    min-height: 420px;
+    height: min(640px, 68dvh);
   }
 
   .stat-grid {
@@ -76,12 +84,7 @@
     padding: 12px;
   }
 
-  .dashboard-header {
-    align-items: stretch;
-    flex-direction: column;
-  }
-
-  .dashboard-header-actions {
+  .dashboard-actions {
     justify-content: start;
   }
 
