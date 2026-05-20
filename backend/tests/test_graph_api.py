@@ -204,16 +204,22 @@ def test_artist_promoter_recommendations_include_graph_payload():
     first = data["recommendations"][0]
     assert first["type"] == "promoter"
     assert "score" in first
-    assert set(first["scoreBreakdown"]) == {"semantic", "strength", "activity", "recency"}
+    assert set(first["scoreBreakdown"]) == {
+        "semantic",
+        "strength",
+        "directConnection",
+        "activity",
+        "recency",
+    }
     assert first["matchedArtistCount"] >= 1
     assert first["eventCount"] >= 1
     assert isinstance(first["reasons"], list)
-    assert first["status"] == "new_relevant"
-    assert first["warmConnectionCount"] == 0
-    assert first["directConnectionCount"] == 0
+    assert first["status"] in {"new_relevant", "existing_partner"}
+    assert first["warmConnectionCount"] >= 0
+    assert first["directConnectionCount"] >= 0
     assert isinstance(first["evidence"], list)
     assert first["evidence"]
-    assert first["evidence"][0]["type"] == "semantic_bridge"
+    assert all(item["type"] in {"semantic_bridge", "direct_connection"} for item in first["evidence"])
 
     graph = data["graph"]
     assert graph["nodes"]
@@ -227,6 +233,31 @@ def test_artist_promoter_recommendations_include_graph_payload():
     assert semantic_link["style"] in {"solid", "dashed", "dotted"}
     assert isinstance(semantic_link["strength"], (int, float))
     assert 0.0 <= semantic_link["strength"] <= 1.0
+
+
+def test_artist_promoter_recommendations_include_direct_connections():
+    response = client.get("/api/recommendations/artists/2178/promoters", params={"limit": 50})
+    assert response.status_code == 200
+    data = response.json()
+
+    direct_recommendations = [
+        item for item in data["recommendations"] if item["directConnectionCount"] > 0
+    ]
+    for item in direct_recommendations:
+        assert item["status"] == "existing_partner"
+        assert item["scoreBreakdown"]["directConnection"] > 0
+        assert any(evidence["type"] == "direct_connection" for evidence in item["evidence"])
+
+    direct_links = [
+        link
+        for link in data["graph"]["links"]
+        if link.get("evidenceType") == "direct_connection"
+    ]
+    if direct_recommendations:
+        assert direct_links
+        assert all(link.get("style") == "solid" for link in direct_links)
+    else:
+        assert not direct_links
 
 
 def test_artist_promoter_recommendations_preserve_existing_contract_fields():
