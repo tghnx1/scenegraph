@@ -9,13 +9,6 @@ from pydantic import BaseModel, Field
 from psycopg import Connection
 
 from app.db import get_db
-from app.embeddings import EmbeddingConfig, EntityType, rank_similar_embeddings
-from app.recommendation_scoring import (
-    DEFAULT_RECOMMENDATION_SCORING,
-    final_recommendation_score,
-    hybrid_graph_score,
-    is_similarity_candidate_eligible,
-)
 
 
 app = FastAPI(title="Berlin Scene Graph API")
@@ -28,6 +21,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+from app.search_routes import router as search_router
+app.include_router(search_router, prefix="/api")
 
 class Venue(BaseModel):
     id: int
@@ -66,352 +61,8 @@ class GraphResponse(BaseModel):
     links: list[GraphLink]
 
 
-class SimilarityItem(BaseModel):
-    id: int
-    type: Literal["artist", "event"]
-    name: str
-    score: float
-    semanticScore: float
-    graphScore: float
-    reasons: list[str] = Field(default_factory=list)
-    date: DateValue | None = None
-    venueName: str | None = None
-
-
-class SimilarityResponse(BaseModel):
-    entityId: int
-    entityType: Literal["artist", "event"]
-    model: str
-    dimensions: int
-    similar: list[SimilarityItem]
-
-
 def graph_node_id(node_type: str, entity_id: int) -> str:
     return f"{node_type}-{entity_id}"
-
-
-def recommendation_item_metadata(
-    connection: Connection,
-    entity_type: EntityType,
-    entity_ids: list[int],
-) -> dict[int, dict]:
-    if not entity_ids:
-        return {}
-
-    if entity_type == "event":
-        query = """
-            SELECT
-                e.id,
-                e.title AS name,
-                e.event_date::date AS date,
-                v.name AS venue_name
-            FROM events e
-            LEFT JOIN venues v
-                ON v.id = e.venue_id
-            WHERE e.id = ANY(%s)
-        """
-    else:
-        query = """
-            SELECT
-                id,
-                name,
-                NULL::date AS date,
-                NULL::text AS venue_name
-            FROM artists
-            WHERE id = ANY(%s)
-        """
-
-    with connection.cursor() as cursor:
-        cursor.execute(query, (entity_ids,))
-        rows = cursor.fetchall()
-
-    return {row["id"]: row for row in rows}
-
-
-def as_id_set(values: list[int | None] | None) -> set[int]:
-    return {int(value) for value in values or [] if value is not None}
-
-
-def recommendation_feature_sets(
-    connection: Connection,
-    entity_type: EntityType,
-    entity_ids: list[int],
-) -> dict[int, dict[str, set[int]]]:
-    if not entity_ids:
-        return {}
-
-    if entity_type == "event":
-        query = """
-            SELECT
-                e.id,
-                array_remove(array_agg(DISTINCT ea.artist_id), NULL) AS artists,
-                array_remove(array_agg(DISTINCT ep.promoter_id), NULL) AS promoters,
-                array_remove(array_agg(DISTINCT eg.genre_id), NULL) AS genres,
-                array_remove(ARRAY[e.venue_id], NULL) AS venues
-            FROM events e
-            LEFT JOIN event_artists ea
-                ON ea.event_id = e.id
-            LEFT JOIN event_promoters ep
-                ON ep.event_id = e.id
-            LEFT JOIN event_genres eg
-                ON eg.event_id = e.id
-            WHERE e.id = ANY(%s)
-            GROUP BY e.id, e.venue_id
-        """
-    else:
-        query = """
-            SELECT
-                a.id,
-                array_remove(array_agg(DISTINCT ea.event_id), NULL) AS events,
-                array_remove(array_agg(DISTINCT e.venue_id), NULL) AS venues,
-                array_remove(array_agg(DISTINCT ep.promoter_id), NULL) AS promoters,
-                array_remove(array_agg(DISTINCT eg.genre_id), NULL) AS genres
-            FROM artists a
-            LEFT JOIN event_artists ea
-                ON ea.artist_id = a.id
-            LEFT JOIN events e
-                ON e.id = ea.event_id
-            LEFT JOIN event_promoters ep
-                ON ep.event_id = ea.event_id
-            LEFT JOIN event_genres eg
-                ON eg.event_id = ea.event_id
-            WHERE a.id = ANY(%s)
-            GROUP BY a.id
-        """
-
-    with connection.cursor() as cursor:
-        cursor.execute(query, (entity_ids,))
-        rows = cursor.fetchall()
-
-    return {
-        row["id"]: {
-            key: as_id_set(row.get(key))
-            for key in ("artists", "events", "venues", "promoters", "genres")
-        }
-        for row in rows
-    }
-
-
-def artist_indirect_feature_sets(
-    connection: Connection,
-    *,
-    source_artist_id: int,
-    candidate_artist_ids: list[int],
-) -> dict[int, dict[str, set[int]]]:
-    if not candidate_artist_ids:
-        return {}
-
-    with connection.cursor() as cursor:
-        cursor.execute(
-            """
-            SELECT event_id
-            FROM event_artists
-            WHERE artist_id = %s
-            """,
-            (source_artist_id,),
-        )
-        source_event_ids = [row["event_id"] for row in cursor.fetchall()]
-
-    if not source_event_ids:
-        return {}
-
-    with connection.cursor() as cursor:
-        cursor.execute(
-            """
-            WITH source_events AS (
-                SELECT unnest(%(source_event_ids)s::bigint[]) AS event_id
-            )
-            SELECT
-                a.id,
-                array_remove(array_agg(DISTINCT ea.event_id), NULL) AS events,
-                array_remove(array_agg(DISTINCT e.venue_id), NULL) AS venues,
-                array_remove(array_agg(DISTINCT ep.promoter_id), NULL) AS promoters,
-                array_remove(array_agg(DISTINCT eg.genre_id), NULL) AS genres
-            FROM artists a
-            LEFT JOIN event_artists ea
-                ON ea.artist_id = a.id
-                AND NOT EXISTS (
-                    SELECT 1
-                    FROM source_events se
-                    WHERE se.event_id = ea.event_id
-                )
-            LEFT JOIN events e
-                ON e.id = ea.event_id
-            LEFT JOIN event_promoters ep
-                ON ep.event_id = ea.event_id
-            LEFT JOIN event_genres eg
-                ON eg.event_id = ea.event_id
-            WHERE a.id = ANY(%(candidate_artist_ids)s)
-               OR a.id = %(source_artist_id)s
-            GROUP BY a.id
-            """,
-            {
-                "source_artist_id": source_artist_id,
-                "source_event_ids": source_event_ids,
-                "candidate_artist_ids": candidate_artist_ids,
-            },
-        )
-        rows = cursor.fetchall()
-
-    return {
-        row["id"]: {
-            key: as_id_set(row.get(key))
-            for key in ("events", "venues", "promoters", "genres")
-        }
-        for row in rows
-    }
-
-
-def apply_artist_indirect_features(
-    connection: Connection,
-    *,
-    entity_type: EntityType,
-    entity_id: int,
-    candidate_ids: list[int],
-    features: dict[int, dict[str, set[int]]],
-) -> dict[int, dict[str, set[int]]]:
-    if entity_type != "artist":
-        return features
-    if entity_id not in features:
-        return features
-
-    indirect_features = artist_indirect_feature_sets(
-        connection,
-        source_artist_id=entity_id,
-        candidate_artist_ids=candidate_ids,
-    )
-    if entity_id in indirect_features:
-        for key in ("venues", "promoters", "genres"):
-            features[entity_id][key] = indirect_features[entity_id].get(key, set())
-
-    for candidate_id in candidate_ids:
-        if candidate_id not in features or candidate_id not in indirect_features:
-            continue
-        for key in ("venues", "promoters", "genres"):
-            features[candidate_id][key] = indirect_features[candidate_id].get(key, set())
-
-    return features
-
-
-def rerank_similar_entities(
-    connection: Connection,
-    *,
-    entity_type: EntityType,
-    entity_id: int,
-    ranked: list[dict],
-    limit: int,
-) -> list[dict]:
-    candidate_ids = [item["entity_id"] for item in ranked]
-    features = recommendation_feature_sets(connection, entity_type, [entity_id, *candidate_ids])
-    features = apply_artist_indirect_features(
-        connection,
-        entity_type=entity_type,
-        entity_id=entity_id,
-        candidate_ids=candidate_ids,
-        features=features,
-    )
-    source_features = features.get(entity_id)
-    if not source_features:
-        return ranked[:limit]
-
-    rescored = []
-    for item in ranked:
-        candidate_features = features.get(item["entity_id"])
-        if not candidate_features:
-            continue
-
-        graph_score, reasons = hybrid_graph_score(entity_type, source_features, candidate_features)
-        semantic_score = item["score"]
-        if not is_similarity_candidate_eligible(
-            entity_type,
-            semantic_score,
-            graph_score,
-            DEFAULT_RECOMMENDATION_SCORING,
-        ):
-            continue
-
-        final_score = final_recommendation_score(
-            semantic_score,
-            graph_score,
-            DEFAULT_RECOMMENDATION_SCORING,
-        )
-        rescored.append(
-            {
-                **item,
-                "score": final_score,
-                "semantic_score": semantic_score,
-                "graph_score": graph_score,
-                "reasons": reasons or ["semantic similarity"],
-            }
-        )
-
-    return sorted(
-        rescored,
-        key=lambda candidate: (-candidate["score"], candidate["entity_id"]),
-    )[:limit]
-
-
-def build_similarity_response(
-    connection: Connection,
-    *,
-    entity_type: EntityType,
-    entity_id: int,
-    limit: int,
-) -> SimilarityResponse:
-    config = EmbeddingConfig.from_env()
-    candidate_limit = 10_000 if entity_type == "artist" else max(limit * 10, 100)
-    source, ranked = rank_similar_embeddings(
-        connection,
-        entity_type=entity_type,
-        entity_id=entity_id,
-        config=config,
-        limit=candidate_limit,
-    )
-
-    if source is None:
-        raise HTTPException(
-            status_code=404,
-            detail=(
-                f"No {config.model} embedding found for {entity_type} {entity_id}. "
-                "Run scripts/generate_embeddings.py first."
-            ),
-        )
-
-    reranked = rerank_similar_entities(
-        connection,
-        entity_type=entity_type,
-        entity_id=entity_id,
-        ranked=ranked,
-        limit=limit,
-    )
-    metadata = recommendation_item_metadata(
-        connection,
-        entity_type,
-        [item["entity_id"] for item in reranked],
-    )
-    similar = [
-        SimilarityItem(
-            id=item["entity_id"],
-            type=entity_type,
-            name=metadata[item["entity_id"]]["name"],
-            score=item["score"],
-            semanticScore=item["semantic_score"],
-            graphScore=item["graph_score"],
-            reasons=item["reasons"],
-            date=metadata[item["entity_id"]]["date"],
-            venueName=metadata[item["entity_id"]]["venue_name"],
-        )
-        for item in reranked
-        if item["entity_id"] in metadata
-    ]
-
-    return SimilarityResponse(
-        entityId=entity_id,
-        entityType=entity_type,
-        model=source["model"],
-        dimensions=source["dimensions"],
-        similar=similar,
-    )
 
 
 @app.get("/health")
@@ -445,80 +96,6 @@ async def list_venues(connection: Connection = Depends(get_db)) -> VenuesRespons
         venues = cursor.fetchall()
 
     return VenuesResponse(venues=[Venue(**venue) for venue in venues])
-
-
-@app.get(
-    "/api/similar/events/{event_id}",
-    response_model=SimilarityResponse,
-    response_model_exclude_none=True,
-)
-async def similar_events(
-    event_id: int,
-    limit: int = Query(default=10, ge=1, le=100),
-    connection: Connection = Depends(get_db),
-) -> SimilarityResponse:
-    return build_similarity_response(
-        connection,
-        entity_type="event",
-        entity_id=event_id,
-        limit=limit,
-    )
-
-
-@app.get(
-    "/api/similar/artists/{artist_id}",
-    response_model=SimilarityResponse,
-    response_model_exclude_none=True,
-)
-async def similar_artists(
-    artist_id: int,
-    limit: int = Query(default=10, ge=1, le=100),
-    connection: Connection = Depends(get_db),
-) -> SimilarityResponse:
-    return build_similarity_response(
-        connection,
-        entity_type="artist",
-        entity_id=artist_id,
-        limit=limit,
-    )
-
-
-@app.get(
-    "/api/recommendations/events/{event_id}",
-    response_model=SimilarityResponse,
-    response_model_exclude_none=True,
-    include_in_schema=False,
-)
-async def recommend_events_alias(
-    event_id: int,
-    limit: int = Query(default=10, ge=1, le=100),
-    connection: Connection = Depends(get_db),
-) -> SimilarityResponse:
-    return build_similarity_response(
-        connection,
-        entity_type="event",
-        entity_id=event_id,
-        limit=limit,
-    )
-
-
-@app.get(
-    "/api/recommendations/artists/{artist_id}",
-    response_model=SimilarityResponse,
-    response_model_exclude_none=True,
-    include_in_schema=False,
-)
-async def recommend_artists_alias(
-    artist_id: int,
-    limit: int = Query(default=10, ge=1, le=100),
-    connection: Connection = Depends(get_db),
-) -> SimilarityResponse:
-    return build_similarity_response(
-        connection,
-        entity_type="artist",
-        entity_id=artist_id,
-        limit=limit,
-    )
 
 
 @app.get(
@@ -625,36 +202,6 @@ async def get_graph(
         )
         artist_event_links = cursor.fetchall()
 
-        cursor.execute(
-            """
-            SELECT
-                p.id,
-                p.name,
-                COUNT(DISTINCT ep_all.event_id) AS event_count
-            FROM promoters p
-            JOIN event_promoters ep_filtered
-                ON ep_filtered.promoter_id = p.id
-            LEFT JOIN event_promoters ep_all
-                ON ep_all.promoter_id = p.id
-            WHERE ep_filtered.event_id = ANY(%s)
-            GROUP BY p.id, p.name
-            ORDER BY p.name ASC
-            """,
-            (event_ids,),
-        )
-        promoters = cursor.fetchall()
-
-        cursor.execute(
-            """
-            SELECT promoter_id, event_id
-            FROM event_promoters
-            WHERE event_id = ANY(%s)
-            ORDER BY event_id ASC, promoter_id ASC
-            """,
-            (event_ids,),
-        )
-        promoter_event_links = cursor.fetchall()
-
     nodes_by_id: dict[str, GraphNode] = {}
     links: list[GraphLink] = []
 
@@ -668,16 +215,6 @@ async def get_graph(
             eventCount=artist["event_count"],
         )
         nodes_by_id[artist_node.id] = artist_node
-
-    for promoter in promoters:
-        promoter_node = GraphNode(
-            id=graph_node_id("promoter", promoter["id"]),
-            entityId=promoter["id"],
-            type="promoter",
-            name=promoter["name"],
-            eventCount=promoter["event_count"],
-        )
-        nodes_by_id[promoter_node.id] = promoter_node
 
     for event in events:
         event_node = GraphNode(
@@ -720,16 +257,6 @@ async def get_graph(
                 source=graph_node_id("artist", link["artist_id"]),
                 target=graph_node_id("event", link["event_id"]),
                 relationship="performed_at",
-                weight=1,
-            )
-        )
-
-    for link in promoter_event_links:
-        links.append(
-            GraphLink(
-                source=graph_node_id("promoter", link["promoter_id"]),
-                target=graph_node_id("event", link["event_id"]),
-                relationship="organized",
                 weight=1,
             )
         )
