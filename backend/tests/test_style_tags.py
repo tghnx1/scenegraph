@@ -10,8 +10,12 @@ def test_extract_style_tags_from_artist_biography():
     assert tags == ["acid techno", "dark disco", "ebm", "electro", "industrial"]
 
 
-def test_style_overlap_score_caps_shared_tags():
-    assert style_overlap_score(["dark disco", "ebm"], ["ebm", "techno"]) == 0.5
+def test_style_overlap_score_uses_jaccard_similarity():
+    assert style_overlap_score(["dark disco", "ebm"], ["ebm", "techno"]) == 1 / 3
+    assert style_overlap_score(
+        ["dark disco", "ebm", "italo", "new wave"],
+        ["dark disco", "ebm"],
+    ) == 0.5
     assert style_overlap_score(["a", "b", "c", "d"], ["a", "b", "c", "d"]) == 1.0
     assert style_overlap_score([], ["ebm"]) == 0.0
 

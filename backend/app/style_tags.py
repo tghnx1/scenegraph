@@ -83,9 +83,12 @@ def extract_style_tags(value: Any) -> list[str]:
     return sorted(tag_set)
 
 
-def style_overlap_score(source_tags: list[str], candidate_tags: list[str], cap: int = 2) -> float:
+def style_overlap_score(source_tags: list[str], candidate_tags: list[str]) -> float:
     if not source_tags or not candidate_tags:
         return 0.0
 
-    overlap = set(source_tags) & set(candidate_tags)
-    return min(len(overlap) / cap, 1.0)
+    source_set = set(source_tags)
+    candidate_set = set(candidate_tags)
+    overlap = source_set & candidate_set
+    union = source_set | candidate_set
+    return len(overlap) / len(union)
