@@ -87,6 +87,8 @@ class SimilarityItem(BaseModel):
     reasons: list[str] = Field(default_factory=list)
     date: DateValue | None = None
     venueName: str | None = None
+    promoterId: int | None = None
+    promoterName: str | None = None
     debug: dict[str, object] | None = None
 
 
@@ -297,10 +299,24 @@ def recommendation_item_metadata(
                 e.id,
                 e.title AS name,
                 e.event_date::date AS date,
-                v.name AS venue_name
+                v.name AS venue_name,
+                promoter.promoter_id,
+                promoter.promoter_name
             FROM events e
             LEFT JOIN venues v
                 ON v.id = e.venue_id
+            LEFT JOIN LATERAL (
+                SELECT
+                    p.id AS promoter_id,
+                    p.name AS promoter_name
+                FROM event_promoters ep
+                JOIN promoters p
+                    ON p.id = ep.promoter_id
+                WHERE ep.event_id = e.id
+                ORDER BY p.id ASC
+                LIMIT 1
+            ) promoter
+                ON true
             WHERE e.id = ANY(%s)
         """
     else:
@@ -309,7 +325,9 @@ def recommendation_item_metadata(
                 id,
                 name,
                 NULL::date AS date,
-                NULL::text AS venue_name
+                NULL::text AS venue_name,
+                NULL::bigint AS promoter_id,
+                NULL::text AS promoter_name
             FROM artists
             WHERE id = ANY(%s)
         """
@@ -2485,6 +2503,8 @@ def build_similarity_response(
                 reasons=item["reasons"],
                 date=metadata[candidate_id]["date"],
                 venueName=metadata[candidate_id]["venue_name"],
+                promoterId=metadata[candidate_id]["promoter_id"],
+                promoterName=metadata[candidate_id]["promoter_name"],
                 debug={
                     "rawSignals": {
                         "semanticScore": item["semantic_score"],
