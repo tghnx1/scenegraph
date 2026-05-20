@@ -208,11 +208,45 @@ def test_artist_promoter_recommendations_include_graph_payload():
     assert first["matchedArtistCount"] >= 1
     assert first["eventCount"] >= 1
     assert isinstance(first["reasons"], list)
+    assert first["status"] == "new_relevant"
+    assert first["warmConnectionCount"] == 0
+    assert first["directConnectionCount"] == 0
+    assert isinstance(first["evidence"], list)
+    assert first["evidence"]
+    assert first["evidence"][0]["type"] == "semantic_bridge"
 
     graph = data["graph"]
     assert graph["nodes"]
     assert graph["links"]
     assert any(node["type"] == "promoter" for node in graph["nodes"])
+    semantic_link = next(
+        (link for link in graph["links"] if link.get("evidenceType") == "semantic_bridge"),
+        None,
+    )
+    assert semantic_link is not None
+    assert semantic_link["style"] in {"solid", "dashed", "dotted"}
+    assert isinstance(semantic_link["strength"], (int, float))
+    assert 0.0 <= semantic_link["strength"] <= 1.0
+
+
+def test_artist_promoter_recommendations_preserve_existing_contract_fields():
+    response = client.get("/api/recommendations/artists/2178/promoters", params={"limit": 1})
+    assert response.status_code == 200
+
+    data = response.json()
+    first = data["recommendations"][0]
+    assert "score" in first
+    assert "semanticScore" in first
+    assert "strengthScore" in first
+    assert "activityScore" in first
+    assert "recencyScore" in first
+    assert "scoreBreakdown" in first
+    assert "matchedArtistCount" in first
+    assert "eventCount" in first
+    assert "reasons" in first
+    assert "graph" in data
+    assert "nodes" in data["graph"]
+    assert "links" in data["graph"]
 
 
 def test_recommendation_feedback_can_be_upserted_and_listed():
