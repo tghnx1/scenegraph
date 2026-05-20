@@ -1,7 +1,7 @@
 import { SearchResultCard } from './SearchResultCard.tsx'
-import type { Artist, SimilarArtist } from '../../types/artist'
+import type { Artist } from '../../types/artist'
 import type { GraphNode } from '../../types/graph'
-import type { SearchArtistResult, SearchResult } from '../../types/search'
+import type { SearchResult } from '../../types/search'
 
 interface GraphSidebarDetailsProps {
   searchQuery: string
@@ -10,32 +10,6 @@ interface GraphSidebarDetailsProps {
   searchError: string | null
   selectedNode: GraphNode | null
   selectedArtist: Artist | null
-  similarArtists: SimilarArtist[]
-}
-
-function toSelectedArtistResult(
-  selectedNode: GraphNode | null,
-  selectedArtist: Artist | null,
-  similarArtists: SimilarArtist[]
-): SearchArtistResult | null {
-  if (!selectedNode || selectedNode.type !== 'artist' || !selectedArtist) {
-    return null
-  }
-
-  return {
-    type: 'artist',
-    id: selectedArtist.id,
-    label: selectedArtist.name,
-    genres: selectedArtist.genres.map((genre) => typeof genre === 'string' ? genre : genre.name),
-    bio: selectedArtist.bio,
-    eventCount: selectedArtist.eventCount ?? selectedNode.eventCount ?? 0,
-    events: selectedArtist.events ?? [],
-    connectedArtists: selectedArtist.connectedArtists ?? similarArtists.map((entry) => ({
-      id: entry.artist.id,
-      label: entry.artist.name,
-      sharedEvents: entry.sharedEvents,
-    })),
-  }
 }
 
 export function GraphSidebarDetails({
@@ -45,16 +19,14 @@ export function GraphSidebarDetails({
   searchError,
   selectedNode,
   selectedArtist,
-  similarArtists,
 }: GraphSidebarDetailsProps) {
   const activeSearchResult = searchResults[0] ?? null
-  const selectedArtistResult = toSelectedArtistResult(selectedNode, selectedArtist, similarArtists)
 
   if (selectedNode) {
-    if (selectedNode.type === 'artist' && selectedArtistResult) {
+    if (selectedNode.type === 'artist' && selectedArtist) {
       return (
         <div className="graph-sidebar-content">
-          <SearchResultCard variant="inline" result={selectedArtistResult} />
+          <SearchResultCard variant="inline" result={selectedArtist} />
         </div>
       )
     }

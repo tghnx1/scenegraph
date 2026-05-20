@@ -15,16 +15,7 @@ interface SearchQueryFormProps {
 }
 
 function getResultMeta(result: SearchResult) {
-  if (result.type === 'artist') {
-    return result.genres.join(' · ') || (result.eventCount > 0 ? `${result.eventCount} events` : '')
-  }
-  if (result.type === 'venue') {
-    return [result.district, result.eventCount > 0 ? `${result.eventCount} events` : ''].filter(Boolean).join(' · ')
-  }
-  if (result.type === 'promoter') {
-    return result.eventCount > 0 ? `${result.eventCount} events` : ''
-  }
-  return result.date
+  return result.id
 }
 
 export function SearchQueryForm({
@@ -153,7 +144,7 @@ export function SearchQueryForm({
                 }}
               >
                 <span>
-                  <strong>{result.label}</strong>
+                  <strong>{result.name}</strong>
                   {getResultMeta(result) && <small>{getResultMeta(result)}</small>}
                 </span>
                 <em>{result.type}</em>
