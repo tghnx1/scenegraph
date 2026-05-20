@@ -52,17 +52,10 @@ const userRows = [
 export function DashboardPage() {
   return (
     <div className="dashboard-page">
-      <header className="dashboard-header">
-        <div>
-          <span className="search-query-label">Admin dashboard</span>
-          <h1>SceneGraph operations</h1>
-          <p>Mock admin controls for imports, graph health, data quality, entities, users, and recommendation debugging.</p>
-        </div>
-        <div className="dashboard-header-actions">
-          <button type="button">Run import</button>
-          <button type="button">View logs</button>
-        </div>
-      </header>
+      <div className="dashboard-actions" aria-label="Dashboard actions">
+        <button type="button">Run import</button>
+        <button type="button">View logs</button>
+      </div>
 
       <section className="dashboard-overview" aria-label="SceneGraph overview">
         {overviewStats.map((item) => (
