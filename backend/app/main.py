@@ -2244,6 +2244,10 @@ def similarity_graph_debug_components(
         else scoring_config.artist_graph_weights
     )
     components: dict[str, dict[str, object]] = {}
+    public_feature_names = {
+        "genres": "abstract_genres",
+        "extracted_styles": "extracted_genres",
+    }
     for weight in weights:
         source_values = source_features.get(weight.feature, set())
         candidate_values = candidate_features.get(weight.feature, set())
@@ -2256,7 +2260,8 @@ def similarity_graph_debug_components(
                 raise ValueError(f"Graph feature {weight.label} requires cap for non-boolean scoring")
             normalized = min(overlap_count / weight.cap, 1.0)
 
-        components[weight.feature] = {
+        public_key = public_feature_names.get(weight.feature, weight.feature)
+        components[public_key] = {
             "weight": weight.weight,
             "overlapCount": overlap_count,
             "cap": weight.cap,

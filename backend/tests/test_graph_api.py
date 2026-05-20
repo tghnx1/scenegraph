@@ -240,7 +240,9 @@ def test_event_similarity_endpoint_debug_includes_detailed_scores():
     }
     assert set(first["debug"]["rawSignals"]) == {"semanticScore", "graphScore"}
     assert set(first["debug"]["weightedScores"]) == {"semantic", "graph", "total"}
-    assert {"artists", "promoters", "venues", "genres"} <= set(first["debug"]["graphComponents"].keys())
+    assert {"artists", "promoters", "venues", "abstract_genres", "extracted_genres"} <= set(
+        first["debug"]["graphComponents"].keys()
+    )
 
 
 def test_artist_similar_events_endpoint_shape():
