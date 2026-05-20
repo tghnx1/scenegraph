@@ -76,15 +76,3 @@ export const fetchArtist = async (id: string, name?: string): Promise<Artist> =>
 
 export const fetchSimilarArtists = (_id: string) =>
   Promise.resolve([] as SimilarArtist[]) //rich artist detail includes connectedArtists; keep signature for callers
-
-// import { MOCK_ARTISTS, MOCK_SIMILAR } from './mock_data/mock'
-
-// export const fetchArtist = (id: string): Promise<Artist> => {
-//   const artist = MOCK_ARTISTS[id]
-//   if (!artist) return Promise.reject(new Error(`Artist ${id} not found`))
-//   return Promise.resolve(artist)
-// }
-
-// export const fetchSimilarArtists = (id: string): Promise<SimilarArtist[]> => {
-//   return Promise.resolve(MOCK_SIMILAR[id] ?? [])
-// }

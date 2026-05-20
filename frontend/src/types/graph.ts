@@ -2,24 +2,23 @@ export type NodeType = 'artist' | 'event' | 'venue' | 'promoter'
 
 export interface GraphNode {
   id: string
+  entityId: number
   type: NodeType
   name: string
   genres: string[]
-  eventCount?: number
-  entityId?: number
-  date?: string
-  startDate?: string
-  endDate?: string
-  district?: string
-  lat?: number
-  lng?: number
+  eventCount?: number | null
+  date?: string | null
+  startDate?: string | null
+  endDate?: string | null
+  district?: string | null
+  sceneFocus?: string | null
 }
 
 export interface GraphEdge {
   source: string
   target: string
+  relationship: string
   weight: number
-  relationship?: string
 }
 
 export interface GraphData {
