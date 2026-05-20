@@ -767,42 +767,6 @@ async def list_venues(connection: Connection = Depends(get_db)) -> VenuesRespons
 
 
 @app.get(
-    "/api/similar/events/{event_id}",
-    response_model=SimilarityResponse,
-    response_model_exclude_none=True,
-)
-async def similar_events(
-    event_id: int,
-    limit: int = Query(default=10, ge=1, le=100),
-    connection: Connection = Depends(get_db),
-) -> SimilarityResponse:
-    return build_similarity_response(
-        connection,
-        entity_type="event",
-        entity_id=event_id,
-        limit=limit,
-    )
-
-
-@app.get(
-    "/api/similar/artists/{artist_id}",
-    response_model=SimilarityResponse,
-    response_model_exclude_none=True,
-)
-async def similar_artists(
-    artist_id: int,
-    limit: int = Query(default=10, ge=1, le=100),
-    connection: Connection = Depends(get_db),
-) -> SimilarityResponse:
-    return build_similarity_response(
-        connection,
-        entity_type="artist",
-        entity_id=artist_id,
-        limit=limit,
-    )
-
-
-@app.get(
     "/api/semantic/artists/{artist_id}",
     response_model=SemanticArtistResponse,
     response_model_exclude_none=True,

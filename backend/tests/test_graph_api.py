@@ -110,34 +110,6 @@ def test_graph_includes_promoter_relationships():
         assert link["target"] in node_ids
 
 
-def test_similar_events_endpoint_shape():
-    response = client.get("/api/similar/events/1", params={"limit": 3})
-    assert response.status_code == 200
-
-    data = response.json()
-    assert data["entityId"] == 1
-    assert data["entityType"] == "event"
-    assert data["similar"]
-    assert "recommendations" not in data
-
-    first = data["similar"][0]
-    assert first["type"] == "event"
-    assert "score" in first
-    assert "semanticScore" in first
-    assert "graphScore" in first
-    assert isinstance(first["reasons"], list)
-
-
-def test_similar_artists_endpoint_allows_empty_results_after_filtering():
-    response = client.get("/api/similar/artists/1", params={"limit": 3})
-    assert response.status_code == 200
-
-    data = response.json()
-    assert data["entityId"] == 1
-    assert data["entityType"] == "artist"
-    assert isinstance(data["similar"], list)
-
-
 def test_semantic_artists_endpoint_shape():
     response = client.get("/api/semantic/artists/2178", params={"limit": 3})
     assert response.status_code == 200
