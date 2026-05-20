@@ -149,12 +149,6 @@
   text-transform: capitalize;
 }
 
-.search-query-hint {
-  margin: 0;
-  color: var(--text-muted);
-  font-size: 0.92rem;
-}
-
 .search-summary {
   display: flex;
   justify-content: space-between;

@@ -86,15 +86,6 @@
   overflow-y: auto;
 }
 
-.graph-sidebar-card h1 {
-  font-size: clamp(1.8rem, 4vw, 3rem);
-  line-height: 0.98;
-}
-
-.graph-sidebar-lead {
-  margin: 0;
-}
-
 .graph-canvas--large {
   position: relative;
   z-index: 1;

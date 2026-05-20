@@ -67,7 +67,6 @@
     grid-template-columns: 1fr;
   }
 
-  .legend-bar,
   .panel-heading {
     align-items: stretch;
     flex-direction: column;
