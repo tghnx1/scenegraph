@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { fetchEntityDetail } from '../api/entityDetails'
-import { fetchArtist, fetchSimilarArtists } from '../api/artists'
+import { fetchArtist } from '../api/artists'
 import { fetchSearch } from '../api/search'
 import { useApi } from '../hooks/useApi'
 import { useGraphStore } from '../store/graphStore'
-import type { Artist, SimilarArtist } from '../types/artist'
+import type { Artist } from '../types/artist'
 import type { GraphNode, NodeType } from '../types/graph'
 import type { SearchResponse, SearchResult } from '../types/search'
 import { GraphSidebarDetails } from './components/DetailsPanel.tsx'
@@ -51,11 +51,6 @@ export function ProfilePage() {
   const { data: selectedArtist } = useApi<Artist | null>(
     () => (selectedArtistId ? fetchArtist(selectedArtistId, selectedNode?.name) : Promise.resolve(null)),
     [selectedArtistId, selectedNode?.name]
-  )
-
-  const { data: similarArtists } = useApi<SimilarArtist[]>(
-    () => (selectedArtistId ? fetchSimilarArtists(selectedArtistId) : Promise.resolve([] as SimilarArtist[])),
-    [selectedArtistId]
   )
 
   const { data: dropdownSearchData, isLoading: isDropdownSearchLoading } = useApi<SearchResponse>(
@@ -116,11 +111,11 @@ export function ProfilePage() {
   const handleSelectSearchResult = useCallback(
     (result: SearchResult) => {
       const nextParams = new URLSearchParams(searchParams)
-      nextParams.set('q', result.label)
+      nextParams.set('q', result.name)
       nextParams.set('selectedType', result.type)
       nextParams.set('selectedId', result.id)
       nextParams.delete('artist')
-      setSearchValue(result.label)
+      setSearchValue(result.name)
       setSelected(null)
       setSearchParams(nextParams, { replace: false })
     },
@@ -146,7 +141,7 @@ export function ProfilePage() {
         entityId: Number(selectedArtist.id),
         type: 'artist',
         name: selectedArtist.name,
-        genres: selectedArtist.genres.map((genre) => typeof genre === 'string' ? genre : genre.name),
+        genres: selectedArtist.genres,
         eventCount: selectedArtist.eventCount,
       }
     : null
@@ -179,7 +174,6 @@ export function ProfilePage() {
             searchError={detailsSearchError}
             selectedNode={detailsSelectedNode}
             selectedArtist={selectedArtist}
-            similarArtists={similarArtists ?? []}
           />
         </article>
 
