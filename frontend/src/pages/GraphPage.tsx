@@ -6,7 +6,7 @@ import { fetchArtist, fetchSimilarArtists } from '../api/artists'
 import { fetchSearch } from '../api/search'
 import { useGraphStore } from '../store/graphStore'
 import type { Artist, SimilarArtist } from '../types/artist'
-import type { NodeType } from '../types/graph'
+import type { GraphNode, NodeType } from '../types/graph'
 import type { SearchResponse, SearchResult } from '../types/search'
 import { useDebouncedValue } from './hooks/useDebouncedValue'
 import { GraphSidebarDetails } from './components/DetailsPanel.tsx'
@@ -19,13 +19,23 @@ export function GraphPage() {
   const submittedQuery = searchParams.get('q') ?? ''
   const [searchValue, setSearchValue] = useState(submittedQuery)
   const debouncedSearchValue = useDebouncedValue(searchValue.trim(), 350)
-  const selectedArtistId = selectedNode?.type === 'artist' ? selectedNode.id : null
-  const selectedDetailType = selectedNode && selectedNode.type !== 'artist' ? selectedNode.type : null
-  const selectedDetailId = selectedDetailType ? selectedNode?.id ?? null : null
+  const selectedTypeParam = searchParams.get('selectedType')
+  const selectedIdParam = searchParams.get('selectedId')
+  const selectedArtistId = selectedNode?.type === 'artist'
+    ? selectedNode.id
+    : selectedTypeParam === 'artist'
+      ? selectedIdParam
+      : null
+  const selectedDetailType = selectedNode && selectedNode.type !== 'artist'
+    ? selectedNode.type
+    : selectedTypeParam && selectedTypeParam !== 'artist'
+      ? selectedTypeParam
+      : null
+  const selectedDetailId = selectedNode && selectedNode.type !== 'artist' ? selectedNode.id : selectedIdParam
 
   const { data: selectedArtist } = useApi<Artist | null>(
-    () => (selectedArtistId ? fetchArtist(selectedArtistId) : Promise.resolve(null)),
-    [selectedArtistId]
+    () => (selectedArtistId ? fetchArtist(selectedArtistId, selectedNode?.name) : Promise.resolve(null)),
+    [selectedArtistId, selectedNode?.name]
   )
 
   const { data: similarArtists } = useApi<SimilarArtist[]>(
@@ -125,6 +135,17 @@ export function GraphPage() {
   const detailsSearchError = searchError
   const isDetailsSearchLoading = isSearchLoading || isSelectedEntityDetailLoading
   const hasActiveSearchState = Boolean(searchValue || submittedQuery || selectedNode)
+  const selectedArtistNode: GraphNode | null = selectedArtist
+    ? {
+        id: `artist-${selectedArtist.id}`,
+        entityId: Number(selectedArtist.id),
+        type: 'artist',
+        name: selectedArtist.name,
+        genres: selectedArtist.genres.map((genre) => typeof genre === 'string' ? genre : genre.name),
+        eventCount: selectedArtist.eventCount,
+      }
+    : null
+  const detailsSelectedNode = selectedEntityDetail ? null : selectedNode ?? selectedArtistNode
 
   return (
     <div className="graph-page-shell">
@@ -150,7 +171,7 @@ export function GraphPage() {
             searchResults={detailSearchResults}
             isSearchLoading={isDetailsSearchLoading}
             searchError={detailsSearchError}
-            selectedNode={selectedEntityDetail ? null : selectedNode}
+            selectedNode={detailsSelectedNode}
             selectedArtist={selectedArtist}
             similarArtists={similarArtistLinks}
           />
