@@ -64,6 +64,9 @@ class GraphLink(BaseModel):
     target: str
     relationship: str
     weight: int = 1
+    evidenceType: str | None = None
+    style: Literal["solid", "dashed", "dotted"] | None = None
+    strength: float | None = None
 
 
 class GraphResponse(BaseModel):
@@ -138,6 +141,11 @@ class ArtistRecommendationResponse(BaseModel):
     recommendations: list[ArtistRecommendationItem]
 
 
+class RecommendationEvidenceItem(BaseModel):
+    type: Literal["semantic_bridge", "direct_connection", "warm_network", "event_similarity"]
+    path: str
+
+
 class PromoterRecommendationItem(BaseModel):
     id: int
     type: Literal["promoter"] = "promoter"
@@ -152,6 +160,10 @@ class PromoterRecommendationItem(BaseModel):
     matchedArtistCount: int
     eventCount: int
     latestEventDate: DateValue | None = None
+    status: str | None = None
+    warmConnectionCount: int = 0
+    directConnectionCount: int = 0
+    evidence: list[RecommendationEvidenceItem] = Field(default_factory=list)
 
 
 class PromoterRecommendationResponse(BaseModel):
@@ -645,12 +657,31 @@ def promoter_recommendation_graph(
             eventCount=recommendation.eventCount,
         )
 
-    def add_link(source: str, target: str, relationship: str, weight: int = 1) -> None:
+    def add_link(
+        source: str,
+        target: str,
+        relationship: str,
+        weight: int = 1,
+        *,
+        evidence_type: str | None = None,
+        style: Literal["solid", "dashed", "dotted"] | None = None,
+        strength: float | None = None,
+    ) -> None:
         key = (source, target, relationship)
         if key in seen_links:
             return
         seen_links.add(key)
-        links.append(GraphLink(source=source, target=target, relationship=relationship, weight=weight))
+        links.append(
+            GraphLink(
+                source=source,
+                target=target,
+                relationship=relationship,
+                weight=weight,
+                evidenceType=evidence_type,
+                style=style,
+                strength=strength,
+            )
+        )
 
     for row in evidence_rows:
         promoter_node_id = graph_node_id("promoter", row["promoter_id"])
@@ -671,14 +702,32 @@ def promoter_recommendation_graph(
             date=row["event_date"],
         )
 
+        semantic_strength = max(0.0, min(float(row["semantic_score"]), 1.0))
         add_link(
             graph_node_id("artist", source_artist_id),
             artist_node_id,
             "semantic match",
-            max(1, round(row["semantic_score"] * 10)),
+            max(1, round(semantic_strength * 10)),
+            evidence_type="semantic_bridge",
+            style="dashed",
+            strength=semantic_strength,
         )
-        add_link(artist_node_id, event_node_id, "played")
-        add_link(promoter_node_id, event_node_id, "organized")
+        add_link(
+            artist_node_id,
+            event_node_id,
+            "played",
+            evidence_type="semantic_bridge",
+            style="solid",
+            strength=max(0.5, semantic_strength),
+        )
+        add_link(
+            promoter_node_id,
+            event_node_id,
+            "organized",
+            evidence_type="semantic_bridge",
+            style="solid",
+            strength=max(0.5, semantic_strength),
+        )
 
         if row["venue_id"] is not None:
             venue_node_id = graph_node_id("venue", row["venue_id"])
@@ -688,7 +737,14 @@ def promoter_recommendation_graph(
                 type="venue",
                 name=row["venue_name"],
             )
-            add_link(event_node_id, venue_node_id, "at")
+            add_link(
+                event_node_id,
+                venue_node_id,
+                "at",
+                evidence_type="semantic_bridge",
+                style="solid",
+                strength=max(0.3, semantic_strength * 0.8),
+            )
 
     return GraphResponse(nodes=list(nodes.values()), links=links)
 
@@ -849,6 +905,15 @@ def build_artist_promoter_recommendation_response(
                 matchedArtistCount=row["matched_artist_count"],
                 eventCount=row["event_count"],
                 latestEventDate=row["latest_event_date"],
+                status="new_relevant",
+                warmConnectionCount=0,
+                directConnectionCount=0,
+                evidence=[
+                    RecommendationEvidenceItem(
+                        type="semantic_bridge",
+                        path="Source Artist -> Similar Artist -> Event -> Promoter",
+                    )
+                ],
             )
         )
 
