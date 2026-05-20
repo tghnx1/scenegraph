@@ -183,6 +183,71 @@ The response also includes graph evidence connecting:
 source artist -> similar artist -> event -> promoter -> venue
 ```
 
+## MVP scope (current target)
+
+MVP focuses on one flow only:
+
+- artist -> recommended promoters
+
+Current API contract for this MVP:
+
+```text
+GET /api/recommendations/artists/{artist_id}/promoters
+```
+
+The final output is promoters. Similar artists are an internal signal for finding promoters, not the final recommendation output.
+
+Signal families for this MVP:
+
+### 1) `semantic_artist_bridge`
+
+- Graph path:
+  `source artist -> similar artist -> event -> promoter`
+- What it means:
+  We find artists that are semantically close to the source artist (embeddings + style/tag overlap), then collect promoters from those artists' events.
+- Why it matters:
+  This is the strongest cold-start bridge when the source artist has little direct promoter history.
+- Example explanation text:
+  `"Connected through semantically similar artists who played promoter events in your neighborhood."`
+
+### 2) `direct_connection`
+
+- Graph path:
+  `source artist -> event -> promoter`
+- What it means:
+  Promoters that already booked events where the source artist played.
+- Why it matters:
+  Highest-trust evidence of real-world reachability and proven fit.
+- Example explanation text:
+  `"You already played events organized by this promoter."`
+
+### 3) `warm_network`
+
+- Graph path:
+  `source artist -> shared event -> co-played artist -> other event -> promoter`
+- What it means:
+  Promoters reached via artists that shared lineups with the source artist and have additional promoter relationships elsewhere.
+- Why it matters:
+  Captures near-network opportunities that are more reachable than purely global similarity.
+- Example explanation text:
+  `"Artists you shared lineups with also work with this promoter at other events."`
+
+### 4) `event_similarity`
+
+- Graph path:
+  `source artist -> source event -> similar event -> promoter`
+- What it means:
+  Promoters connected to events similar to the source artist's event context (venue/genre/lineup/promoter neighborhood).
+- Why it matters:
+  Expands discovery beyond direct history while preserving scene fit.
+- Example explanation text:
+  `"This promoter runs events similar to the ones you already play."`
+
+Implementation note for current FastAPI backend:
+
+- The endpoint already implements the `semantic_artist_bridge` family and returns graph evidence.
+- `direct_connection`, `warm_network`, and `event_similarity` are planned additions for the same endpoint and should be introduced incrementally with tests after each step.
+
 ### Recommendation feedback
 
 ```text
