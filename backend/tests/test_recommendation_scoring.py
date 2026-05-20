@@ -245,4 +245,6 @@ def test_artist_similarity_requires_graph_or_strong_semantic_evidence():
 
 
 def test_event_similarity_allows_semantic_only_candidates():
-    assert is_similarity_candidate_eligible("event", 0.60, 0.0)
+    assert not is_similarity_candidate_eligible("event", 0.60, 0.0)
+    assert is_similarity_candidate_eligible("event", 0.75, 0.0)
+    assert is_similarity_candidate_eligible("event", 0.60, 0.08)

@@ -24,6 +24,17 @@ class RecommendationScoringConfig:
     semantic_weight: float
     graph_weight: float
     artist_semantic_only_threshold: float
+    event_graph_min_threshold: float
+    event_semantic_if_weak_graph_threshold: float
+    event_rerank_min_graph_for_neutral: float
+    event_rerank_low_graph_penalty: float
+    event_rerank_extracted_genres_bonus_threshold: int
+    event_rerank_extracted_genres_bonus: float
+    event_rerank_shared_artists_bonus: float
+    event_rerank_interested_match_relative_diff_max: float
+    event_rerank_interested_mismatch_relative_diff_min: float
+    event_rerank_interested_count_match_bonus: float
+    event_rerank_interested_count_mismatch_penalty: float
     event_graph_weights: tuple[GraphFeatureWeight, ...]
     artist_graph_weights: tuple[GraphFeatureWeight, ...]
 
@@ -97,6 +108,17 @@ DEFAULT_RECOMMENDATION_SCORING = RecommendationScoringConfig(
     semantic_weight=0.65,
     graph_weight=0.35,
     artist_semantic_only_threshold=0.80,
+    event_graph_min_threshold=0.08,
+    event_semantic_if_weak_graph_threshold=0.74,
+    event_rerank_min_graph_for_neutral=0.12,
+    event_rerank_low_graph_penalty=0.03,
+    event_rerank_extracted_genres_bonus_threshold=2,
+    event_rerank_extracted_genres_bonus=0.02,
+    event_rerank_shared_artists_bonus=0.02,
+    event_rerank_interested_match_relative_diff_max=0.45,
+    event_rerank_interested_mismatch_relative_diff_min=0.80,
+    event_rerank_interested_count_match_bonus=0.015,
+    event_rerank_interested_count_mismatch_penalty=0.02,
     event_graph_weights=(
         GraphFeatureWeight("shared artists", "artists", 0.50, cap=3),
         GraphFeatureWeight("shared promoters", "promoters", 0.20, cap=2),
@@ -532,10 +554,12 @@ def is_similarity_candidate_eligible(
     graph_score: float,
     config: RecommendationScoringConfig = DEFAULT_RECOMMENDATION_SCORING,
 ) -> bool:
-    if entity_type != "artist":
-        return True
-
-    return graph_score > 0 or semantic_score >= config.artist_semantic_only_threshold
+    if entity_type == "artist":
+        return graph_score > 0 or semantic_score >= config.artist_semantic_only_threshold
+    return (
+        graph_score >= config.event_graph_min_threshold
+        or semantic_score >= config.event_semantic_if_weak_graph_threshold
+    )
 def recommendation_scoring_from_env() -> RecommendationScoringConfig:
     weights = normalized_weights(
         (
@@ -549,6 +573,77 @@ def recommendation_scoring_from_env() -> RecommendationScoringConfig:
     )
     if not (0.0 <= artist_semantic_only_threshold <= 1.0):
         raise ValueError("RECOMMENDATION_ARTIST_SEMANTIC_ONLY_THRESHOLD must be between 0 and 1")
+    event_graph_min_threshold = env_float(
+        "RECOMMENDATION_EVENT_GRAPH_MIN_THRESHOLD",
+        DEFAULT_RECOMMENDATION_SCORING.event_graph_min_threshold,
+    )
+    event_semantic_if_weak_graph_threshold = env_float(
+        "RECOMMENDATION_EVENT_SEMANTIC_IF_WEAK_GRAPH_THRESHOLD",
+        DEFAULT_RECOMMENDATION_SCORING.event_semantic_if_weak_graph_threshold,
+    )
+    if not (0.0 <= event_graph_min_threshold <= 1.0):
+        raise ValueError("RECOMMENDATION_EVENT_GRAPH_MIN_THRESHOLD must be between 0 and 1")
+    if not (0.0 <= event_semantic_if_weak_graph_threshold <= 1.0):
+        raise ValueError("RECOMMENDATION_EVENT_SEMANTIC_IF_WEAK_GRAPH_THRESHOLD must be between 0 and 1")
+    event_rerank_min_graph_for_neutral = env_float(
+        "EVENT_RERANK_MIN_GRAPH_FOR_NEUTRAL",
+        DEFAULT_RECOMMENDATION_SCORING.event_rerank_min_graph_for_neutral,
+    )
+    event_rerank_low_graph_penalty = env_float(
+        "EVENT_RERANK_LOW_GRAPH_PENALTY",
+        DEFAULT_RECOMMENDATION_SCORING.event_rerank_low_graph_penalty,
+    )
+    event_rerank_extracted_genres_bonus_threshold = env_int(
+        "EVENT_RERANK_EXTRACTED_GENRES_BONUS_THRESHOLD",
+        DEFAULT_RECOMMENDATION_SCORING.event_rerank_extracted_genres_bonus_threshold,
+    )
+    event_rerank_extracted_genres_bonus = env_float(
+        "EVENT_RERANK_EXTRACTED_GENRES_BONUS",
+        DEFAULT_RECOMMENDATION_SCORING.event_rerank_extracted_genres_bonus,
+    )
+    event_rerank_shared_artists_bonus = env_float(
+        "EVENT_RERANK_SHARED_ARTISTS_BONUS",
+        DEFAULT_RECOMMENDATION_SCORING.event_rerank_shared_artists_bonus,
+    )
+    event_rerank_interested_match_relative_diff_max = env_float(
+        "EVENT_RERANK_INTERESTED_MATCH_RELATIVE_DIFF_MAX",
+        DEFAULT_RECOMMENDATION_SCORING.event_rerank_interested_match_relative_diff_max,
+    )
+    event_rerank_interested_mismatch_relative_diff_min = env_float(
+        "EVENT_RERANK_INTERESTED_MISMATCH_RELATIVE_DIFF_MIN",
+        DEFAULT_RECOMMENDATION_SCORING.event_rerank_interested_mismatch_relative_diff_min,
+    )
+    event_rerank_interested_count_match_bonus = env_float(
+        "EVENT_RERANK_INTERESTED_COUNT_MATCH_BONUS",
+        DEFAULT_RECOMMENDATION_SCORING.event_rerank_interested_count_match_bonus,
+    )
+    event_rerank_interested_count_mismatch_penalty = env_float(
+        "EVENT_RERANK_INTERESTED_COUNT_MISMATCH_PENALTY",
+        DEFAULT_RECOMMENDATION_SCORING.event_rerank_interested_count_mismatch_penalty,
+    )
+    if not (0.0 <= event_rerank_min_graph_for_neutral <= 1.0):
+        raise ValueError("EVENT_RERANK_MIN_GRAPH_FOR_NEUTRAL must be between 0 and 1")
+    if event_rerank_low_graph_penalty < 0:
+        raise ValueError("EVENT_RERANK_LOW_GRAPH_PENALTY must be non-negative")
+    if event_rerank_extracted_genres_bonus_threshold < 1:
+        raise ValueError("EVENT_RERANK_EXTRACTED_GENRES_BONUS_THRESHOLD must be at least 1")
+    if event_rerank_extracted_genres_bonus < 0:
+        raise ValueError("EVENT_RERANK_EXTRACTED_GENRES_BONUS must be non-negative")
+    if event_rerank_shared_artists_bonus < 0:
+        raise ValueError("EVENT_RERANK_SHARED_ARTISTS_BONUS must be non-negative")
+    if not (0.0 <= event_rerank_interested_match_relative_diff_max <= 1.0):
+        raise ValueError("EVENT_RERANK_INTERESTED_MATCH_RELATIVE_DIFF_MAX must be between 0 and 1")
+    if not (0.0 <= event_rerank_interested_mismatch_relative_diff_min <= 1.0):
+        raise ValueError("EVENT_RERANK_INTERESTED_MISMATCH_RELATIVE_DIFF_MIN must be between 0 and 1")
+    if event_rerank_interested_match_relative_diff_max > event_rerank_interested_mismatch_relative_diff_min:
+        raise ValueError(
+            "EVENT_RERANK_INTERESTED_MATCH_RELATIVE_DIFF_MAX must be <= "
+            "EVENT_RERANK_INTERESTED_MISMATCH_RELATIVE_DIFF_MIN"
+        )
+    if event_rerank_interested_count_match_bonus < 0:
+        raise ValueError("EVENT_RERANK_INTERESTED_COUNT_MATCH_BONUS must be non-negative")
+    if event_rerank_interested_count_mismatch_penalty < 0:
+        raise ValueError("EVENT_RERANK_INTERESTED_COUNT_MISMATCH_PENALTY must be non-negative")
 
     event_caps = (
         env_int("EVENT_GRAPH_SHARED_ARTISTS_CAP", 3),
@@ -580,6 +675,17 @@ def recommendation_scoring_from_env() -> RecommendationScoringConfig:
         semantic_weight=weights[0],
         graph_weight=weights[1],
         artist_semantic_only_threshold=artist_semantic_only_threshold,
+        event_graph_min_threshold=event_graph_min_threshold,
+        event_semantic_if_weak_graph_threshold=event_semantic_if_weak_graph_threshold,
+        event_rerank_min_graph_for_neutral=event_rerank_min_graph_for_neutral,
+        event_rerank_low_graph_penalty=event_rerank_low_graph_penalty,
+        event_rerank_extracted_genres_bonus_threshold=event_rerank_extracted_genres_bonus_threshold,
+        event_rerank_extracted_genres_bonus=event_rerank_extracted_genres_bonus,
+        event_rerank_shared_artists_bonus=event_rerank_shared_artists_bonus,
+        event_rerank_interested_match_relative_diff_max=event_rerank_interested_match_relative_diff_max,
+        event_rerank_interested_mismatch_relative_diff_min=event_rerank_interested_mismatch_relative_diff_min,
+        event_rerank_interested_count_match_bonus=event_rerank_interested_count_match_bonus,
+        event_rerank_interested_count_mismatch_penalty=event_rerank_interested_count_mismatch_penalty,
         event_graph_weights=(
             GraphFeatureWeight("shared artists", "artists", event_graph_weight_values[0], cap=event_caps[0]),
             GraphFeatureWeight(
