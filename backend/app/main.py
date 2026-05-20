@@ -12,11 +12,13 @@ from app.db import get_db
 from app.embeddings import EmbeddingConfig, EntityType, rank_similar_embeddings
 from app.recommendation_scoring import (
     DEFAULT_RECOMMENDATION_SCORING,
+    SemanticArtistTagScoringConfig,
     final_recommendation_score,
     hybrid_graph_score,
     is_similarity_candidate_eligible,
     semantic_artist_score,
     semantic_artist_scoring_from_env,
+    semantic_artist_tag_scoring_from_env,
 )
 from app.style_tags import extract_style_tags, style_overlap_score
 
@@ -240,23 +242,32 @@ def shared_tag_values(source_tags: list[str], candidate_tags: list[str]) -> list
     )
 
 
-def extracted_tag_score(source_tags: dict[str, list[str]], candidate_tags: dict[str, list[str]]) -> float:
-    label_score = tag_overlap_score(source_tags.get("label", []), candidate_tags.get("label", []))
-    collective_score = tag_overlap_score(
+def extracted_tag_score(
+    source_tags: dict[str, list[str]],
+    candidate_tags: dict[str, list[str]],
+    config: SemanticArtistTagScoringConfig,
+) -> float:
+    label_overlap = tag_overlap_score(source_tags.get("label", []), candidate_tags.get("label", []))
+    collective_overlap = tag_overlap_score(
         source_tags.get("collective", []),
         candidate_tags.get("collective", []),
     )
-    residency_score = tag_overlap_score(
+    residency_overlap = tag_overlap_score(
         source_tags.get("residency", []),
         candidate_tags.get("residency", []),
     )
-    role_score = 0.5 * tag_overlap_score(
+    role_overlap = tag_overlap_score(
         source_tags.get("role", []),
         candidate_tags.get("role", []),
-        cap=2,
+        cap=config.role_overlap_cap,
     )
 
-    return max(label_score, collective_score, residency_score, role_score)
+    return (
+        config.label_weight * label_overlap
+        + config.collective_weight * collective_overlap
+        + config.residency_weight * residency_overlap
+        + config.role_weight * role_overlap
+    )
 
 
 def shared_extracted_tags(
@@ -279,6 +290,7 @@ def build_artist_semantic_response(
 ) -> SemanticArtistResponse:
     config = EmbeddingConfig.from_env()
     scoring_config = semantic_artist_scoring_from_env()
+    tag_scoring_config = semantic_artist_tag_scoring_from_env()
     source, ranked = rank_similar_embeddings(
         connection,
         entity_type="artist",
@@ -313,7 +325,11 @@ def build_artist_semantic_response(
         candidate_tags = candidate_metadata["style_tags"]
         shared_styles = sorted(set(source_tags) & set(candidate_tags))
         style_score = style_overlap_score(source_tags, candidate_tags)
-        tag_score = extracted_tag_score(source_extracted_tags, candidate_metadata["tags"])
+        tag_score = extracted_tag_score(
+            source_extracted_tags,
+            candidate_metadata["tags"],
+            tag_scoring_config,
+        )
         shared_tags = shared_extracted_tags(source_extracted_tags, candidate_metadata["tags"])
         embedding_score = item["score"]
         scored.append(

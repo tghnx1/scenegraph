@@ -35,10 +35,28 @@ class SemanticArtistScoringConfig:
     tag_weight: float
 
 
+@dataclass(frozen=True)
+class SemanticArtistTagScoringConfig:
+    label_weight: float
+    collective_weight: float
+    residency_weight: float
+    role_weight: float
+    role_overlap_cap: int
+
+
 DEFAULT_SEMANTIC_ARTIST_SCORING = SemanticArtistScoringConfig(
     embedding_weight=0.65,
     style_weight=0.25,
     tag_weight=0.10,
+)
+
+
+DEFAULT_SEMANTIC_ARTIST_TAG_SCORING = SemanticArtistTagScoringConfig(
+    label_weight=0.35,
+    collective_weight=0.30,
+    residency_weight=0.25,
+    role_weight=0.10,
+    role_overlap_cap=2,
 )
 
 
@@ -79,6 +97,13 @@ def env_float(name: str, default: float) -> float:
     return float(raw)
 
 
+def env_int(name: str, default: int) -> int:
+    raw = os.environ.get(name)
+    if raw is None or not raw.strip():
+        return default
+    return int(raw)
+
+
 def semantic_artist_scoring_from_env() -> SemanticArtistScoringConfig:
     weights = normalized_weights(
         (
@@ -101,6 +126,43 @@ def semantic_artist_scoring_from_env() -> SemanticArtistScoringConfig:
         embedding_weight=weights[0],
         style_weight=weights[1],
         tag_weight=weights[2],
+    )
+
+
+def semantic_artist_tag_scoring_from_env() -> SemanticArtistTagScoringConfig:
+    weights = normalized_weights(
+        (
+            env_float(
+                "SEMANTIC_ARTIST_TAG_LABEL_WEIGHT",
+                DEFAULT_SEMANTIC_ARTIST_TAG_SCORING.label_weight,
+            ),
+            env_float(
+                "SEMANTIC_ARTIST_TAG_COLLECTIVE_WEIGHT",
+                DEFAULT_SEMANTIC_ARTIST_TAG_SCORING.collective_weight,
+            ),
+            env_float(
+                "SEMANTIC_ARTIST_TAG_RESIDENCY_WEIGHT",
+                DEFAULT_SEMANTIC_ARTIST_TAG_SCORING.residency_weight,
+            ),
+            env_float(
+                "SEMANTIC_ARTIST_TAG_ROLE_WEIGHT",
+                DEFAULT_SEMANTIC_ARTIST_TAG_SCORING.role_weight,
+            ),
+        )
+    )
+    role_overlap_cap = env_int(
+        "SEMANTIC_ARTIST_TAG_ROLE_OVERLAP_CAP",
+        DEFAULT_SEMANTIC_ARTIST_TAG_SCORING.role_overlap_cap,
+    )
+    if role_overlap_cap <= 0:
+        raise ValueError("SEMANTIC_ARTIST_TAG_ROLE_OVERLAP_CAP must be greater than zero")
+
+    return SemanticArtistTagScoringConfig(
+        label_weight=weights[0],
+        collective_weight=weights[1],
+        residency_weight=weights[2],
+        role_weight=weights[3],
+        role_overlap_cap=role_overlap_cap,
     )
 
 
