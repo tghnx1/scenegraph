@@ -138,6 +138,8 @@ def test_semantic_artists_endpoint_shape():
     assert "embeddingScore" in first
     assert "styleScore" in first
     assert "tagScore" in first
+    assert "scoreBreakdown" in first
+    assert set(first["scoreBreakdown"]) == {"embedding", "style", "tag"}
     assert isinstance(first["sharedStyles"], list)
     assert isinstance(first["sharedTags"], dict)
 

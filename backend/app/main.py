@@ -16,7 +16,6 @@ from app.recommendation_scoring import (
     final_recommendation_score,
     hybrid_graph_score,
     is_similarity_candidate_eligible,
-    semantic_artist_score,
     semantic_artist_scoring_from_env,
     semantic_artist_tag_scoring_from_env,
 )
@@ -99,6 +98,7 @@ class SemanticArtistItem(BaseModel):
     embeddingScore: float
     styleScore: float
     tagScore: float = 0.0
+    scoreBreakdown: dict[str, float] = Field(default_factory=dict)
     sharedStyles: list[str] = Field(default_factory=list)
     sharedTags: dict[str, list[str]] = Field(default_factory=dict)
 
@@ -332,19 +332,20 @@ def build_artist_semantic_response(
         )
         shared_tags = shared_extracted_tags(source_extracted_tags, candidate_metadata["tags"])
         embedding_score = item["score"]
+        score_breakdown = {
+            "embedding": scoring_config.embedding_weight * embedding_score,
+            "style": scoring_config.style_weight * style_score,
+            "tag": scoring_config.tag_weight * tag_score,
+        }
         scored.append(
             {
                 "entity_id": item["entity_id"],
                 "name": candidate_metadata["name"],
-                "score": semantic_artist_score(
-                    embedding_score,
-                    style_score,
-                    tag_score,
-                    scoring_config,
-                ),
+                "score": sum(score_breakdown.values()),
                 "embedding_score": embedding_score,
                 "style_score": style_score,
                 "tag_score": tag_score,
+                "score_breakdown": score_breakdown,
                 "shared_styles": shared_styles,
                 "shared_tags": shared_tags,
             }
@@ -358,6 +359,7 @@ def build_artist_semantic_response(
             embeddingScore=item["embedding_score"],
             styleScore=item["style_score"],
             tagScore=item["tag_score"],
+            scoreBreakdown=item["score_breakdown"],
             sharedStyles=item["shared_styles"],
             sharedTags=item["shared_tags"],
         )
