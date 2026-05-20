@@ -1,12 +1,12 @@
-import { useState, type CSSProperties } from 'react'
-import { Routes, Route, Navigate, NavLink, useLocation, useParams, useSearchParams } from 'react-router-dom'
+import { useState } from 'react'
+import { Routes, Route, Navigate, NavLink, useParams, useSearchParams } from 'react-router-dom'
 import { GraphPage } from './pages/GraphPage'
 import { DashboardPage } from './pages/DashboardPage'
 import { ProfilePage } from './pages/ProfilePage'
+import { LoginPage, type AuthRole } from './pages/LoginPage'
 import { applyTheme, getStoredTheme, type ThemeName } from './styles/colors'
 
 const colorVar = (name: string) => `var(${name})`
-const colorAlpha = (name: string, percent: number) => `color-mix(in srgb, var(${name}) ${percent}%, transparent)`
 
 function LegalPage({ section }: { section: string }) {
   const titles: Record<string, string> = {
@@ -37,75 +37,29 @@ function ArtistRedirect() {
   return <Navigate to={`/graph?artist=${encodeURIComponent(id ?? '')}`} replace />
 }
 
-
-
-const shellStyle: CSSProperties = {
-  display: 'flex',
-  flexDirection: 'column',
-  height: '100dvh',
-  minHeight: '100vh',
-  color: colorVar('--text'),
-  background: `radial-gradient(1000px 520px at 12% -10%, ${colorAlpha('--link-highlight', 18)}, transparent 60%), radial-gradient(900px 460px at 95% 0%, ${colorAlpha('--accent-warm', 15)}, transparent 55%), ${colorVar('--background')}`,
-}
-
-const navStyle: CSSProperties = {
-  padding: '12px 20px',
-  borderBottom: `1px solid ${colorAlpha('--text', 18)}`,
-  background: colorAlpha('--background', 55),
-  backdropFilter: 'blur(6px)',
-  display: 'flex',
-  alignItems: 'center',
-  gap: 12,
-}
-
-const footerStyle: CSSProperties = {
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'space-between',
-  padding: '14px 20px',
-  borderTop: `1px solid ${colorAlpha('--text', 15)}`,
-  background: colorAlpha('--background', 72),
-  color: colorVar('--text-muted'),
-  fontSize: 13,
-}
-
-const linkBaseStyle: CSSProperties = {
-  textDecoration: 'none',
-  color: colorVar('--text-muted'),
-  padding: '6px 10px',
-  borderRadius: 8,
-  fontSize: 14,
-  fontWeight: 600,
-  transition: 'all 120ms ease',
-}
-
-const navSpacerStyle: CSSProperties = {
-  flex: 1,
-}
-
-const authButtonStyle: CSSProperties = {
-  ...linkBaseStyle,
-  cursor: 'pointer',
-  border: `1px solid ${colorAlpha('--text', 18)}`,
-  background: colorAlpha('--text', 6),
-  font: 'inherit',
-  fontSize: 14,
-}
-
 export default function App() {
-  const location = useLocation()
-  const isGraphActive = location.pathname === '/graph'
-  const [isAuthenticated, setIsAuthenticated] = useState(() => Boolean(localStorage.getItem('token')))
+  const [authRole, setAuthRole] = useState<AuthRole | null>(() => {
+    const storedRole = localStorage.getItem('role')
+    return storedRole === 'user' || storedRole === 'admin' ? storedRole : null
+  })
   const [themeName, setThemeName] = useState<ThemeName>(() => getStoredTheme())
+  const isAuthenticated = Boolean(authRole)
 
   const handleAuthClick = () => {
     if (isAuthenticated) {
       localStorage.removeItem('token')
-      setIsAuthenticated(false)
+      localStorage.removeItem('role')
+      setAuthRole(null)
       return
     }
 
     window.location.href = '/login'
+  }
+
+  const handleLogin = (role: AuthRole) => {
+    localStorage.setItem('token', `mock-${role}-token`)
+    localStorage.setItem('role', role)
+    setAuthRole(role)
   }
 
   const handleThemeToggle = () => {
@@ -115,56 +69,37 @@ export default function App() {
   }
 
   return (
-    <div style={shellStyle}>
-      <nav style={navStyle}>
-        <a
-          href="/graph"
-          style={{
-            ...linkBaseStyle,
-            background: isGraphActive ? colorAlpha('--link-highlight', 20) : 'transparent',
-            color: isGraphActive ? colorVar('--text') : colorVar('--text-muted'),
-            border: isGraphActive ? `1px solid ${colorAlpha('--link-highlight', 45)}` : '1px solid transparent',
-          }}
-        >
+    <div className="app-shell">
+      <nav className="app-nav">
+        <NavLink to="/graph" className="app-nav-link">
           Graph
-        </a>
-        <NavLink
-          to="/profile"
-          style={({ isActive }) => ({
-            ...linkBaseStyle,
-            background: isActive ? colorAlpha('--link-highlight', 20) : 'transparent',
-            color: isActive ? colorVar('--text') : colorVar('--text-muted'),
-            border: isActive ? `1px solid ${colorAlpha('--link-highlight', 45)}` : '1px solid transparent',
-          })}
-        >
-          Profile
         </NavLink>
-        <NavLink
-          to="/dashboard"
-          style={({ isActive }) => ({
-            ...linkBaseStyle,
-            background: isActive ? colorAlpha('--link-highlight', 20) : 'transparent',
-            color: isActive ? colorVar('--text') : colorVar('--text-muted'),
-            border: isActive ? `1px solid ${colorAlpha('--link-highlight', 45)}` : '1px solid transparent',
-          })}
-        >
-          Dashboard
-        </NavLink>
-        <span style={navSpacerStyle} />
-        <button type="button" style={authButtonStyle} onClick={handleThemeToggle}>
+        {authRole === 'user' && (
+          <NavLink to="/profile" className="app-nav-link">
+            Profile
+          </NavLink>
+        )}
+        {authRole === 'admin' && (
+          <NavLink to="/dashboard" className="app-nav-link">
+            Dashboard
+          </NavLink>
+        )}
+        <span className="app-nav-spacer" />
+        <button type="button" className="app-nav-button" onClick={handleThemeToggle}>
           {themeName === 'light' ? 'Dark' : 'Light'}
         </button>
-        <button type="button" style={authButtonStyle} onClick={handleAuthClick}>
+        <button type="button" className="app-nav-button" onClick={handleAuthClick}>
           {isAuthenticated ? 'Logout' : 'Login'}
         </button>
       </nav>
 
-      <main style={{ flex: 1, overflowX: 'hidden', overflowY: 'auto' }}>
+      <main className="app-main">
         <Routes>
           <Route path="/" element={<Navigate to="/graph" />} />
           <Route path="/graph" element={<GraphPage />} />
-          <Route path="/dashboard" element={<DashboardPage />} />
-          <Route path="/profile" element={<ProfilePage />} />
+          <Route path="/login" element={isAuthenticated ? <Navigate to="/graph" replace /> : <LoginPage onLogin={handleLogin} />} />
+          <Route path="/dashboard" element={authRole === 'admin' ? <DashboardPage /> : <Navigate to={isAuthenticated ? '/graph' : '/login'} replace />} />
+          <Route path="/profile" element={authRole === 'user' ? <ProfilePage /> : <Navigate to={isAuthenticated ? '/graph' : '/login'} replace />} />
           <Route path="/search" element={<SearchRedirect />} />
           <Route path="/artist/:id" element={<ArtistRedirect />} />
           <Route path="/privacy-policy" element={<LegalPage section="privacy" />} />
@@ -175,19 +110,19 @@ export default function App() {
         </Routes>
       </main>
 
-      <footer style={footerStyle}>
+      <footer className="app-footer">
         <span>© 2026 Scenegraph</span>
-        <div style={{ display: 'flex', gap: '16px' }}>
-          <NavLink to="/privacy-policy" style={{ ...linkBaseStyle, color: colorVar('--text-muted'), fontSize: 12, padding: '4px 8px' }}>
+        <div className="app-footer-links">
+          <NavLink to="/privacy-policy" className="app-nav-link">
             Privacy Policy
           </NavLink>
-          <NavLink to="/terms-of-service" style={{ ...linkBaseStyle, color: colorVar('--text-muted'), fontSize: 12, padding: '4px 8px' }}>
+          <NavLink to="/terms-of-service" className="app-nav-link">
             Terms
           </NavLink>
-          <NavLink to="/impressum" style={{ ...linkBaseStyle, color: colorVar('--text-muted'), fontSize: 12, padding: '4px 8px' }}>
+          <NavLink to="/impressum" className="app-nav-link">
             Impressum
           </NavLink>
-          <NavLink to="/contact" style={{ ...linkBaseStyle, color: colorVar('--text-muted'), fontSize: 12, padding: '4px 8px' }}>
+          <NavLink to="/contact" className="app-nav-link">
             Contact
           </NavLink>
         </div>
