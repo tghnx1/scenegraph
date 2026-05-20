@@ -1,5 +1,6 @@
 from fastapi.testclient import TestClient
-from app.main import app
+from app.main import app, extracted_tag_score
+from app.recommendation_scoring import DEFAULT_SEMANTIC_ARTIST_TAG_SCORING
 
 # docker compose exec backend sh -lc 'cd /app && pytest tests/test_graph_api.py -q'
 client = TestClient(app)
@@ -139,6 +140,23 @@ def test_semantic_artists_endpoint_shape():
     assert "tagScore" in first
     assert isinstance(first["sharedStyles"], list)
     assert isinstance(first["sharedTags"], dict)
+
+
+def test_extracted_tag_score_uses_weighted_type_overlap():
+    source_tags = {
+        "collective": ["Tres Bienski"],
+        "residency": ["Tres Bienski"],
+        "role": ["dj"],
+    }
+    candidate_tags = {
+        "collective": ["Tres Bienski"],
+        "residency": ["Tres Bienski"],
+        "role": ["dj"],
+    }
+
+    score = extracted_tag_score(source_tags, candidate_tags, DEFAULT_SEMANTIC_ARTIST_TAG_SCORING)
+
+    assert score == 0.30 + 0.25 + 0.10 * 0.5
 
 
 def test_recommendations_endpoint_alias_still_works():

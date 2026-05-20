@@ -1,12 +1,14 @@
 from app.recommendation_scoring import (
     DEFAULT_RECOMMENDATION_SCORING,
     SemanticArtistScoringConfig,
+    SemanticArtistTagScoringConfig,
     final_recommendation_score,
     hybrid_graph_score,
     is_similarity_candidate_eligible,
     normalized_weights,
     semantic_artist_score,
     semantic_artist_scoring_from_env,
+    semantic_artist_tag_scoring_from_env,
 )
 
 
@@ -102,6 +104,24 @@ def test_semantic_artist_scoring_reads_and_normalizes_env(monkeypatch):
         embedding_weight=0.65,
         style_weight=0.25,
         tag_weight=0.10,
+    )
+
+
+def test_semantic_artist_tag_scoring_reads_and_normalizes_env(monkeypatch):
+    monkeypatch.setenv("SEMANTIC_ARTIST_TAG_LABEL_WEIGHT", "35")
+    monkeypatch.setenv("SEMANTIC_ARTIST_TAG_COLLECTIVE_WEIGHT", "30")
+    monkeypatch.setenv("SEMANTIC_ARTIST_TAG_RESIDENCY_WEIGHT", "25")
+    monkeypatch.setenv("SEMANTIC_ARTIST_TAG_ROLE_WEIGHT", "10")
+    monkeypatch.setenv("SEMANTIC_ARTIST_TAG_ROLE_OVERLAP_CAP", "3")
+
+    config = semantic_artist_tag_scoring_from_env()
+
+    assert config == SemanticArtistTagScoringConfig(
+        label_weight=0.35,
+        collective_weight=0.30,
+        residency_weight=0.25,
+        role_weight=0.10,
+        role_overlap_cap=3,
     )
 
 
