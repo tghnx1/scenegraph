@@ -37,7 +37,7 @@ def test_event_graph_score_uses_capped_overlap_counts():
         (2 / 3 * 0.50) + 0.20 + 0.08 + (1 / 3 * 0.05) + (2 / 3 * 0.17),
         4,
     )
-    assert reasons == ["2 shared artists", "2 shared promoters", "2 shared extracted styles"]
+    assert reasons == ["2 shared artists", "2 shared promoters", "2 shared extracted genres"]
 
 
 def test_artist_graph_score_uses_default_config():
@@ -57,7 +57,7 @@ def test_artist_graph_score_uses_default_config():
     score, reasons = hybrid_graph_score("artist", source, candidate)
 
     assert round(score, 4) == round(0.40 + (1 / 3 * 0.25) + (2 / 3 * 0.15), 4)
-    assert reasons == ["2 played same events", "2 shared genres", "1 shared promoters"]
+    assert reasons == ["2 played same events", "2 shared abstract genres", "1 shared promoters"]
 
 
 def test_artist_graph_score_can_isolate_direct_event_overlap():

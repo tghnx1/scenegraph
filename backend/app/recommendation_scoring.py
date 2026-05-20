@@ -101,14 +101,14 @@ DEFAULT_RECOMMENDATION_SCORING = RecommendationScoringConfig(
         GraphFeatureWeight("shared artists", "artists", 0.50, cap=3),
         GraphFeatureWeight("shared promoters", "promoters", 0.20, cap=2),
         GraphFeatureWeight("same venue", "venues", 0.08, boolean=True),
-        GraphFeatureWeight("shared genres", "genres", 0.05, cap=3),
-        GraphFeatureWeight("shared extracted styles", "extracted_styles", 0.17, cap=3),
+        GraphFeatureWeight("shared abstract genres", "genres", 0.05, cap=3),
+        GraphFeatureWeight("shared extracted genres", "extracted_styles", 0.17, cap=3),
     ),
     artist_graph_weights=(
         GraphFeatureWeight("played same events", "events", 0.40, cap=2),
         GraphFeatureWeight("shared promoters", "promoters", 0.25, cap=3),
         GraphFeatureWeight("shared venues", "venues", 0.20, cap=3),
-        GraphFeatureWeight("shared genres", "genres", 0.15, cap=3),
+        GraphFeatureWeight("shared abstract genres", "genres", 0.15, cap=3),
     ),
 )
 
@@ -589,9 +589,14 @@ def recommendation_scoring_from_env() -> RecommendationScoringConfig:
                 cap=event_caps[1],
             ),
             GraphFeatureWeight("same venue", "venues", event_graph_weight_values[2], boolean=True),
-            GraphFeatureWeight("shared genres", "genres", event_graph_weight_values[3], cap=event_caps[2]),
             GraphFeatureWeight(
-                "shared extracted styles",
+                "shared abstract genres",
+                "genres",
+                event_graph_weight_values[3],
+                cap=event_caps[2],
+            ),
+            GraphFeatureWeight(
+                "shared extracted genres",
                 "extracted_styles",
                 event_graph_weight_values[4],
                 cap=event_caps[3],
@@ -617,11 +622,10 @@ def recommendation_scoring_from_env() -> RecommendationScoringConfig:
                 cap=3,
             ),
             GraphFeatureWeight(
-                "shared genres",
+                "shared abstract genres",
                 "genres",
                 artist_graph_weight_values[3],
                 cap=3,
             ),
         ),
     )
-
