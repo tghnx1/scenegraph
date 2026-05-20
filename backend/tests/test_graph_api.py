@@ -240,7 +240,10 @@ def test_artist_promoter_recommendations_include_graph_payload():
 
 
 def test_artist_promoter_recommendations_include_direct_connections():
-    response = client.get("/api/recommendations/artists/2178/promoters", params={"limit": 50})
+    response = client.get(
+        "/api/recommendations/artists/2178/promoters",
+        params={"limit": 50, "exclude_existing": "false"},
+    )
     assert response.status_code == 200
     data = response.json()
 
@@ -262,6 +265,19 @@ def test_artist_promoter_recommendations_include_direct_connections():
         assert all(link.get("style") == "solid" for link in direct_links)
     else:
         assert not direct_links
+
+
+def test_artist_promoter_recommendations_exclude_existing_by_default():
+    response = client.get("/api/recommendations/artists/2178/promoters", params={"limit": 50})
+    assert response.status_code == 200
+    data = response.json()
+
+    assert all(item["directConnectionCount"] == 0 for item in data["recommendations"])
+    assert all(item["scoreBreakdown"]["directConnection"] == 0 for item in data["recommendations"])
+    assert all(item["status"] != "existing_partner" for item in data["recommendations"])
+    assert not any(
+        link.get("evidenceType") == "direct_connection" for link in data["graph"]["links"]
+    )
 
 
 def test_artist_promoter_recommendations_include_warm_network_connections():
