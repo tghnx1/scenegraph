@@ -300,7 +300,9 @@ def test_artist_similar_events_endpoint_debug_includes_component_scores():
     assert set(first["debug"]["components"]) == {
         "sameVenueScore",
         "sharedGenreCount",
+        "sharedExtractedStyles",
         "sharedLineupCount",
+        "extractedStyleScore",
         "symbolicScore",
         "embeddingScore",
     }

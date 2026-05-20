@@ -62,6 +62,10 @@ class PromoterRecommendationScoringConfig:
     event_similarity_count_cap: int
     event_similarity_symbolic_weight: float
     event_similarity_embedding_weight: float
+    event_similarity_same_venue_weight: float
+    event_similarity_shared_genre_weight: float
+    event_similarity_shared_lineup_weight: float
+    event_similarity_extracted_style_weight: float
     activity_event_cap: int
     existing_partner_direct_min: int
     warm_relevant_connection_min: int
@@ -125,6 +129,10 @@ DEFAULT_PROMOTER_RECOMMENDATION_SCORING = PromoterRecommendationScoringConfig(
     event_similarity_count_cap=8,
     event_similarity_symbolic_weight=0.6,
     event_similarity_embedding_weight=0.4,
+    event_similarity_same_venue_weight=0.5,
+    event_similarity_shared_genre_weight=0.1,
+    event_similarity_shared_lineup_weight=0.2,
+    event_similarity_extracted_style_weight=0.2,
     activity_event_cap=25,
     existing_partner_direct_min=1,
     warm_relevant_connection_min=1,
@@ -302,6 +310,26 @@ def promoter_recommendation_scoring_from_env() -> PromoterRecommendationScoringC
             ),
         )
     )
+    event_similarity_signal_weights = normalized_weights(
+        (
+            env_float(
+                "PROMOTER_REC_EVENT_SIMILARITY_SAME_VENUE_WEIGHT",
+                DEFAULT_PROMOTER_RECOMMENDATION_SCORING.event_similarity_same_venue_weight,
+            ),
+            env_float(
+                "PROMOTER_REC_EVENT_SIMILARITY_SHARED_GENRE_WEIGHT",
+                DEFAULT_PROMOTER_RECOMMENDATION_SCORING.event_similarity_shared_genre_weight,
+            ),
+            env_float(
+                "PROMOTER_REC_EVENT_SIMILARITY_SHARED_LINEUP_WEIGHT",
+                DEFAULT_PROMOTER_RECOMMENDATION_SCORING.event_similarity_shared_lineup_weight,
+            ),
+            env_float(
+                "PROMOTER_REC_EVENT_SIMILARITY_EXTRACTED_STYLE_WEIGHT",
+                DEFAULT_PROMOTER_RECOMMENDATION_SCORING.event_similarity_extracted_style_weight,
+            ),
+        )
+    )
     activity_event_cap = env_int(
         "PROMOTER_REC_ACTIVITY_EVENT_CAP",
         DEFAULT_PROMOTER_RECOMMENDATION_SCORING.activity_event_cap,
@@ -400,6 +428,10 @@ def promoter_recommendation_scoring_from_env() -> PromoterRecommendationScoringC
         event_similarity_count_cap=event_similarity_count_cap,
         event_similarity_symbolic_weight=event_similarity_mix_weights[0],
         event_similarity_embedding_weight=event_similarity_mix_weights[1],
+        event_similarity_same_venue_weight=event_similarity_signal_weights[0],
+        event_similarity_shared_genre_weight=event_similarity_signal_weights[1],
+        event_similarity_shared_lineup_weight=event_similarity_signal_weights[2],
+        event_similarity_extracted_style_weight=event_similarity_signal_weights[3],
         activity_event_cap=activity_event_cap,
         existing_partner_direct_min=existing_partner_direct_min,
         warm_relevant_connection_min=warm_relevant_connection_min,

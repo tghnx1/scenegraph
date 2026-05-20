@@ -1544,12 +1544,49 @@ def event_embedding_similarity_by_candidate(
     return scores, dimensions
 
 
+def event_style_tags_by_id(connection: Connection, event_ids: list[int]) -> dict[int, set[str]]:
+    if not event_ids:
+        return {}
+
+    unique_event_ids = sorted(set(event_ids))
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT
+                e.id,
+                e.title,
+                e.description_text,
+                e.lineup_raw,
+                e.lineup_residual_text
+            FROM events e
+            WHERE e.id = ANY(%s)
+            """,
+            (unique_event_ids,),
+        )
+        rows = cursor.fetchall()
+
+    styles_by_event_id: dict[int, set[str]] = {}
+    for row in rows:
+        style_input = " ".join(
+            part
+            for part in (
+                row.get("title"),
+                row.get("description_text"),
+                row.get("lineup_residual_text") or row.get("lineup_raw"),
+            )
+            if part
+        )
+        styles_by_event_id[int(row["id"])] = set(extract_style_tags(style_input))
+    return styles_by_event_id
+
+
 def artist_event_similarity_candidates(
     connection: Connection,
     *,
     source_artist_id: int,
     limit: int,
     exclude_same_promoter: bool,
+    scoring_config: PromoterRecommendationScoringConfig,
 ) -> list[dict]:
     with connection.cursor() as cursor:
         cursor.execute(
@@ -1634,9 +1671,9 @@ def artist_event_similarity_candidates(
                 SELECT
                     *,
                     (
-                        0.5 * same_venue_score
-                        + 0.3 * CASE WHEN shared_genre_count > 0 THEN 1.0 ELSE 0.0 END
-                        + 0.2 * CASE WHEN shared_lineup_count > 0 THEN 1.0 ELSE 0.0 END
+                        %(same_venue_weight)s * same_venue_score
+                        + %(shared_genre_weight)s * CASE WHEN shared_genre_count > 0 THEN 1.0 ELSE 0.0 END
+                        + %(shared_lineup_weight)s * CASE WHEN shared_lineup_count > 0 THEN 1.0 ELSE 0.0 END
                     )::double precision AS symbolic_score
                 FROM similarity_paths
             ),
@@ -1664,6 +1701,9 @@ def artist_event_similarity_candidates(
                 "source_artist_id": source_artist_id,
                 "limit": max(limit, 1),
                 "exclude_same_promoter": exclude_same_promoter,
+                "same_venue_weight": scoring_config.event_similarity_same_venue_weight,
+                "shared_genre_weight": scoring_config.event_similarity_shared_genre_weight,
+                "shared_lineup_weight": scoring_config.event_similarity_shared_lineup_weight,
             },
         )
         return cursor.fetchall()
@@ -1697,6 +1737,7 @@ def build_artist_similar_events_response(
         source_artist_id=artist_id,
         limit=max(limit * 20, 200),
         exclude_same_promoter=exclude_same_promoter,
+        scoring_config=scoring_config,
     )
     if not candidate_rows:
         return ArtistSimilarEventsResponse(
@@ -1708,6 +1749,7 @@ def build_artist_similar_events_response(
 
     source_event_ids = sorted({int(row["source_event_id"]) for row in candidate_rows})
     candidate_event_ids = [int(row["candidate_event_id"]) for row in candidate_rows]
+    event_styles = event_style_tags_by_id(connection, source_event_ids + candidate_event_ids)
     embedding_scores, embedding_dimensions = event_embedding_similarity_by_candidate(
         connection,
         source_event_ids=source_event_ids,
@@ -1716,7 +1758,13 @@ def build_artist_similar_events_response(
 
     similar_events: list[ArtistSimilarEventItem] = []
     for row in candidate_rows:
-        symbolic_score = float(row["symbolic_score"])
+        source_styles = event_styles.get(int(row["source_event_id"]), set())
+        candidate_styles = event_styles.get(int(row["candidate_event_id"]), set())
+        shared_extracted_styles = sorted(source_styles & candidate_styles)
+        extracted_style_score = (
+            scoring_config.event_similarity_extracted_style_weight if shared_extracted_styles else 0.0
+        )
+        symbolic_score = min(float(row["symbolic_score"]) + extracted_style_score, 1.0)
         embedding_score = float(embedding_scores.get(row["candidate_event_id"], 0.0))
         score_breakdown = {
             "symbolic": scoring_config.event_similarity_symbolic_weight * symbolic_score,
@@ -1727,6 +1775,11 @@ def build_artist_similar_events_response(
             reasons.append("same venue as one of your events")
         if row["shared_genre_count"] > 0:
             reasons.append(f"shares {row['shared_genre_count']} genres with your event history")
+        if shared_extracted_styles:
+            reasons.append(
+                f"{len(shared_extracted_styles)} shared extracted styles: "
+                f"{', '.join(shared_extracted_styles[:5])}"
+            )
         if row["shared_lineup_count"] > 0:
             reasons.append(f"shares {row['shared_lineup_count']} lineup artists with your events")
         if embedding_score >= 0.6:
@@ -1750,7 +1803,9 @@ def build_artist_similar_events_response(
                     "components": {
                         "sameVenueScore": row["same_venue_score"],
                         "sharedGenreCount": row["shared_genre_count"],
+                        "sharedExtractedStyles": shared_extracted_styles,
                         "sharedLineupCount": row["shared_lineup_count"],
+                        "extractedStyleScore": extracted_style_score,
                         "symbolicScore": symbolic_score,
                         "embeddingScore": embedding_score,
                     },
@@ -1880,7 +1935,11 @@ def build_artist_promoter_recommendation_response(
                     e.id AS promoter_event_id,
                     e.event_date::date AS promoter_event_date,
                     (
-                        CASE WHEN e.venue_id IS NOT NULL AND e.venue_id = source_event.venue_id THEN 0.5 ELSE 0.0 END
+                        CASE
+                            WHEN e.venue_id IS NOT NULL AND e.venue_id = source_event.venue_id
+                                THEN %(same_venue_weight)s
+                            ELSE 0.0
+                        END
                         + CASE WHEN EXISTS (
                             SELECT 1
                             FROM event_genres eg_source
@@ -1888,7 +1947,7 @@ def build_artist_promoter_recommendation_response(
                               ON eg_candidate.genre_id = eg_source.genre_id
                             WHERE eg_source.event_id = se.event_id
                               AND eg_candidate.event_id = e.id
-                        ) THEN 0.3 ELSE 0.0 END
+                        ) THEN %(shared_genre_weight)s ELSE 0.0 END
                         + CASE WHEN EXISTS (
                             SELECT 1
                             FROM event_artists ea_source
@@ -1897,7 +1956,7 @@ def build_artist_promoter_recommendation_response(
                             WHERE ea_source.event_id = se.event_id
                               AND ea_candidate.event_id = e.id
                               AND ea_source.artist_id <> %(source_artist_id)s
-                        ) THEN 0.2 ELSE 0.0 END
+                        ) THEN %(shared_lineup_weight)s ELSE 0.0 END
                     )::double precision AS path_similarity
                 FROM source_events se
                 JOIN events source_event
@@ -2002,6 +2061,9 @@ def build_artist_promoter_recommendation_response(
                 "artist_ids": artist_ids,
                 "artist_scores": artist_scores,
                 "source_artist_id": artist_id,
+                "same_venue_weight": scoring_config.event_similarity_same_venue_weight,
+                "shared_genre_weight": scoring_config.event_similarity_shared_genre_weight,
+                "shared_lineup_weight": scoring_config.event_similarity_shared_lineup_weight,
             },
         )
         rows = cursor.fetchall()
