@@ -209,6 +209,7 @@ def test_artist_promoter_recommendations_include_graph_payload():
         "strength",
         "directConnection",
         "warmNetwork",
+        "eventSimilarity",
         "activity",
         "recency",
     }
@@ -221,7 +222,7 @@ def test_artist_promoter_recommendations_include_graph_payload():
     assert isinstance(first["evidence"], list)
     assert first["evidence"]
     assert all(
-        item["type"] in {"semantic_bridge", "direct_connection", "warm_network"}
+        item["type"] in {"semantic_bridge", "direct_connection", "warm_network", "event_similarity"}
         for item in first["evidence"]
     )
 
@@ -302,6 +303,29 @@ def test_artist_promoter_recommendations_include_warm_network_connections():
         assert all(link.get("style") == "solid" for link in warm_links)
     else:
         assert not warm_links
+
+
+def test_artist_promoter_recommendations_include_event_similarity_connections():
+    response = client.get("/api/recommendations/artists/2178/promoters", params={"limit": 50})
+    assert response.status_code == 200
+    data = response.json()
+
+    event_similarity_recommendations = [
+        item for item in data["recommendations"] if item["scoreBreakdown"]["eventSimilarity"] > 0
+    ]
+    for item in event_similarity_recommendations:
+        assert any(evidence["type"] == "event_similarity" for evidence in item["evidence"])
+
+    event_similarity_links = [
+        link
+        for link in data["graph"]["links"]
+        if link.get("evidenceType") == "event_similarity"
+    ]
+    if event_similarity_recommendations:
+        assert event_similarity_links
+        assert any(link.get("style") == "dotted" for link in event_similarity_links)
+    else:
+        assert not event_similarity_links
 
 
 def test_artist_promoter_recommendations_preserve_existing_contract_fields():
