@@ -208,18 +208,22 @@ def test_artist_promoter_recommendations_include_graph_payload():
         "semantic",
         "strength",
         "directConnection",
+        "warmNetwork",
         "activity",
         "recency",
     }
     assert first["matchedArtistCount"] >= 1
     assert first["eventCount"] >= 1
     assert isinstance(first["reasons"], list)
-    assert first["status"] in {"new_relevant", "existing_partner"}
+    assert first["status"] in {"new_relevant", "existing_partner", "warm_relevant"}
     assert first["warmConnectionCount"] >= 0
     assert first["directConnectionCount"] >= 0
     assert isinstance(first["evidence"], list)
     assert first["evidence"]
-    assert all(item["type"] in {"semantic_bridge", "direct_connection"} for item in first["evidence"])
+    assert all(
+        item["type"] in {"semantic_bridge", "direct_connection", "warm_network"}
+        for item in first["evidence"]
+    )
 
     graph = data["graph"]
     assert graph["nodes"]
@@ -258,6 +262,30 @@ def test_artist_promoter_recommendations_include_direct_connections():
         assert all(link.get("style") == "solid" for link in direct_links)
     else:
         assert not direct_links
+
+
+def test_artist_promoter_recommendations_include_warm_network_connections():
+    response = client.get("/api/recommendations/artists/2178/promoters", params={"limit": 50})
+    assert response.status_code == 200
+    data = response.json()
+
+    warm_recommendations = [
+        item for item in data["recommendations"] if item["warmConnectionCount"] > 0
+    ]
+    for item in warm_recommendations:
+        assert item["scoreBreakdown"]["warmNetwork"] > 0
+        assert any(evidence["type"] == "warm_network" for evidence in item["evidence"])
+
+    warm_links = [
+        link
+        for link in data["graph"]["links"]
+        if link.get("evidenceType") == "warm_network"
+    ]
+    if warm_recommendations:
+        assert warm_links
+        assert all(link.get("style") == "solid" for link in warm_links)
+    else:
+        assert not warm_links
 
 
 def test_artist_promoter_recommendations_preserve_existing_contract_fields():
