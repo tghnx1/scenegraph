@@ -2414,7 +2414,8 @@ def build_similarity_response(
     exclude_same_promoter: bool = False,
 ) -> SimilarityResponse:
     config = EmbeddingConfig.from_env()
-    candidate_limit = 10_000 if entity_type == "artist" else max(limit * 10, 100)
+    overfetch_multiplier = 25 if entity_type == "event" and exclude_same_promoter else 10
+    candidate_limit = 10_000 if entity_type == "artist" else max(limit * overfetch_multiplier, 200)
     source, ranked = rank_similar_embeddings(
         connection,
         entity_type=entity_type,
@@ -2432,12 +2433,13 @@ def build_similarity_response(
             ),
         )
 
+    rerank_limit = max(limit * overfetch_multiplier, 200) if entity_type == "event" else limit
     reranked = rerank_similar_entities(
         connection,
         entity_type=entity_type,
         entity_id=entity_id,
         ranked=ranked,
-        limit=limit,
+        limit=rerank_limit,
     )
     metadata = recommendation_item_metadata(
         connection,
@@ -2498,6 +2500,8 @@ def build_similarity_response(
                 else None,
             )
         )
+
+    similar = similar[:limit]
 
     return SimilarityResponse(
         entityId=entity_id,
