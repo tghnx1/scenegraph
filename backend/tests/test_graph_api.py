@@ -169,6 +169,28 @@ def test_recommendations_endpoint_alias_still_works():
     assert response.json()["similar"]
 
 
+def test_artist_recommendations_endpoint_uses_recommendation_contract():
+    response = client.get("/api/recommendations/artists/2178", params={"limit": 3})
+    assert response.status_code == 200
+
+    data = response.json()
+    assert data["entityId"] == 2178
+    assert data["entityType"] == "artist"
+    assert data["recommendations"]
+    assert "similar" not in data
+
+    first = data["recommendations"][0]
+    assert first["type"] == "artist"
+    assert "score" in first
+    assert "semanticScore" in first
+    assert "graphScore" in first
+    assert set(first["scoreBreakdown"]) == {"semantic", "graph"}
+    assert set(first["semanticBreakdown"]) == {"embedding", "style", "tag"}
+    assert isinstance(first["reasons"], list)
+    assert isinstance(first["sharedStyles"], list)
+    assert isinstance(first["sharedTags"], dict)
+
+
 def test_recommendation_feedback_can_be_upserted_and_listed():
     delete_feedback_fixture()
     payload = {
