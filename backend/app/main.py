@@ -113,6 +113,31 @@ class SemanticArtistResponse(BaseModel):
     similar: list[SemanticArtistItem]
 
 
+class ArtistRecommendationItem(BaseModel):
+    id: int
+    type: Literal["artist"] = "artist"
+    name: str
+    score: float
+    semanticScore: float
+    graphScore: float
+    embeddingScore: float
+    styleScore: float
+    tagScore: float = 0.0
+    scoreBreakdown: dict[str, float] = Field(default_factory=dict)
+    semanticBreakdown: dict[str, float] = Field(default_factory=dict)
+    reasons: list[str] = Field(default_factory=list)
+    sharedStyles: list[str] = Field(default_factory=list)
+    sharedTags: dict[str, list[str]] = Field(default_factory=dict)
+
+
+class ArtistRecommendationResponse(BaseModel):
+    entityId: int
+    entityType: Literal["artist"] = "artist"
+    model: str
+    dimensions: int
+    recommendations: list[ArtistRecommendationItem]
+
+
 class ArtistTagItem(BaseModel):
     type: Literal["style", "label", "collective", "role", "residency", "alias"]
     value: str
@@ -343,13 +368,12 @@ def shared_extracted_tags(
     return shared
 
 
-def build_artist_semantic_response(
+def build_artist_semantic_candidates(
     connection: Connection,
     *,
     artist_id: int,
-    limit: int,
     debug: bool = False,
-) -> SemanticArtistResponse:
+) -> tuple[dict, list[dict]]:
     config = EmbeddingConfig.from_env()
     scoring_config = semantic_artist_scoring_from_env()
     tag_scoring_config = semantic_artist_tag_scoring_from_env()
@@ -421,6 +445,43 @@ def build_artist_semantic_response(
             }
         )
 
+    return source, sorted(
+        scored,
+        key=lambda candidate: (-candidate["score"], candidate["entity_id"]),
+    )
+
+
+def semantic_artist_reasons(item: dict) -> list[str]:
+    reasons = []
+    shared_styles = item["shared_styles"]
+    shared_tags = item["shared_tags"]
+    if shared_styles:
+        reasons.append(f"{len(shared_styles)} shared styles: {', '.join(shared_styles[:5])}")
+
+    for tag_type in ("label", "collective", "residency"):
+        values = shared_tags.get(tag_type, [])
+        if values:
+            reasons.append(f"{len(values)} shared {tag_type} tags: {', '.join(values[:3])}")
+
+    if item["embedding_score"] >= 0.60:
+        reasons.append("semantic profile match")
+    if not reasons:
+        reasons.append("semantic similarity")
+    return reasons[:3]
+
+
+def build_artist_semantic_response(
+    connection: Connection,
+    *,
+    artist_id: int,
+    limit: int,
+    debug: bool = False,
+) -> SemanticArtistResponse:
+    source, scored = build_artist_semantic_candidates(
+        connection,
+        artist_id=artist_id,
+        debug=debug,
+    )
     similar = [
         SemanticArtistItem(
             id=item["entity_id"],
@@ -434,9 +495,7 @@ def build_artist_semantic_response(
             sharedTags=item["shared_tags"],
             debug=item["debug"],
         )
-        for item in sorted(scored, key=lambda candidate: (-candidate["score"], candidate["entity_id"]))[
-            :limit
-        ]
+        for item in scored[:limit]
     ]
 
     return SemanticArtistResponse(
@@ -444,6 +503,74 @@ def build_artist_semantic_response(
         model=source["model"],
         dimensions=source["dimensions"],
         similar=similar,
+    )
+
+
+def build_artist_recommendation_response(
+    connection: Connection,
+    *,
+    artist_id: int,
+    limit: int,
+) -> ArtistRecommendationResponse:
+    source, semantic_candidates = build_artist_semantic_candidates(
+        connection,
+        artist_id=artist_id,
+        debug=False,
+    )
+    candidate_ids = [item["entity_id"] for item in semantic_candidates]
+    features = recommendation_feature_sets(connection, "artist", [artist_id, *candidate_ids])
+    features = apply_artist_indirect_features(
+        connection,
+        entity_type="artist",
+        entity_id=artist_id,
+        candidate_ids=candidate_ids,
+        features=features,
+    )
+    source_features = features.get(artist_id, {})
+
+    recommendations = []
+    for item in semantic_candidates:
+        candidate_features = features.get(item["entity_id"], {})
+        graph_score, graph_reasons = hybrid_graph_score("artist", source_features, candidate_features)
+        final_score = final_recommendation_score(
+            item["score"],
+            graph_score,
+            DEFAULT_RECOMMENDATION_SCORING,
+        )
+        score_breakdown = {
+            "semantic": DEFAULT_RECOMMENDATION_SCORING.semantic_weight * item["score"],
+            "graph": DEFAULT_RECOMMENDATION_SCORING.graph_weight * graph_score,
+        }
+        reasons = [
+            *semantic_artist_reasons(item),
+            *graph_reasons,
+        ][:5]
+        recommendations.append(
+            ArtistRecommendationItem(
+                id=item["entity_id"],
+                name=item["name"],
+                score=final_score,
+                semanticScore=item["score"],
+                graphScore=graph_score,
+                embeddingScore=item["embedding_score"],
+                styleScore=item["style_score"],
+                tagScore=item["tag_score"],
+                scoreBreakdown=score_breakdown,
+                semanticBreakdown=item["score_breakdown"],
+                reasons=reasons,
+                sharedStyles=item["shared_styles"],
+                sharedTags=item["shared_tags"],
+            )
+        )
+
+    return ArtistRecommendationResponse(
+        entityId=artist_id,
+        model=source["model"],
+        dimensions=source["dimensions"],
+        recommendations=sorted(
+            recommendations,
+            key=lambda recommendation: (-recommendation.score, recommendation.id),
+        )[:limit],
     )
 
 
@@ -986,19 +1113,17 @@ async def recommend_events_alias(
 
 @app.get(
     "/api/recommendations/artists/{artist_id}",
-    response_model=SimilarityResponse,
+    response_model=ArtistRecommendationResponse,
     response_model_exclude_none=True,
-    include_in_schema=False,
 )
-async def recommend_artists_alias(
+async def recommend_artists(
     artist_id: int,
     limit: int = Query(default=10, ge=1, le=100),
     connection: Connection = Depends(get_db),
-) -> SimilarityResponse:
-    return build_similarity_response(
+) -> ArtistRecommendationResponse:
+    return build_artist_recommendation_response(
         connection,
-        entity_type="artist",
-        entity_id=artist_id,
+        artist_id=artist_id,
         limit=limit,
     )
 
