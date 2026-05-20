@@ -1,0 +1,259 @@
+from __future__ import annotations
+
+import os
+from dataclasses import dataclass
+from typing import Literal
+
+from app.embeddings import EntityType
+
+
+GraphFeature = Literal["artists", "events", "venues", "promoters", "genres"]
+
+
+@dataclass(frozen=True)
+class GraphFeatureWeight:
+    label: str
+    feature: GraphFeature
+    weight: float
+    cap: int | None = None
+    boolean: bool = False
+
+
+@dataclass(frozen=True)
+class RecommendationScoringConfig:
+    semantic_weight: float
+    graph_weight: float
+    artist_semantic_only_threshold: float
+    event_graph_weights: tuple[GraphFeatureWeight, ...]
+    artist_graph_weights: tuple[GraphFeatureWeight, ...]
+
+
+@dataclass(frozen=True)
+class SemanticArtistScoringConfig:
+    embedding_weight: float
+    style_weight: float
+    tag_weight: float
+
+
+@dataclass(frozen=True)
+class SemanticArtistTagScoringConfig:
+    label_weight: float
+    collective_weight: float
+    residency_weight: float
+    role_weight: float
+    role_overlap_cap: int
+
+
+DEFAULT_SEMANTIC_ARTIST_SCORING = SemanticArtistScoringConfig(
+    embedding_weight=0.65,
+    style_weight=0.25,
+    tag_weight=0.10,
+)
+
+
+DEFAULT_SEMANTIC_ARTIST_TAG_SCORING = SemanticArtistTagScoringConfig(
+    label_weight=0.35,
+    collective_weight=0.30,
+    residency_weight=0.25,
+    role_weight=0.10,
+    role_overlap_cap=2,
+)
+
+
+DEFAULT_RECOMMENDATION_SCORING = RecommendationScoringConfig(
+    semantic_weight=0.65,
+    graph_weight=0.35,
+    artist_semantic_only_threshold=0.80,
+    event_graph_weights=(
+        GraphFeatureWeight("shared artists", "artists", 0.45, cap=3),
+        GraphFeatureWeight("shared promoters", "promoters", 0.25, cap=2),
+        GraphFeatureWeight("same venue", "venues", 0.20, boolean=True),
+        GraphFeatureWeight("shared genres", "genres", 0.10, cap=3),
+    ),
+    artist_graph_weights=(
+        GraphFeatureWeight("played same events", "events", 0.40, cap=2),
+        GraphFeatureWeight("shared promoters", "promoters", 0.25, cap=3),
+        GraphFeatureWeight("shared venues", "venues", 0.20, cap=3),
+        GraphFeatureWeight("shared genres", "genres", 0.15, cap=3),
+    ),
+)
+
+
+def normalized_weights(values: tuple[float, ...]) -> tuple[float, ...]:
+    if any(value < 0 for value in values):
+        raise ValueError("Scoring weights must be non-negative")
+
+    total = sum(values)
+    if total <= 0:
+        raise ValueError("At least one scoring weight must be greater than zero")
+
+    return tuple(value / total for value in values)
+
+
+def env_float(name: str, default: float) -> float:
+    raw = os.environ.get(name)
+    if raw is None or not raw.strip():
+        return default
+    return float(raw)
+
+
+def env_int(name: str, default: int) -> int:
+    raw = os.environ.get(name)
+    if raw is None or not raw.strip():
+        return default
+    return int(raw)
+
+
+def semantic_artist_scoring_from_env() -> SemanticArtistScoringConfig:
+    weights = normalized_weights(
+        (
+            env_float(
+                "SEMANTIC_ARTIST_EMBEDDING_WEIGHT",
+                DEFAULT_SEMANTIC_ARTIST_SCORING.embedding_weight,
+            ),
+            env_float(
+                "SEMANTIC_ARTIST_STYLE_WEIGHT",
+                DEFAULT_SEMANTIC_ARTIST_SCORING.style_weight,
+            ),
+            env_float(
+                "SEMANTIC_ARTIST_TAG_WEIGHT",
+                DEFAULT_SEMANTIC_ARTIST_SCORING.tag_weight,
+            ),
+        )
+    )
+
+    return SemanticArtistScoringConfig(
+        embedding_weight=weights[0],
+        style_weight=weights[1],
+        tag_weight=weights[2],
+    )
+
+
+def semantic_artist_tag_scoring_from_env() -> SemanticArtistTagScoringConfig:
+    weights = normalized_weights(
+        (
+            env_float(
+                "SEMANTIC_ARTIST_TAG_LABEL_WEIGHT",
+                DEFAULT_SEMANTIC_ARTIST_TAG_SCORING.label_weight,
+            ),
+            env_float(
+                "SEMANTIC_ARTIST_TAG_COLLECTIVE_WEIGHT",
+                DEFAULT_SEMANTIC_ARTIST_TAG_SCORING.collective_weight,
+            ),
+            env_float(
+                "SEMANTIC_ARTIST_TAG_RESIDENCY_WEIGHT",
+                DEFAULT_SEMANTIC_ARTIST_TAG_SCORING.residency_weight,
+            ),
+            env_float(
+                "SEMANTIC_ARTIST_TAG_ROLE_WEIGHT",
+                DEFAULT_SEMANTIC_ARTIST_TAG_SCORING.role_weight,
+            ),
+        )
+    )
+    role_overlap_cap = env_int(
+        "SEMANTIC_ARTIST_TAG_ROLE_OVERLAP_CAP",
+        DEFAULT_SEMANTIC_ARTIST_TAG_SCORING.role_overlap_cap,
+    )
+    if role_overlap_cap <= 0:
+        raise ValueError("SEMANTIC_ARTIST_TAG_ROLE_OVERLAP_CAP must be greater than zero")
+
+    return SemanticArtistTagScoringConfig(
+        label_weight=weights[0],
+        collective_weight=weights[1],
+        residency_weight=weights[2],
+        role_weight=weights[3],
+        role_overlap_cap=role_overlap_cap,
+    )
+
+
+def semantic_artist_score(
+    embedding_score: float,
+    style_score: float,
+    tag_score: float,
+    config: SemanticArtistScoringConfig | None = None,
+) -> float:
+    config = config or DEFAULT_SEMANTIC_ARTIST_SCORING
+    return (
+        config.embedding_weight * embedding_score
+        + config.style_weight * style_score
+        + config.tag_weight * tag_score
+    )
+
+
+def capped_overlap_score(left: set[int], right: set[int], cap: int) -> float:
+    if not left or not right:
+        return 0.0
+    return min(len(left & right) / cap, 1.0)
+
+
+def boolean_overlap_score(left: set[int], right: set[int]) -> float:
+    return 1.0 if left and right and bool(left & right) else 0.0
+
+
+def graph_feature_score(
+    weight: GraphFeatureWeight,
+    source: dict[str, set[int]],
+    candidate: dict[str, set[int]],
+) -> float:
+    source_values = source.get(weight.feature, set())
+    candidate_values = candidate.get(weight.feature, set())
+
+    if weight.boolean:
+        return weight.weight * boolean_overlap_score(source_values, candidate_values)
+    if weight.cap is None:
+        raise ValueError(f"Graph feature {weight.label} needs either cap or boolean=True")
+    return weight.weight * capped_overlap_score(source_values, candidate_values, weight.cap)
+
+
+def graph_feature_reason(
+    weight: GraphFeatureWeight,
+    source: dict[str, set[int]],
+    candidate: dict[str, set[int]],
+) -> str:
+    overlap_count = len(source.get(weight.feature, set()) & candidate.get(weight.feature, set()))
+    if weight.boolean:
+        return weight.label
+    return f"{overlap_count} {weight.label}"
+
+
+def hybrid_graph_score(
+    entity_type: EntityType,
+    source: dict[str, set[int]],
+    candidate: dict[str, set[int]],
+    config: RecommendationScoringConfig = DEFAULT_RECOMMENDATION_SCORING,
+) -> tuple[float, list[str]]:
+    weights = config.event_graph_weights if entity_type == "event" else config.artist_graph_weights
+    components = [
+        (
+            graph_feature_score(weight, source, candidate),
+            graph_feature_reason(weight, source, candidate),
+        )
+        for weight in weights
+    ]
+
+    reasons = [
+        reason
+        for score, reason in sorted(components, key=lambda item: -item[0])
+        if score > 0
+    ][:3]
+    return sum(score for score, _ in components), reasons
+
+
+def final_recommendation_score(
+    semantic_score: float,
+    graph_score: float,
+    config: RecommendationScoringConfig = DEFAULT_RECOMMENDATION_SCORING,
+) -> float:
+    return config.semantic_weight * semantic_score + config.graph_weight * graph_score
+
+
+def is_similarity_candidate_eligible(
+    entity_type: EntityType,
+    semantic_score: float,
+    graph_score: float,
+    config: RecommendationScoringConfig = DEFAULT_RECOMMENDATION_SCORING,
+) -> bool:
+    if entity_type != "artist":
+        return True
+
+    return graph_score > 0 or semantic_score >= config.artist_semantic_only_threshold
