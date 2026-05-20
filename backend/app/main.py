@@ -1150,6 +1150,7 @@ def build_artist_promoter_recommendation_response(
     *,
     artist_id: int,
     limit: int,
+    exclude_existing: bool,
 ) -> PromoterRecommendationResponse:
     scoring_config = promoter_recommendation_scoring_from_env()
     source, semantic_candidates = build_artist_semantic_candidates(
@@ -1283,6 +1284,8 @@ def build_artist_promoter_recommendation_response(
 
     recommendations = []
     for row in rows:
+        if exclude_existing and row["direct_connection_count"] > 0:
+            continue
         direct_connection_score = min(
             row["direct_connection_count"] / scoring_config.direct_connection_cap,
             1.0,
@@ -1304,10 +1307,11 @@ def build_artist_promoter_recommendation_response(
         )
         activity_score = min(row["event_count"] / scoring_config.activity_event_cap, 1.0)
         recency_score = date_recency_score(row["latest_event_date"])
+        direct_weight = 0.0 if exclude_existing else scoring_config.direct_connection_weight
         score_breakdown = {
             "semantic": scoring_config.semantic_weight * row["semantic_score"],
             "strength": scoring_config.strength_weight * strength_score,
-            "directConnection": scoring_config.direct_connection_weight * direct_connection_score,
+            "directConnection": direct_weight * direct_connection_score,
             "warmNetwork": scoring_config.warm_network_weight * warm_network_score,
             "activity": scoring_config.activity_weight * activity_score,
             "recency": scoring_config.recency_weight * recency_score,
@@ -1352,10 +1356,14 @@ def build_artist_promoter_recommendation_response(
         promoter_ids=promoter_ids,
         semantic_scores=candidate_scores,
     )
-    direct_evidence = promoter_direct_connection_evidence(
-        connection,
-        source_artist_id=artist_id,
-        promoter_ids=promoter_ids,
+    direct_evidence = (
+        []
+        if exclude_existing
+        else promoter_direct_connection_evidence(
+            connection,
+            source_artist_id=artist_id,
+            promoter_ids=promoter_ids,
+        )
     )
     warm_evidence = promoter_warm_network_evidence(
         connection,
@@ -1925,12 +1933,14 @@ async def recommend_events_alias(
 async def recommend_promoters_for_artist(
     artist_id: int,
     limit: int = Query(default=10, ge=1, le=50),
+    exclude_existing: bool = Query(default=True),
     connection: Connection = Depends(get_db),
 ) -> PromoterRecommendationResponse:
     return build_artist_promoter_recommendation_response(
         connection,
         artist_id=artist_id,
         limit=limit,
+        exclude_existing=exclude_existing,
     )
 
 
