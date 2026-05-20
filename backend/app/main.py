@@ -19,6 +19,7 @@ from app.recommendation_scoring import (
     hybrid_graph_score,
     is_similarity_candidate_eligible,
     promoter_recommendation_scoring_from_env,
+    recommendation_scoring_from_env,
     semantic_artist_scoring_from_env,
     semantic_artist_tag_scoring_from_env,
 )
@@ -2235,11 +2236,12 @@ def similarity_graph_debug_components(
     entity_type: EntityType,
     source_features: dict[str, set[int]],
     candidate_features: dict[str, set[int]],
+    scoring_config=DEFAULT_RECOMMENDATION_SCORING,
 ) -> dict[str, dict[str, float | int | bool | None]]:
     weights = (
-        DEFAULT_RECOMMENDATION_SCORING.event_graph_weights
+        scoring_config.event_graph_weights
         if entity_type == "event"
-        else DEFAULT_RECOMMENDATION_SCORING.artist_graph_weights
+        else scoring_config.artist_graph_weights
     )
     components: dict[str, dict[str, float | int | bool | None]] = {}
     for weight in weights:
@@ -2316,13 +2318,20 @@ def recommendation_feature_sets(
         cursor.execute(query, (entity_ids,))
         rows = cursor.fetchall()
 
-    return {
+    feature_sets = {
         row["id"]: {
             key: as_id_set(row.get(key))
             for key in ("artists", "events", "venues", "promoters", "genres")
         }
         for row in rows
     }
+    if entity_type == "event":
+        style_tags = event_style_tags_by_id(connection, entity_ids)
+        for event_id, styles in style_tags.items():
+            if event_id not in feature_sets:
+                continue
+            feature_sets[event_id]["extracted_styles"] = set(styles)  # type: ignore[assignment]
+    return feature_sets
 
 
 def artist_indirect_feature_sets(
@@ -2433,6 +2442,7 @@ def rerank_similar_entities(
     entity_id: int,
     ranked: list[dict],
     limit: int,
+    scoring_config=DEFAULT_RECOMMENDATION_SCORING,
 ) -> list[dict]:
     candidate_ids = [item["entity_id"] for item in ranked]
     features = recommendation_feature_sets(connection, entity_type, [entity_id, *candidate_ids])
@@ -2453,20 +2463,25 @@ def rerank_similar_entities(
         if not candidate_features:
             continue
 
-        graph_score, reasons = hybrid_graph_score(entity_type, source_features, candidate_features)
+        graph_score, reasons = hybrid_graph_score(
+            entity_type,
+            source_features,
+            candidate_features,
+            config=scoring_config,
+        )
         semantic_score = item["score"]
         if not is_similarity_candidate_eligible(
             entity_type,
             semantic_score,
             graph_score,
-            DEFAULT_RECOMMENDATION_SCORING,
+            scoring_config,
         ):
             continue
 
         final_score = final_recommendation_score(
             semantic_score,
             graph_score,
-            DEFAULT_RECOMMENDATION_SCORING,
+            scoring_config,
         )
         rescored.append(
             {
@@ -2494,6 +2509,7 @@ def build_similarity_response(
     exclude_same_promoter: bool = False,
 ) -> SimilarityResponse:
     config = EmbeddingConfig.from_env()
+    scoring_config = recommendation_scoring_from_env()
     overfetch_multiplier = 25 if entity_type == "event" and exclude_same_promoter else 10
     candidate_limit = 10_000 if entity_type == "artist" else max(limit * overfetch_multiplier, 200)
     source, ranked = rank_similar_embeddings(
@@ -2520,6 +2536,7 @@ def build_similarity_response(
         entity_id=entity_id,
         ranked=ranked,
         limit=rerank_limit,
+        scoring_config=scoring_config,
     )
     metadata = recommendation_item_metadata(
         connection,
@@ -2545,13 +2562,14 @@ def build_similarity_response(
             continue
 
         score_breakdown = {
-            "semantic": DEFAULT_RECOMMENDATION_SCORING.semantic_weight * item["semantic_score"],
-            "graph": DEFAULT_RECOMMENDATION_SCORING.graph_weight * item["graph_score"],
+            "semantic": scoring_config.semantic_weight * item["semantic_score"],
+            "graph": scoring_config.graph_weight * item["graph_score"],
         }
         graph_components = similarity_graph_debug_components(
             entity_type=entity_type,
             source_features=source_features,
             candidate_features=candidate_features,
+            scoring_config=scoring_config,
         )
         similar.append(
             SimilarityItem(

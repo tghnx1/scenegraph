@@ -8,6 +8,7 @@ from app.recommendation_scoring import (
     is_similarity_candidate_eligible,
     normalized_weights,
     promoter_recommendation_scoring_from_env,
+    recommendation_scoring_from_env,
     semantic_artist_score,
     semantic_artist_scoring_from_env,
     semantic_artist_tag_scoring_from_env,
@@ -20,18 +21,23 @@ def test_event_graph_score_uses_capped_overlap_counts():
         "promoters": {10, 11},
         "venues": {20},
         "genres": {30, 31, 32},
+        "extracted_styles": {"electro", "breaks", "dark disco"},
     }
     candidate = {
         "artists": {1, 2},
         "promoters": {10, 11, 12},
         "venues": {20},
         "genres": {31},
+        "extracted_styles": {"electro", "dark disco"},
     }
 
     score, reasons = hybrid_graph_score("event", source, candidate)
 
-    assert round(score, 4) == round((2 / 3 * 0.45) + 0.25 + 0.20 + (1 / 3 * 0.10), 4)
-    assert reasons == ["2 shared artists", "2 shared promoters", "same venue"]
+    assert round(score, 4) == round(
+        (2 / 3 * 0.50) + 0.20 + 0.08 + (1 / 3 * 0.05) + (2 / 3 * 0.17),
+        4,
+    )
+    assert reasons == ["2 shared artists", "2 shared promoters", "2 shared extracted styles"]
 
 
 def test_artist_graph_score_uses_default_config():
@@ -191,6 +197,25 @@ def test_promoter_recommendation_scoring_reads_and_normalizes_env(monkeypatch):
         event_similarity_edge_strength_min=0.22,
         event_similarity_edge_strength_max=0.66,
     )
+
+
+def test_recommendation_scoring_reads_event_graph_weights_from_env(monkeypatch):
+    monkeypatch.setenv("EVENT_GRAPH_SHARED_ARTISTS_WEIGHT", "40")
+    monkeypatch.setenv("EVENT_GRAPH_SHARED_PROMOTERS_WEIGHT", "20")
+    monkeypatch.setenv("EVENT_GRAPH_SAME_VENUE_WEIGHT", "5")
+    monkeypatch.setenv("EVENT_GRAPH_SHARED_GENRES_WEIGHT", "5")
+    monkeypatch.setenv("EVENT_GRAPH_SHARED_EXTRACTED_STYLES_WEIGHT", "30")
+    monkeypatch.setenv("EVENT_GRAPH_SHARED_EXTRACTED_STYLES_CAP", "4")
+
+    config = recommendation_scoring_from_env()
+    weights = {item.feature: item for item in config.event_graph_weights}
+
+    assert round(weights["artists"].weight, 4) == 0.4
+    assert round(weights["promoters"].weight, 4) == 0.2
+    assert round(weights["venues"].weight, 4) == 0.05
+    assert round(weights["genres"].weight, 4) == 0.05
+    assert round(weights["extracted_styles"].weight, 4) == 0.3
+    assert weights["extracted_styles"].cap == 4
 
 
 def test_promoter_recommendation_scoring_rejects_invalid_warm_range(monkeypatch):

@@ -7,7 +7,7 @@ from typing import Literal
 from app.embeddings import EntityType
 
 
-GraphFeature = Literal["artists", "events", "venues", "promoters", "genres"]
+GraphFeature = Literal["artists", "events", "venues", "promoters", "genres", "extracted_styles"]
 
 
 @dataclass(frozen=True)
@@ -98,10 +98,11 @@ DEFAULT_RECOMMENDATION_SCORING = RecommendationScoringConfig(
     graph_weight=0.35,
     artist_semantic_only_threshold=0.80,
     event_graph_weights=(
-        GraphFeatureWeight("shared artists", "artists", 0.45, cap=3),
-        GraphFeatureWeight("shared promoters", "promoters", 0.25, cap=2),
-        GraphFeatureWeight("same venue", "venues", 0.20, boolean=True),
-        GraphFeatureWeight("shared genres", "genres", 0.10, cap=3),
+        GraphFeatureWeight("shared artists", "artists", 0.50, cap=3),
+        GraphFeatureWeight("shared promoters", "promoters", 0.20, cap=2),
+        GraphFeatureWeight("same venue", "venues", 0.08, boolean=True),
+        GraphFeatureWeight("shared genres", "genres", 0.05, cap=3),
+        GraphFeatureWeight("shared extracted styles", "extracted_styles", 0.17, cap=3),
     ),
     artist_graph_weights=(
         GraphFeatureWeight("played same events", "events", 0.40, cap=2),
@@ -535,3 +536,92 @@ def is_similarity_candidate_eligible(
         return True
 
     return graph_score > 0 or semantic_score >= config.artist_semantic_only_threshold
+def recommendation_scoring_from_env() -> RecommendationScoringConfig:
+    weights = normalized_weights(
+        (
+            env_float("RECOMMENDATION_SEMANTIC_WEIGHT", DEFAULT_RECOMMENDATION_SCORING.semantic_weight),
+            env_float("RECOMMENDATION_GRAPH_WEIGHT", DEFAULT_RECOMMENDATION_SCORING.graph_weight),
+        )
+    )
+    artist_semantic_only_threshold = env_float(
+        "RECOMMENDATION_ARTIST_SEMANTIC_ONLY_THRESHOLD",
+        DEFAULT_RECOMMENDATION_SCORING.artist_semantic_only_threshold,
+    )
+    if not (0.0 <= artist_semantic_only_threshold <= 1.0):
+        raise ValueError("RECOMMENDATION_ARTIST_SEMANTIC_ONLY_THRESHOLD must be between 0 and 1")
+
+    event_caps = (
+        env_int("EVENT_GRAPH_SHARED_ARTISTS_CAP", 3),
+        env_int("EVENT_GRAPH_SHARED_PROMOTERS_CAP", 2),
+        env_int("EVENT_GRAPH_SHARED_GENRES_CAP", 3),
+        env_int("EVENT_GRAPH_SHARED_EXTRACTED_STYLES_CAP", 3),
+    )
+    if any(cap <= 0 for cap in event_caps):
+        raise ValueError("EVENT_GRAPH_*_CAP values must be greater than zero")
+
+    event_graph_weight_values = normalized_weights(
+        (
+            env_float("EVENT_GRAPH_SHARED_ARTISTS_WEIGHT", 0.50),
+            env_float("EVENT_GRAPH_SHARED_PROMOTERS_WEIGHT", 0.20),
+            env_float("EVENT_GRAPH_SAME_VENUE_WEIGHT", 0.08),
+            env_float("EVENT_GRAPH_SHARED_GENRES_WEIGHT", 0.05),
+            env_float("EVENT_GRAPH_SHARED_EXTRACTED_STYLES_WEIGHT", 0.17),
+        )
+    )
+    artist_graph_weight_values = normalized_weights(
+        (
+            env_float("ARTIST_GRAPH_PLAYED_SAME_EVENTS_WEIGHT", 0.40),
+            env_float("ARTIST_GRAPH_SHARED_PROMOTERS_WEIGHT", 0.25),
+            env_float("ARTIST_GRAPH_SHARED_VENUES_WEIGHT", 0.20),
+            env_float("ARTIST_GRAPH_SHARED_GENRES_WEIGHT", 0.15),
+        )
+    )
+    return RecommendationScoringConfig(
+        semantic_weight=weights[0],
+        graph_weight=weights[1],
+        artist_semantic_only_threshold=artist_semantic_only_threshold,
+        event_graph_weights=(
+            GraphFeatureWeight("shared artists", "artists", event_graph_weight_values[0], cap=event_caps[0]),
+            GraphFeatureWeight(
+                "shared promoters",
+                "promoters",
+                event_graph_weight_values[1],
+                cap=event_caps[1],
+            ),
+            GraphFeatureWeight("same venue", "venues", event_graph_weight_values[2], boolean=True),
+            GraphFeatureWeight("shared genres", "genres", event_graph_weight_values[3], cap=event_caps[2]),
+            GraphFeatureWeight(
+                "shared extracted styles",
+                "extracted_styles",
+                event_graph_weight_values[4],
+                cap=event_caps[3],
+            ),
+        ),
+        artist_graph_weights=(
+            GraphFeatureWeight(
+                "played same events",
+                "events",
+                artist_graph_weight_values[0],
+                cap=2,
+            ),
+            GraphFeatureWeight(
+                "shared promoters",
+                "promoters",
+                artist_graph_weight_values[1],
+                cap=3,
+            ),
+            GraphFeatureWeight(
+                "shared venues",
+                "venues",
+                artist_graph_weight_values[2],
+                cap=3,
+            ),
+            GraphFeatureWeight(
+                "shared genres",
+                "genres",
+                artist_graph_weight_values[3],
+                cap=3,
+            ),
+        ),
+    )
+
