@@ -1,6 +1,4 @@
 import { api } from './client'
-// import { getMockSearchResponse } from './mock_data/mock_search'
-// import { MOCK_SEARCH_RESPONSES } from './mock_data/mock_search'
 import type { SearchEntityType, SearchResponse, SearchResult } from '../types/search'
 
 interface SearchApiResult {

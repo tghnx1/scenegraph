@@ -1,5 +1,4 @@
 import { api } from './client'
-// import { MOCK_GRAPH } from './mock_data/mock'
 import type { GraphData, NodeType } from '../types/graph'
 
 export interface GraphParams {
@@ -44,19 +43,6 @@ export const fetchEgoGraph = ({
 }
 
 export const fetchArtistEgoGraph = (artistId: string): Promise<GraphData> => {
-  // const connectedLinks = MOCK_GRAPH.links.filter(
-  //   (l: GraphEdge) => l.source === artistId || l.target === artistId
-  // )
-  // const connectedIds = new Set([
-  //   artistId,
-  //   ...connectedLinks.map((l: GraphEdge) => l.source as string),
-  //   ...connectedLinks.map((l: GraphEdge) => l.target as string),
-  // ])
-
-  // return Promise.resolve({
-  //   nodes: MOCK_GRAPH.nodes.filter((n: GraphNode) => connectedIds.has(n.id)),
-  //   links: connectedLinks,
-  // })
   return fetchEgoGraph({
     type: 'artist',
     id: artistId,
