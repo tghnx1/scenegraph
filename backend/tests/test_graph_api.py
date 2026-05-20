@@ -144,6 +144,21 @@ def test_semantic_artists_endpoint_shape():
     assert isinstance(first["sharedTags"], dict)
 
 
+def test_semantic_artists_endpoint_debug_includes_source_and_candidate_tags():
+    response = client.get("/api/semantic/artists/2178", params={"limit": 1, "debug": True})
+    assert response.status_code == 200
+
+    first = response.json()["similar"][0]
+    assert set(first["debug"]) == {
+        "sourceStyles",
+        "candidateStyles",
+        "sourceTags",
+        "candidateTags",
+    }
+    assert isinstance(first["debug"]["sourceStyles"], list)
+    assert isinstance(first["debug"]["candidateTags"], dict)
+
+
 def test_extracted_tag_score_uses_weighted_type_overlap():
     source_tags = {
         "collective": ["Tres Bienski"],

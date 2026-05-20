@@ -101,6 +101,7 @@ class SemanticArtistItem(BaseModel):
     scoreBreakdown: dict[str, float] = Field(default_factory=dict)
     sharedStyles: list[str] = Field(default_factory=list)
     sharedTags: dict[str, list[str]] = Field(default_factory=dict)
+    debug: dict[str, object] | None = None
 
 
 class SemanticArtistResponse(BaseModel):
@@ -287,6 +288,7 @@ def build_artist_semantic_response(
     *,
     artist_id: int,
     limit: int,
+    debug: bool = False,
 ) -> SemanticArtistResponse:
     config = EmbeddingConfig.from_env()
     scoring_config = semantic_artist_scoring_from_env()
@@ -348,6 +350,14 @@ def build_artist_semantic_response(
                 "score_breakdown": score_breakdown,
                 "shared_styles": shared_styles,
                 "shared_tags": shared_tags,
+                "debug": {
+                    "sourceStyles": source_tags,
+                    "candidateStyles": candidate_tags,
+                    "sourceTags": source_extracted_tags,
+                    "candidateTags": candidate_metadata["tags"],
+                }
+                if debug
+                else None,
             }
         )
 
@@ -362,6 +372,7 @@ def build_artist_semantic_response(
             scoreBreakdown=item["score_breakdown"],
             sharedStyles=item["shared_styles"],
             sharedTags=item["shared_tags"],
+            debug=item["debug"],
         )
         for item in sorted(scored, key=lambda candidate: (-candidate["score"], candidate["entity_id"]))[
             :limit
@@ -739,12 +750,14 @@ async def similar_artists(
 async def semantic_artists(
     artist_id: int,
     limit: int = Query(default=10, ge=1, le=100),
+    debug: bool = Query(default=False),
     connection: Connection = Depends(get_db),
 ) -> SemanticArtistResponse:
     return build_artist_semantic_response(
         connection,
         artist_id=artist_id,
         limit=limit,
+        debug=debug,
     )
 
 
