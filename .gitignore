@@ -44,3 +44,4 @@ scenegraph_dump*.sql
 # IDEs
 .idea/
 *.iml
+backend/
