@@ -36,7 +36,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
           boxShadow: 'var(--surface-shadow)',
         }}
       >
-        <span className="search-query-label">Mock login</span>
+        <span className="search-query-label">Login page</span>
         <h1 style={{ marginTop: 8, fontSize: 32 }}>Choose role</h1>
         <div style={{ display: 'grid', gap: 12, marginTop: 24 }}>
           <button type="button" style={loginButtonStyle} onClick={() => onLogin('user')}>
