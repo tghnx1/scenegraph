@@ -31,6 +31,38 @@ Primary Endpoint: `GET /api/recommendations/artists/{artist_id}/promoters`
 
 - [ ] in_progress: calibration of scoring weights from real feedback cycles (`.env`-driven, no hardcoded weights).
 
+### Calibration Run (2026-05-21)
+
+- Scope:
+  - 10 artists benchmarked with `GET /api/recommendations/artists/{id}/promoters?limit=20&debug=true`
+  - Artist sample: `60, 273, 27, 251, 142, 18, 1796, 892, 277, 253`
+- Baseline vs tuned (`.env`) comparison:
+  - `avgEventSimilarityContribution`: `0.0409 -> 0.0590` (`+44.3%`)
+  - `avgWarmContribution`: `0.0542 -> 0.0725` (`+33.9%`)
+  - `warmRecommendationShare`: `0.665 -> 0.740`
+  - `eventSimilarityPositiveShare`: `0.825 -> 0.845`
+  - `top1` promoter changed only for `1/10` artists in the sample
+  - `avg top20 overlap`: `16.1 / 20` (avg Jaccard `0.7402`)
+- Filter diagnostics (sum across sample):
+  - `excludeExisting`: `70`
+  - `eventSimilaritySamePromoter`: `976`
+  - `recommendationLimitCutoff`: `3061`
+  - `eventSimilarityLimitCutoff`: `0`
+- Tuned `.env` weights used in this run:
+  - `PROMOTER_REC_SEMANTIC_WEIGHT=0.30`
+  - `PROMOTER_REC_STRENGTH_WEIGHT=0.15`
+  - `PROMOTER_REC_DIRECT_CONNECTION_WEIGHT=0.15`
+  - `PROMOTER_REC_WARM_NETWORK_WEIGHT=0.14`
+  - `PROMOTER_REC_EVENT_SIMILARITY_WEIGHT=0.22`
+  - `PROMOTER_REC_ACTIVITY_WEIGHT=0.07`
+  - `PROMOTER_REC_RECENCY_WEIGHT=0.07`
+  - `PROMOTER_REC_EVENT_SIMILARITY_SYMBOLIC_WEIGHT=0.65`
+  - `PROMOTER_REC_EVENT_SIMILARITY_EMBEDDING_WEIGHT=0.35`
+  - `PROMOTER_REC_EVENT_SIMILARITY_SAME_VENUE_WEIGHT=0.45`
+  - `PROMOTER_REC_EVENT_SIMILARITY_SHARED_GENRE_WEIGHT=0.05`
+  - `PROMOTER_REC_EVENT_SIMILARITY_SHARED_LINEUP_WEIGHT=0.20`
+  - `PROMOTER_REC_EVENT_SIMILARITY_EXTRACTED_STYLE_WEIGHT=0.30`
+
 ### Next (Top Priority)
 
 - [ ] todo: add explicit debug counters for filtered candidates (`filteredOut`) in similar-events and promoter flow.
