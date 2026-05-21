@@ -227,6 +227,16 @@ def test_event_similarity_endpoint_debug_includes_detailed_scores():
     )
     assert response.status_code == 200
     data = response.json()
+    assert "debug" in data
+    assert set(data["debug"]) == {"candidateCounts", "filteredOut"}
+    assert set(data["debug"]["filteredOut"]) == {
+        "missingFeatures",
+        "ineligibleByThreshold",
+        "rerankLimitCutoff",
+        "missingMetadata",
+        "samePromoter",
+        "responseLimitCutoff",
+    }
     if not data["similar"]:
         return
 
@@ -305,6 +315,13 @@ def test_artist_similar_events_endpoint_debug_includes_component_scores():
     )
     assert response.status_code == 200
     data = response.json()
+    assert "debug" in data
+    assert set(data["debug"]) == {"candidateCounts", "filteredOut"}
+    assert set(data["debug"]["filteredOut"]) == {
+        "samePromoter",
+        "similarityLimitCutoff",
+        "responseLimitCutoff",
+    }
     if not data["similarEvents"]:
         return
 
@@ -403,6 +420,14 @@ def test_artist_promoter_recommendations_include_debug_when_requested():
     assert response.status_code == 200
 
     data = response.json()
+    assert "debug" in data
+    assert set(data["debug"]) == {"candidateCounts", "filteredOut"}
+    assert set(data["debug"]["filteredOut"]) == {
+        "excludeExisting",
+        "eventSimilaritySamePromoter",
+        "eventSimilarityLimitCutoff",
+        "recommendationLimitCutoff",
+    }
     assert data["recommendations"]
     first = data["recommendations"][0]
     assert "debug" in first

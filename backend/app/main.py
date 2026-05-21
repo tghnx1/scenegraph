@@ -99,6 +99,7 @@ class SimilarityResponse(BaseModel):
     model: str
     dimensions: int
     similar: list[SimilarityItem]
+    debug: dict[str, object] | None = None
 
 
 class SemanticArtistItem(BaseModel):
@@ -181,6 +182,7 @@ class PromoterRecommendationResponse(BaseModel):
     dimensions: int
     recommendations: list[PromoterRecommendationItem]
     graph: GraphResponse
+    debug: dict[str, object] | None = None
 
 
 class ArtistSimilarEventItem(BaseModel):
@@ -206,6 +208,7 @@ class ArtistSimilarEventsResponse(BaseModel):
     model: str
     dimensions: int | None = None
     similarEvents: list[ArtistSimilarEventItem]
+    debug: dict[str, object] | None = None
 
 
 class ArtistTagItem(BaseModel):
@@ -1279,7 +1282,15 @@ def artist_similar_events_scored_rows(
     limit: int,
     exclude_same_promoter: bool,
     scoring_config: PromoterRecommendationScoringConfig,
-) -> tuple[list[dict], int | None]:
+    collect_debug: bool = False,
+) -> tuple[list[dict], int | None, dict[str, int]]:
+    same_promoter_filtered_count = 0
+    if collect_debug and exclude_same_promoter:
+        same_promoter_filtered_count = artist_event_similarity_same_promoter_filtered_count(
+            connection,
+            source_artist_id=source_artist_id,
+            scoring_config=scoring_config,
+        )
     candidate_rows = artist_event_similarity_candidates(
         connection,
         source_artist_id=source_artist_id,
@@ -1288,7 +1299,11 @@ def artist_similar_events_scored_rows(
         scoring_config=scoring_config,
     )
     if not candidate_rows:
-        return [], None
+        return [], None, {
+            "candidateRowsFetched": 0,
+            "samePromoterFiltered": same_promoter_filtered_count,
+            "similarityLimitCutoff": 0,
+        }
 
     source_event_ids = sorted({int(row["source_event_id"]) for row in candidate_rows})
     candidate_event_ids = [int(row["candidate_event_id"]) for row in candidate_rows]
@@ -1328,7 +1343,11 @@ def artist_similar_events_scored_rows(
     scored_rows.sort(
         key=lambda item: (-item["total_similarity_score"], item["candidate_event_id"]),
     )
-    return scored_rows[:limit], embedding_dimensions
+    return scored_rows[:limit], embedding_dimensions, {
+        "candidateRowsFetched": len(candidate_rows),
+        "samePromoterFiltered": same_promoter_filtered_count,
+        "similarityLimitCutoff": max(len(scored_rows) - limit, 0),
+    }
 
 
 def event_embedding_similarity_by_candidate(
@@ -1557,6 +1576,105 @@ def artist_event_similarity_candidates(
         return cursor.fetchall()
 
 
+def artist_event_similarity_same_promoter_filtered_count(
+    connection: Connection,
+    *,
+    source_artist_id: int,
+    scoring_config: PromoterRecommendationScoringConfig,
+) -> int:
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            WITH source_events AS (
+                SELECT DISTINCT
+                    e.id AS source_event_id,
+                    e.venue_id AS source_venue_id
+                FROM event_artists ea
+                JOIN events e
+                    ON e.id = ea.event_id
+                WHERE ea.artist_id = %(source_artist_id)s
+            ),
+            source_promoters AS (
+                SELECT DISTINCT ep.promoter_id
+                FROM source_events se
+                JOIN event_promoters ep
+                    ON ep.event_id = se.source_event_id
+            ),
+            similarity_paths AS (
+                SELECT
+                    se.source_event_id,
+                    e.id AS candidate_event_id,
+                    (
+                        CASE WHEN e.venue_id IS NOT NULL AND e.venue_id = se.source_venue_id THEN 1.0 ELSE 0.0 END
+                    ) AS same_venue_score,
+                    (
+                        SELECT count(DISTINCT eg_source.genre_id)::int
+                        FROM event_genres eg_source
+                        JOIN event_genres eg_candidate
+                          ON eg_candidate.genre_id = eg_source.genre_id
+                        WHERE eg_source.event_id = se.source_event_id
+                          AND eg_candidate.event_id = e.id
+                    ) AS shared_genre_count,
+                    (
+                        SELECT count(DISTINCT ea_source.artist_id)::int
+                        FROM event_artists ea_source
+                        JOIN event_artists ea_candidate
+                          ON ea_candidate.artist_id = ea_source.artist_id
+                        WHERE ea_source.event_id = se.source_event_id
+                          AND ea_candidate.event_id = e.id
+                          AND ea_source.artist_id <> %(source_artist_id)s
+                    ) AS shared_lineup_count,
+                    EXISTS (
+                        SELECT 1
+                        FROM event_promoters ep_same
+                        JOIN source_promoters sp
+                            ON sp.promoter_id = ep_same.promoter_id
+                        WHERE ep_same.event_id = e.id
+                    ) AS shares_source_promoter
+                FROM source_events se
+                JOIN events e
+                    ON e.id <> se.source_event_id
+            ),
+            scored_paths AS (
+                SELECT
+                    *,
+                    (
+                        %(same_venue_weight)s * same_venue_score
+                        + %(shared_genre_weight)s * CASE WHEN shared_genre_count > 0 THEN 1.0 ELSE 0.0 END
+                        + %(shared_lineup_weight)s * CASE WHEN shared_lineup_count > 0 THEN 1.0 ELSE 0.0 END
+                    )::double precision AS symbolic_score
+                FROM similarity_paths
+            ),
+            matched_paths AS (
+                SELECT *
+                FROM scored_paths
+                WHERE symbolic_score > 0
+            ),
+            ranked_paths AS (
+                SELECT
+                    *,
+                    row_number() OVER (
+                        PARTITION BY candidate_event_id
+                        ORDER BY symbolic_score DESC, source_event_id DESC
+                    ) AS row_number
+                FROM matched_paths
+            )
+            SELECT count(*)::int AS filtered_count
+            FROM ranked_paths
+            WHERE row_number = 1
+              AND shares_source_promoter
+            """,
+            {
+                "source_artist_id": source_artist_id,
+                "same_venue_weight": scoring_config.event_similarity_same_venue_weight,
+                "shared_genre_weight": scoring_config.event_similarity_shared_genre_weight,
+                "shared_lineup_weight": scoring_config.event_similarity_shared_lineup_weight,
+            },
+        )
+        row = cursor.fetchone()
+    return int(row["filtered_count"]) if row else 0
+
+
 def build_artist_similar_events_response(
     connection: Connection,
     *,
@@ -1580,12 +1698,13 @@ def build_artist_similar_events_response(
 
     config = EmbeddingConfig.from_env()
     scoring_config = promoter_recommendation_scoring_from_env()
-    scored_rows, embedding_dimensions = artist_similar_events_scored_rows(
+    scored_rows, embedding_dimensions, similar_events_debug_counts = artist_similar_events_scored_rows(
         connection,
         source_artist_id=artist_id,
         limit=max(limit * 20, 200),
         exclude_same_promoter=exclude_same_promoter,
         scoring_config=scoring_config,
+        collect_debug=debug,
     )
     if not scored_rows:
         return ArtistSimilarEventsResponse(
@@ -1593,6 +1712,19 @@ def build_artist_similar_events_response(
             model=config.provider_model_key,
             dimensions=config.dimensions,
             similarEvents=[],
+            debug={
+                "candidateCounts": {
+                    "scoredCandidates": 0,
+                    "returnedCandidates": 0,
+                },
+                "filteredOut": {
+                    "samePromoter": similar_events_debug_counts["samePromoterFiltered"],
+                    "similarityLimitCutoff": similar_events_debug_counts["similarityLimitCutoff"],
+                    "responseLimitCutoff": 0,
+                },
+            }
+            if debug
+            else None,
         )
 
     similar_events: list[ArtistSimilarEventItem] = []
@@ -1655,6 +1787,7 @@ def build_artist_similar_events_response(
             )
         )
 
+    response_limit_cutoff = max(len(similar_events) - limit, 0)
     similar_events = sorted(
         similar_events,
         key=lambda item: (-item.score, item.id),
@@ -1664,6 +1797,19 @@ def build_artist_similar_events_response(
         model=config.provider_model_key,
         dimensions=embedding_dimensions if embedding_dimensions is not None else config.dimensions,
         similarEvents=similar_events,
+        debug={
+            "candidateCounts": {
+                "scoredCandidates": similar_events_debug_counts["candidateRowsFetched"],
+                "returnedCandidates": len(similar_events),
+            },
+            "filteredOut": {
+                "samePromoter": similar_events_debug_counts["samePromoterFiltered"],
+                "similarityLimitCutoff": similar_events_debug_counts["similarityLimitCutoff"],
+                "responseLimitCutoff": response_limit_cutoff,
+            },
+        }
+        if debug
+        else None,
     )
 
 
@@ -1809,12 +1955,13 @@ def build_artist_promoter_recommendation_response(
         )
         rows = cursor.fetchall()
 
-    similar_event_rows, _ = artist_similar_events_scored_rows(
+    similar_event_rows, _, similar_event_debug_counts = artist_similar_events_scored_rows(
         connection,
         source_artist_id=artist_id,
         limit=max(limit * 20, 500),
         exclude_same_promoter=True,
         scoring_config=scoring_config,
+        collect_debug=debug,
     )
     event_similarity_stats_by_promoter: dict[int, dict[str, object]] = {}
     for similar_row in similar_event_rows:
@@ -1873,8 +2020,10 @@ def build_artist_promoter_recommendation_response(
                 )
 
     recommendations = []
+    exclude_existing_filtered_count = 0
     for row in rows:
         if exclude_existing and row["direct_connection_count"] > 0:
+            exclude_existing_filtered_count += 1
             continue
         event_similarity_stats = event_similarity_stats_by_promoter.get(row["id"])
         event_similarity_count = int(event_similarity_stats["count"]) if event_similarity_stats else 0
@@ -1990,6 +2139,7 @@ def build_artist_promoter_recommendation_response(
             )
         )
 
+    recommendation_limit_cutoff = max(len(recommendations) - limit, 0)
     recommendations = sorted(
         recommendations,
         key=lambda recommendation: (-recommendation.score, recommendation.id),
@@ -2001,6 +2151,22 @@ def build_artist_promoter_recommendation_response(
             dimensions=source["dimensions"],
             recommendations=[],
             graph=GraphResponse(nodes=[], links=[]),
+            debug={
+                "candidateCounts": {
+                    "sqlPromoterCandidates": len(rows),
+                    "eventSimilarityPromotersAdded": len(additional_promoter_ids),
+                    "recommendationsBeforeLimit": 0,
+                    "returnedRecommendations": 0,
+                },
+                "filteredOut": {
+                    "excludeExisting": exclude_existing_filtered_count,
+                    "eventSimilaritySamePromoter": similar_event_debug_counts["samePromoterFiltered"],
+                    "eventSimilarityLimitCutoff": similar_event_debug_counts["similarityLimitCutoff"],
+                    "recommendationLimitCutoff": 0,
+                },
+            }
+            if debug
+            else None,
         )
 
     promoter_ids = [recommendation.id for recommendation in recommendations]
@@ -2063,6 +2229,22 @@ def build_artist_promoter_recommendation_response(
             event_similarity_evidence_rows=event_similarity_evidence,
             scoring_config=scoring_config,
         ),
+        debug={
+            "candidateCounts": {
+                "sqlPromoterCandidates": len(rows),
+                "eventSimilarityPromotersAdded": len(additional_promoter_ids),
+                "recommendationsBeforeLimit": len(recommendations) + recommendation_limit_cutoff,
+                "returnedRecommendations": len(recommendations),
+            },
+            "filteredOut": {
+                "excludeExisting": exclude_existing_filtered_count,
+                "eventSimilaritySamePromoter": similar_event_debug_counts["samePromoterFiltered"],
+                "eventSimilarityLimitCutoff": similar_event_debug_counts["similarityLimitCutoff"],
+                "recommendationLimitCutoff": recommendation_limit_cutoff,
+            },
+        }
+        if debug
+        else None,
     )
 
 
@@ -2287,7 +2469,7 @@ def rerank_similar_entities(
     ranked: list[dict],
     limit: int,
     scoring_config=DEFAULT_RECOMMENDATION_SCORING,
-) -> list[dict]:
+) -> tuple[list[dict], dict[str, int]]:
     candidate_ids = [item["entity_id"] for item in ranked]
     features = recommendation_feature_sets(connection, entity_type, [entity_id, *candidate_ids])
     features = apply_artist_indirect_features(
@@ -2314,9 +2496,12 @@ def rerank_similar_entities(
             interested_counts = {int(row["id"]): int(row["interested_count"]) for row in cursor.fetchall()}
 
     rescored = []
+    missing_feature_count = 0
+    ineligible_count = 0
     for item in ranked:
         candidate_features = features.get(item["entity_id"])
         if not candidate_features:
+            missing_feature_count += 1
             continue
 
         graph_score, reasons = hybrid_graph_score(
@@ -2332,6 +2517,7 @@ def rerank_similar_entities(
             graph_score,
             scoring_config,
         ):
+            ineligible_count += 1
             continue
 
         final_score = final_recommendation_score(
@@ -2386,10 +2572,18 @@ def rerank_similar_entities(
             }
         )
 
-    return sorted(
+    sorted_rescored = sorted(
         rescored,
         key=lambda candidate: (-candidate["score"], candidate["entity_id"]),
-    )[:limit]
+    )
+    debug_counts = {
+        "embeddingCandidates": len(ranked),
+        "missingFeatures": missing_feature_count,
+        "ineligibleByThreshold": ineligible_count,
+        "rerankedBeforeLimit": len(sorted_rescored),
+        "rerankLimitCutoff": max(len(sorted_rescored) - limit, 0),
+    }
+    return sorted_rescored[:limit], debug_counts
 
 
 def build_similarity_response(
@@ -2423,7 +2617,7 @@ def build_similarity_response(
         )
 
     rerank_limit = max(limit * overfetch_multiplier, 200) if entity_type == "event" else limit
-    reranked = rerank_similar_entities(
+    reranked, rerank_debug_counts = rerank_similar_entities(
         connection,
         entity_type=entity_type,
         entity_id=entity_id,
@@ -2441,10 +2635,13 @@ def build_similarity_response(
     source_metadata = recommendation_item_metadata(connection, entity_type, [entity_id]).get(entity_id, {})
     source_features = feature_sets.get(entity_id, {})
     source_promoters = source_features.get("promoters", set())
+    filtered_same_promoter_count = 0
+    missing_metadata_count = 0
     similar: list[SimilarityItem] = []
     for item in reranked:
         candidate_id = item["entity_id"]
         if candidate_id not in metadata:
+            missing_metadata_count += 1
             continue
 
         candidate_features = feature_sets.get(candidate_id, {})
@@ -2453,6 +2650,7 @@ def build_similarity_response(
             and exclude_same_promoter
             and bool(source_promoters & candidate_features.get("promoters", set()))
         ):
+            filtered_same_promoter_count += 1
             continue
 
         score_breakdown = {
@@ -2522,6 +2720,7 @@ def build_similarity_response(
             )
         )
 
+    response_limit_cutoff = max(len(similar) - limit, 0)
     similar = similar[:limit]
 
     return SimilarityResponse(
@@ -2530,6 +2729,23 @@ def build_similarity_response(
         model=source["model"],
         dimensions=source["dimensions"],
         similar=similar,
+        debug={
+            "candidateCounts": {
+                "embeddingCandidates": len(ranked),
+                "rerankedCandidates": len(reranked),
+                "returnedCandidates": len(similar),
+            },
+            "filteredOut": {
+                "missingFeatures": rerank_debug_counts["missingFeatures"],
+                "ineligibleByThreshold": rerank_debug_counts["ineligibleByThreshold"],
+                "rerankLimitCutoff": rerank_debug_counts["rerankLimitCutoff"],
+                "missingMetadata": missing_metadata_count,
+                "samePromoter": filtered_same_promoter_count,
+                "responseLimitCutoff": response_limit_cutoff,
+            },
+        }
+        if debug
+        else None,
     )
 
 
