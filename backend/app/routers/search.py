@@ -20,48 +20,62 @@ class SearchResponse(BaseModel):
 SEARCH_SQL = """
 SELECT type, id, name
 FROM (
-    SELECT
-        'artist'  AS type,
-        id,
-        name,
-        ts_rank(to_tsvector('simple', name), plainto_tsquery('simple', %s)) AS rank
-    FROM artists
-    WHERE name ILIKE %s
+    SELECT type, id, name, rank, rn
+    FROM (
+        SELECT
+            'artist'  AS type,
+            id,
+            name,
+            ts_rank(to_tsvector('simple', name), plainto_tsquery('simple', %s)) AS rank,
+            ROW_NUMBER() OVER (ORDER BY ts_rank(to_tsvector('simple', name), plainto_tsquery('simple', %s)) DESC, name ASC) AS rn
+        FROM artists
+        WHERE name ILIKE %s
+    ) a WHERE rn <= %s
 
     UNION ALL
 
-    SELECT
-        'venue'   AS type,
-        id,
-        name,
-        ts_rank(to_tsvector('simple', name), plainto_tsquery('simple', %s)) AS rank
-    FROM venues
-    WHERE name ILIKE %s
+    SELECT type, id, name, rank, rn
+    FROM (
+        SELECT
+            'venue'   AS type,
+            id,
+            name,
+            ts_rank(to_tsvector('simple', name), plainto_tsquery('simple', %s)) AS rank,
+            ROW_NUMBER() OVER (ORDER BY ts_rank(to_tsvector('simple', name), plainto_tsquery('simple', %s)) DESC, name ASC) AS rn
+        FROM venues
+        WHERE name ILIKE %s
+    ) v WHERE rn <= %s
 
     UNION ALL
 
-    SELECT
-        'event'   AS type,
-        id,
-        title     AS name,
-        ts_rank(to_tsvector('simple', title), plainto_tsquery('simple', %s)) AS rank
-    FROM events
-    WHERE title ILIKE %s
+    SELECT type, id, name, rank, rn
+    FROM (
+        SELECT
+            'event'   AS type,
+            id,
+            title     AS name,
+            ts_rank(to_tsvector('simple', title), plainto_tsquery('simple', %s)) AS rank,
+            ROW_NUMBER() OVER (ORDER BY ts_rank(to_tsvector('simple', title), plainto_tsquery('simple', %s)) DESC, title ASC) AS rn
+        FROM events
+        WHERE title ILIKE %s
+    ) e WHERE rn <= %s
 
     UNION ALL
 
-    SELECT
-        'promoter' AS type,
-        id,
-        name,
-        ts_rank(to_tsvector('simple', name), plainto_tsquery('simple', %s)) AS rank
-    FROM promoters
-    WHERE name ILIKE %s
+    SELECT type, id, name, rank, rn
+    FROM (
+        SELECT
+            'promoter' AS type,
+            id,
+            name,
+            ts_rank(to_tsvector('simple', name), plainto_tsquery('simple', %s)) AS rank,
+            ROW_NUMBER() OVER (ORDER BY ts_rank(to_tsvector('simple', name), plainto_tsquery('simple', %s)) DESC, name ASC) AS rn
+        FROM promoters
+        WHERE name ILIKE %s
+    ) p WHERE rn <= %s
 ) results
-ORDER BY rank DESC, name ASC
-LIMIT %s;
+ORDER BY rank DESC, name ASC;
 """
-
 
 @router.get("", response_model=SearchResponse)
 def search(
@@ -70,9 +84,15 @@ def search(
     db: Connection = Depends(get_db),
 ):
     pattern = f"%{q}%"
+    per_type = max(2, limit // 4)
 
     with db.cursor() as cur:
-        cur.execute(SEARCH_SQL, (q, pattern, q, pattern, q, pattern, q, pattern, limit))
+        cur.execute(SEARCH_SQL, (
+            q, q, pattern, per_type,
+            q, q, pattern, per_type,
+            q, q, pattern, per_type,
+            q, q, pattern, per_type,
+        ))
         rows = cur.fetchall()
 
     results = [
