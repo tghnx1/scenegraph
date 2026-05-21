@@ -89,7 +89,7 @@
     left: calc(100% + 20px);
     right: auto;
     width: clamp(340px, 34vw, 500px);
-    max-height: min(360px, calc(100dvh - 170px));
+    max-height: min(580px, calc(100dvh - 170px));
     background: var(--surface-panel);
     backdrop-filter: blur(10px);
   }
