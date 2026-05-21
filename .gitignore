@@ -44,4 +44,8 @@ scenegraph_dump*.sql
 # IDEs
 .idea/
 *.iml
+
+# intentional by H
 backend/
+backend_t/
+backend_m/
