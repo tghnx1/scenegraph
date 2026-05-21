@@ -41,10 +41,3 @@ export const fetchEgoGraph = ({
 
   return api.get<GraphData>(`/graph/ego?${q.toString()}`)
 }
-
-export const fetchArtistEgoGraph = (artistId: string): Promise<GraphData> => {
-  return fetchEgoGraph({
-    type: 'artist',
-    id: artistId,
-  })
-}
