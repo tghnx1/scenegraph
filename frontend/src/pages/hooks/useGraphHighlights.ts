@@ -1,5 +1,5 @@
 import { useCallback, useMemo } from 'react'
-import type { GraphNode } from '../../../types/graph'
+import type { GraphNode } from '../../types/graph'
 
 export function useGraphHighlights(selectedNode: GraphNode | null, data: any) {
   //compute (all) connected node IDs using breadth-first search
