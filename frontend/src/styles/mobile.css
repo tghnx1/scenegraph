@@ -50,16 +50,31 @@
   .profile-grid {
     grid-template-columns: 1fr;
     grid-template-rows:
+      minmax(540px, var(--profile-tall-panel-height))
+      minmax(560px, var(--profile-tall-panel-height))
       minmax(360px, var(--profile-panel-height))
-      minmax(560px, 78dvh)
-      repeat(4, minmax(360px, var(--profile-panel-height)));
+      minmax(720px, 120dvh)
+      repeat(2, minmax(360px, var(--profile-panel-height)));
     grid-template-areas:
       "context"
       "graph"
       "profile"
-      "stats"
       "recommendations"
+      "stats"
       "communications";
+  }
+
+  .recommendations-content {
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(360px, 52dvh) auto;
+  }
+
+  .recommendation-graph-empty {
+    min-height: 360px;
+  }
+
+  .recommendations-panel {
+    overflow: visible;
   }
 
   .context-panel {

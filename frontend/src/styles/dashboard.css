@@ -8,6 +8,7 @@
 
 .profile-page {
   --profile-panel-height: calc((100dvh - 56px) / 2);
+  --profile-tall-panel-height: calc((100dvh - 56px) * 0.75);
 }
 
 .panel-heading button {
@@ -30,11 +31,14 @@
   min-height: 100%;
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  grid-template-rows: repeat(3, minmax(380px, var(--profile-panel-height)));
+  grid-template-rows:
+    minmax(570px, var(--profile-tall-panel-height))
+    minmax(570px, var(--profile-tall-panel-height))
+    minmax(380px, var(--profile-panel-height));
   grid-template-areas:
     "context graph graph"
-    "profile stats recommendations"
-    "communications . .";
+    "profile recommendations recommendations"
+    "stats communications .";
   gap: 12px;
 }
 
@@ -83,6 +87,51 @@
 
 .recommendations-panel {
   grid-area: recommendations;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 12px;
+}
+
+.recommendations-content {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(220px, 0.6fr);
+  gap: 12px;
+  min-height: 0;
+}
+
+.recommendation-graph-map {
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+}
+
+.recommendation-graph-map .scenegraph-map-panel {
+  height: 100%;
+}
+
+.recommendation-graph-empty {
+  display: grid;
+  min-height: 0;
+  height: 100%;
+  place-items: center;
+  border-radius: 8px;
+  background: var(--surface-panel-soft);
+  border: 1px solid var(--surface-border-soft);
+  text-align: center;
+}
+
+.recommendations-content > .recommendation-graph-empty {
+  grid-column: 1 / -1;
+}
+
+.recommendation-graph-empty p {
+  max-width: 28ch;
+  margin: 0;
+}
+
+.recommendation-list {
+  align-content: start;
+  margin-top: 0;
 }
 
 .stats-panel {
