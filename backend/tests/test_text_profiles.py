@@ -37,11 +37,14 @@ def test_event_text_profile_uses_structured_and_residual_lineup():
         },
         artist_names=["BabaBass3000", "Structured Artist"],
         promoter_names=["Emotional Voyage"],
+        genre_names=["Techno", "Electro"],
         venue_name="Club Ost",
     )
 
     assert "Event title: CYBERFLEX" in profile
     assert "Description: Bass-heavy electro and breaks." in profile
+    assert "Genres: Techno, Electro" in profile
+    assert "Extracted styles: bass, breakbeat, electro" in profile
     assert "Structured lineup: BabaBass3000, Structured Artist" in profile
     assert "Lineup context: Guest Artist live" in profile
     assert "Raw lineup:" not in profile
@@ -76,6 +79,7 @@ def test_artist_text_profile_uses_intrinsic_artist_text_only():
 
     assert "Artist name: BabaBass3000" in profile
     assert "Biography: Leftfield electro and bass-focused club music." in profile
+    assert "Styles: bass, electro, leftfield" in profile
     assert "Played event titles:" not in profile
     assert "Played event descriptions:" not in profile
     assert "Played event lineup context:" not in profile
@@ -95,6 +99,29 @@ def test_artist_text_profile_prefers_stored_normalized_biography():
 
     assert "Biography: Clean stored bio." in profile
     assert "Raw bio should not be used." not in profile
+
+
+def test_artist_text_profile_includes_extracted_tags():
+    profile = compose_artist_text_profile(
+        {
+            "name": "Tagged Artist",
+            "biography": "Dark disco producer.",
+            "biography_normalized": None,
+        },
+        extracted_tags={
+            "style": ["ebm"],
+            "label": ["Laut & Luise"],
+            "collective": ["Local Crew"],
+            "role": ["producer"],
+            "residency": ["Radio Night"],
+        },
+    )
+
+    assert "Styles: dark disco, ebm" in profile
+    assert "Labels: Laut & Luise" in profile
+    assert "Collectives: Local Crew" in profile
+    assert "Roles: producer" in profile
+    assert "Residencies: Radio Night" in profile
 
 
 def test_artist_text_profile_caps_long_biography():
