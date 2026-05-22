@@ -99,7 +99,8 @@
     padding: 12px;
   }
 
-  .dashboard-actions {
+  .dashboard-actions,
+  .profile-actions {
     justify-content: start;
   }
 

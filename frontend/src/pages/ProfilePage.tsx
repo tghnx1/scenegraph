@@ -150,6 +150,10 @@ export function ProfilePage() {
 
   return (
     <div className="profile-page">
+      <div className="profile-actions" aria-label="Profile actions">
+        <button type="button">Export to PDF</button>
+      </div>
+
       <section className="profile-grid" aria-label="Profile overview">
         <article className="profile-card context-panel">
           <SearchQueryForm
