@@ -63,7 +63,7 @@ export function SearchResultCard({ result, variant = 'card' }: SearchResultCardP
                   linkedEvents.map((event) => (
                     <Link
                       key={event.id}
-                      to={`/graph?selectedType=event&selectedId=${encodeURIComponent(event.id)}&q=${encodeURIComponent(event.title)}`}
+                      to={`/graph?selectedType=event&selectedId=${encodeURIComponent(event.id)}`}
                       className="result-pill"
                     >
                       {event.title} <span>{event.date}</span>
