@@ -46,6 +46,6 @@ scenegraph_dump*.sql
 *.iml
 
 # intentional by H
-backend/
+backend_a/
 backend_t/
 backend_m/
