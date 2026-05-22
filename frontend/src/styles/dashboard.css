@@ -249,14 +249,20 @@
   border-bottom: 1px solid var(--control-border);
 }
 
-.dashboard-actions {
+.dashboard-actions,
+.profile-actions {
   display: flex;
   flex-wrap: wrap;
   justify-content: end;
   gap: 8px;
 }
 
+.profile-actions {
+  margin-bottom: 12px;
+}
+
 .dashboard-actions button,
+.profile-actions button,
 .dashboard-panel button {
   border: 1px solid var(--promoter-border);
   background: var(--promoter-soft);
@@ -269,6 +275,7 @@
 }
 
 .dashboard-actions button:hover,
+.profile-actions button:hover,
 .dashboard-panel button:hover {
   border-color: var(--selection-border-strong);
   background: var(--selection-panel);
