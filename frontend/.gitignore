@@ -28,4 +28,6 @@ unused_eslint.config.js
 src/api/mock_data/mock_big.ts
 src/api/mock_data/mock_larger.ts
 exclude/*
+public/*
+scripts/*
 
