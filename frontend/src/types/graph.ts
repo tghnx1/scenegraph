@@ -26,3 +26,10 @@ export interface GraphData {
   nodes: GraphNode[]
   links: GraphEdge[]
 }
+
+export function graphEntityId(nodeId: string, type?: NodeType): number | null {
+  const prefix = type ? `${type}-` : /^[a-z]+-/
+  const rawId = nodeId.replace(prefix, '')
+  const entityId = Number(rawId)
+  return Number.isInteger(entityId) ? entityId : null
+}
