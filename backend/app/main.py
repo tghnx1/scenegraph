@@ -60,6 +60,24 @@ class GraphResponse(BaseModel):
     nodes: list[GraphNode]
     links: list[GraphLink]
 
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+class LoginResponse(BaseModel):
+    success: bool
+    message: str
+    user_id: int | None = None  #sometimes there is an int, sometimes nothing. If not provided => None
+    username: str | None = None
+    access_token: str | None = None
+
+dummy_users = [
+    {"id": 1, "username": "maksim", "password": "12345"},
+    {"id": 2, "username": "howard", "password": "12345"},
+    {"id": 3, "username": "tarcisio", "password": "12345"},
+    {"id": 4, "username": "herold", "password": "12345"},
+    {"id": 5, "username": "aaron", "password": "12345"}
+]
 
 def graph_node_id(node_type: str, entity_id: int) -> str:
     return f"{node_type}-{entity_id}"
@@ -77,6 +95,25 @@ async def health(connection: Connection = Depends(get_db)) -> dict[str, str]:
 @app.get("/api")
 async def root() -> dict[str, str]:
     return {"message": "Berlin Scene Graph backend is running."}
+
+#when POST /api/login arrives, expect LoginRequest input, execute async login function, return LoginResponse output 
+#response_model = LoginResponse means FastAPI should validate and document the returned JSON using LoginResponse  
+#async means this function can pause while waiting without blocking whole server
+@app.post("/api/login", response_model=LoginResponse, response_model_exclude_none=True)        
+async def login(login_data: LoginRequest) -> LoginResponse:
+    for user in dummy_users:
+        if (user["username"] == login_data.username and user["password"] == login_data.password):
+            return LoginResponse(
+                success=True,
+                message="Login successful",
+                user_id=user["id"],
+                username=user["username"],
+                access_token="dummy-token",
+            )
+    return LoginResponse(
+        success=False,
+        message="Invalid username or password"
+    )
 
 
 @app.get("/api/venues", response_model=VenuesResponse)
