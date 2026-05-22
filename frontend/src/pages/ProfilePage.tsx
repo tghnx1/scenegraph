@@ -19,10 +19,14 @@ const stats = [
   { label: 'Recommendations', value: '0' },
 ]
 
+const PROMOTER_RECOMMENDATIONS_URL = 'http://localhost:8080/api/recommendations/artists/2178/promoters?limit=10'
+
 export function ProfilePage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const { setSelected, selectedNode } = useGraphStore()
-  const [isRecommendationGraphVisible, setIsRecommendationGraphVisible] = useState(false)
+  const [recommendationsJson, setRecommendationsJson] = useState<unknown>(null)
+  const [isRecommendationsLoading, setIsRecommendationsLoading] = useState(false)
+  const [recommendationsError, setRecommendationsError] = useState<string | null>(null)
   const submittedQuery = searchParams.get('q') ?? ''
   const [searchValue, setSearchValue] = useState(submittedQuery)
   const debouncedSearchValue = useDebouncedValue(searchValue.trim(), 350)
@@ -122,6 +126,26 @@ export function ProfilePage() {
     },
     [searchParams, setSearchParams, setSelected]
   )
+
+  const handleLoadRecommendations = useCallback(async () => {
+    setIsRecommendationsLoading(true)
+    setRecommendationsError(null)
+
+    try {
+      const response = await fetch(PROMOTER_RECOMMENDATIONS_URL)
+
+      if (!response.ok) {
+        throw new Error(`${response.status} ${response.statusText}`)
+      }
+
+      setRecommendationsJson(await response.json())
+    } catch (error) {
+      setRecommendationsJson(null)
+      setRecommendationsError(error instanceof Error ? error.message : 'Failed to load recommendations')
+    } finally {
+      setIsRecommendationsLoading(false)
+    }
+  }, [])
 
   const searchResults = searchData?.results ?? []
   const trimmedSearchValue = searchValue.trim()
@@ -223,28 +247,18 @@ export function ProfilePage() {
             <span className="search-query-label">Recommendations</span>
             <button
               type="button"
-              onClick={() => setIsRecommendationGraphVisible((isVisible) => !isVisible)}
+              onClick={handleLoadRecommendations}
+              disabled={isRecommendationsLoading}
             >
-              {isRecommendationGraphVisible ? 'Hide map' : 'The button'}
+              {isRecommendationsLoading ? 'Loading...' : 'The button'}
             </button>
           </div>
-          <div className="recommendations-content">
-            {isRecommendationGraphVisible ? (
-              <>
-                <div className="recommendation-graph-map">
-                  <ScenegraphMapPanel />
-                </div>
-                <div className="placeholder-list recommendation-list">
-                  <span>Recommended names</span>
-                  <span>A list of names/connections.</span>
-                </div>
-              </>
-            ) : (
-              <div className="recommendation-graph-empty">
-                <p>Click the button to calculate recommendation connections.</p>
-              </div>
-            )}
-          </div>
+          {recommendationsError && <p className="error">{recommendationsError}</p>}
+          {recommendationsJson !== null && (
+            <pre className="recommendations-json">
+              {JSON.stringify(recommendationsJson, null, 2)}
+            </pre>
+          )}
         </article>
 
         <article className="profile-card side-panel communications-panel">
