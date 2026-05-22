@@ -147,6 +147,16 @@ export function ProfilePage() {
     }
   }, [])
 
+  const handleToggleRecommendations = useCallback(() => {
+    if (recommendationsJson !== null || recommendationsError) {
+      setRecommendationsJson(null)
+      setRecommendationsError(null)
+      return
+    }
+
+    void handleLoadRecommendations()
+  }, [handleLoadRecommendations, recommendationsError, recommendationsJson])
+
   const searchResults = searchData?.results ?? []
   const trimmedSearchValue = searchValue.trim()
   const trimmedSubmittedQuery = submittedQuery.trim()
@@ -247,12 +257,21 @@ export function ProfilePage() {
             <span className="search-query-label">Recommendations</span>
             <button
               type="button"
-              onClick={handleLoadRecommendations}
+              onClick={handleToggleRecommendations}
               disabled={isRecommendationsLoading}
             >
-              {isRecommendationsLoading ? 'Loading...' : 'The button'}
+              {isRecommendationsLoading
+                ? 'Loading. Dont do anything, dont even breathe.'
+                : recommendationsJson !== null || recommendationsError
+                  ? 'Hide'
+                  : 'The button'}
             </button>
           </div>
+          {recommendationsJson === null && !recommendationsError && !isRecommendationsLoading && (
+            <p className="recommendations-help">
+              Click the button to load recommendations. Load time may be quite long.
+            </p>
+          )}
           {recommendationsError && <p className="error">{recommendationsError}</p>}
           {recommendationsJson !== null && (
             <pre className="recommendations-json">
