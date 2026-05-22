@@ -6,7 +6,7 @@ import { fetchSearch } from '../api/search'
 import { useApi } from '../hooks/useApi'
 import { useGraphStore } from '../store/graphStore'
 import type { Artist } from '../types/artist'
-import type { GraphNode, NodeType } from '../types/graph'
+import { graphEntityId, type GraphNode, type NodeType } from '../types/graph'
 import type { SearchResponse, SearchResult } from '../types/search'
 import { GraphSidebarDetails } from './components/DetailsPanel.tsx'
 import { ScenegraphMapPanel } from './components/ScenegraphMapPanel.tsx'
@@ -49,8 +49,8 @@ export function ProfilePage() {
   )
 
   const { data: selectedArtist } = useApi<Artist | null>(
-    () => (selectedArtistId ? fetchArtist(selectedArtistId, selectedNode?.name) : Promise.resolve(null)),
-    [selectedArtistId, selectedNode?.name]
+    () => (selectedArtistId ? fetchArtist(selectedArtistId) : Promise.resolve(null)),
+    [selectedArtistId]
   )
 
   const { data: dropdownSearchData, isLoading: isDropdownSearchLoading } = useApi<SearchResponse>(
@@ -137,8 +137,8 @@ export function ProfilePage() {
   const hasActiveSearchState = Boolean(searchValue || submittedQuery || selectedNode)
   const selectedArtistNode: GraphNode | null = selectedArtist
     ? {
-        id: `artist-${selectedArtist.id}`,
-        entityId: Number(selectedArtist.id),
+        id: selectedArtist.id,
+        entityId: graphEntityId(selectedArtist.id, 'artist') ?? 0,
         type: 'artist',
         name: selectedArtist.name,
         genres: selectedArtist.genres,

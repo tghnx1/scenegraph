@@ -34,7 +34,8 @@ function SearchRedirect() {
 
 function ArtistRedirect() {
   const { id } = useParams<{ id: string }>()
-  return <Navigate to={`/graph?artist=${encodeURIComponent(id ?? '')}`} replace />
+  const artistId = id?.startsWith('artist-') ? id : `artist-${id ?? ''}`
+  return <Navigate to={`/graph?selectedType=artist&selectedId=${encodeURIComponent(artistId)}`} replace />
 }
 
 export default function App() {

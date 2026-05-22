@@ -42,7 +42,11 @@ export function SearchResultCard({ result, variant = 'card' }: SearchResultCardP
               <div className="result-pills compact">
                 {linkedArtists.length > 0 ? (
                   linkedArtists.map((artist) => (
-                    <Link key={artist.id} to={`/graph?artist=${encodeURIComponent(artist.id)}`} className="result-pill">
+                    <Link
+                      key={artist.id}
+                      to={`/graph?selectedType=artist&selectedId=${encodeURIComponent(artist.id)}`}
+                      className="result-pill"
+                    >
                       {artist.name} <span>{artist.shared_events_count} shared</span>
                     </Link>
                   ))
@@ -57,7 +61,11 @@ export function SearchResultCard({ result, variant = 'card' }: SearchResultCardP
               <div className="result-pills compact">
                 {linkedEvents.length > 0 ? (
                   linkedEvents.map((event) => (
-                    <Link key={event.id} to={`/graph?q=${encodeURIComponent(event.title)}`} className="result-pill">
+                    <Link
+                      key={event.id}
+                      to={`/graph?selectedType=event&selectedId=${encodeURIComponent(event.id)}&q=${encodeURIComponent(event.title)}`}
+                      className="result-pill"
+                    >
                       {event.title} <span>{event.date}</span>
                     </Link>
                   ))

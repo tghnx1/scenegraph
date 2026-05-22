@@ -6,7 +6,7 @@ import { fetchArtist } from '../api/artists'
 import { fetchSearch } from '../api/search'
 import { useGraphStore } from '../store/graphStore'
 import type { Artist } from '../types/artist'
-import type { GraphNode, NodeType } from '../types/graph'
+import { graphEntityId, type GraphNode, type NodeType } from '../types/graph'
 import type { SearchResponse, SearchResult } from '../types/search'
 import { useDebouncedValue } from './hooks/useDebouncedValue'
 import { GraphSidebarDetails } from './components/DetailsPanel.tsx'
@@ -34,8 +34,8 @@ export function GraphPage() {
   const selectedDetailId = selectedNode && selectedNode.type !== 'artist' ? selectedNode.id : selectedIdParam
 
   const { data: selectedArtist } = useApi<Artist | null>(
-    () => (selectedArtistId ? fetchArtist(selectedArtistId, selectedNode?.name) : Promise.resolve(null)),
-    [selectedArtistId, selectedNode?.name]
+    () => (selectedArtistId ? fetchArtist(selectedArtistId) : Promise.resolve(null)),
+    [selectedArtistId]
   )
 
   const { data: selectedEntityDetail, isLoading: isSelectedEntityDetailLoading } = useApi<SearchResult | null>(
@@ -131,8 +131,8 @@ export function GraphPage() {
   const hasActiveSearchState = Boolean(searchValue || submittedQuery || selectedNode)
   const selectedArtistNode: GraphNode | null = selectedArtist
     ? {
-        id: `artist-${selectedArtist.id}`,
-        entityId: Number(selectedArtist.id),
+        id: selectedArtist.id,
+        entityId: graphEntityId(selectedArtist.id, 'artist') ?? 0,
         type: 'artist',
         name: selectedArtist.name,
         genres: selectedArtist.genres,
