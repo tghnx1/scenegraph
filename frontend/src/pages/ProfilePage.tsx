@@ -22,6 +22,7 @@ const stats = [
 export function ProfilePage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const { setSelected, selectedNode } = useGraphStore()
+  const [isRecommendationGraphVisible, setIsRecommendationGraphVisible] = useState(false)
   const submittedQuery = searchParams.get('q') ?? ''
   const [searchValue, setSearchValue] = useState(submittedQuery)
   const debouncedSearchValue = useDebouncedValue(searchValue.trim(), 350)
@@ -213,14 +214,32 @@ export function ProfilePage() {
           <div className="chart-placeholder" aria-label="Chart placeholder" />
         </article>
 
-        <article className="profile-card side-panel recommendations-panel">
+        <article className="profile-card recommendations-panel">
           <div className="panel-heading">
             <span className="search-query-label">Recommendations</span>
-            {/* <span className="panel-status">Draft</span> */}
+            <button
+              type="button"
+              onClick={() => setIsRecommendationGraphVisible((isVisible) => !isVisible)}
+            >
+              {isRecommendationGraphVisible ? 'Hide map' : 'The button'}
+            </button>
           </div>
-          <div className="placeholder-list">
-            <span>Recommended names</span>
-            <span>A list of names/connections.</span>
+          <div className="recommendations-content">
+            {isRecommendationGraphVisible ? (
+              <>
+                <div className="recommendation-graph-map">
+                  <ScenegraphMapPanel />
+                </div>
+                <div className="placeholder-list recommendation-list">
+                  <span>Recommended names</span>
+                  <span>A list of names/connections.</span>
+                </div>
+              </>
+            ) : (
+              <div className="recommendation-graph-empty">
+                <p>Click the button to calculate recommendation connections.</p>
+              </div>
+            )}
           </div>
         </article>
 
