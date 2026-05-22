@@ -1,9 +1,10 @@
 import { useState } from 'react'
-import { Routes, Route, Navigate, NavLink, useParams, useSearchParams } from 'react-router-dom'
+import { Routes, Route, Navigate, NavLink, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { GraphPage } from './pages/GraphPage'
 import { DashboardPage } from './pages/DashboardPage'
 import { ProfilePage } from './pages/ProfilePage'
-import { LoginPage, type AuthRole } from './pages/LoginPage'
+import { LoginPage } from './pages/LoginPage'
+import type { AuthRole } from './api/auth'
 import { applyTheme, getStoredTheme, type ThemeName } from './styles/colors'
 
 const colorVar = (name: string) => `var(${name})`
@@ -39,9 +40,11 @@ function ArtistRedirect() {
 }
 
 export default function App() {
+  const navigate = useNavigate()
   const [authRole, setAuthRole] = useState<AuthRole | null>(() => {
+    const storedToken = localStorage.getItem('token')
     const storedRole = localStorage.getItem('role')
-    return storedRole === 'user' || storedRole === 'admin' ? storedRole : null
+    return storedToken && (storedRole === 'user' || storedRole === 'admin') ? storedRole : null
   })
   const [themeName, setThemeName] = useState<ThemeName>(() => getStoredTheme())
   const isAuthenticated = Boolean(authRole)
@@ -50,16 +53,16 @@ export default function App() {
     if (isAuthenticated) {
       localStorage.removeItem('token')
       localStorage.removeItem('role')
+      localStorage.removeItem('username')
+      localStorage.removeItem('user_id')
       setAuthRole(null)
       return
     }
 
-    window.location.href = '/login'
+    navigate('/login')
   }
 
   const handleLogin = (role: AuthRole) => {
-    localStorage.setItem('token', `mock-${role}-token`)
-    localStorage.setItem('role', role)
     setAuthRole(role)
   }
 
