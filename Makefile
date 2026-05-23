@@ -1,8 +1,18 @@
 COMPOSE := docker compose
 ENV_FILE := .env
 ENV_EXAMPLE := .env.example
+PYTHON ?= python3
+CHECK_DB_NAME ?= scenegraph_check
+CHECK_DATABASE_URL ?= postgresql://scenegraph:change-me@db:5432/$(CHECK_DB_NAME)
+REFRESH_EVENTS_JSON ?= backend/data/ra_berlin_past_events_2026.json
+REFRESH_EVENTS_JSON_IN_CONTAINER ?= /app/data/ra_berlin_past_events_2026.json
+REFRESH_ARTISTS_JSON ?= backend/data/artists.json
+REFRESH_BIO_JSON ?= backend/data/artist_biographies.json
+REFRESH_CDP_URL ?= http://localhost:9222
+REFRESH_PIPELINE_ARGS ?= --launch-chrome
+CHECK_ARTIST_ID ?= 2178
 
-.PHONY: help env build up upd down stop restart logs ps health prisma-migrate prisma-studio db-shell import-events backfill-normalized-texts backfill-lineup-residual backfill-artist-biographies extract-artist-tags generate-embeddings validate-import import-dump clean list fclean
+.PHONY: help env build up upd down stop restart logs ps health prisma-migrate prisma-studio db-shell import-events backfill-normalized-texts backfill-lineup-residual backfill-artist-biographies extract-artist-tags generate-embeddings validate-import refresh-data-check import-dump clean list fclean
 
 help:
 	@printf "\n"
@@ -28,6 +38,7 @@ help:
 	@printf "  make extract-artist-tags Extract structured artist tags from biographies with an LLM\n"
 	@printf "  make generate-embeddings Generate OpenAI embeddings for recommendations\n"
 	@printf "  make validate-import Run post-import integrity checks against the current DATABASE_URL\n"
+	@printf "  make refresh-data-check Run pipeline + import + validate on a check DB (default: scenegraph_check)\n"
 	@printf "  make import-dump   Import a local SQL dump; supports DB_NAME=... and prompts before overwrite\n"
 	@printf "  make clean    Stop stack and remove volumes\n"
 	@printf "  make list     List Docker resources\n"
@@ -100,6 +111,12 @@ generate-embeddings: env
 
 validate-import: env
 	$(COMPOSE) exec backend python scripts/validate_import.py
+
+refresh-data-check: env
+	@mkdir -p backend/data
+	$(PYTHON) parsers/run_ra_pipeline.py --events-json "$(REFRESH_EVENTS_JSON)" --artists-json "$(REFRESH_ARTISTS_JSON)" --bio-json "$(REFRESH_BIO_JSON)" --cdp-url "$(REFRESH_CDP_URL)" $(REFRESH_PIPELINE_ARGS)
+	$(COMPOSE) exec -e DATABASE_URL="$(CHECK_DATABASE_URL)" backend python scripts/import_events.py "$(REFRESH_EVENTS_JSON_IN_CONTAINER)"
+	$(COMPOSE) exec -e DATABASE_URL="$(CHECK_DATABASE_URL)" backend python scripts/validate_import.py --require-embeddings --check-artist-id "$(CHECK_ARTIST_ID)"
 
 import-dump: env
 	DUMP="$(DUMP)" RESET_DB="$(RESET_DB)" ./scripts/import_dump.sh
