@@ -2,7 +2,7 @@ COMPOSE := docker compose
 ENV_FILE := .env
 ENV_EXAMPLE := .env.example
 
-.PHONY: help env build up upd down stop restart logs ps health prisma-migrate prisma-studio db-shell import-events backfill-normalized-texts backfill-lineup-residual backfill-artist-biographies extract-artist-tags generate-embeddings import-dump clean list fclean
+.PHONY: help env build up upd down stop restart logs ps health prisma-migrate prisma-studio db-shell import-events backfill-normalized-texts backfill-lineup-residual backfill-artist-biographies extract-artist-tags generate-embeddings validate-import import-dump clean list fclean
 
 help:
 	@printf "\n"
@@ -27,6 +27,7 @@ help:
 	@printf "  make backfill-artist-biographies Fill artists.biography_normalized from biography\n"
 	@printf "  make extract-artist-tags Extract structured artist tags from biographies with an LLM\n"
 	@printf "  make generate-embeddings Generate OpenAI embeddings for recommendations\n"
+	@printf "  make validate-import Run post-import integrity checks against the current DATABASE_URL\n"
 	@printf "  make import-dump   Import a local SQL dump; supports DB_NAME=... and prompts before overwrite\n"
 	@printf "  make clean    Stop stack and remove volumes\n"
 	@printf "  make list     List Docker resources\n"
@@ -96,6 +97,9 @@ extract-artist-tags: env
 
 generate-embeddings: env
 	$(COMPOSE) exec backend python scripts/generate_embeddings.py
+
+validate-import: env
+	$(COMPOSE) exec backend python scripts/validate_import.py
 
 import-dump: env
 	DUMP="$(DUMP)" RESET_DB="$(RESET_DB)" ./scripts/import_dump.sh
