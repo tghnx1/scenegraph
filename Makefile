@@ -11,7 +11,7 @@ REFRESH_EVENTS_JSON_IN_CONTAINER ?= /app/data/ra_berlin_past_events_2026.json
 REFRESH_ARTISTS_JSON ?= backend/data/artists.json
 REFRESH_BIO_JSON ?= backend/data/artist_biographies.json
 REFRESH_CDP_URL ?= http://localhost:9222
-REFRESH_PIPELINE_ARGS ?= --launch-chrome
+REFRESH_PIPELINE_ARGS ?=
 CHECK_ARTIST_ID ?= 2178
 
 .PHONY: help env build up upd down stop restart logs ps health prisma-migrate prisma-studio db-shell import-events backfill-normalized-texts backfill-lineup-residual backfill-artist-biographies extract-artist-tags generate-embeddings validate-import refresh-data-check import-dump clean list fclean
@@ -117,7 +117,8 @@ validate-import: env
 refresh-data-check: env
 	@mkdir -p backend/data
 	@test -x "$(REFRESH_PARSE_PYTHON)" || (echo "Missing parser Python: $(REFRESH_PARSE_PYTHON). Create backend venv or override REFRESH_PARSE_PYTHON."; exit 1)
-	$(PYTHON) parsers/run_ra_pipeline.py --parse-python "$(REFRESH_PARSE_PYTHON)" --events-json "$(REFRESH_EVENTS_JSON)" --artists-json "$(REFRESH_ARTISTS_JSON)" --bio-json "$(REFRESH_BIO_JSON)" --cdp-url "$(REFRESH_CDP_URL)" --dedup-with-db --dedup-db-url "$(PARSER_DATABASE_URL)" $(REFRESH_PIPELINE_ARGS)
+	@$(REFRESH_PARSE_PYTHON) -c "import psycopg" >/dev/null 2>&1 || (echo "Installing psycopg into $(REFRESH_PARSE_PYTHON) environment..."; $(REFRESH_PARSE_PYTHON) -m pip install 'psycopg[binary]')
+	$(PYTHON) parsers/run_ra_pipeline.py --parse-python "$(REFRESH_PARSE_PYTHON)" --events-json "$(REFRESH_EVENTS_JSON)" --artists-json "$(REFRESH_ARTISTS_JSON)" --bio-json "$(REFRESH_BIO_JSON)" --skip-bio --cdp-url "$(REFRESH_CDP_URL)" --dedup-with-db --dedup-db-url "$(PARSER_DATABASE_URL)" $(REFRESH_PIPELINE_ARGS)
 	$(COMPOSE) exec -e DATABASE_URL="$(CHECK_DATABASE_URL)" backend python scripts/import_events.py "$(REFRESH_EVENTS_JSON_IN_CONTAINER)"
 	$(COMPOSE) exec -e DATABASE_URL="$(CHECK_DATABASE_URL)" backend python scripts/validate_import.py --require-embeddings --check-artist-id "$(CHECK_ARTIST_ID)"
 

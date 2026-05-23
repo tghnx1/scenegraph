@@ -169,6 +169,11 @@ def parse_args() -> argparse.Namespace:
         help="Output path for artist biographies JSON",
     )
     parser.add_argument(
+        "--skip-bio",
+        action="store_true",
+        help="Skip artists_bio.py execution (useful for fast event+artist refresh flows).",
+    )
+    parser.add_argument(
         "--bio-log",
         type=Path,
         default=DEFAULT_BIO_LOG,
@@ -486,7 +491,7 @@ def main() -> int:
     if not args.parse_python.exists():
         announce(f"[pipeline] Parse python not found: {args.parse_python}", logging.ERROR)
         return 1
-    if not args.bio_python.exists():
+    if not args.skip_bio and not args.bio_python.exists():
         announce(f"[pipeline] Bio python not found: {args.bio_python}", logging.ERROR)
         return 1
 
@@ -500,9 +505,14 @@ def main() -> int:
     announce(f"[pipeline] Data directory: {DATA_DIR}")
 
     chrome_proc: Optional[subprocess.Popen] = None
-    chrome_proc = ensure_chrome_cdp(args, chrome_proc)
+    if not args.skip_bio:
+        chrome_proc = ensure_chrome_cdp(args, chrome_proc)
     parse_proc = start_parse_process(args)
-    bio_proc = start_bio_process(args, watch=True)
+    bio_proc: Optional[subprocess.Popen] = None
+    if not args.skip_bio:
+        bio_proc = start_bio_process(args, watch=True)
+    else:
+        announce("[pipeline] Skipping artists_bio.py (--skip-bio enabled)")
     last_extracted_signature: Optional[tuple[int, int]] = None
     pending_extract_signature: Optional[tuple[int, int]] = None
     last_extract_ran_at: Optional[float] = None
@@ -510,7 +520,8 @@ def main() -> int:
 
     try:
         while True:
-            chrome_proc = ensure_chrome_cdp(args, chrome_proc)
+            if not args.skip_bio:
+                chrome_proc = ensure_chrome_cdp(args, chrome_proc)
             parse_returncode = parse_proc.poll()
             events_signature = file_signature(args.events_json)
 
@@ -533,14 +544,15 @@ def main() -> int:
                     last_extract_ran_at = now
 
             if parse_returncode is None:
-                bio_returncode = bio_proc.poll()
-                if bio_returncode is not None:
-                    announce(
-                        f"[pipeline] artists_bio.py exited with code {bio_returncode} while parse_past_events.py is still running. Restarting...",
-                        logging.WARNING,
-                    )
-                    chrome_proc = ensure_chrome_cdp(args, chrome_proc)
-                    bio_proc = start_bio_process(args, watch=True)
+                if bio_proc is not None:
+                    bio_returncode = bio_proc.poll()
+                    if bio_returncode is not None:
+                        announce(
+                            f"[pipeline] artists_bio.py exited with code {bio_returncode} while parse_past_events.py is still running. Restarting...",
+                            logging.WARNING,
+                        )
+                        chrome_proc = ensure_chrome_cdp(args, chrome_proc)
+                        bio_proc = start_bio_process(args, watch=True)
 
                 time.sleep(max(1.0, args.extract_poll_interval))
                 continue
@@ -559,20 +571,22 @@ def main() -> int:
                 pending_extract_signature = None
                 last_extract_ran_at = time.monotonic()
 
-            if bio_proc.poll() is None:
-                announce("[pipeline] Waiting for artists_bio.py to finish its watch cycle...")
-                bio_returncode = bio_proc.wait()
-            else:
-                bio_returncode = bio_proc.returncode
+            bio_returncode = 0
+            if bio_proc is not None:
+                if bio_proc.poll() is None:
+                    announce("[pipeline] Waiting for artists_bio.py to finish its watch cycle...")
+                    bio_returncode = bio_proc.wait()
+                else:
+                    bio_returncode = bio_proc.returncode
 
-            if bio_returncode != 0:
-                announce(
-                    f"[pipeline] artists_bio.py exited with code {bio_returncode}. Running one final one-shot pass...",
-                    logging.WARNING,
-                )
-                chrome_proc = ensure_chrome_cdp(args, chrome_proc)
-                bio_proc = start_bio_process(args, watch=False)
-                bio_returncode = bio_proc.wait()
+                if bio_returncode != 0:
+                    announce(
+                        f"[pipeline] artists_bio.py exited with code {bio_returncode}. Running one final one-shot pass...",
+                        logging.WARNING,
+                    )
+                    chrome_proc = ensure_chrome_cdp(args, chrome_proc)
+                    bio_proc = start_bio_process(args, watch=False)
+                    bio_returncode = bio_proc.wait()
 
             if parse_returncode != 0:
                 return parse_returncode
@@ -586,7 +600,7 @@ def main() -> int:
     finally:
         if parse_proc.poll() is None:
             parse_proc.terminate()
-        if bio_proc.poll() is None:
+        if bio_proc is not None and bio_proc.poll() is None:
             bio_proc.terminate()
 
 
