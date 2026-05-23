@@ -476,6 +476,20 @@ def ensure_chrome_cdp(
 
 def main() -> int:
     args = parse_args()
+    args.parse_python = args.parse_python.expanduser().resolve()
+    args.bio_python = args.bio_python.expanduser().resolve()
+    args.events_json = args.events_json.expanduser().resolve()
+    args.artists_json = args.artists_json.expanduser().resolve()
+    args.bio_json = args.bio_json.expanduser().resolve()
+    args.debug_dir = args.debug_dir.expanduser().resolve()
+
+    if not args.parse_python.exists():
+        announce(f"[pipeline] Parse python not found: {args.parse_python}", logging.ERROR)
+        return 1
+    if not args.bio_python.exists():
+        announce(f"[pipeline] Bio python not found: {args.bio_python}", logging.ERROR)
+        return 1
+
     ensure_output_target(args.events_json)
     args.artists_json.parent.mkdir(parents=True, exist_ok=True)
     args.bio_json.parent.mkdir(parents=True, exist_ok=True)
