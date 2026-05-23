@@ -78,6 +78,12 @@ def parse_args() -> argparse.Namespace:
         default=os.environ.get("DATABASE_URL"),
         help="Database URL used when --dedup-db is enabled. Defaults to DATABASE_URL env var.",
     )
+    parser.add_argument(
+        "--existing-artist-ids-file",
+        type=Path,
+        default=None,
+        help="Optional newline-delimited file of RA artist IDs to skip.",
+    )
     return parser.parse_args()
 
 
@@ -106,6 +112,18 @@ def load_existing_artist_ids_from_db(database_url: str) -> set[str]:
     return existing_ids
 
 
+def load_existing_artist_ids_from_file(path: Path) -> set[str]:
+    existing_ids: set[str] = set()
+    if not path.exists():
+        return existing_ids
+    with path.open("r", encoding="utf-8") as handle:
+        for raw_line in handle:
+            value = raw_line.strip()
+            if value:
+                existing_ids.add(value)
+    return existing_ids
+
+
 def main() -> None:
     args = parse_args()
     args.output.parent.mkdir(parents=True, exist_ok=True)
@@ -118,6 +136,14 @@ def main() -> None:
             raise ValueError("--dedup-db requires --database-url or DATABASE_URL")
         existing_artist_ids = load_existing_artist_ids_from_db(args.database_url)
         print(f"Loaded {len(existing_artist_ids)} existing artists from DB for dedup")
+    if args.existing_artist_ids_file:
+        file_ids = load_existing_artist_ids_from_file(args.existing_artist_ids_file)
+        before = len(existing_artist_ids)
+        existing_artist_ids.update(file_ids)
+        print(
+            f"Loaded {len(file_ids)} existing artists from file {args.existing_artist_ids_file} for dedup; "
+            f"dedup set size: {before} -> {len(existing_artist_ids)}"
+        )
 
     event_files = iter_event_files(args.input)
 
