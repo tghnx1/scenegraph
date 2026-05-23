@@ -304,6 +304,18 @@ def parse_args() -> argparse.Namespace:
         help="Database URL for dedup checks in parse_past_events.py and extract_artists.py.",
     )
     parser.add_argument(
+        "--dedup-events-file",
+        type=Path,
+        default=None,
+        help="Optional newline-delimited file with existing RA event IDs for dedup.",
+    )
+    parser.add_argument(
+        "--dedup-artists-file",
+        type=Path,
+        default=None,
+        help="Optional newline-delimited file with existing RA artist IDs for dedup.",
+    )
+    parser.add_argument(
         "--debug-dir",
         type=Path,
         default=DEBUG_DIR,
@@ -325,6 +337,8 @@ def run_extract_artists(args: argparse.Namespace) -> bool:
         cmd.append("--dedup-db")
         if args.dedup_db_url:
             cmd.extend(["--database-url", args.dedup_db_url])
+    if args.dedup_artists_file:
+        cmd.extend(["--existing-artist-ids-file", str(args.dedup_artists_file)])
     announce(f"[pipeline] Refreshing artists list from {args.events_json}")
     result = subprocess.run(cmd, cwd=str(SCRIPT_DIR))
     if result.returncode != 0:
@@ -350,6 +364,8 @@ def start_parse_process(args: argparse.Namespace) -> subprocess.Popen:
         cmd.append("--dedup-db")
         if args.dedup_db_url:
             cmd.extend(["--database-url", args.dedup_db_url])
+    if args.dedup_events_file:
+        cmd.extend(["--existing-event-ids-file", str(args.dedup_events_file)])
     announce("[pipeline] Starting parse_past_events.py")
     return subprocess.Popen(cmd, cwd=str(GRAPHQL_DIR))
 
@@ -487,6 +503,10 @@ def main() -> int:
     args.artists_json = args.artists_json.expanduser().resolve()
     args.bio_json = args.bio_json.expanduser().resolve()
     args.debug_dir = args.debug_dir.expanduser().resolve()
+    if args.dedup_events_file is not None:
+        args.dedup_events_file = args.dedup_events_file.expanduser().resolve()
+    if args.dedup_artists_file is not None:
+        args.dedup_artists_file = args.dedup_artists_file.expanduser().resolve()
 
     if not args.parse_python.exists():
         announce(f"[pipeline] Parse python not found: {args.parse_python}", logging.ERROR)

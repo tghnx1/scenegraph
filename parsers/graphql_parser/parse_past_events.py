@@ -498,6 +498,12 @@ def parse_args() -> argparse.Namespace:
         default=os.environ.get("DATABASE_URL"),
         help="Database URL used when --dedup-db is enabled. Defaults to DATABASE_URL env var.",
     )
+    parser.add_argument(
+        "--existing-event-ids-file",
+        type=Path,
+        default=None,
+        help="Optional newline-delimited file of RA event IDs to skip.",
+    )
     return parser.parse_args()
 
 
@@ -523,6 +529,18 @@ def load_existing_event_ids_from_db(database_url: str) -> Set[str]:
                 value = row[0]
                 if value is not None:
                     existing_ids.add(str(value))
+    return existing_ids
+
+
+def load_existing_event_ids_from_file(path: Path) -> Set[str]:
+    existing_ids: Set[str] = set()
+    if not path.exists():
+        return existing_ids
+    with path.open("r", encoding="utf-8") as handle:
+        for raw_line in handle:
+            value = raw_line.strip()
+            if value:
+                existing_ids.add(value)
     return existing_ids
 
 
@@ -566,6 +584,14 @@ def main():
         scraped_ids.update(db_ids)
         print(
             f"Loaded {len(db_ids)} existing RA event IDs from DB for dedup. "
+            f"Dedup set size: {before} -> {len(scraped_ids)}"
+        )
+    if args.existing_event_ids_file:
+        file_ids = load_existing_event_ids_from_file(args.existing_event_ids_file)
+        before = len(scraped_ids)
+        scraped_ids.update(file_ids)
+        print(
+            f"Loaded {len(file_ids)} existing RA event IDs from file {args.existing_event_ids_file}. "
             f"Dedup set size: {before} -> {len(scraped_ids)}"
         )
 
