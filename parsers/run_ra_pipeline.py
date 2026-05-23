@@ -288,6 +288,17 @@ def parse_args() -> argparse.Namespace:
         help="Delay before retrying an artist page that errored",
     )
     parser.add_argument(
+        "--dedup-with-db",
+        action="store_true",
+        help="Use database-backed dedup for events and artists to avoid reprocessing existing records.",
+    )
+    parser.add_argument(
+        "--dedup-db-url",
+        type=str,
+        default=os.environ.get("DATABASE_URL"),
+        help="Database URL for dedup checks in parse_past_events.py and extract_artists.py.",
+    )
+    parser.add_argument(
         "--debug-dir",
         type=Path,
         default=DEBUG_DIR,
@@ -305,6 +316,10 @@ def run_extract_artists(args: argparse.Namespace) -> bool:
         "--output",
         str(args.artists_json),
     ]
+    if args.dedup_with_db:
+        cmd.append("--dedup-db")
+        if args.dedup_db_url:
+            cmd.extend(["--database-url", args.dedup_db_url])
     announce(f"[pipeline] Refreshing artists list from {args.events_json}")
     result = subprocess.run(cmd, cwd=str(SCRIPT_DIR))
     if result.returncode != 0:
@@ -326,6 +341,10 @@ def start_parse_process(args: argparse.Namespace) -> subprocess.Popen:
         "--min-date",
         args.events_min_date,
     ]
+    if args.dedup_with_db:
+        cmd.append("--dedup-db")
+        if args.dedup_db_url:
+            cmd.extend(["--database-url", args.dedup_db_url])
     announce("[pipeline] Starting parse_past_events.py")
     return subprocess.Popen(cmd, cwd=str(GRAPHQL_DIR))
 

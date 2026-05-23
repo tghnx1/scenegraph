@@ -487,7 +487,43 @@ def parse_args() -> argparse.Namespace:
         default=DEFAULT_MIN_DATE,
         help="Oldest event date to crawl, in YYYY-MM-DD format",
     )
+    parser.add_argument(
+        "--dedup-db",
+        action="store_true",
+        help="Skip fetching event details for RA event IDs that already exist in the database.",
+    )
+    parser.add_argument(
+        "--database-url",
+        type=str,
+        default=os.environ.get("DATABASE_URL"),
+        help="Database URL used when --dedup-db is enabled. Defaults to DATABASE_URL env var.",
+    )
     return parser.parse_args()
+
+
+def load_existing_event_ids_from_db(database_url: str) -> Set[str]:
+    try:
+        import psycopg  # type: ignore
+    except Exception as exc:
+        raise RuntimeError(
+            "psycopg is required for --dedup-db. Install it or run with a Python env that has psycopg."
+        ) from exc
+
+    existing_ids: Set[str] = set()
+    with psycopg.connect(database_url) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT ra_event_id
+                FROM events
+                WHERE ra_event_id IS NOT NULL
+                """
+            )
+            for row in cursor.fetchall():
+                value = row[0]
+                if value is not None:
+                    existing_ids.add(str(value))
+    return existing_ids
 
 
 def main():
@@ -521,6 +557,17 @@ def main():
         events_by_year = {}
         scraped_ids = set()
         needs_full_reshard = False
+
+    if args.dedup_db:
+        if not args.database_url:
+            raise ValueError("--dedup-db requires --database-url or DATABASE_URL")
+        db_ids = load_existing_event_ids_from_db(args.database_url)
+        before = len(scraped_ids)
+        scraped_ids.update(db_ids)
+        print(
+            f"Loaded {len(db_ids)} existing RA event IDs from DB for dedup. "
+            f"Dedup set size: {before} -> {len(scraped_ids)}"
+        )
 
     # 1. Chunk the Date Ranges
     today_str = datetime.now().strftime("%Y-%m-%d")
