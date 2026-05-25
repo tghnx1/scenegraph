@@ -38,12 +38,16 @@ interface ScenegraphMapPanelProps {
   title?: string
   providedData?: GraphData
   showFilters?: boolean
+  highlightLinks?: boolean
+  highlightPathToNodeId?: string
 }
 
 export function ScenegraphMapPanel({
   title,
   providedData,
   showFilters = true,
+  highlightLinks = true,
+  highlightPathToNodeId,
 }: ScenegraphMapPanelProps) {
   const graphRef = useRef<any>(null)
   const containerRef = useRef<HTMLDivElement | null>(null)
@@ -97,7 +101,7 @@ export function ScenegraphMapPanel({
     }
   }, [rawGraphData, visibleNodeTypes])
 
-  const { connectedNodes } = useGraphHighlights(selectedNode || null, graphData)
+  const { connectedNodes, pathLinks } = useGraphHighlights(selectedNode || null, graphData, highlightPathToNodeId)
   useGraphPhysics(graphRef, graphData)
 
   useEffect(() => {
@@ -198,6 +202,11 @@ export function ScenegraphMapPanel({
           to: displayedEventDates[displayedEventDates.length - 1],
         }
       : null
+  const isHighlightedLink = (source: string, target: string) => (
+    highlightPathToNodeId
+      ? pathLinks.has([source, target].sort().join('|'))
+      : connectedNodes.has(source) && connectedNodes.has(target)
+  )
 
   return (
     <section
@@ -262,7 +271,7 @@ export function ScenegraphMapPanel({
           linkWidth={(l: any) => {
             const source = typeof l.source === 'object' ? l.source.id : l.source
             const target = typeof l.target === 'object' ? l.target.id : l.target
-            if (connectedNodes.has(source) && connectedNodes.has(target)) {
+            if (highlightLinks && isHighlightedLink(source, target)) {
               return Math.sqrt(l.value ?? l.weight ?? 1) * 2
             }
             return Math.sqrt(l.value ?? l.weight ?? 1)
@@ -270,7 +279,7 @@ export function ScenegraphMapPanel({
           linkColor={(l: any) => {
             const source = typeof l.source === 'object' ? l.source.id : l.source
             const target = typeof l.target === 'object' ? l.target.id : l.target
-            if (connectedNodes.has(source) && connectedNodes.has(target)) {
+            if (highlightLinks && isHighlightedLink(source, target)) {
               return hexToRgba(linkHighlight, 0.8)
             }
             return hexToRgba(linkDim, 0.6)

@@ -22,17 +22,23 @@ export function GraphPage() {
   const debouncedSearchValue = useDebouncedValue(searchValue.trim(), 350)
   const selectedTypeParam = searchParams.get('selectedType')
   const selectedIdParam = searchParams.get('selectedId')
-  const selectedArtistId = selectedNode?.type === 'artist'
+  const selectedArtistNodeId = selectedNode?.type === 'artist'
     ? selectedNode.id
     : selectedTypeParam === 'artist'
       ? selectedIdParam
       : null
+  const selectedArtistId = selectedArtistNodeId
+    ? String(graphEntityId(selectedArtistNodeId, 'artist') ?? selectedArtistNodeId)
+    : null
   const selectedDetailType = selectedNode && selectedNode.type !== 'artist'
     ? selectedNode.type
     : selectedTypeParam && selectedTypeParam !== 'artist'
       ? selectedTypeParam
       : null
-  const selectedDetailId = selectedNode && selectedNode.type !== 'artist' ? selectedNode.id : selectedIdParam
+  const selectedDetailNodeId = selectedNode && selectedNode.type !== 'artist' ? selectedNode.id : selectedIdParam
+  const selectedDetailId = selectedDetailType && selectedDetailNodeId
+    ? String(graphEntityId(selectedDetailNodeId, selectedDetailType as NodeType) ?? selectedDetailNodeId)
+    : null
 
   const { data: selectedArtist } = useApi<Artist | null>(
     () => (selectedArtistId ? fetchArtist(selectedArtistId) : Promise.resolve(null)),
