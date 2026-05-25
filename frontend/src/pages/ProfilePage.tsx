@@ -29,7 +29,6 @@ export function ProfilePage() {
   const { setSelected, selectedNode } = useGraphStore()
   const [activeWorkspaceTab, setActiveWorkspaceTab] = useState<ProfileWorkspaceTab>('graph')
   const [recommendationsData, setRecommendationsData] = useState<PromoterRecommendationResponse | null>(null)
-  const [expandedRecommendationId, setExpandedRecommendationId] = useState<number | null>(null)
   const [isRecommendationsLoading, setIsRecommendationsLoading] = useState(false)
   const [recommendationsError, setRecommendationsError] = useState<string | null>(null)
   const submittedQuery = searchParams.get('q') ?? ''
@@ -158,11 +157,15 @@ export function ProfilePage() {
     }
   }, [])
 
-  const handleToggleRecommendation = useCallback((recommendationId: number) => {
-    setExpandedRecommendationId((currentId) => (
-      currentId === recommendationId ? null : recommendationId
+  const handleSelectRecommendation = useCallback((recommendationId: number) => {
+    const recommendationNode = recommendationsData?.graph.nodes.find((node) => (
+      node.type === 'promoter' && node.entityId === recommendationId
     ))
-  }, [])
+
+    if (recommendationNode) {
+      setSelected(recommendationNode)
+    }
+  }, [recommendationsData, setSelected])
 
   const searchResults = searchData?.results ?? []
   const trimmedSearchValue = searchValue.trim()
@@ -292,29 +295,23 @@ export function ProfilePage() {
                 {recommendationsData !== null && (
                   <div className="recommendations-content">
                     <section className="recommendation-list" aria-label="Recommended promoters">
-                      {recommendationsData.recommendations.map((recommendation) => {
-                        const isExpanded = expandedRecommendationId === recommendation.id
-
-                        return (
-                          <article className="recommendation-item" key={recommendation.id}>
-                            <button
-                              type="button"
-                              className="recommendation-name"
-                              aria-expanded={isExpanded}
-                              onClick={() => handleToggleRecommendation(recommendation.id)}
-                            >
-                              {recommendation.name}
-                            </button>
-                            {isExpanded && (
-                              <ul className="recommendation-reasons">
-                                {recommendation.reasons.map((reason) => (
-                                  <li key={reason}>{reason}</li>
-                                ))}
-                              </ul>
-                            )}
-                          </article>
-                        )
-                      })}
+                      {recommendationsData.recommendations.map((recommendation) => (
+                        <article className="recommendation-item" key={recommendation.id}>
+                          <button
+                            type="button"
+                            className="recommendation-name"
+                            aria-pressed={selectedNode?.id === `promoter-${recommendation.id}`}
+                            onClick={() => handleSelectRecommendation(recommendation.id)}
+                          >
+                            {recommendation.name}
+                          </button>
+                          <ul className="recommendation-reasons">
+                            {recommendation.reasons.map((reason) => (
+                              <li key={reason}>{reason}</li>
+                            ))}
+                          </ul>
+                        </article>
+                      ))}
                     </section>
                     <section className="recommendation-graph-map" aria-label="Recommendation evidence graph">
                       <ScenegraphMapPanel
