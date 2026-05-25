@@ -76,6 +76,13 @@ class ImportValidationError(ValueError):
     pass
 
 
+def normalize_optional_text(value: Any) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
+
+
 def parse_datetime(value: str | None) -> datetime | None:
     if not value:
         return None
@@ -226,7 +233,6 @@ def normalize_lineup_text(value: str | None) -> str | None:
 def validate_event(event: dict[str, Any], index: int) -> None:
     context = f"event[{index}]"
     require_text(event, "id", context)
-    require_text(event, "title", context)
 
     venue = event.get("venue")
     if venue is not None:
@@ -246,9 +252,24 @@ def validate_event(event: dict[str, Any], index: int) -> None:
                 raise ImportValidationError(f"{item_context}: item must be an object")
             if field != "images":
                 require_text(item, "id", item_context)
-                require_text(item, "name", item_context)
             elif item.get("filename") is None and item.get("id") is not None:
                 raise ImportValidationError(f"{item_context}: image with id must include filename")
+
+
+def fallback_lookup_name(table: str, payload: dict[str, Any]) -> str:
+    lookup_id = str(payload.get("id") or "").strip() or "unknown"
+    slug = str(payload.get("slug") or "").strip()
+    if slug:
+        return slug
+
+    content_url = str(payload.get("contentUrl") or payload.get("content_url") or "").strip()
+    if content_url:
+        suffix = content_url.rstrip("/").split("/")[-1].strip()
+        if suffix:
+            return suffix
+
+    entity = table[:-1] if table.endswith("s") else table
+    return f"unknown_{entity}_{lookup_id}"
 
 
 def load_events(path: Path) -> list[dict[str, Any]]:
@@ -269,6 +290,29 @@ def load_events(path: Path) -> list[dict[str, Any]]:
         events.append(event)
 
     return events
+
+
+def load_artist_biographies(path: Path) -> list[dict[str, Any]]:
+    with path.open(encoding="utf-8") as file:
+        payload = json.load(file)
+
+    if isinstance(payload, dict):
+        payload = payload.get("artists", payload.get("items", []))
+
+    if not isinstance(payload, list):
+        raise ImportValidationError(
+            "biographies file must contain a list or an object with artists/items list"
+        )
+
+    items: list[dict[str, Any]] = []
+    for index, item in enumerate(payload, start=1):
+        if not isinstance(item, dict):
+            raise ImportValidationError(f"biography[{index}]: item must be an object")
+        artist_id = normalize_optional_text(item.get("id"))
+        if not artist_id:
+            continue
+        items.append(item)
+    return items
 
 
 def upsert_venue(cursor: psycopg.Cursor, venue: dict[str, Any] | None) -> int | None:
@@ -314,8 +358,12 @@ def upsert_lookup(
     payload: dict[str, Any],
     fields: Iterable[tuple[str, Any]],
 ) -> int:
+    name = str(payload.get("name") or "").strip()
+    if not name:
+        name = fallback_lookup_name(table, payload)
+
     columns = [ra_column, "name", *[field for field, _ in fields]]
-    values = [str(payload["id"]), payload["name"], *[value for _, value in fields]]
+    values = [str(payload["id"]), name, *[value for _, value in fields]]
     updates = ", ".join(f"{column} = EXCLUDED.{column}" for column in columns[1:])
 
     cursor.execute(
@@ -343,6 +391,7 @@ def link(cursor: psycopg.Cursor, table: str, event_id: int, target_column: str, 
 
 def import_event(cursor: psycopg.Cursor, event: dict[str, Any]) -> None:
     venue_id = upsert_venue(cursor, event.get("venue"))
+    title = str(event.get("title") or "").strip() or f"RA event {event['id']}"
 
     cursor.execute(
         """
@@ -375,7 +424,7 @@ def import_event(cursor: psycopg.Cursor, event: dict[str, Any]) -> None:
         """,
         (
             str(event["id"]),
-            event["title"],
+            title,
             event.get("content"),
             event.get("lineup"),
             normalize_lineup_text(event.get("lineup")),
@@ -472,6 +521,61 @@ def import_event(cursor: psycopg.Cursor, event: dict[str, Any]) -> None:
     )
 
 
+def import_artist_biographies(cursor: psycopg.Cursor, items: list[dict[str, Any]]) -> tuple[int, int, int]:
+    updated = 0
+    unchanged = 0
+    missing_artist = 0
+
+    for item in items:
+        ra_artist_id = normalize_optional_text(item.get("id"))
+        if not ra_artist_id:
+            continue
+
+        biography = normalize_optional_text(item.get("biography"))
+        biography_url = normalize_optional_text(item.get("biography_url") or item.get("source_url"))
+        biography_status = normalize_optional_text(item.get("status"))
+
+        cursor.execute(
+            """
+            UPDATE artists
+            SET
+                biography = %s,
+                biography_url = COALESCE(%s, biography_url),
+                biography_status = %s
+            WHERE ra_artist_id = %s
+              AND (
+                COALESCE(biography, '') IS DISTINCT FROM COALESCE(%s, '')
+                OR COALESCE(biography_url, '') IS DISTINCT FROM COALESCE(COALESCE(%s, biography_url), '')
+                OR COALESCE(biography_status, '') IS DISTINCT FROM COALESCE(%s, '')
+              )
+            """,
+            (
+                biography,
+                biography_url,
+                biography_status,
+                ra_artist_id,
+                biography,
+                biography_url,
+                biography_status,
+            ),
+        )
+
+        if cursor.rowcount > 0:
+            updated += cursor.rowcount
+            continue
+
+        cursor.execute(
+            "SELECT 1 FROM artists WHERE ra_artist_id = %s",
+            (ra_artist_id,),
+        )
+        if cursor.fetchone() is None:
+            missing_artist += 1
+        else:
+            unchanged += 1
+
+    return updated, unchanged, missing_artist
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Import RA events JSON into Postgres.")
     parser.add_argument(
@@ -480,24 +584,47 @@ def main() -> None:
         default=os.environ.get("EVENTS_JSON_PATH", "data/ra_berlin_past_events_2026.json"),
         help="Path to an RA events JSON file. Defaults to EVENTS_JSON_PATH or backend/data/...",
     )
+    parser.add_argument(
+        "--biographies-path",
+        default=os.environ.get("ARTIST_BIOGRAPHIES_JSON_PATH"),
+        help=(
+            "Optional path to artist_biographies JSON. "
+            "If provided, biographies are imported into artists table after events import."
+        ),
+    )
     parser.add_argument("--dry-run", action="store_true", help="Validate input without inserting rows.")
     args = parser.parse_args()
 
     events = load_events(Path(args.path))
     print(f"Validated {len(events)} events from {args.path}")
 
+    biographies: list[dict[str, Any]] = []
+    if args.biographies_path:
+        biographies_path = Path(args.biographies_path)
+        biographies = load_artist_biographies(biographies_path)
+        print(f"Validated {len(biographies)} artist biographies from {biographies_path}")
+
     if args.dry_run:
         return
 
     with psycopg.connect(DATABASE_URL, row_factory=dict_row) as connection:
+        bio_updated = 0
+        bio_unchanged = 0
+        bio_missing_artist = 0
         with connection.cursor() as cursor:
             for index, event in enumerate(events, start=1):
                 import_event(cursor, event)
                 if index % 100 == 0:
                     print(f"Imported {index}/{len(events)} events")
+            if biographies:
+                bio_updated, bio_unchanged, bio_missing_artist = import_artist_biographies(cursor, biographies)
         connection.commit()
 
     print(f"Imported {len(events)} events")
+    print(
+        "Imported artist biographies: "
+        f"updated={bio_updated}, unchanged={bio_unchanged}, missing_artist={bio_missing_artist}"
+    )
 
 
 if __name__ == "__main__":

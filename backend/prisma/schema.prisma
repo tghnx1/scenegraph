@@ -17,10 +17,25 @@ model Artist {
   biographyUrl        String?       @map("biography_url")
   biographyStatus     String?       @map("biography_status")
   eventArtists        EventArtist[]
+  manualKnownArtists     ArtistManualConnection[] @relation("manual_known_source")
+  manuallyKnownByArtists ArtistManualConnection[] @relation("manual_known_connected")
   extractedTags       ArtistExtractedTag[]
   tagExtractionRuns   ArtistTagExtractionRun[]
 
   @@map("artists")
+}
+
+model ArtistManualConnection {
+  sourceArtistId    BigInt   @map("source_artist_id")
+  connectedArtistId BigInt   @map("connected_artist_id")
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  sourceArtist      Artist   @relation("manual_known_source", fields: [sourceArtistId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  connectedArtist   Artist   @relation("manual_known_connected", fields: [connectedArtistId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@id([sourceArtistId, connectedArtistId])
+  @@index([connectedArtistId])
+  @@map("artist_manual_connections")
 }
 
 model Event {

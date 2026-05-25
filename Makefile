@@ -6,6 +6,7 @@ CHECK_DB_NAME ?= scenegraph_check
 CHECK_DATABASE_URL ?= postgresql://scenegraph:change-me@db:5432/$(CHECK_DB_NAME)
 PARSER_DATABASE_URL ?= postgresql://scenegraph:change-me@127.0.0.1:5432/$(CHECK_DB_NAME)
 REFRESH_PARSE_PYTHON ?= $(abspath backend/.venv/bin/python)
+REFRESH_BIO_PYTHON ?= $(abspath parsers/playwright_parser/venv/bin/python)
 REFRESH_EVENTS_JSON ?= backend/data/ra_berlin_past_events_2026.json
 REFRESH_EVENTS_JSON_IN_CONTAINER ?= /app/data/ra_berlin_past_events_2026.json
 REFRESH_ARTISTS_JSON ?= backend/data/artists.json
@@ -16,7 +17,7 @@ REFRESH_CDP_URL ?= http://localhost:9222
 REFRESH_PIPELINE_ARGS ?=
 CHECK_ARTIST_ID ?= 2178
 
-.PHONY: help env build up upd down stop restart logs ps health prisma-migrate prisma-studio db-shell import-events backfill-normalized-texts backfill-lineup-residual backfill-artist-biographies extract-artist-tags generate-embeddings validate-import refresh-data-check import-dump clean list fclean
+.PHONY: help env build up upd down stop restart logs ps health prisma-migrate prisma-studio db-shell import-events backfill-normalized-texts backfill-lineup-residual backfill-artist-biographies extract-artist-tags generate-embeddings validate-import refresh-data-check refresh-data-check-bio refresh-data-check-bio-embeddings import-dump clean list fclean
 
 help:
 	@printf "\n"
@@ -43,6 +44,8 @@ help:
 	@printf "  make generate-embeddings Generate OpenAI embeddings for recommendations\n"
 	@printf "  make validate-import Run post-import integrity checks against the current DATABASE_URL\n"
 	@printf "  make refresh-data-check Run pipeline + import + validate on a check DB (default: scenegraph_check)\n"
+	@printf "  make refresh-data-check-bio Same as refresh-data-check, but includes artists biographies scraping\n"
+	@printf "  make refresh-data-check-bio-embeddings Same as refresh-data-check-bio + incremental embeddings for check DB\n"
 	@printf "  make import-dump   Import a local SQL dump; supports DB_NAME=... and prompts before overwrite\n"
 	@printf "  make clean    Stop stack and remove volumes\n"
 	@printf "  make list     List Docker resources\n"
@@ -124,6 +127,20 @@ refresh-data-check: env
 	$(PYTHON) parsers/run_ra_pipeline.py --parse-python "$(REFRESH_PARSE_PYTHON)" --events-json "$(REFRESH_EVENTS_JSON)" --artists-json "$(REFRESH_ARTISTS_JSON)" --bio-json "$(REFRESH_BIO_JSON)" --skip-bio --cdp-url "$(REFRESH_CDP_URL)" --dedup-events-file "$(REFRESH_EXISTING_EVENT_IDS_FILE)" --dedup-artists-file "$(REFRESH_EXISTING_ARTIST_IDS_FILE)" $(REFRESH_PIPELINE_ARGS)
 	$(COMPOSE) exec -e DATABASE_URL="$(CHECK_DATABASE_URL)" backend python scripts/import_events.py "$(REFRESH_EVENTS_JSON_IN_CONTAINER)"
 	$(COMPOSE) exec -e DATABASE_URL="$(CHECK_DATABASE_URL)" backend python scripts/validate_import.py --require-embeddings --check-artist-id "$(CHECK_ARTIST_ID)"
+
+refresh-data-check-bio: env
+	@mkdir -p backend/data
+	@test -x "$(REFRESH_PARSE_PYTHON)" || (echo "Missing parser Python: $(REFRESH_PARSE_PYTHON). Create backend venv or override REFRESH_PARSE_PYTHON."; exit 1)
+	@test -x "$(REFRESH_BIO_PYTHON)" || (echo "Missing bio Python: $(REFRESH_BIO_PYTHON). Create playwright venv or override REFRESH_BIO_PYTHON."; exit 1)
+	@$(REFRESH_BIO_PYTHON) -c "import playwright" >/dev/null 2>&1 || (echo "Installing playwright in $(REFRESH_BIO_PYTHON) environment..."; $(REFRESH_BIO_PYTHON) -m pip install playwright)
+	$(COMPOSE) exec -T -e DATABASE_URL="$(CHECK_DATABASE_URL)" backend python -c "import os,psycopg; conn=psycopg.connect(os.environ['DATABASE_URL']); cur=conn.cursor(); cur.execute(\"SELECT ra_event_id FROM events WHERE ra_event_id IS NOT NULL\"); print(\"\\n\".join(str(r[0]) for r in cur.fetchall())); conn.close()" > "$(REFRESH_EXISTING_EVENT_IDS_FILE)"
+	$(COMPOSE) exec -T -e DATABASE_URL="$(CHECK_DATABASE_URL)" backend python -c "import os,psycopg; conn=psycopg.connect(os.environ['DATABASE_URL']); cur=conn.cursor(); cur.execute(\"SELECT ra_artist_id FROM artists WHERE ra_artist_id IS NOT NULL\"); print(\"\\n\".join(str(r[0]) for r in cur.fetchall())); conn.close()" > "$(REFRESH_EXISTING_ARTIST_IDS_FILE)"
+	$(PYTHON) parsers/run_ra_pipeline.py --parse-python "$(REFRESH_PARSE_PYTHON)" --bio-python "$(REFRESH_BIO_PYTHON)" --events-json "$(REFRESH_EVENTS_JSON)" --artists-json "$(REFRESH_ARTISTS_JSON)" --bio-json "$(REFRESH_BIO_JSON)" --cdp-url "$(REFRESH_CDP_URL)" --dedup-events-file "$(REFRESH_EXISTING_EVENT_IDS_FILE)" --dedup-artists-file "$(REFRESH_EXISTING_ARTIST_IDS_FILE)" $(REFRESH_PIPELINE_ARGS)
+	$(COMPOSE) exec -e DATABASE_URL="$(CHECK_DATABASE_URL)" backend python scripts/import_events.py "$(REFRESH_EVENTS_JSON_IN_CONTAINER)" --biographies-path "/app/data/artist_biographies.json"
+	$(COMPOSE) exec -e DATABASE_URL="$(CHECK_DATABASE_URL)" backend python scripts/validate_import.py --require-embeddings --check-artist-id "$(CHECK_ARTIST_ID)" --biographies-path "/app/data/artist_biographies.json"
+
+refresh-data-check-bio-embeddings: refresh-data-check-bio
+	$(COMPOSE) exec -e DATABASE_URL="$(CHECK_DATABASE_URL)" backend python scripts/generate_embeddings.py
 
 import-dump: env
 	DUMP="$(DUMP)" RESET_DB="$(RESET_DB)" ./scripts/import_dump.sh

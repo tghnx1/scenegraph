@@ -324,6 +324,21 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def normalize_cli_path(path: Path, *, preserve_symlink: bool = False) -> Path:
+    """
+    Normalize CLI paths while optionally preserving symlinks.
+
+    For venv Python executables on macOS, resolve() can dereference
+    `<venv>/bin/python` to the global interpreter and drop venv packages.
+    """
+    expanded = path.expanduser()
+    if not expanded.is_absolute():
+        expanded = (Path.cwd() / expanded).absolute()
+    if preserve_symlink:
+        return expanded
+    return expanded.resolve()
+
+
 def run_extract_artists(args: argparse.Namespace) -> bool:
     cmd = [
         str(args.parse_python),
@@ -497,16 +512,16 @@ def ensure_chrome_cdp(
 
 def main() -> int:
     args = parse_args()
-    args.parse_python = args.parse_python.expanduser().resolve()
-    args.bio_python = args.bio_python.expanduser().resolve()
-    args.events_json = args.events_json.expanduser().resolve()
-    args.artists_json = args.artists_json.expanduser().resolve()
-    args.bio_json = args.bio_json.expanduser().resolve()
-    args.debug_dir = args.debug_dir.expanduser().resolve()
+    args.parse_python = normalize_cli_path(args.parse_python, preserve_symlink=True)
+    args.bio_python = normalize_cli_path(args.bio_python, preserve_symlink=True)
+    args.events_json = normalize_cli_path(args.events_json)
+    args.artists_json = normalize_cli_path(args.artists_json)
+    args.bio_json = normalize_cli_path(args.bio_json)
+    args.debug_dir = normalize_cli_path(args.debug_dir)
     if args.dedup_events_file is not None:
-        args.dedup_events_file = args.dedup_events_file.expanduser().resolve()
+        args.dedup_events_file = normalize_cli_path(args.dedup_events_file)
     if args.dedup_artists_file is not None:
-        args.dedup_artists_file = args.dedup_artists_file.expanduser().resolve()
+        args.dedup_artists_file = normalize_cli_path(args.dedup_artists_file)
 
     if not args.parse_python.exists():
         announce(f"[pipeline] Parse python not found: {args.parse_python}", logging.ERROR)
