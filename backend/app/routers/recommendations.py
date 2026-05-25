@@ -6,6 +6,7 @@ from psycopg import Connection
 from app.db import get_db
 from app.event_similarity import build_artist_similar_events_response
 from app.recommendation_engine import build_similarity_response
+from app.recommendation_scoring import promoter_recommendation_api_limit_max_from_env
 from app.recommendation_services import (
     build_artist_promoter_recommendation_response,
     build_artist_recommendation_response,
@@ -22,6 +23,7 @@ from app.schemas import (
 )
 
 router = APIRouter()
+PROMOTER_REC_API_LIMIT_MAX = promoter_recommendation_api_limit_max_from_env()
 
 
 @router.get(
@@ -174,7 +176,7 @@ async def recommend_similar_events_for_artist(
 )
 async def recommend_promoters_for_artist(
     artist_id: int,
-    limit: int = Query(default=10, ge=1, le=50),
+    limit: int = Query(default=10, ge=1, le=PROMOTER_REC_API_LIMIT_MAX),
     exclude_existing: bool = Query(default=True),
     debug: bool = Query(default=False),
     connection: Connection = Depends(get_db),
