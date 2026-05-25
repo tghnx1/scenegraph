@@ -22,10 +22,12 @@ const stats = [
 ]
 
 const PROMOTER_RECOMMENDATIONS_URL = 'http://localhost:8080/api/recommendations/artists/2178/promoters?limit=10'
+type ProfileWorkspaceTab = 'graph' | 'recommendations'
 
 export function ProfilePage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const { setSelected, selectedNode } = useGraphStore()
+  const [activeWorkspaceTab, setActiveWorkspaceTab] = useState<ProfileWorkspaceTab>('graph')
   const [recommendationsData, setRecommendationsData] = useState<PromoterRecommendationResponse | null>(null)
   const [expandedRecommendationId, setExpandedRecommendationId] = useState<number | null>(null)
   const [isRecommendationsLoading, setIsRecommendationsLoading] = useState(false)
@@ -35,17 +37,23 @@ export function ProfilePage() {
   const debouncedSearchValue = useDebouncedValue(searchValue.trim(), 350)
   const selectedTypeParam = searchParams.get('selectedType')
   const selectedIdParam = searchParams.get('selectedId')
-  const selectedArtistId = selectedNode?.type === 'artist'
+  const selectedArtistNodeId = selectedNode?.type === 'artist'
     ? selectedNode.id
     : selectedTypeParam === 'artist'
       ? selectedIdParam
       : null
+  const selectedArtistId = selectedArtistNodeId
+    ? String(graphEntityId(selectedArtistNodeId, 'artist') ?? selectedArtistNodeId)
+    : null
   const selectedDetailType = selectedNode && selectedNode.type !== 'artist'
     ? selectedNode.type
     : selectedTypeParam && selectedTypeParam !== 'artist'
       ? selectedTypeParam
       : null
-  const selectedDetailId = selectedNode && selectedNode.type !== 'artist' ? selectedNode.id : selectedIdParam
+  const selectedDetailNodeId = selectedNode && selectedNode.type !== 'artist' ? selectedNode.id : selectedIdParam
+  const selectedDetailId = selectedDetailType && selectedDetailNodeId
+    ? String(graphEntityId(selectedDetailNodeId, selectedDetailType as NodeType) ?? selectedDetailNodeId)
+    : null
 
   const {
     data: searchData,
@@ -150,17 +158,6 @@ export function ProfilePage() {
     }
   }, [])
 
-  const handleToggleRecommendations = useCallback(() => {
-    if (recommendationsData !== null || recommendationsError) {
-      setRecommendationsData(null)
-      setExpandedRecommendationId(null)
-      setRecommendationsError(null)
-      return
-    }
-
-    void handleLoadRecommendations()
-  }, [handleLoadRecommendations, recommendationsError, recommendationsData])
-
   const handleToggleRecommendation = useCallback((recommendationId: number) => {
     setExpandedRecommendationId((currentId) => (
       currentId === recommendationId ? null : recommendationId
@@ -229,7 +226,107 @@ export function ProfilePage() {
 
         <section className="graph-workspace" aria-label="Profile graph workspace">
           <article className="profile-card graph-panel">
-            <ScenegraphMapPanel /* title="Scenegraph Database" */ />
+            <div className="profile-workspace-tabs" role="tablist" aria-label="Profile graph views">
+              <button
+                type="button"
+                id="profile-workspace-tab-graph"
+                className={`profile-workspace-tab${activeWorkspaceTab === 'graph' ? ' active' : ''}`}
+                role="tab"
+                aria-selected={activeWorkspaceTab === 'graph'}
+                aria-controls="profile-workspace-panel-graph"
+                onClick={() => setActiveWorkspaceTab('graph')}
+              >
+                Graph
+              </button>
+              <button
+                type="button"
+                id="profile-workspace-tab-recommendations"
+                className={`profile-workspace-tab${activeWorkspaceTab === 'recommendations' ? ' active' : ''}`}
+                role="tab"
+                aria-selected={activeWorkspaceTab === 'recommendations'}
+                aria-controls="profile-workspace-panel-recommendations"
+                onClick={() => setActiveWorkspaceTab('recommendations')}
+              >
+                Recommendations
+              </button>
+            </div>
+            {activeWorkspaceTab === 'graph' && (
+              <section
+                id="profile-workspace-panel-graph"
+                className="profile-workspace-content"
+                role="tabpanel"
+                aria-labelledby="profile-workspace-tab-graph"
+              >
+                <ScenegraphMapPanel />
+              </section>
+            )}
+            {activeWorkspaceTab === 'recommendations' && (
+              <section
+                id="profile-workspace-panel-recommendations"
+                className="profile-workspace-content recommendations-panel"
+                role="tabpanel"
+                aria-labelledby="profile-workspace-tab-recommendations"
+              >
+                <div className="panel-heading">
+                  <span className="search-query-label">Promoter Recommendations</span>
+                  {recommendationsData === null && (
+                    <button
+                      type="button"
+                      onClick={() => void handleLoadRecommendations()}
+                      disabled={isRecommendationsLoading}
+                    >
+                      {isRecommendationsLoading
+                        ? 'Loading. Dont do anything, dont even breathe.'
+                        : recommendationsError
+                          ? 'Retry'
+                          : 'The button'}
+                    </button>
+                  )}
+                </div>
+                {recommendationsData === null && !recommendationsError && !isRecommendationsLoading && (
+                  <p className="recommendations-help">
+                    Click the button to load recommendations. Load time may be quite long. Let the wizard does its magic.
+                  </p>
+                )}
+                {recommendationsError && <p className="error">{recommendationsError}</p>}
+                {recommendationsData !== null && (
+                  <div className="recommendations-content">
+                    <section className="recommendation-list" aria-label="Recommended promoters">
+                      {recommendationsData.recommendations.map((recommendation) => {
+                        const isExpanded = expandedRecommendationId === recommendation.id
+
+                        return (
+                          <article className="recommendation-item" key={recommendation.id}>
+                            <button
+                              type="button"
+                              className="recommendation-name"
+                              aria-expanded={isExpanded}
+                              onClick={() => handleToggleRecommendation(recommendation.id)}
+                            >
+                              {recommendation.name}
+                            </button>
+                            {isExpanded && (
+                              <ul className="recommendation-reasons">
+                                {recommendation.reasons.map((reason) => (
+                                  <li key={reason}>{reason}</li>
+                                ))}
+                              </ul>
+                            )}
+                          </article>
+                        )
+                      })}
+                    </section>
+                    <section className="recommendation-graph-map" aria-label="Recommendation evidence graph">
+                      <ScenegraphMapPanel
+                        providedData={recommendationsData.graph}
+                        showFilters={false}
+                        highlightPathToNodeId={`artist-${recommendationsData.entityId}`}
+                      />
+                    </section>
+                  </div>
+                )}
+              </section>
+            )}
           </article>
         </section>
 
@@ -261,61 +358,6 @@ export function ProfilePage() {
             ))}
           </div>
           <div className="chart-placeholder" aria-label="Chart placeholder" />
-        </article>
-
-        <article className="profile-card recommendations-panel">
-          <div className="panel-heading">
-            <span className="search-query-label">Recommendations</span>
-            <button
-              type="button"
-              onClick={handleToggleRecommendations}
-              disabled={isRecommendationsLoading}
-            >
-              {isRecommendationsLoading
-                ? 'Loading. Dont do anything, dont even breathe.'
-                : recommendationsData !== null || recommendationsError
-                  ? 'Hide'
-                  : 'The button'}
-            </button>
-          </div>
-          {recommendationsData === null && !recommendationsError && !isRecommendationsLoading && (
-            <p className="recommendations-help">
-              Click the button to load recommendations. Load time may be quite long.
-            </p>
-          )}
-          {recommendationsError && <p className="error">{recommendationsError}</p>}
-          {recommendationsData !== null && (
-            <div className="recommendations-content">
-              <section className="recommendation-list" aria-label="Recommended promoters">
-                {recommendationsData.recommendations.map((recommendation) => {
-                  const isExpanded = expandedRecommendationId === recommendation.id
-
-                  return (
-                    <article className="recommendation-item" key={recommendation.id}>
-                      <button
-                        type="button"
-                        className="recommendation-name"
-                        aria-expanded={isExpanded}
-                        onClick={() => handleToggleRecommendation(recommendation.id)}
-                      >
-                        {recommendation.name}
-                      </button>
-                      {isExpanded && (
-                        <ul className="recommendation-reasons">
-                          {recommendation.reasons.map((reason) => (
-                            <li key={reason}>{reason}</li>
-                          ))}
-                        </ul>
-                      )}
-                    </article>
-                  )
-                })}
-              </section>
-              <section className="recommendation-graph-map" aria-label="Recommendation evidence graph">
-                <ScenegraphMapPanel providedData={recommendationsData.graph} showFilters={false} />
-              </section>
-            </div>
-          )}
         </article>
 
         <article className="profile-card side-panel communications-panel">

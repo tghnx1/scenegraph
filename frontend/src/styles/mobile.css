@@ -51,15 +51,13 @@
     grid-template-columns: 1fr;
     grid-template-rows:
       minmax(540px, var(--profile-tall-panel-height))
-      minmax(560px, var(--profile-tall-panel-height))
-      minmax(360px, var(--profile-panel-height))
       minmax(720px, 120dvh)
+      minmax(360px, var(--profile-panel-height))
       repeat(2, minmax(360px, var(--profile-panel-height)));
     grid-template-areas:
       "context"
       "graph"
       "profile"
-      "recommendations"
       "stats"
       "communications";
   }
@@ -71,10 +69,6 @@
 
   .recommendation-graph-empty {
     min-height: 360px;
-  }
-
-  .recommendations-panel {
-    overflow: visible;
   }
 
   .context-panel {
