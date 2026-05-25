@@ -7,6 +7,7 @@ from app.recommendation_scoring import (
     hybrid_graph_score,
     is_similarity_candidate_eligible,
     normalized_weights,
+    promoter_recommendation_api_limit_max_from_env,
     promoter_recommendation_scoring_from_env,
     recommendation_scoring_from_env,
     semantic_artist_score,
@@ -166,6 +167,9 @@ def test_promoter_recommendation_scoring_reads_and_normalizes_env(monkeypatch):
     monkeypatch.setenv("PROMOTER_REC_EVENT_SIMILARITY_EDGE_STRENGTH_MAX", "0.66")
     monkeypatch.setenv("PROMOTER_REC_SCALE_FIT_ALPHA", "80")
     monkeypatch.setenv("PROMOTER_REC_SCALE_FIT_TAU", "0.6")
+    monkeypatch.setenv("PROMOTER_REC_SQL_CANDIDATE_LIMIT", "260")
+    monkeypatch.setenv("PROMOTER_REC_EVENT_SIMILARITY_OVERFETCH_MULTIPLIER", "24")
+    monkeypatch.setenv("PROMOTER_REC_EVENT_SIMILARITY_OVERFETCH_MIN", "640")
 
     config = promoter_recommendation_scoring_from_env()
 
@@ -202,6 +206,9 @@ def test_promoter_recommendation_scoring_reads_and_normalizes_env(monkeypatch):
         event_similarity_edge_strength_max=0.66,
         scale_fit_alpha=80,
         scale_fit_tau=0.6,
+        sql_candidate_limit=260,
+        event_similarity_overfetch_multiplier=24,
+        event_similarity_overfetch_min=640,
     )
 
 
@@ -253,6 +260,21 @@ def test_promoter_recommendation_scoring_rejects_invalid_scale_fit_tau(monkeypat
         assert "PROMOTER_REC_SCALE_FIT_TAU" in str(exc)
     else:
         raise AssertionError("Expected ValueError")
+
+
+def test_promoter_recommendation_scoring_rejects_invalid_sql_candidate_limit(monkeypatch):
+    monkeypatch.setenv("PROMOTER_REC_SQL_CANDIDATE_LIMIT", "0")
+    try:
+        promoter_recommendation_scoring_from_env()
+    except ValueError as exc:
+        assert "PROMOTER_REC_SQL_CANDIDATE_LIMIT" in str(exc)
+    else:
+        raise AssertionError("Expected ValueError")
+
+
+def test_promoter_recommendation_api_limit_max_reads_env(monkeypatch):
+    monkeypatch.setenv("PROMOTER_REC_API_LIMIT_MAX", "75")
+    assert promoter_recommendation_api_limit_max_from_env() == 75
 
 
 def test_normalized_weights_rejects_zero_total():

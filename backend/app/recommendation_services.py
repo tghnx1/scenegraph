@@ -380,12 +380,13 @@ def build_artist_promoter_recommendation_response(
             LEFT JOIN warm_promoters wp
                 ON wp.promoter_id = p.id
             ORDER BY semantic_score DESC, direct_connection_count DESC, warm_connection_count DESC, event_count DESC, p.id ASC
-            LIMIT 200
+            LIMIT %(sql_candidate_limit)s
             """,
             {
                 "artist_ids": artist_ids,
                 "artist_scores": artist_scores,
                 "source_artist_id": artist_id,
+                "sql_candidate_limit": scoring_config.sql_candidate_limit,
             },
         )
         rows = cursor.fetchall()
@@ -393,7 +394,10 @@ def build_artist_promoter_recommendation_response(
     similar_event_rows, _, similar_event_debug_counts = artist_similar_events_scored_rows(
         connection,
         source_artist_id=artist_id,
-        limit=max(limit * 20, 500),
+        limit=max(
+            limit * scoring_config.event_similarity_overfetch_multiplier,
+            scoring_config.event_similarity_overfetch_min,
+        ),
         exclude_same_promoter=True,
         scoring_config=scoring_config,
         collect_debug=debug,

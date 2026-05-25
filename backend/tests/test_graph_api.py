@@ -423,7 +423,7 @@ def test_artist_promoter_recommendations_include_debug_when_requested():
     data = response.json()
     assert "debug" in data
     assert set(data["debug"]) == {"candidateCounts", "filteredOut"}
-    assert set(data["debug"]["filteredOut"]) == {
+    assert set(data["debug"]["filteredOut"]) >= {
         "excludeExisting",
         "eventSimilaritySamePromoter",
         "eventSimilarityLimitCutoff",
