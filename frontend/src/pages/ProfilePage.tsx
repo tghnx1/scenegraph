@@ -272,26 +272,29 @@ export function ProfilePage() {
               >
                 <div className="panel-heading">
                   <span className="search-query-label">Promoter Recommendations</span>
-                  {recommendationsData === null && (
+                </div>
+                {recommendationsData === null && !isRecommendationsLoading && (
+                  <div className="recommendations-start">
+                    <p className={recommendationsError ? 'error' : 'recommendations-help'}>
+                      {recommendationsError
+                        ?? 'Click the button to load recommendations. Load time may be quite long. Let the wizard does its magic.'}
+                    </p>
                     <button
                       type="button"
+                      className="recommendations-load-button"
                       onClick={() => void handleLoadRecommendations()}
-                      disabled={isRecommendationsLoading}
                     >
-                      {isRecommendationsLoading
-                        ? 'Loading. Dont do anything, dont even breathe.'
-                        : recommendationsError
-                          ? 'Retry'
-                          : 'The button'}
+                      {recommendationsError ? 'Retry' : 'The button'}
                     </button>
-                  )}
-                </div>
-                {recommendationsData === null && !recommendationsError && !isRecommendationsLoading && (
-                  <p className="recommendations-help">
-                    Click the button to load recommendations. Load time may be quite long. Let the wizard does its magic.
-                  </p>
+                  </div>
                 )}
-                {recommendationsError && <p className="error">{recommendationsError}</p>}
+                {isRecommendationsLoading && (
+                  <div className="recommendations-loading" role="status" aria-live="polite">
+                    <span className="recommendations-spinner" aria-hidden="true" />
+                    <strong>Preparing recommendations</strong>
+                    <p>Building promoter matches and graph. This may take a while, you know, wizard things.</p>
+                  </div>
+                )}
                 {recommendationsData !== null && (
                   <div className="recommendations-content">
                     <section className="recommendation-list" aria-label="Recommended promoters">
