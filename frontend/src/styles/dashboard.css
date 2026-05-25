@@ -128,6 +128,7 @@
 
 .recommendation-list {
   display: grid;
+  grid-auto-rows: max-content;
   align-content: start;
   gap: 8px;
   min-height: 0;
@@ -139,6 +140,7 @@
 }
 
 .recommendation-item {
+  min-height: max-content;
   border-radius: 8px;
   background: var(--surface-panel);
   border: 1px solid var(--surface-border-soft);
@@ -159,7 +161,7 @@
 }
 
 .recommendation-name:hover,
-.recommendation-name[aria-expanded="true"] {
+.recommendation-name[aria-pressed="true"] {
   background: var(--selection-soft);
 }
 
