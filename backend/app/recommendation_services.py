@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import math
+
 from fastapi import HTTPException
 from psycopg import Connection
 
@@ -52,6 +54,73 @@ def semantic_artist_reasons(item: dict) -> list[str]:
     if not reasons:
         reasons.append("semantic similarity")
     return reasons[:3]
+
+
+def source_artist_scale_stats(connection: Connection, *, artist_id: int) -> dict[str, int | float | None]:
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            WITH source_events AS (
+                SELECT DISTINCT event_id
+                FROM event_artists
+                WHERE artist_id = %s
+            ),
+            source_scales AS (
+                SELECT
+                    count(*)::int AS event_count
+                FROM source_events
+            ),
+            source_interested AS (
+                SELECT
+                    percentile_cont(0.5) WITHIN GROUP (ORDER BY e.interested_count)::double precision
+                        AS median_interested
+                FROM source_events se
+                JOIN events e
+                    ON e.id = se.event_id
+                WHERE e.interested_count IS NOT NULL
+            )
+            SELECT ss.event_count, si.median_interested
+            FROM source_scales ss
+            CROSS JOIN source_interested si
+            """,
+            (artist_id,),
+        )
+        row = cursor.fetchone()
+    if row is None:
+        return {"event_count": 0, "median_interested": None}
+    return row
+
+
+def scale_fit_score(
+    *,
+    artist_scale: float,
+    promoter_scale: float,
+    alpha: float,
+    tau: float,
+) -> float:
+    ratio = (promoter_scale + alpha) / (artist_scale + alpha)
+    return math.exp(-abs(math.log(ratio)) / tau)
+
+
+def scale_bucket(event_count: int) -> int:
+    """
+    Coarse promoter scale buckets by related event volume.
+    0 = small, 1 = medium, 2 = large.
+    """
+    if event_count <= 3:
+        return 0
+    if event_count <= 12:
+        return 1
+    return 2
+
+
+def scale_bucket_match_multiplier(source_event_count: int, promoter_event_count: int) -> float:
+    distance = abs(scale_bucket(source_event_count) - scale_bucket(promoter_event_count))
+    if distance == 0:
+        return 1.0
+    if distance == 1:
+        return 0.65
+    return 0.30
 
 
 def build_artist_semantic_response(
@@ -197,6 +266,13 @@ def build_artist_promoter_recommendation_response(
                 FROM event_artists
                 WHERE artist_id = %(source_artist_id)s
             ),
+            manual_known_artists AS (
+                SELECT
+                    amc.connected_artist_id AS co_artist_id,
+                    NULL::bigint AS shared_event_id
+                FROM artist_manual_connections amc
+                WHERE amc.source_artist_id = %(source_artist_id)s
+            ),
             co_played_artists AS (
                 SELECT DISTINCT
                     ea_shared.artist_id AS co_artist_id,
@@ -205,15 +281,24 @@ def build_artist_promoter_recommendation_response(
                 JOIN event_artists ea_shared
                     ON ea_shared.event_id = se.event_id
                 WHERE ea_shared.artist_id <> %(source_artist_id)s
+                UNION
+                SELECT
+                    mka.co_artist_id,
+                    mka.shared_event_id
+                FROM manual_known_artists mka
             ),
             semantic_promoters AS (
                 SELECT
                     ep.promoter_id,
                     count(DISTINCT sc.artist_id)::int AS matched_artist_count,
+                    array_agg(DISTINCT a.name) AS matched_artist_names,
                     count(DISTINCT e.id)::int AS event_count,
+                    array_agg(DISTINCT e.title) AS related_event_titles,
                     max(sc.semantic_score)::double precision AS semantic_score,
                     max(e.event_date)::date AS latest_event_date
                 FROM semantic_candidates sc
+                JOIN artists a
+                    ON a.id = sc.artist_id
                 JOIN event_artists ea
                     ON ea.artist_id = sc.artist_id
                 JOIN events e
@@ -226,6 +311,7 @@ def build_artist_promoter_recommendation_response(
                 SELECT
                     ep.promoter_id,
                     count(DISTINCT e.id)::int AS direct_connection_count,
+                    array_agg(DISTINCT e.title) AS direct_event_titles,
                     max(e.event_date)::date AS latest_direct_event_date
                 FROM event_artists ea
                 JOIN events e
@@ -239,16 +325,25 @@ def build_artist_promoter_recommendation_response(
                 SELECT
                     ep.promoter_id,
                     count(DISTINCT cpa.co_artist_id)::int AS warm_connection_count,
+                    jsonb_agg(
+                        DISTINCT jsonb_build_object(
+                            'id', cpa.co_artist_id,
+                            'name', co_artist.name
+                        )
+                    ) AS warm_connection_artists,
                     count(DISTINCT e.id)::int AS warm_event_count,
+                    array_agg(DISTINCT e.title) AS warm_event_titles,
                     max(e.event_date)::date AS latest_warm_event_date
                 FROM co_played_artists cpa
                 JOIN event_artists ea
                     ON ea.artist_id = cpa.co_artist_id
+                JOIN artists co_artist
+                    ON co_artist.id = cpa.co_artist_id
                 JOIN events e
                     ON e.id = ea.event_id
                 JOIN event_promoters ep
                     ON ep.event_id = e.id
-                WHERE e.id <> cpa.shared_event_id
+                WHERE cpa.shared_event_id IS NULL OR e.id <> cpa.shared_event_id
                 GROUP BY ep.promoter_id
             ),
             candidate_promoters AS (
@@ -262,11 +357,22 @@ def build_artist_promoter_recommendation_response(
                 p.id,
                 p.name,
                 COALESCE(sp.matched_artist_count, 0)::int AS matched_artist_count,
+                COALESCE(sp.matched_artist_names, ARRAY[]::text[]) AS matched_artist_names,
                 GREATEST(
                     COALESCE(sp.event_count, 0),
                     COALESCE(dp.direct_connection_count, 0),
                     COALESCE(wp.warm_event_count, 0)
                 )::int AS event_count,
+                ARRAY(
+                    SELECT DISTINCT title
+                    FROM unnest(
+                        COALESCE(sp.related_event_titles, ARRAY[]::text[])
+                        || COALESCE(dp.direct_event_titles, ARRAY[]::text[])
+                        || COALESCE(wp.warm_event_titles, ARRAY[]::text[])
+                    ) AS title
+                    WHERE title IS NOT NULL
+                    ORDER BY title
+                ) AS related_event_titles,
                 COALESCE(sp.semantic_score, 0)::double precision AS semantic_score,
                 COALESCE(
                     GREATEST(
@@ -279,7 +385,8 @@ def build_artist_promoter_recommendation_response(
                     wp.latest_warm_event_date
                 )::date AS latest_event_date,
                 COALESCE(dp.direct_connection_count, 0)::int AS direct_connection_count,
-                COALESCE(wp.warm_connection_count, 0)::int AS warm_connection_count
+                COALESCE(wp.warm_connection_count, 0)::int AS warm_connection_count,
+                COALESCE(wp.warm_connection_artists, '[]'::jsonb) AS warm_connection_artists
             FROM candidate_promoters cp
             JOIN promoters p
                 ON p.id = cp.promoter_id
@@ -290,12 +397,13 @@ def build_artist_promoter_recommendation_response(
             LEFT JOIN warm_promoters wp
                 ON wp.promoter_id = p.id
             ORDER BY semantic_score DESC, direct_connection_count DESC, warm_connection_count DESC, event_count DESC, p.id ASC
-            LIMIT 200
+            LIMIT %(sql_candidate_limit)s
             """,
             {
                 "artist_ids": artist_ids,
                 "artist_scores": artist_scores,
                 "source_artist_id": artist_id,
+                "sql_candidate_limit": scoring_config.sql_candidate_limit,
             },
         )
         rows = cursor.fetchall()
@@ -303,7 +411,10 @@ def build_artist_promoter_recommendation_response(
     similar_event_rows, _, similar_event_debug_counts = artist_similar_events_scored_rows(
         connection,
         source_artist_id=artist_id,
-        limit=max(limit * 20, 500),
+        limit=max(
+            limit * scoring_config.event_similarity_overfetch_multiplier,
+            scoring_config.event_similarity_overfetch_min,
+        ),
         exclude_same_promoter=True,
         scoring_config=scoring_config,
         collect_debug=debug,
@@ -356,13 +467,20 @@ def build_artist_promoter_recommendation_response(
                         "id": promoter["id"],
                         "name": promoter["name"],
                         "matched_artist_count": 0,
+                        "matched_artist_names": [],
                         "event_count": 0,
+                        "related_event_titles": [],
                         "semantic_score": 0.0,
                         "latest_event_date": None,
                         "direct_connection_count": 0,
                         "warm_connection_count": 0,
+                        "warm_connection_artists": [],
                     }
                 )
+
+    source_scale_stats = source_artist_scale_stats(connection, artist_id=artist_id)
+    source_artist_event_count = max(int(source_scale_stats["event_count"]), 1)
+    source_artist_scale = float(source_artist_event_count)
 
     recommendations = []
     exclude_existing_filtered_count = 0
@@ -420,11 +538,77 @@ def build_artist_promoter_recommendation_response(
         )
         activity_score = min(effective_event_count / scoring_config.activity_event_cap, 1.0)
         recency_score = date_recency_score(effective_latest_event_date)
+        promoter_scale = float(max(effective_event_count, 1))
+        scale_bucket_multiplier = scale_bucket_match_multiplier(
+            source_artist_event_count,
+            effective_event_count,
+        )
+        scale_fit = scale_fit_score(
+            artist_scale=source_artist_scale,
+            promoter_scale=promoter_scale,
+            alpha=scoring_config.scale_fit_alpha,
+            tau=scoring_config.scale_fit_tau,
+        ) * scale_bucket_multiplier
+        warm_connection_artists_raw = row.get("warm_connection_artists")
+        warm_connection_artists: list[dict[str, object]] = []
+        if isinstance(warm_connection_artists_raw, list):
+            for item in warm_connection_artists_raw:
+                if not isinstance(item, dict):
+                    continue
+                artist_id_value = item.get("id")
+                artist_name_value = item.get("name")
+                if artist_id_value is None or artist_name_value is None:
+                    continue
+                warm_connection_artists.append(
+                    {
+                        "id": int(artist_id_value),
+                        "name": str(artist_name_value),
+                    }
+                )
+        warm_connection_artists.sort(key=lambda item: item["id"])
+        matched_artist_names_raw = row.get("matched_artist_names")
+        matched_artist_names = (
+            sorted({name.strip() for name in matched_artist_names_raw if isinstance(name, str) and name.strip()})
+            if isinstance(matched_artist_names_raw, list)
+            else []
+        )
+        related_event_titles_raw = row.get("related_event_titles")
+        related_event_titles = (
+            sorted(
+                {
+                    title.strip()
+                    for title in related_event_titles_raw
+                    if isinstance(title, str) and title.strip()
+                }
+            )
+            if isinstance(related_event_titles_raw, list)
+            else []
+        )
+        event_similarity_event_titles: list[str] = []
+        if event_similarity_stats is not None:
+            seen_event_titles: set[str] = set()
+            for item in sorted(
+                event_similarity_stats["rows"],
+                key=lambda candidate: (-candidate["total_similarity_score"], candidate["candidate_event_id"]),
+            ):
+                title = item.get("candidate_event_title")
+                if not isinstance(title, str):
+                    continue
+                normalized_title = title.strip()
+                if not normalized_title or normalized_title in seen_event_titles:
+                    continue
+                seen_event_titles.add(normalized_title)
+                event_similarity_event_titles.append(normalized_title)
+        related_event_titles = sorted(set(related_event_titles) | set(event_similarity_event_titles))
         row_with_similarity = {
             **row,
             "event_similarity_count": event_similarity_count,
             "event_count": effective_event_count,
             "latest_event_date": effective_latest_event_date,
+            "warm_connection_artists": warm_connection_artists,
+            "matched_artist_names": matched_artist_names,
+            "event_similarity_event_titles": event_similarity_event_titles,
+            "related_event_titles": related_event_titles,
         }
         direct_weight = 0.0 if exclude_existing else scoring_config.direct_connection_weight
         score_breakdown = {
@@ -433,6 +617,7 @@ def build_artist_promoter_recommendation_response(
             "directConnection": direct_weight * direct_connection_score,
             "warmNetwork": scoring_config.warm_network_weight * warm_network_score,
             "eventSimilarity": scoring_config.event_similarity_weight * event_similarity_score,
+            "scaleFit": scoring_config.scale_fit_weight * scale_fit,
             "activity": scoring_config.activity_weight * activity_score,
             "recency": scoring_config.recency_weight * recency_score,
         }
@@ -453,6 +638,7 @@ def build_artist_promoter_recommendation_response(
                 latestEventDate=effective_latest_event_date,
                 status=promoter_recommendation_status(row_with_similarity, scoring_config),
                 warmConnectionCount=row["warm_connection_count"],
+                warmConnectionArtists=warm_connection_artists,
                 directConnectionCount=row["direct_connection_count"],
                 evidence=promoter_recommendation_item_evidence(row_with_similarity),
                 debug={
@@ -465,12 +651,20 @@ def build_artist_promoter_recommendation_response(
                         "eventSimilarityCount": event_similarity_count,
                         "eventSimilaritySymbolicScore": event_similarity_symbolic_score,
                         "eventSimilarityEmbeddingScore": event_similarity_embedding_score,
+                        "artistScale": source_artist_scale,
+                        "promoterScale": promoter_scale,
+                        "artistScaleEventCount": source_artist_event_count,
+                        "promoterScaleEventCount": effective_event_count,
+                        "scaleBucketMultiplier": scale_bucket_multiplier,
+                        "scaleFit": scale_fit,
+                        "warmConnectionArtists": warm_connection_artists,
                     },
                     "normalizedScores": {
                         "strength": strength_score,
                         "directConnection": direct_connection_score,
                         "warmNetwork": warm_network_score,
                         "eventSimilarity": event_similarity_score,
+                        "scaleFit": scale_fit,
                         "activity": activity_score,
                         "recency": recency_score,
                     },
@@ -484,30 +678,54 @@ def build_artist_promoter_recommendation_response(
             )
         )
 
-    recommendation_limit_cutoff = max(len(recommendations) - limit, 0)
-    recommendations = sorted(
+    sorted_recommendations = sorted(
         recommendations,
         key=lambda recommendation: (-recommendation.score, recommendation.id),
-    )[:limit]
+    )
+    warm_recommendations_all = [
+        recommendation
+        for recommendation in sorted_recommendations
+        if recommendation.warmConnectionCount > 0
+    ]
+    discovery_recommendations_all = [
+        recommendation
+        for recommendation in sorted_recommendations
+        if recommendation.warmConnectionCount == 0
+    ]
+    warm_recommendations = warm_recommendations_all[:limit]
+    remaining_slots = max(limit - len(warm_recommendations), 0)
+    discovery_recommendations = discovery_recommendations_all[:remaining_slots]
+    recommendations = [*warm_recommendations, *discovery_recommendations]
+    recommendation_limit_cutoff = max(len(sorted_recommendations) - len(recommendations), 0)
+    warm_limit_cutoff = max(len(warm_recommendations_all) - len(warm_recommendations), 0)
+    discovery_limit_cutoff = max(len(discovery_recommendations_all) - len(discovery_recommendations), 0)
     if not recommendations:
         return PromoterRecommendationResponse(
             entityId=artist_id,
             model=source["model"],
             dimensions=source["dimensions"],
             recommendations=[],
+            warmRecommendations=[],
+            discoveryRecommendations=[],
             graph=GraphResponse(nodes=[], links=[]),
             debug={
                 "candidateCounts": {
                     "sqlPromoterCandidates": len(rows),
                     "eventSimilarityPromotersAdded": len(additional_promoter_ids),
+                    "warmCandidates": 0,
+                    "discoveryCandidates": 0,
                     "recommendationsBeforeLimit": 0,
                     "returnedRecommendations": 0,
+                    "returnedWarmRecommendations": 0,
+                    "returnedDiscoveryRecommendations": 0,
                 },
                 "filteredOut": {
                     "excludeExisting": exclude_existing_filtered_count,
                     "eventSimilaritySamePromoter": similar_event_debug_counts["samePromoterFiltered"],
                     "eventSimilarityLimitCutoff": similar_event_debug_counts["similarityLimitCutoff"],
                     "recommendationLimitCutoff": 0,
+                    "warmLimitCutoff": 0,
+                    "discoveryLimitCutoff": 0,
                 },
             }
             if debug
@@ -564,6 +782,8 @@ def build_artist_promoter_recommendation_response(
         model=source["model"],
         dimensions=source["dimensions"],
         recommendations=recommendations,
+        warmRecommendations=warm_recommendations,
+        discoveryRecommendations=discovery_recommendations,
         graph=promoter_recommendation_graph(
             source_artist_id=artist_id,
             source_artist_name=source_artist["name"],
@@ -578,18 +798,22 @@ def build_artist_promoter_recommendation_response(
             "candidateCounts": {
                 "sqlPromoterCandidates": len(rows),
                 "eventSimilarityPromotersAdded": len(additional_promoter_ids),
+                "warmCandidates": len(warm_recommendations_all),
+                "discoveryCandidates": len(discovery_recommendations_all),
                 "recommendationsBeforeLimit": len(recommendations) + recommendation_limit_cutoff,
                 "returnedRecommendations": len(recommendations),
+                "returnedWarmRecommendations": len(warm_recommendations),
+                "returnedDiscoveryRecommendations": len(discovery_recommendations),
             },
             "filteredOut": {
                 "excludeExisting": exclude_existing_filtered_count,
                 "eventSimilaritySamePromoter": similar_event_debug_counts["samePromoterFiltered"],
                 "eventSimilarityLimitCutoff": similar_event_debug_counts["similarityLimitCutoff"],
                 "recommendationLimitCutoff": recommendation_limit_cutoff,
+                "warmLimitCutoff": warm_limit_cutoff,
+                "discoveryLimitCutoff": discovery_limit_cutoff,
             },
         }
         if debug
         else None,
     )
-
-

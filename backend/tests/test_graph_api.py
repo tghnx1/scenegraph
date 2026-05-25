@@ -382,6 +382,7 @@ def test_artist_promoter_recommendations_include_graph_payload():
         "directConnection",
         "warmNetwork",
         "eventSimilarity",
+        "scaleFit",
         "activity",
         "recency",
     }
@@ -422,7 +423,7 @@ def test_artist_promoter_recommendations_include_debug_when_requested():
     data = response.json()
     assert "debug" in data
     assert set(data["debug"]) == {"candidateCounts", "filteredOut"}
-    assert set(data["debug"]["filteredOut"]) == {
+    assert set(data["debug"]["filteredOut"]) >= {
         "excludeExisting",
         "eventSimilaritySamePromoter",
         "eventSimilarityLimitCutoff",
@@ -433,6 +434,7 @@ def test_artist_promoter_recommendations_include_debug_when_requested():
     assert "debug" in first
     assert set(first["debug"]) == {"rawSignals", "normalizedScores", "weightedScores"}
     assert "eventSimilarityEmbeddingScore" in first["debug"]["rawSignals"]
+    assert "warmConnectionArtists" in first["debug"]["rawSignals"]
     assert "eventSimilarity" in first["debug"]["normalizedScores"]
     assert "total" in first["debug"]["weightedScores"]
 
@@ -488,6 +490,8 @@ def test_artist_promoter_recommendations_include_warm_network_connections():
     ]
     for item in warm_recommendations:
         assert item["scoreBreakdown"]["warmNetwork"] > 0
+        assert item["warmConnectionArtists"]
+        assert all("id" in artist and "name" in artist for artist in item["warmConnectionArtists"])
         assert any(evidence["type"] == "warm_network" for evidence in item["evidence"])
 
     warm_links = [

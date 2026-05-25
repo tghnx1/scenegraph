@@ -137,6 +137,11 @@ class RecommendationEvidenceItem(BaseModel):
     path: str
 
 
+class WarmConnectionArtistItem(BaseModel):
+    id: int
+    name: str
+
+
 class PromoterRecommendationItem(BaseModel):
     id: int
     type: Literal["promoter"] = "promoter"
@@ -153,6 +158,7 @@ class PromoterRecommendationItem(BaseModel):
     latestEventDate: DateValue | None = None
     status: str | None = None
     warmConnectionCount: int = 0
+    warmConnectionArtists: list[WarmConnectionArtistItem] = Field(default_factory=list)
     directConnectionCount: int = 0
     evidence: list[RecommendationEvidenceItem] = Field(default_factory=list)
     debug: dict[str, object] | None = None
@@ -164,6 +170,8 @@ class PromoterRecommendationResponse(BaseModel):
     model: str
     dimensions: int
     recommendations: list[PromoterRecommendationItem]
+    warmRecommendations: list[PromoterRecommendationItem] = Field(default_factory=list)
+    discoveryRecommendations: list[PromoterRecommendationItem] = Field(default_factory=list)
     graph: GraphResponse
     debug: dict[str, object] | None = None
 
@@ -236,3 +244,19 @@ class RecommendationFeedbackItem(BaseModel):
 
 class RecommendationFeedbackResponse(BaseModel):
     feedback: list[RecommendationFeedbackItem]
+
+
+class ArtistKnownConnectionRequest(BaseModel):
+    connectedArtistId: int
+
+
+class ArtistKnownConnectionItem(BaseModel):
+    sourceArtistId: int
+    connectedArtistId: int
+    connectedArtistName: str
+    createdAt: datetime
+    updatedAt: datetime
+
+
+class ArtistKnownConnectionResponse(BaseModel):
+    items: list[ArtistKnownConnectionItem]
