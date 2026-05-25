@@ -7,7 +7,6 @@
 }
 
 .profile-page {
-  --profile-panel-height: calc((100dvh - 56px) / 2);
   --profile-tall-panel-height: calc((100dvh - 56px) * 0.75);
 }
 
@@ -33,10 +32,10 @@
   grid-template-columns: repeat(3, minmax(0, 1fr));
   grid-template-rows:
     minmax(570px, var(--profile-tall-panel-height))
-    minmax(380px, var(--profile-panel-height));
+    minmax(570px, var(--profile-tall-panel-height));
   grid-template-areas:
     "context graph graph"
-    "profile stats communications";
+    "profile communications communications";
   gap: 12px;
 }
 
@@ -351,10 +350,6 @@
   white-space: pre-wrap;
 }
 
-.stats-panel {
-  grid-area: stats;
-}
-
 .graph-workspace {
   grid-area: graph;
   min-width: 0;
@@ -396,45 +391,6 @@
   padding: 10px 12px;
   border-radius: 8px;
   background: var(--surface-panel-soft);
-  border: 1px solid var(--surface-border-soft);
-}
-
-.stat-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
-}
-
-.stat-tile {
-  display: grid;
-  gap: 4px;
-  padding: 12px;
-  border-radius: 8px;
-  background: var(--focus-ring);
-  border: 1px solid var(--selection-border);
-}
-
-.stat-tile strong {
-  font-size: 1.45rem;
-}
-
-.stat-tile span {
-  color: var(--text-muted);
-  font-size: 0.84rem;
-}
-
-.chart-placeholder {
-  height: 120px;
-  margin-top: 16px;
-  border-radius: 8px;
-  background:
-    linear-gradient(90deg, var(--chart-promoter) 0 18%, transparent 18% 26%),
-    linear-gradient(90deg, var(--chart-artist) 0 38%, transparent 38% 46%),
-    linear-gradient(90deg, var(--chart-venue) 0 62%, transparent 62% 70%),
-    linear-gradient(90deg, var(--chart-warm) 0 82%, transparent 82%);
-  background-size: 100% 20px;
-  background-position: 0 20px, 0 48px, 0 76px, 0 104px;
-  background-repeat: no-repeat;
   border: 1px solid var(--surface-border-soft);
 }
 

@@ -15,12 +15,6 @@ import { ScenegraphMapPanel } from './components/ScenegraphMapPanel.tsx'
 import { SearchQueryForm } from './components/SearchQueryForm.tsx'
 import { useDebouncedValue } from './hooks/useDebouncedValue'
 
-const stats = [
-  { label: 'Connected nodes', value: '0' },
-  { label: 'Shared events', value: '0' },
-  { label: 'Recommendations', value: '0' },
-]
-
 const PROMOTER_RECOMMENDATIONS_URL = 'http://localhost:8080/api/recommendations/artists/2178/promoters?limit=10'
 const RECOMMENDATION_LOADING_MESSAGES = [
   'Finding similar artists',
@@ -383,22 +377,6 @@ export function ProfilePage() {
             <span>Genres</span>
             <span>Location</span>
           </div>
-        </article>
-
-        <article className="profile-card stats-panel">
-          <div className="panel-heading">
-            <span className="search-query-label">Statistics</span>
-            {/* <span className="panel-status">Overview</span> */}
-          </div>
-          <div className="stat-grid">
-            {stats.map((item) => (
-              <div key={item.label} className="stat-tile">
-                <strong>{item.value}</strong>
-                <span>{item.label}</span>
-              </div>
-            ))}
-          </div>
-          <div className="chart-placeholder" aria-label="Chart placeholder" />
         </article>
 
         <article className="profile-card side-panel communications-panel">
