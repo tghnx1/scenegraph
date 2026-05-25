@@ -25,17 +25,61 @@ def date_recency_score(value: DateValue | datetime | None) -> float:
 
 
 def promoter_recommendation_reasons(row: dict) -> list[str]:
+    def names_list(values: object) -> list[str]:
+        if not isinstance(values, list):
+            return []
+        result: list[str] = []
+        for value in values:
+            if isinstance(value, str) and value.strip():
+                result.append(value.strip())
+        return result
+
+    def artist_names(values: object) -> list[str]:
+        if not isinstance(values, list):
+            return []
+        result: list[str] = []
+        for value in values:
+            if isinstance(value, dict):
+                name = value.get("name")
+                if isinstance(name, str) and name.strip():
+                    result.append(name.strip())
+        return result
+
     reasons = []
     if row["direct_connection_count"] > 0:
         reasons.append(f"{row['direct_connection_count']} direct artist-promoter events")
     if row["warm_connection_count"] > 0:
-        reasons.append(f"{row['warm_connection_count']} co-played artists connected")
+        warm_names = artist_names(row.get("warm_connection_artists"))
+        if warm_names:
+            reasons.append(
+                f"{row['warm_connection_count']} co-played artists connected: {', '.join(warm_names)}"
+            )
+        else:
+            reasons.append(f"{row['warm_connection_count']} co-played artists connected")
     if row["matched_artist_count"] > 0:
-        reasons.append(f"{row['matched_artist_count']} similar artists connected")
+        matched_artist_names = names_list(row.get("matched_artist_names"))
+        if matched_artist_names:
+            reasons.append(
+                f"{row['matched_artist_count']} similar artists connected: {', '.join(matched_artist_names)}"
+            )
+        else:
+            reasons.append(f"{row['matched_artist_count']} similar artists connected")
     if row["event_similarity_count"] > 0:
-        reasons.append(f"{row['event_similarity_count']} similar promoter events")
+        event_similarity_titles = names_list(row.get("event_similarity_event_titles"))
+        if event_similarity_titles:
+            reasons.append(
+                f"{row['event_similarity_count']} similar promoter events: {', '.join(event_similarity_titles)}"
+            )
+        else:
+            reasons.append(f"{row['event_similarity_count']} similar promoter events")
     if row["event_count"] > 0:
-        reasons.append(f"{row['event_count']} related promoter events")
+        related_event_titles = names_list(row.get("related_event_titles"))
+        if related_event_titles:
+            reasons.append(
+                f"{row['event_count']} related promoter events: {', '.join(related_event_titles)}"
+            )
+        else:
+            reasons.append(f"{row['event_count']} related promoter events")
     if row["latest_event_date"] is not None:
         reasons.append(f"latest related event on {row['latest_event_date']}")
     return reasons[:4]
@@ -624,5 +668,4 @@ def promoter_warm_network_evidence(
             },
         )
         return cursor.fetchall()
-
 

@@ -291,10 +291,14 @@ def build_artist_promoter_recommendation_response(
                 SELECT
                     ep.promoter_id,
                     count(DISTINCT sc.artist_id)::int AS matched_artist_count,
+                    array_agg(DISTINCT a.name) AS matched_artist_names,
                     count(DISTINCT e.id)::int AS event_count,
+                    array_agg(DISTINCT e.title) AS related_event_titles,
                     max(sc.semantic_score)::double precision AS semantic_score,
                     max(e.event_date)::date AS latest_event_date
                 FROM semantic_candidates sc
+                JOIN artists a
+                    ON a.id = sc.artist_id
                 JOIN event_artists ea
                     ON ea.artist_id = sc.artist_id
                 JOIN events e
@@ -307,6 +311,7 @@ def build_artist_promoter_recommendation_response(
                 SELECT
                     ep.promoter_id,
                     count(DISTINCT e.id)::int AS direct_connection_count,
+                    array_agg(DISTINCT e.title) AS direct_event_titles,
                     max(e.event_date)::date AS latest_direct_event_date
                 FROM event_artists ea
                 JOIN events e
@@ -327,6 +332,7 @@ def build_artist_promoter_recommendation_response(
                         )
                     ) AS warm_connection_artists,
                     count(DISTINCT e.id)::int AS warm_event_count,
+                    array_agg(DISTINCT e.title) AS warm_event_titles,
                     max(e.event_date)::date AS latest_warm_event_date
                 FROM co_played_artists cpa
                 JOIN event_artists ea
@@ -351,11 +357,22 @@ def build_artist_promoter_recommendation_response(
                 p.id,
                 p.name,
                 COALESCE(sp.matched_artist_count, 0)::int AS matched_artist_count,
+                COALESCE(sp.matched_artist_names, ARRAY[]::text[]) AS matched_artist_names,
                 GREATEST(
                     COALESCE(sp.event_count, 0),
                     COALESCE(dp.direct_connection_count, 0),
                     COALESCE(wp.warm_event_count, 0)
                 )::int AS event_count,
+                ARRAY(
+                    SELECT DISTINCT title
+                    FROM unnest(
+                        COALESCE(sp.related_event_titles, ARRAY[]::text[])
+                        || COALESCE(dp.direct_event_titles, ARRAY[]::text[])
+                        || COALESCE(wp.warm_event_titles, ARRAY[]::text[])
+                    ) AS title
+                    WHERE title IS NOT NULL
+                    ORDER BY title
+                ) AS related_event_titles,
                 COALESCE(sp.semantic_score, 0)::double precision AS semantic_score,
                 COALESCE(
                     GREATEST(
@@ -450,7 +467,9 @@ def build_artist_promoter_recommendation_response(
                         "id": promoter["id"],
                         "name": promoter["name"],
                         "matched_artist_count": 0,
+                        "matched_artist_names": [],
                         "event_count": 0,
+                        "related_event_titles": [],
                         "semantic_score": 0.0,
                         "latest_event_date": None,
                         "direct_connection_count": 0,
@@ -547,11 +566,49 @@ def build_artist_promoter_recommendation_response(
                     }
                 )
         warm_connection_artists.sort(key=lambda item: item["id"])
+        matched_artist_names_raw = row.get("matched_artist_names")
+        matched_artist_names = (
+            sorted({name.strip() for name in matched_artist_names_raw if isinstance(name, str) and name.strip()})
+            if isinstance(matched_artist_names_raw, list)
+            else []
+        )
+        related_event_titles_raw = row.get("related_event_titles")
+        related_event_titles = (
+            sorted(
+                {
+                    title.strip()
+                    for title in related_event_titles_raw
+                    if isinstance(title, str) and title.strip()
+                }
+            )
+            if isinstance(related_event_titles_raw, list)
+            else []
+        )
+        event_similarity_event_titles: list[str] = []
+        if event_similarity_stats is not None:
+            seen_event_titles: set[str] = set()
+            for item in sorted(
+                event_similarity_stats["rows"],
+                key=lambda candidate: (-candidate["total_similarity_score"], candidate["candidate_event_id"]),
+            ):
+                title = item.get("candidate_event_title")
+                if not isinstance(title, str):
+                    continue
+                normalized_title = title.strip()
+                if not normalized_title or normalized_title in seen_event_titles:
+                    continue
+                seen_event_titles.add(normalized_title)
+                event_similarity_event_titles.append(normalized_title)
+        related_event_titles = sorted(set(related_event_titles) | set(event_similarity_event_titles))
         row_with_similarity = {
             **row,
             "event_similarity_count": event_similarity_count,
             "event_count": effective_event_count,
             "latest_event_date": effective_latest_event_date,
+            "warm_connection_artists": warm_connection_artists,
+            "matched_artist_names": matched_artist_names,
+            "event_similarity_event_titles": event_similarity_event_titles,
+            "related_event_titles": related_event_titles,
         }
         direct_weight = 0.0 if exclude_existing else scoring_config.direct_connection_weight
         score_breakdown = {
