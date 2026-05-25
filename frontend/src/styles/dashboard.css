@@ -94,7 +94,7 @@
 
 .recommendations-content {
   display: grid;
-  grid-template-columns: minmax(0, 1.4fr) minmax(220px, 0.6fr);
+  grid-template-columns: minmax(220px, 0.6fr) minmax(0, 1.4fr);
   gap: 12px;
   min-height: 0;
 }
@@ -130,8 +130,50 @@
 }
 
 .recommendation-list {
+  display: grid;
   align-content: start;
-  margin-top: 0;
+  gap: 8px;
+  min-height: 0;
+  padding: 8px;
+  overflow-y: auto;
+  border-radius: 8px;
+  background: var(--surface-panel-soft);
+  border: 1px solid var(--surface-border-soft);
+}
+
+.recommendation-item {
+  border-radius: 8px;
+  background: var(--surface-panel);
+  border: 1px solid var(--surface-border-soft);
+  overflow: hidden;
+}
+
+.recommendation-name {
+  display: block;
+  width: 100%;
+  padding: 11px 12px;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+}
+
+.recommendation-name:hover,
+.recommendation-name[aria-expanded="true"] {
+  background: var(--selection-soft);
+}
+
+.recommendation-reasons {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+  padding: 0 14px 12px 30px;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  line-height: 1.35;
 }
 
 .recommendations-help {

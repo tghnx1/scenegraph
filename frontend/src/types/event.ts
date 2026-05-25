@@ -6,8 +6,8 @@ export interface EntityReference {
 export interface EventSummary {
   id: string
   title: string
-  date: string
-  venue_name: string
+  date: string | null
+  venue_name?: string | null
   artists: string[]
   promoters: string[]
 }
@@ -16,8 +16,8 @@ export interface EventDetail {
   type: 'event'
   id: string
   title: string
-  date: string
-  venue: EntityReference
+  date: string | null
+  venue: EntityReference | null
   artists: EntityReference[]
   promoters: EntityReference[]
 }

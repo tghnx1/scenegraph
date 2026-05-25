@@ -6,7 +6,7 @@ import { fetchGenres } from '../../api/genres'
 import { useApi } from '../../hooks/useApi'
 import { useGraphStore } from '../../store/graphStore'
 import { getCssVar, hexToRgba } from '../../styles/colors'
-import type { GraphData, GraphNode, NodeType } from '../../types/graph'
+import { graphEntityId, type GraphData, type GraphNode, type NodeType } from '../../types/graph'
 import type { SearchEntityType } from '../../types/search'
 import { drawNodeShape } from '../hooks/drawNode'
 import { useGraphHighlights } from '../hooks/useGraphHighlights'
@@ -36,9 +36,15 @@ function getLinkNodeId(endpoint: LinkEndpoint) {
 
 interface ScenegraphMapPanelProps {
   title?: string
+  providedData?: GraphData
+  showFilters?: boolean
 }
 
-export function ScenegraphMapPanel({ title }: ScenegraphMapPanelProps) {
+export function ScenegraphMapPanel({
+  title,
+  providedData,
+  showFilters = true,
+}: ScenegraphMapPanelProps) {
   const graphRef = useRef<any>(null)
   const containerRef = useRef<HTMLDivElement | null>(null)
   const [graphSize, setGraphSize] = useState({ width: 0, height: 0 })
@@ -49,9 +55,14 @@ export function ScenegraphMapPanel({ title }: ScenegraphMapPanelProps) {
   const selectedTypeParam = searchParams.get('selectedType')
   const selectedType = isSearchEntityType(selectedTypeParam) ? selectedTypeParam : null
   const selectedId = searchParams.get('selectedId') ?? ''
+  const selectedEntityId = selectedType && selectedId ? graphEntityId(selectedId, selectedType) : null
 
   const { data, isLoading, error, refetch } = useApi<GraphData>(
     () => {
+      if (providedData) {
+        return Promise.resolve(providedData)
+      }
+
       if (selectedType && selectedId) {
         return fetchEgoGraph({
           type: selectedType,
@@ -63,12 +74,12 @@ export function ScenegraphMapPanel({ title }: ScenegraphMapPanelProps) {
 
       return fetchGraph(graphFilters)
     },
-    [selectedType, selectedId, graphFilters.genre, graphFilters.dateFrom, graphFilters.dateTo, graphFilters.limit]
+    [providedData, selectedType, selectedId, graphFilters.genre, graphFilters.dateFrom, graphFilters.dateTo, graphFilters.limit]
   )
 
   const { data: genres, isLoading: isGenresLoading, error: genresError } = useApi(
-    () => fetchGenres(),
-    []
+    () => (showFilters ? fetchGenres() : Promise.resolve([])),
+    [showFilters]
   )
 
   const rawGraphData = data || EMPTY_GRAPH_DATA
@@ -90,13 +101,15 @@ export function ScenegraphMapPanel({ title }: ScenegraphMapPanelProps) {
   useGraphPhysics(graphRef, graphData)
 
   useEffect(() => {
-    if (!selectedType || !selectedId || !data) return
+    if (!selectedType || selectedEntityId === null || !data) return
 
-    const nextSelectedNode = data.nodes.find((node) => node.id === selectedId)
+    const nextSelectedNode = data.nodes.find((node) => (
+      node.type === selectedType && node.entityId === selectedEntityId
+    ))
     if (nextSelectedNode && selectedNode?.id !== nextSelectedNode.id) {
       setSelected(nextSelectedNode)
     }
-  }, [data, selectedId, selectedNode?.id, selectedType, setSelected])
+  }, [data, selectedEntityId, selectedNode?.id, selectedType, setSelected])
 
   useEffect(() => {
     const container = containerRef.current
@@ -126,11 +139,11 @@ export function ScenegraphMapPanel({ title }: ScenegraphMapPanelProps) {
       nextParams.delete('artist')
 
       const isSameSelectedNode = selectedNode?.id === nextNode.id
-      const isCurrentEgoGraph = selectedType === nextNode.type && selectedId === nextNode.id
+      const isCurrentEgoGraph = selectedType === nextNode.type && selectedEntityId === nextNode.entityId
 
       if (isSameSelectedNode && !isCurrentEgoGraph) {
         nextParams.set('selectedType', nextNode.type)
-        nextParams.set('selectedId', nextNode.id)
+        nextParams.set('selectedId', String(nextNode.entityId))
       } else {
         nextParams.delete('selectedType')
         nextParams.delete('selectedId')
@@ -139,7 +152,7 @@ export function ScenegraphMapPanel({ title }: ScenegraphMapPanelProps) {
       setSearchParams(nextParams, { replace: false })
       setSelected(nextNode)
     },
-    [searchParams, selectedId, selectedNode?.id, selectedType, setSearchParams, setSelected]
+    [searchParams, selectedEntityId, selectedNode?.id, selectedType, setSearchParams, setSelected]
   )
 
   const handleGraphFiltersChange = useCallback(
@@ -187,22 +200,27 @@ export function ScenegraphMapPanel({ title }: ScenegraphMapPanelProps) {
       : null
 
   return (
-    <section className={`scenegraph-map-panel${title ? ' has-heading' : ''}`} aria-label="Scenegraph database">
+    <section
+      className={`scenegraph-map-panel${title ? ' has-heading' : ''}${showFilters ? '' : ' without-filters'}`}
+      aria-label="Scenegraph database"
+    >
       {title && (
         <div className="scenegraph-map-heading">
           <span className="search-query-label">{title}</span>
         </div>
       )}
-      <article className="graph-filter-card scenegraph-map-filters">
-        <GraphFilters
-          filters={graphFilters}
-          genres={genres ?? []}
-          isGenresLoading={isGenresLoading}
-          genresError={genresError}
-          displayedDateRange={displayedDateRange}
-          onChange={handleGraphFiltersChange}
-        />
-      </article>
+      {showFilters && (
+        <article className="graph-filter-card scenegraph-map-filters">
+          <GraphFilters
+            filters={graphFilters}
+            genres={genres ?? []}
+            isGenresLoading={isGenresLoading}
+            genresError={genresError}
+            displayedDateRange={displayedDateRange}
+            onChange={handleGraphFiltersChange}
+          />
+        </article>
+      )}
 
       <div ref={containerRef} className="graph-canvas graph-canvas--large">
         {isLoading && !data && <div className="graph-canvas-status">Loading graph...</div>}

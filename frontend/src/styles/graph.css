@@ -58,6 +58,14 @@
   grid-template-rows: auto auto minmax(0, 1fr);
 }
 
+.scenegraph-map-panel.without-filters {
+  grid-template-rows: minmax(0, 1fr);
+}
+
+.scenegraph-map-panel.has-heading.without-filters {
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
 .scenegraph-map-heading {
   min-width: 0;
 }

@@ -4,6 +4,6 @@ export interface PromoterDetail {
   type: 'promoter'
   id: string
   name: string
-  eventCount: number
+  event_count: number
   events: EventSummary[]
 }

@@ -6,6 +6,7 @@ import { fetchArtist } from '../api/artists'
 import { fetchSearch } from '../api/search'
 import { useGraphStore } from '../store/graphStore'
 import type { Artist } from '../types/artist'
+import type { EntityDetail } from '../types/entityDetail'
 import { graphEntityId, type GraphNode, type NodeType } from '../types/graph'
 import type { SearchResponse, SearchResult } from '../types/search'
 import { useDebouncedValue } from './hooks/useDebouncedValue'
@@ -38,7 +39,7 @@ export function GraphPage() {
     [selectedArtistId]
   )
 
-  const { data: selectedEntityDetail, isLoading: isSelectedEntityDetailLoading } = useApi<SearchResult | null>(
+  const { data: selectedEntityDetail, isLoading: isSelectedEntityDetailLoading } = useApi<EntityDetail | null>(
     () => (
       selectedDetailType && selectedDetailId
         ? fetchEntityDetail(selectedDetailType as Exclude<NodeType, 'artist'>, selectedDetailId)
@@ -125,18 +126,18 @@ export function GraphPage() {
     debouncedSearchValue === trimmedSearchValue &&
     debouncedSearchValue !== trimmedSubmittedQuery
   const dropdownSearchResults = shouldFetchDropdownSearch ? dropdownSearchData?.results ?? [] : []
-  const detailSearchResults = selectedEntityDetail ? [selectedEntityDetail] : searchResults
   const detailsSearchError = searchError
   const isDetailsSearchLoading = isSearchLoading || isSelectedEntityDetailLoading
   const hasActiveSearchState = Boolean(searchValue || submittedQuery || selectedNode)
-  const selectedArtistNode: GraphNode | null = selectedArtist
+  const activeSelectedArtist = selectedArtistId ? selectedArtist : null
+  const selectedArtistNode: GraphNode | null = activeSelectedArtist
     ? {
-        id: selectedArtist.id,
-        entityId: graphEntityId(selectedArtist.id, 'artist') ?? 0,
+        id: activeSelectedArtist.id,
+        entityId: graphEntityId(activeSelectedArtist.id, 'artist') ?? 0,
         type: 'artist',
-        name: selectedArtist.name,
-        genres: selectedArtist.genres,
-        eventCount: selectedArtist.eventCount,
+        name: activeSelectedArtist.name,
+        genres: activeSelectedArtist.genres,
+        eventCount: activeSelectedArtist.eventCount,
       }
     : null
   const detailsSelectedNode = selectedEntityDetail ? null : selectedNode ?? selectedArtistNode
@@ -162,11 +163,12 @@ export function GraphPage() {
 
           <GraphSidebarDetails
             searchQuery={submittedQuery}
-            searchResults={detailSearchResults}
+            searchResults={searchResults}
             isSearchLoading={isDetailsSearchLoading}
             searchError={detailsSearchError}
             selectedNode={detailsSelectedNode}
-            selectedArtist={selectedArtist}
+            selectedArtist={activeSelectedArtist}
+            selectedEntityDetail={selectedEntityDetail}
           />
         </article>
       </aside>
