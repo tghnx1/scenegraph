@@ -14,7 +14,7 @@ Primary Endpoint: `GET /api/recommendations/artists/{artist_id}/promoters`
 - [x] done: overfetch before strict filtering to preserve output `limit`
 - [x] done: event similarity internal knobs moved to `.env` (no hardcoded candidate/overfetch/api-limit literals)
 - [x] done: reasons enriched with names (artists and event titles)
-- [ ] todo: frontend contract stabilization doc in one place
+- [x] done: frontend contract stabilization doc in one place (`docs/frontend-recommendations-contract.md`)
 - [ ] todo: dedicated PR summary/changelog doc
 
 ## Progress Board
@@ -38,7 +38,7 @@ Primary Endpoint: `GET /api/recommendations/artists/{artist_id}/promoters`
 
 ### Next (Top Priority)
 
-- [ ] todo: finalize frontend contract doc for promoter recommendations (fields + debug contract + examples).
+- [x] done: frontend contract doc for promoter recommendations (fields + debug contract + examples).
 - [ ] todo: decide if warm-first top-N stays default or becomes mode-toggle.
 - [ ] todo: add compact-mode reasons for UI (keep verbose reasons for debug/analyst mode).
 
