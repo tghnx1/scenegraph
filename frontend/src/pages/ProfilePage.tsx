@@ -274,23 +274,22 @@ export function ProfilePage() {
                 Recommendations
               </button>
             </div>
-            {activeWorkspaceTab === 'graph' && (
-              <section
-                id="profile-workspace-panel-graph"
-                className="profile-workspace-content"
-                role="tabpanel"
-                aria-labelledby="profile-workspace-tab-graph"
-              >
-                <ScenegraphMapPanel />
-              </section>
-            )}
-            {activeWorkspaceTab === 'recommendations' && (
-              <section
-                id="profile-workspace-panel-recommendations"
-                className="profile-workspace-content recommendations-panel"
-                role="tabpanel"
-                aria-labelledby="profile-workspace-tab-recommendations"
-              >
+            <section
+              id="profile-workspace-panel-graph"
+              className="profile-workspace-content"
+              role="tabpanel"
+              aria-labelledby="profile-workspace-tab-graph"
+              hidden={activeWorkspaceTab !== 'graph'}
+            >
+              <ScenegraphMapPanel />
+            </section>
+            <section
+              id="profile-workspace-panel-recommendations"
+              className="profile-workspace-content recommendations-panel"
+              role="tabpanel"
+              aria-labelledby="profile-workspace-tab-recommendations"
+              hidden={activeWorkspaceTab !== 'recommendations'}
+            >
                 <div className="panel-heading">
                   <span className="search-query-label">Promoter Recommendations</span>
                 </div>
@@ -368,8 +367,7 @@ export function ProfilePage() {
                     </section>
                   </div>
                 )}
-              </section>
-            )}
+            </section>
           </article>
         </section>
 
