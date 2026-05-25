@@ -139,7 +139,8 @@ def test_promoter_recommendation_scoring_reads_and_normalizes_env(monkeypatch):
     monkeypatch.setenv("PROMOTER_REC_DIRECT_CONNECTION_WEIGHT", "15")
     monkeypatch.setenv("PROMOTER_REC_WARM_NETWORK_WEIGHT", "12")
     monkeypatch.setenv("PROMOTER_REC_EVENT_SIMILARITY_WEIGHT", "5")
-    monkeypatch.setenv("PROMOTER_REC_ACTIVITY_WEIGHT", "10")
+    monkeypatch.setenv("PROMOTER_REC_SCALE_FIT_WEIGHT", "5")
+    monkeypatch.setenv("PROMOTER_REC_ACTIVITY_WEIGHT", "5")
     monkeypatch.setenv("PROMOTER_REC_RECENCY_WEIGHT", "5")
     monkeypatch.setenv("PROMOTER_REC_STRENGTH_MATCHED_ARTIST_WEIGHT", "70")
     monkeypatch.setenv("PROMOTER_REC_STRENGTH_EVENT_WEIGHT", "30")
@@ -163,6 +164,8 @@ def test_promoter_recommendation_scoring_reads_and_normalizes_env(monkeypatch):
     monkeypatch.setenv("PROMOTER_REC_WARM_EDGE_STRENGTH_MAX", "0.78")
     monkeypatch.setenv("PROMOTER_REC_EVENT_SIMILARITY_EDGE_STRENGTH_MIN", "0.22")
     monkeypatch.setenv("PROMOTER_REC_EVENT_SIMILARITY_EDGE_STRENGTH_MAX", "0.66")
+    monkeypatch.setenv("PROMOTER_REC_SCALE_FIT_ALPHA", "80")
+    monkeypatch.setenv("PROMOTER_REC_SCALE_FIT_TAU", "0.6")
 
     config = promoter_recommendation_scoring_from_env()
 
@@ -172,7 +175,8 @@ def test_promoter_recommendation_scoring_reads_and_normalizes_env(monkeypatch):
         direct_connection_weight=0.15,
         warm_network_weight=0.12,
         event_similarity_weight=0.05,
-        activity_weight=0.10,
+        scale_fit_weight=0.05,
+        activity_weight=0.05,
         recency_weight=0.05,
         strength_matched_artist_weight=0.70,
         strength_event_weight=0.30,
@@ -196,6 +200,8 @@ def test_promoter_recommendation_scoring_reads_and_normalizes_env(monkeypatch):
         warm_edge_strength_max=0.78,
         event_similarity_edge_strength_min=0.22,
         event_similarity_edge_strength_max=0.66,
+        scale_fit_alpha=80,
+        scale_fit_tau=0.6,
     )
 
 
@@ -225,6 +231,26 @@ def test_promoter_recommendation_scoring_rejects_invalid_warm_range(monkeypatch)
         promoter_recommendation_scoring_from_env()
     except ValueError as exc:
         assert "PROMOTER_REC_WARM_EDGE_STRENGTH_MIN" in str(exc)
+    else:
+        raise AssertionError("Expected ValueError")
+
+
+def test_promoter_recommendation_scoring_rejects_invalid_scale_fit_alpha(monkeypatch):
+    monkeypatch.setenv("PROMOTER_REC_SCALE_FIT_ALPHA", "0")
+    try:
+        promoter_recommendation_scoring_from_env()
+    except ValueError as exc:
+        assert "PROMOTER_REC_SCALE_FIT_ALPHA" in str(exc)
+    else:
+        raise AssertionError("Expected ValueError")
+
+
+def test_promoter_recommendation_scoring_rejects_invalid_scale_fit_tau(monkeypatch):
+    monkeypatch.setenv("PROMOTER_REC_SCALE_FIT_TAU", "-0.1")
+    try:
+        promoter_recommendation_scoring_from_env()
+    except ValueError as exc:
+        assert "PROMOTER_REC_SCALE_FIT_TAU" in str(exc)
     else:
         raise AssertionError("Expected ValueError")
 

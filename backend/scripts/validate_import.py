@@ -1,4 +1,5 @@
 import argparse
+import json
 import os
 import sys
 from dataclasses import dataclass
@@ -44,6 +45,14 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Optional artist id that must have at least one embedding row.",
     )
+    parser.add_argument(
+        "--biographies-path",
+        default=None,
+        help=(
+            "Optional path to artist_biographies JSON to validate file presence/format "
+            "and report item count."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -59,6 +68,40 @@ def fetch_scalar(connection: psycopg.Connection, query: str, params: tuple = ())
 
 def run_checks(connection: psycopg.Connection, args: argparse.Namespace) -> list[CheckResult]:
     results: list[CheckResult] = []
+
+    if args.biographies_path:
+        bio_path = Path(args.biographies_path)
+        if not bio_path.exists():
+            results.append(
+                CheckResult(
+                    "biography-file-items",
+                    False,
+                    f"path={bio_path} missing",
+                )
+            )
+        else:
+            try:
+                with bio_path.open("r", encoding="utf-8") as bio_file:
+                    payload = json.load(bio_file)
+                if isinstance(payload, dict):
+                    payload = payload.get("artists", payload.get("items", []))
+                if not isinstance(payload, list):
+                    raise ValueError("expected JSON list or object with artists/items list")
+                results.append(
+                    CheckResult(
+                        "biography-file-items",
+                        True,
+                        f"path={bio_path}, items={len(payload)}",
+                    )
+                )
+            except Exception as exc:
+                results.append(
+                    CheckResult(
+                        "biography-file-items",
+                        False,
+                        f"path={bio_path}, error={exc}",
+                    )
+                )
 
     counts = {
         "events": fetch_scalar(connection, "SELECT COUNT(*) FROM events"),
