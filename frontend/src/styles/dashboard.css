@@ -486,6 +486,10 @@
   height: 100%;
 }
 
+.profile-workspace-content[hidden] {
+  display: none;
+}
+
 .graph-panel .scenegraph-map-panel {
   height: 100%;
 }
