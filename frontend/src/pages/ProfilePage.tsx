@@ -6,7 +6,9 @@ import { fetchSearch } from '../api/search'
 import { useApi } from '../hooks/useApi'
 import { useGraphStore } from '../store/graphStore'
 import type { Artist } from '../types/artist'
+import type { EntityDetail } from '../types/entityDetail'
 import { graphEntityId, type GraphNode, type NodeType } from '../types/graph'
+import type { PromoterRecommendationResponse } from '../types/recommendation'
 import type { SearchResponse, SearchResult } from '../types/search'
 import { GraphSidebarDetails } from './components/DetailsPanel.tsx'
 import { ScenegraphMapPanel } from './components/ScenegraphMapPanel.tsx'
@@ -24,7 +26,8 @@ const PROMOTER_RECOMMENDATIONS_URL = 'http://localhost:8080/api/recommendations/
 export function ProfilePage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const { setSelected, selectedNode } = useGraphStore()
-  const [recommendationsJson, setRecommendationsJson] = useState<unknown>(null)
+  const [recommendationsData, setRecommendationsData] = useState<PromoterRecommendationResponse | null>(null)
+  const [expandedRecommendationId, setExpandedRecommendationId] = useState<number | null>(null)
   const [isRecommendationsLoading, setIsRecommendationsLoading] = useState(false)
   const [recommendationsError, setRecommendationsError] = useState<string | null>(null)
   const submittedQuery = searchParams.get('q') ?? ''
@@ -69,7 +72,7 @@ export function ProfilePage() {
     [debouncedSearchValue, searchValue, submittedQuery]
   )
 
-  const { data: selectedEntityDetail, isLoading: isSelectedEntityDetailLoading } = useApi(
+  const { data: selectedEntityDetail, isLoading: isSelectedEntityDetailLoading } = useApi<EntityDetail | null>(
     () => (
       selectedDetailType && selectedDetailId
         ? fetchEntityDetail(selectedDetailType as Exclude<NodeType, 'artist'>, selectedDetailId)
@@ -138,9 +141,9 @@ export function ProfilePage() {
         throw new Error(`${response.status} ${response.statusText}`)
       }
 
-      setRecommendationsJson(await response.json())
+      setRecommendationsData(await response.json() as PromoterRecommendationResponse)
     } catch (error) {
-      setRecommendationsJson(null)
+      setRecommendationsData(null)
       setRecommendationsError(error instanceof Error ? error.message : 'Failed to load recommendations')
     } finally {
       setIsRecommendationsLoading(false)
@@ -148,14 +151,21 @@ export function ProfilePage() {
   }, [])
 
   const handleToggleRecommendations = useCallback(() => {
-    if (recommendationsJson !== null || recommendationsError) {
-      setRecommendationsJson(null)
+    if (recommendationsData !== null || recommendationsError) {
+      setRecommendationsData(null)
+      setExpandedRecommendationId(null)
       setRecommendationsError(null)
       return
     }
 
     void handleLoadRecommendations()
-  }, [handleLoadRecommendations, recommendationsError, recommendationsJson])
+  }, [handleLoadRecommendations, recommendationsError, recommendationsData])
+
+  const handleToggleRecommendation = useCallback((recommendationId: number) => {
+    setExpandedRecommendationId((currentId) => (
+      currentId === recommendationId ? null : recommendationId
+    ))
+  }, [])
 
   const searchResults = searchData?.results ?? []
   const trimmedSearchValue = searchValue.trim()
@@ -166,18 +176,18 @@ export function ProfilePage() {
     debouncedSearchValue === trimmedSearchValue &&
     debouncedSearchValue !== trimmedSubmittedQuery
   const dropdownSearchResults = shouldFetchDropdownSearch ? dropdownSearchData?.results ?? [] : []
-  const detailSearchResults = selectedEntityDetail ? [selectedEntityDetail] : searchResults
   const detailsSearchError = searchError
   const isDetailsSearchLoading = isSearchLoading || isSelectedEntityDetailLoading
   const hasActiveSearchState = Boolean(searchValue || submittedQuery || selectedNode)
-  const selectedArtistNode: GraphNode | null = selectedArtist
+  const activeSelectedArtist = selectedArtistId ? selectedArtist : null
+  const selectedArtistNode: GraphNode | null = activeSelectedArtist
     ? {
-        id: selectedArtist.id,
-        entityId: graphEntityId(selectedArtist.id, 'artist') ?? 0,
+        id: activeSelectedArtist.id,
+        entityId: graphEntityId(activeSelectedArtist.id, 'artist') ?? 0,
         type: 'artist',
-        name: selectedArtist.name,
-        genres: selectedArtist.genres,
-        eventCount: selectedArtist.eventCount,
+        name: activeSelectedArtist.name,
+        genres: activeSelectedArtist.genres,
+        eventCount: activeSelectedArtist.eventCount,
       }
     : null
   const detailsSelectedNode = selectedEntityDetail ? null : selectedNode ?? selectedArtistNode
@@ -208,11 +218,12 @@ export function ProfilePage() {
           </div> */}
           <GraphSidebarDetails
             searchQuery={submittedQuery}
-            searchResults={detailSearchResults}
+            searchResults={searchResults}
             isSearchLoading={isDetailsSearchLoading}
             searchError={detailsSearchError}
             selectedNode={detailsSelectedNode}
-            selectedArtist={selectedArtist}
+            selectedArtist={activeSelectedArtist}
+            selectedEntityDetail={selectedEntityDetail}
           />
         </article>
 
@@ -262,21 +273,48 @@ export function ProfilePage() {
             >
               {isRecommendationsLoading
                 ? 'Loading. Dont do anything, dont even breathe.'
-                : recommendationsJson !== null || recommendationsError
+                : recommendationsData !== null || recommendationsError
                   ? 'Hide'
                   : 'The button'}
             </button>
           </div>
-          {recommendationsJson === null && !recommendationsError && !isRecommendationsLoading && (
+          {recommendationsData === null && !recommendationsError && !isRecommendationsLoading && (
             <p className="recommendations-help">
               Click the button to load recommendations. Load time may be quite long.
             </p>
           )}
           {recommendationsError && <p className="error">{recommendationsError}</p>}
-          {recommendationsJson !== null && (
-            <pre className="recommendations-json">
-              {JSON.stringify(recommendationsJson, null, 2)}
-            </pre>
+          {recommendationsData !== null && (
+            <div className="recommendations-content">
+              <section className="recommendation-list" aria-label="Recommended promoters">
+                {recommendationsData.recommendations.map((recommendation) => {
+                  const isExpanded = expandedRecommendationId === recommendation.id
+
+                  return (
+                    <article className="recommendation-item" key={recommendation.id}>
+                      <button
+                        type="button"
+                        className="recommendation-name"
+                        aria-expanded={isExpanded}
+                        onClick={() => handleToggleRecommendation(recommendation.id)}
+                      >
+                        {recommendation.name}
+                      </button>
+                      {isExpanded && (
+                        <ul className="recommendation-reasons">
+                          {recommendation.reasons.map((reason) => (
+                            <li key={reason}>{reason}</li>
+                          ))}
+                        </ul>
+                      )}
+                    </article>
+                  )
+                })}
+              </section>
+              <section className="recommendation-graph-map" aria-label="Recommendation evidence graph">
+                <ScenegraphMapPanel providedData={recommendationsData.graph} showFilters={false} />
+              </section>
+            </div>
           )}
         </article>
 

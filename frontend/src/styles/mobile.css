@@ -66,7 +66,7 @@
 
   .recommendations-content {
     grid-template-columns: 1fr;
-    grid-template-rows: minmax(360px, 52dvh) auto;
+    grid-template-rows: minmax(240px, 0.65fr) minmax(360px, 1fr);
   }
 
   .recommendation-graph-empty {

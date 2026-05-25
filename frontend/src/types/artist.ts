@@ -1,8 +1,8 @@
 export interface ArtistEventItem {
   id: string
   title: string
-  date: string
-  venue_name: string
+  date: string | null
+  venue_name: string | null
 }
 
 export interface ConnectedArtistItem {

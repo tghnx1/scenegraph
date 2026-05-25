@@ -1,8 +1,8 @@
 import { api } from './client'
 import { graphEntityId, type NodeType } from '../types/graph'
-import type { SearchResult } from '../types/search'
+import type { EntityDetail } from '../types/entityDetail'
 
 type DetailNodeType = Exclude<NodeType, 'artist'>
 
-export const fetchEntityDetail = (type: DetailNodeType, id: string): Promise<SearchResult> =>
-  api.get<SearchResult>(`/${type}?id=${encodeURIComponent(String(graphEntityId(id, type) ?? id))}`)
+export const fetchEntityDetail = (type: DetailNodeType, id: string): Promise<EntityDetail> =>
+  api.get<EntityDetail>(`/${type}?id=${encodeURIComponent(String(graphEntityId(id, type) ?? id))}`)

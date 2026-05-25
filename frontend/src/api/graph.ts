@@ -1,5 +1,5 @@
 import { api } from './client'
-import type { GraphData, NodeType } from '../types/graph'
+import { graphEntityId, type GraphData, type NodeType } from '../types/graph'
 
 export interface GraphParams {
   genre?: string
@@ -35,7 +35,7 @@ export const fetchEgoGraph = ({
 }: EgoGraphParams): Promise<GraphData> => {
   const q = new URLSearchParams()
   q.set('type', type)
-  q.set('id', id)
+  q.set('id', String(graphEntityId(id, type) ?? id))
   q.set('depth', String(depth))
   q.set('limit', String(limit))
 
