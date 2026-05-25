@@ -22,6 +22,11 @@ const stats = [
 ]
 
 const PROMOTER_RECOMMENDATIONS_URL = 'http://localhost:8080/api/recommendations/artists/2178/promoters?limit=10'
+const RECOMMENDATION_LOADING_MESSAGES = [
+  'Finding similar artists',
+  'Comparing related events',
+  'Building promoter graph',
+]
 type ProfileWorkspaceTab = 'graph' | 'recommendations'
 
 export function ProfilePage() {
@@ -31,6 +36,7 @@ export function ProfilePage() {
   const [recommendationsData, setRecommendationsData] = useState<PromoterRecommendationResponse | null>(null)
   const [isRecommendationsLoading, setIsRecommendationsLoading] = useState(false)
   const [recommendationsError, setRecommendationsError] = useState<string | null>(null)
+  const [recommendationLoadingMessageIndex, setRecommendationLoadingMessageIndex] = useState(0)
   const submittedQuery = searchParams.get('q') ?? ''
   const [searchValue, setSearchValue] = useState(submittedQuery)
   const debouncedSearchValue = useDebouncedValue(searchValue.trim(), 350)
@@ -91,6 +97,21 @@ export function ProfilePage() {
   useEffect(() => {
     setSearchValue(submittedQuery)
   }, [submittedQuery])
+
+  useEffect(() => {
+    if (!isRecommendationsLoading) {
+      setRecommendationLoadingMessageIndex(0)
+      return
+    }
+
+    const messageInterval = window.setInterval(() => {
+      setRecommendationLoadingMessageIndex((currentIndex) => (
+        (currentIndex + 1) % RECOMMENDATION_LOADING_MESSAGES.length
+      ))
+    }, 1800)
+
+    return () => window.clearInterval(messageInterval)
+  }, [isRecommendationsLoading])
 
   const handleSearchSubmit = useCallback(
     (event: FormEvent<HTMLFormElement>) => {
@@ -290,9 +311,31 @@ export function ProfilePage() {
                 )}
                 {isRecommendationsLoading && (
                   <div className="recommendations-loading" role="status" aria-live="polite">
-                    <span className="recommendations-spinner" aria-hidden="true" />
+                    <svg
+                      className="recommendations-network"
+                      viewBox="0 0 220 106"
+                      aria-hidden="true"
+                    >
+                      <path className="recommendations-network-link link-1" d="M 24 53 L 79 23" />
+                      <path className="recommendations-network-link link-2" d="M 24 53 L 79 83" />
+                      <path className="recommendations-network-link link-3" d="M 79 23 L 140 36" />
+                      <path className="recommendations-network-link link-4" d="M 79 83 L 140 70" />
+                      <path className="recommendations-network-link link-5" d="M 140 36 L 195 53" />
+                      <path className="recommendations-network-link link-6" d="M 140 70 L 195 53" />
+                      <circle className="recommendations-network-node artist-node source-node" cx="24" cy="53" r="10" />
+                      <circle className="recommendations-network-node artist-node match-node-1" cx="79" cy="23" r="8" />
+                      <circle className="recommendations-network-node artist-node match-node-2" cx="79" cy="83" r="8" />
+                      <circle className="recommendations-network-node event-node event-node-1" cx="140" cy="36" r="8" />
+                      <circle className="recommendations-network-node event-node event-node-2" cx="140" cy="70" r="8" />
+                      <circle className="recommendations-network-node promoter-node" cx="195" cy="53" r="11" />
+                    </svg>
                     <strong>Preparing recommendations</strong>
-                    <p>Building promoter matches and graph. This may take a while, you know, wizard things.</p>
+                    <p className="recommendations-loading-activity">
+                      {RECOMMENDATION_LOADING_MESSAGES[recommendationLoadingMessageIndex]}
+                    </p>
+                    <p className="recommendations-loading-note">
+                      This may take a while, you know, wizard things.
+                    </p>
                   </div>
                 )}
                 {recommendationsData !== null && (
