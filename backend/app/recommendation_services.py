@@ -21,7 +21,11 @@ from app.recommendation_engine import (
     apply_artist_indirect_features,
     recommendation_feature_sets,
 )
-from app.recommendation_helpers import build_artist_semantic_candidates, recommendation_item_metadata
+from app.recommendation_helpers import (
+    artist_semantic_metadata,
+    build_artist_semantic_candidates,
+    recommendation_item_metadata,
+)
 from app.recommendation_scoring import (
     DEFAULT_RECOMMENDATION_SCORING,
     artist_recommendation_min_semantic_score_from_env,
@@ -266,14 +270,30 @@ def build_artist_promoter_recommendation_response(
     if source_artist is None:
         raise HTTPException(status_code=404, detail=f"Artist {artist_id} not found")
 
+    semantic_candidates_filtered = [
+        item
+        for item in semantic_candidates
+        if item["score"] >= scoring_config.semantic_artist_min_score
+    ]
+    semantic_artist_below_threshold_filtered = max(
+        len(semantic_candidates) - len(semantic_candidates_filtered),
+        0,
+    )
     candidate_scores = {
         item["entity_id"]: item["score"]
-        for item in semantic_candidates[:scoring_config.semantic_artist_pool_limit]
-        if item["score"] > 0
+        for item in semantic_candidates_filtered[:scoring_config.semantic_artist_pool_limit]
+    }
+    semantic_score_by_artist = {
+        int(item["entity_id"]): float(item["score"])
+        for item in semantic_candidates
     }
     artist_ids = list(candidate_scores.keys())
     artist_scores = [candidate_scores[artist_id] for artist_id in artist_ids]
     manual_known_artist_ids: set[int] = set()
+    manual_relevant_artist_ids: set[int] = set()
+    manual_relevant_by_semantic_ids: set[int] = set()
+    manual_relevant_by_profile_fallback_ids: set[int] = set()
+    manual_semantic_gate_filtered_count = 0
     with connection.cursor() as cursor:
         cursor.execute("SELECT to_regclass('public.artist_manual_connections') IS NOT NULL AS exists")
         manual_connections_table_exists = bool(cursor.fetchone()["exists"])
@@ -291,6 +311,29 @@ def build_artist_promoter_recommendation_response(
                 for row in cursor.fetchall()
                 if row["connected_artist_id"] is not None
             }
+            manual_relevant_by_semantic_ids = {
+                connected_artist_id
+                for connected_artist_id in manual_known_artist_ids
+                if semantic_score_by_artist.get(connected_artist_id, 0.0)
+                >= scoring_config.manual_warm_min_artist_semantic_score
+            }
+            manual_artist_metadata = artist_semantic_metadata(
+                connection,
+                sorted(manual_known_artist_ids),
+            )
+            manual_relevant_by_profile_fallback_ids = {
+                connected_artist_id
+                for connected_artist_id in manual_known_artist_ids
+                if not manual_artist_metadata.get(connected_artist_id, {}).get("style_tags")
+                and not manual_artist_metadata.get(connected_artist_id, {}).get("tags")
+            }
+            manual_relevant_artist_ids = (
+                manual_relevant_by_semantic_ids | manual_relevant_by_profile_fallback_ids
+            )
+            manual_semantic_gate_filtered_count = max(
+                len(manual_known_artist_ids) - len(manual_relevant_artist_ids),
+                0,
+            )
             manual_known_artists_cte = """
             manual_known_artists AS (
                 SELECT
@@ -298,6 +341,7 @@ def build_artist_promoter_recommendation_response(
                     NULL::bigint AS shared_event_id
                 FROM artist_manual_connections amc
                 WHERE amc.source_artist_id = %(source_artist_id)s
+                  AND amc.connected_artist_id = ANY(%(manual_relevant_artist_ids)s::bigint[])
             ),
             """
         else:
@@ -475,6 +519,7 @@ def build_artist_promoter_recommendation_response(
                 "artist_ids": artist_ids,
                 "artist_scores": artist_scores,
                 "source_artist_id": artist_id,
+                "manual_relevant_artist_ids": sorted(manual_relevant_artist_ids),
                 "sql_candidate_limit": scoring_config.sql_candidate_limit,
             },
         )
@@ -670,6 +715,12 @@ def build_artist_promoter_recommendation_response(
             manual_warm_connection_count_raw,
             manual_overlap_with_warm_count,
         )
+        manual_relevant_overlap_with_warm_count = sum(
+            1
+            for item in warm_connection_artists
+            if int(item["id"]) in manual_relevant_artist_ids
+        )
+        manual_relevant_warm_connection_count = manual_relevant_overlap_with_warm_count
         matched_artist_names_raw = row.get("matched_artist_names")
         matched_artist_names = (
             sorted({name.strip() for name in matched_artist_names_raw if isinstance(name, str) and name.strip()})
@@ -720,7 +771,7 @@ def build_artist_promoter_recommendation_response(
             1.0,
         )
         manual_warm_score = min(
-            manual_warm_connection_count / scoring_config.manual_warm_connection_cap,
+            manual_relevant_warm_connection_count / scoring_config.manual_warm_connection_cap,
             1.0,
         )
         warm_network_score = min(
@@ -770,6 +821,14 @@ def build_artist_promoter_recommendation_response(
                         "manualWarmConnectionCount": manual_warm_connection_count,
                         "manualWarmConnectionCountRaw": manual_warm_connection_count_raw,
                         "manualWarmOverlapWithWarmCount": manual_overlap_with_warm_count,
+                        "manualRelevantWarmConnectionCount": manual_relevant_warm_connection_count,
+                        "manualRelevantOverlapWithWarmCount": manual_relevant_overlap_with_warm_count,
+                        "manualKnownArtistCount": len(manual_known_artist_ids),
+                        "manualRelevantArtistCount": len(manual_relevant_artist_ids),
+                        "manualRelevantBySemanticCount": len(manual_relevant_by_semantic_ids),
+                        "manualRelevantByProfileFallbackCount": len(manual_relevant_by_profile_fallback_ids),
+                        "manualSemanticGateFilteredCount": manual_semantic_gate_filtered_count,
+                        "manualWarmMinArtistSemanticScore": scoring_config.manual_warm_min_artist_semantic_score,
                         "manualWarmBoostWeight": scoring_config.manual_warm_boost_weight,
                         "eventSimilarityCount": event_similarity_count,
                         "eventSimilaritySymbolicScore": event_similarity_symbolic_score,
@@ -836,6 +895,7 @@ def build_artist_promoter_recommendation_response(
             debug={
                 "candidateCounts": {
                     "sqlPromoterCandidates": len(rows),
+                    "semanticArtistsUsed": len(candidate_scores),
                     "eventSimilarityPromotersAdded": len(additional_promoter_ids),
                     "warmCandidates": 0,
                     "discoveryCandidates": 0,
@@ -846,6 +906,7 @@ def build_artist_promoter_recommendation_response(
                 },
                 "filteredOut": {
                     "excludeExisting": exclude_existing_filtered_count,
+                    "semanticArtistBelowThreshold": semantic_artist_below_threshold_filtered,
                     "eventSimilaritySamePromoter": similar_event_debug_counts["samePromoterFiltered"],
                     "eventSimilarityLimitCutoff": similar_event_debug_counts["similarityLimitCutoff"],
                     "eventSimilarityBelowThreshold": event_similarity_below_threshold_filtered,
@@ -924,6 +985,7 @@ def build_artist_promoter_recommendation_response(
         debug={
             "candidateCounts": {
                 "sqlPromoterCandidates": len(rows),
+                "semanticArtistsUsed": len(candidate_scores),
                 "eventSimilarityPromotersAdded": len(additional_promoter_ids),
                 "warmCandidates": len(warm_recommendations_all),
                 "discoveryCandidates": len(discovery_recommendations_all),
@@ -934,6 +996,7 @@ def build_artist_promoter_recommendation_response(
             },
             "filteredOut": {
                 "excludeExisting": exclude_existing_filtered_count,
+                "semanticArtistBelowThreshold": semantic_artist_below_threshold_filtered,
                 "eventSimilaritySamePromoter": similar_event_debug_counts["samePromoterFiltered"],
                 "eventSimilarityLimitCutoff": similar_event_debug_counts["similarityLimitCutoff"],
                 "eventSimilarityBelowThreshold": event_similarity_below_threshold_filtered,

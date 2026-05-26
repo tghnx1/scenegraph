@@ -73,6 +73,7 @@ class PromoterRecommendationScoringConfig:
     warm_connection_cap: int
     manual_warm_connection_cap: int
     manual_warm_boost_weight: float
+    manual_warm_min_artist_semantic_score: float
     event_similarity_count_cap: int
     event_similarity_min_total_score: float
     event_similarity_per_promoter_limit: int
@@ -95,6 +96,7 @@ class PromoterRecommendationScoringConfig:
     scale_fit_tau: float
     sql_candidate_limit: int
     semantic_artist_pool_limit: int
+    semantic_artist_min_score: float
     event_similarity_overfetch_multiplier: int
     event_similarity_overfetch_min: int
 
@@ -163,6 +165,7 @@ DEFAULT_PROMOTER_RECOMMENDATION_SCORING = PromoterRecommendationScoringConfig(
     warm_connection_cap=3,
     manual_warm_connection_cap=1,
     manual_warm_boost_weight=0.6,
+    manual_warm_min_artist_semantic_score=0.45,
     event_similarity_count_cap=8,
     event_similarity_min_total_score=0.45,
     event_similarity_per_promoter_limit=20,
@@ -185,6 +188,7 @@ DEFAULT_PROMOTER_RECOMMENDATION_SCORING = PromoterRecommendationScoringConfig(
     scale_fit_tau=0.55,
     sql_candidate_limit=200,
     semantic_artist_pool_limit=20,
+    semantic_artist_min_score=0.45,
     event_similarity_overfetch_multiplier=20,
     event_similarity_overfetch_min=500,
 )
@@ -351,6 +355,10 @@ def promoter_recommendation_scoring_from_env() -> PromoterRecommendationScoringC
         "PROMOTER_REC_MANUAL_WARM_BOOST_WEIGHT",
         DEFAULT_PROMOTER_RECOMMENDATION_SCORING.manual_warm_boost_weight,
     )
+    manual_warm_min_artist_semantic_score = env_float(
+        "PROMOTER_REC_MANUAL_WARM_MIN_ARTIST_SEMANTIC_SCORE",
+        DEFAULT_PROMOTER_RECOMMENDATION_SCORING.manual_warm_min_artist_semantic_score,
+    )
     event_similarity_count_cap = env_int(
         "PROMOTER_REC_EVENT_SIMILARITY_COUNT_CAP",
         DEFAULT_PROMOTER_RECOMMENDATION_SCORING.event_similarity_count_cap,
@@ -447,6 +455,10 @@ def promoter_recommendation_scoring_from_env() -> PromoterRecommendationScoringC
         "PROMOTER_REC_SEMANTIC_ARTIST_POOL_LIMIT",
         DEFAULT_PROMOTER_RECOMMENDATION_SCORING.semantic_artist_pool_limit,
     )
+    semantic_artist_min_score = env_float(
+        "PROMOTER_REC_SEMANTIC_ARTIST_MIN_SCORE",
+        DEFAULT_PROMOTER_RECOMMENDATION_SCORING.semantic_artist_min_score,
+    )
     event_similarity_overfetch_multiplier = env_int(
         "PROMOTER_REC_EVENT_SIMILARITY_OVERFETCH_MULTIPLIER",
         DEFAULT_PROMOTER_RECOMMENDATION_SCORING.event_similarity_overfetch_multiplier,
@@ -468,6 +480,10 @@ def promoter_recommendation_scoring_from_env() -> PromoterRecommendationScoringC
         raise ValueError("PROMOTER_REC_MANUAL_WARM_CONNECTION_CAP must be greater than zero")
     if manual_warm_boost_weight < 0:
         raise ValueError("PROMOTER_REC_MANUAL_WARM_BOOST_WEIGHT must be non-negative")
+    if not (0.0 <= manual_warm_min_artist_semantic_score <= 1.0):
+        raise ValueError(
+            "PROMOTER_REC_MANUAL_WARM_MIN_ARTIST_SEMANTIC_SCORE must be between 0 and 1"
+        )
     if event_similarity_count_cap <= 0:
         raise ValueError("PROMOTER_REC_EVENT_SIMILARITY_COUNT_CAP must be greater than zero")
     if not (0.0 <= event_similarity_min_total_score <= 1.0):
@@ -515,6 +531,8 @@ def promoter_recommendation_scoring_from_env() -> PromoterRecommendationScoringC
         raise ValueError("PROMOTER_REC_SQL_CANDIDATE_LIMIT must be greater than zero")
     if semantic_artist_pool_limit <= 0:
         raise ValueError("PROMOTER_REC_SEMANTIC_ARTIST_POOL_LIMIT must be greater than zero")
+    if not (0.0 <= semantic_artist_min_score <= 1.0):
+        raise ValueError("PROMOTER_REC_SEMANTIC_ARTIST_MIN_SCORE must be between 0 and 1")
     if event_similarity_overfetch_multiplier <= 0:
         raise ValueError("PROMOTER_REC_EVENT_SIMILARITY_OVERFETCH_MULTIPLIER must be greater than zero")
     if event_similarity_overfetch_min <= 0:
@@ -537,6 +555,7 @@ def promoter_recommendation_scoring_from_env() -> PromoterRecommendationScoringC
         warm_connection_cap=warm_connection_cap,
         manual_warm_connection_cap=manual_warm_connection_cap,
         manual_warm_boost_weight=manual_warm_boost_weight,
+        manual_warm_min_artist_semantic_score=manual_warm_min_artist_semantic_score,
         event_similarity_count_cap=event_similarity_count_cap,
         event_similarity_min_total_score=event_similarity_min_total_score,
         event_similarity_per_promoter_limit=event_similarity_per_promoter_limit,
@@ -559,6 +578,7 @@ def promoter_recommendation_scoring_from_env() -> PromoterRecommendationScoringC
         scale_fit_tau=scale_fit_tau,
         sql_candidate_limit=sql_candidate_limit,
         semantic_artist_pool_limit=semantic_artist_pool_limit,
+        semantic_artist_min_score=semantic_artist_min_score,
         event_similarity_overfetch_multiplier=event_similarity_overfetch_multiplier,
         event_similarity_overfetch_min=event_similarity_overfetch_min,
     )
