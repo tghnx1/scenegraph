@@ -13,6 +13,7 @@ from app.recommendation_scoring import (
     recommendation_scoring_from_env,
 )
 from app.schemas import SimilarityItem, SimilarityResponse
+from app.style_tags import extract_style_tags
 
 # Normalize nullable id arrays from SQL into a set.
 def as_id_set(values: list[int | None] | None) -> set[int]:
@@ -95,8 +96,7 @@ def recommendation_feature_sets(
                 a.id,
                 array_remove(array_agg(DISTINCT ea.event_id), NULL) AS events,
                 array_remove(array_agg(DISTINCT e.venue_id), NULL) AS venues,
-                array_remove(array_agg(DISTINCT ep.promoter_id), NULL) AS promoters,
-                array_remove(array_agg(DISTINCT eg.genre_id), NULL) AS genres
+                array_remove(array_agg(DISTINCT ep.promoter_id), NULL) AS promoters
             FROM artists a
             LEFT JOIN event_artists ea
                 ON ea.artist_id = a.id
@@ -104,8 +104,6 @@ def recommendation_feature_sets(
                 ON e.id = ea.event_id
             LEFT JOIN event_promoters ep
                 ON ep.event_id = ea.event_id
-            LEFT JOIN event_genres eg
-                ON eg.event_id = ea.event_id
             WHERE a.id = ANY(%s)
             GROUP BY a.id
         """
@@ -117,7 +115,7 @@ def recommendation_feature_sets(
     feature_sets = {
         row["id"]: {
             key: as_id_set(row.get(key))
-            for key in ("artists", "events", "venues", "promoters", "genres")
+            for key in ("artists", "events", "venues", "promoters")
         }
         for row in rows
     }
@@ -127,6 +125,46 @@ def recommendation_feature_sets(
             if event_id not in feature_sets:
                 continue
             feature_sets[event_id]["extracted_styles"] = set(styles)  # type: ignore[assignment]
+    else:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id, COALESCE(biography_normalized, biography, '') AS biography
+                FROM artists
+                WHERE id = ANY(%s)
+                """,
+                (entity_ids,),
+            )
+            artist_rows = cursor.fetchall()
+            cursor.execute("SELECT to_regclass('public.artist_extracted_tags') AS table_name")
+            has_extracted_tags = cursor.fetchone()["table_name"] is not None
+
+            extracted_style_tags_by_artist: dict[int, set[str]] = {}
+            if has_extracted_tags:
+                cursor.execute(
+                    """
+                    SELECT artist_id, tag_value
+                    FROM artist_extracted_tags
+                    WHERE artist_id = ANY(%s)
+                      AND tag_type = 'style'
+                      AND confidence >= 0.6
+                    """,
+                    (entity_ids,),
+                )
+                for row in cursor.fetchall():
+                    artist_id = int(row["artist_id"])
+                    tag = str(row["tag_value"]).strip().lower()
+                    if not tag:
+                        continue
+                    extracted_style_tags_by_artist.setdefault(artist_id, set()).add(tag)
+
+        for row in artist_rows:
+            artist_id = int(row["id"])
+            if artist_id not in feature_sets:
+                continue
+            biography_styles = set(extract_style_tags(row["biography"]))
+            extracted_styles = extracted_style_tags_by_artist.get(artist_id, set())
+            feature_sets[artist_id]["extracted_styles"] = biography_styles | extracted_styles  # type: ignore[assignment]
     return feature_sets
 
 # Fetch candidate/source artist features excluding direct shared source events.
@@ -164,8 +202,7 @@ def artist_indirect_feature_sets(
                 a.id,
                 array_remove(array_agg(DISTINCT ea.event_id), NULL) AS events,
                 array_remove(array_agg(DISTINCT e.venue_id), NULL) AS venues,
-                array_remove(array_agg(DISTINCT ep.promoter_id), NULL) AS promoters,
-                array_remove(array_agg(DISTINCT eg.genre_id), NULL) AS genres
+                array_remove(array_agg(DISTINCT ep.promoter_id), NULL) AS promoters
             FROM artists a
             LEFT JOIN event_artists ea
                 ON ea.artist_id = a.id
@@ -178,8 +215,6 @@ def artist_indirect_feature_sets(
                 ON e.id = ea.event_id
             LEFT JOIN event_promoters ep
                 ON ep.event_id = ea.event_id
-            LEFT JOIN event_genres eg
-                ON eg.event_id = ea.event_id
             WHERE a.id = ANY(%(candidate_artist_ids)s)
                OR a.id = %(source_artist_id)s
             GROUP BY a.id
@@ -195,7 +230,7 @@ def artist_indirect_feature_sets(
     return {
         row["id"]: {
             key: as_id_set(row.get(key))
-            for key in ("events", "venues", "promoters", "genres")
+            for key in ("events", "venues", "promoters")
         }
         for row in rows
     }
@@ -221,13 +256,13 @@ def apply_artist_indirect_features(
         candidate_artist_ids=candidate_ids,
     )
     if entity_id in indirect_features:
-        for key in ("venues", "promoters", "genres"):
+        for key in ("venues", "promoters"):
             features[entity_id][key] = indirect_features[entity_id].get(key, set())
 
     for candidate_id in candidate_ids:
         if candidate_id not in features or candidate_id not in indirect_features:
             continue
-        for key in ("venues", "promoters", "genres"):
+        for key in ("venues", "promoters"):
             features[candidate_id][key] = indirect_features[candidate_id].get(key, set())
 
     return features
