@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import math
 
 from fastapi import HTTPException
@@ -36,6 +37,9 @@ from app.schemas import (
     SemanticArtistItem,
     SemanticArtistResponse,
 )
+
+logger = logging.getLogger(__name__)
+
 
 def semantic_artist_reasons(item: dict) -> list[str]:
     reasons = []
@@ -254,8 +258,34 @@ def build_artist_promoter_recommendation_response(
     artist_ids = list(candidate_scores.keys())
     artist_scores = [candidate_scores[artist_id] for artist_id in artist_ids]
     with connection.cursor() as cursor:
-        cursor.execute(
+        cursor.execute("SELECT to_regclass('public.artist_manual_connections') IS NOT NULL AS exists")
+        manual_connections_table_exists = bool(cursor.fetchone()["exists"])
+        if manual_connections_table_exists:
+            manual_known_artists_cte = """
+            manual_known_artists AS (
+                SELECT
+                    amc.connected_artist_id AS co_artist_id,
+                    NULL::bigint AS shared_event_id
+                FROM artist_manual_connections amc
+                WHERE amc.source_artist_id = %(source_artist_id)s
+            ),
             """
+        else:
+            manual_known_artists_cte = """
+            manual_known_artists AS (
+                SELECT
+                    NULL::bigint AS co_artist_id,
+                    NULL::bigint AS shared_event_id
+                WHERE FALSE
+            ),
+            """
+            logger.warning(
+                "artist_manual_connections table is missing; fallback to recommendations "
+                "without manual-known-artist links. Run migrations to enable this signal."
+            )
+
+        cursor.execute(
+            f"""
             WITH semantic_candidates AS (
                 SELECT *
                 FROM unnest(%(artist_ids)s::bigint[], %(artist_scores)s::double precision[])
@@ -266,13 +296,7 @@ def build_artist_promoter_recommendation_response(
                 FROM event_artists
                 WHERE artist_id = %(source_artist_id)s
             ),
-            manual_known_artists AS (
-                SELECT
-                    amc.connected_artist_id AS co_artist_id,
-                    NULL::bigint AS shared_event_id
-                FROM artist_manual_connections amc
-                WHERE amc.source_artist_id = %(source_artist_id)s
-            ),
+            {manual_known_artists_cte}
             co_played_artists AS (
                 SELECT DISTINCT
                     ea_shared.artist_id AS co_artist_id,
