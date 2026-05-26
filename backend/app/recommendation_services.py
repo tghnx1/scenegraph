@@ -24,6 +24,7 @@ from app.recommendation_engine import (
 from app.recommendation_helpers import build_artist_semantic_candidates, recommendation_item_metadata
 from app.recommendation_scoring import (
     DEFAULT_RECOMMENDATION_SCORING,
+    artist_recommendation_min_semantic_score_from_env,
     final_recommendation_score,
     hybrid_graph_score,
     promoter_recommendation_scoring_from_env,
@@ -139,11 +140,13 @@ def build_artist_semantic_response(
     debug: bool = False,
 ) -> SemanticArtistResponse:
     """Build API response for similar artists with semantic score breakdown."""
+    min_semantic_score = artist_recommendation_min_semantic_score_from_env()
     source, scored = build_artist_semantic_candidates(
         connection,
         artist_id=artist_id,
         debug=debug,
     )
+    scored = [item for item in scored if item["score"] >= min_semantic_score]
     similar = [
         SemanticArtistItem(
             id=item["entity_id"],
@@ -175,11 +178,17 @@ def build_artist_recommendation_response(
     limit: int,
 ) -> ArtistRecommendationResponse:
     """Build hybrid artist recommendations (semantic + graph) for an artist source."""
+    min_semantic_score = artist_recommendation_min_semantic_score_from_env()
     source, semantic_candidates = build_artist_semantic_candidates(
         connection,
         artist_id=artist_id,
         debug=False,
     )
+    semantic_candidates = [
+        item
+        for item in semantic_candidates
+        if item["score"] >= min_semantic_score
+    ]
     candidate_ids = [item["entity_id"] for item in semantic_candidates]
     features = recommendation_feature_sets(connection, "artist", [artist_id, *candidate_ids])
     features = apply_artist_indirect_features(

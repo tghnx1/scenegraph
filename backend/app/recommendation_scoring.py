@@ -552,6 +552,13 @@ def promoter_recommendation_api_limit_max_from_env() -> int:
         raise ValueError("PROMOTER_REC_API_LIMIT_MAX must be greater than zero")
     return value
 
+
+def artist_recommendation_min_semantic_score_from_env() -> float:
+    value = env_float("ARTIST_REC_MIN_SEMANTIC_SCORE", 0.45)
+    if not (0.0 <= value <= 1.0):
+        raise ValueError("ARTIST_REC_MIN_SEMANTIC_SCORE must be between 0 and 1")
+    return value
+
 # Compute semantic artist score from embedding/style/tag components.
 def semantic_artist_score(
     embedding_score: float,
