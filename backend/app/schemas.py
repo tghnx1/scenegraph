@@ -69,6 +69,17 @@ class LoginResponse(BaseModel):
     artist_id: int | None = None
     access_token: str | None = None
 
+class RegisterRequest(BaseModel):
+    username: str
+    email: str
+    password: str
+    password_confirm: str    
+
+class RegisterResponse(BaseModel): 
+    success: bool
+    message: str
+    user_id: int | None = None
+
 
 class SimilarityItem(BaseModel):
     id: int
