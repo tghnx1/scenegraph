@@ -152,6 +152,7 @@ def test_promoter_recommendation_scoring_reads_and_normalizes_env(monkeypatch):
     monkeypatch.setenv("PROMOTER_REC_WARM_CONNECTION_CAP", "5")
     monkeypatch.setenv("PROMOTER_REC_MANUAL_WARM_CONNECTION_CAP", "2")
     monkeypatch.setenv("PROMOTER_REC_MANUAL_WARM_BOOST_WEIGHT", "0.7")
+    monkeypatch.setenv("PROMOTER_REC_MANUAL_WARM_MIN_ARTIST_SEMANTIC_SCORE", "0.52")
     monkeypatch.setenv("PROMOTER_REC_EVENT_SIMILARITY_COUNT_CAP", "9")
     monkeypatch.setenv("PROMOTER_REC_EVENT_SIMILARITY_MIN_TOTAL_SCORE", "0.58")
     monkeypatch.setenv("PROMOTER_REC_EVENT_SIMILARITY_PER_PROMOTER_LIMIT", "12")
@@ -174,6 +175,7 @@ def test_promoter_recommendation_scoring_reads_and_normalizes_env(monkeypatch):
     monkeypatch.setenv("PROMOTER_REC_SCALE_FIT_TAU", "0.6")
     monkeypatch.setenv("PROMOTER_REC_SQL_CANDIDATE_LIMIT", "260")
     monkeypatch.setenv("PROMOTER_REC_SEMANTIC_ARTIST_POOL_LIMIT", "21")
+    monkeypatch.setenv("PROMOTER_REC_SEMANTIC_ARTIST_MIN_SCORE", "0.51")
     monkeypatch.setenv("PROMOTER_REC_EVENT_SIMILARITY_OVERFETCH_MULTIPLIER", "24")
     monkeypatch.setenv("PROMOTER_REC_EVENT_SIMILARITY_OVERFETCH_MIN", "640")
 
@@ -196,6 +198,7 @@ def test_promoter_recommendation_scoring_reads_and_normalizes_env(monkeypatch):
         warm_connection_cap=5,
         manual_warm_connection_cap=2,
         manual_warm_boost_weight=0.7,
+        manual_warm_min_artist_semantic_score=0.52,
         event_similarity_count_cap=9,
         event_similarity_min_total_score=0.58,
         event_similarity_per_promoter_limit=12,
@@ -218,6 +221,7 @@ def test_promoter_recommendation_scoring_reads_and_normalizes_env(monkeypatch):
         scale_fit_tau=0.6,
         sql_candidate_limit=260,
         semantic_artist_pool_limit=21,
+        semantic_artist_min_score=0.51,
         event_similarity_overfetch_multiplier=24,
         event_similarity_overfetch_min=640,
     )
@@ -269,6 +273,16 @@ def test_promoter_recommendation_scoring_rejects_invalid_manual_warm_boost(monke
         promoter_recommendation_scoring_from_env()
     except ValueError as exc:
         assert "PROMOTER_REC_MANUAL_WARM_BOOST_WEIGHT" in str(exc)
+    else:
+        raise AssertionError("Expected ValueError")
+
+
+def test_promoter_recommendation_scoring_rejects_invalid_manual_warm_min_semantic(monkeypatch):
+    monkeypatch.setenv("PROMOTER_REC_MANUAL_WARM_MIN_ARTIST_SEMANTIC_SCORE", "1.1")
+    try:
+        promoter_recommendation_scoring_from_env()
+    except ValueError as exc:
+        assert "PROMOTER_REC_MANUAL_WARM_MIN_ARTIST_SEMANTIC_SCORE" in str(exc)
     else:
         raise AssertionError("Expected ValueError")
 
@@ -329,6 +343,16 @@ def test_promoter_recommendation_scoring_rejects_invalid_semantic_artist_pool_li
         promoter_recommendation_scoring_from_env()
     except ValueError as exc:
         assert "PROMOTER_REC_SEMANTIC_ARTIST_POOL_LIMIT" in str(exc)
+    else:
+        raise AssertionError("Expected ValueError")
+
+
+def test_promoter_recommendation_scoring_rejects_invalid_semantic_artist_min_score(monkeypatch):
+    monkeypatch.setenv("PROMOTER_REC_SEMANTIC_ARTIST_MIN_SCORE", "1.1")
+    try:
+        promoter_recommendation_scoring_from_env()
+    except ValueError as exc:
+        assert "PROMOTER_REC_SEMANTIC_ARTIST_MIN_SCORE" in str(exc)
     else:
         raise AssertionError("Expected ValueError")
 
