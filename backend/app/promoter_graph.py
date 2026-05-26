@@ -112,16 +112,10 @@ def promoter_recommendation_item_evidence(row: dict) -> list[RecommendationEvide
             )
         )
     if row["warm_connection_count"] > 0:
-        manual_warm_connection_count = int(row.get("manual_warm_connection_count", 0) or 0)
-        warm_network_path = (
-            "Source Artist -> Known Artist or Shared Event -> Co-played Artist -> Other Event -> Promoter"
-            if manual_warm_connection_count > 0
-            else "Source Artist -> Shared Event -> Co-played Artist -> Other Event -> Promoter"
-        )
         evidence.append(
             RecommendationEvidenceItem(
                 type="warm_network",
-                path=warm_network_path,
+                path="Source Artist -> Shared Event -> Co-played Artist -> Other Event -> Promoter",
             )
         )
     if row["event_similarity_count"] > 0:
@@ -254,14 +248,9 @@ def promoter_recommendation_graph(
     for row in warm_evidence_rows:
         promoter_node_id = graph_node_id("promoter", row["promoter_id"])
         co_artist_node_id = graph_node_id("artist", row["co_artist_id"])
-        shared_event_id = row.get("shared_event_id")
-        shared_event_node_id = (
-            graph_node_id("event", shared_event_id)
-            if shared_event_id is not None
-            else None
-        )
+        shared_event_id = row["shared_event_id"]
+        shared_event_node_id = graph_node_id("event", shared_event_id)
         other_event_node_id = graph_node_id("event", row["other_event_id"])
-        is_manual_connection = bool(row.get("is_manual_connection"))
         warm_strength = max(
             scoring_config.warm_edge_strength_min,
             min(
@@ -276,14 +265,13 @@ def promoter_recommendation_graph(
             type="artist",
             name=row["co_artist_name"],
         )
-        if shared_event_node_id is not None:
-            nodes[shared_event_node_id] = GraphNode(
-                id=shared_event_node_id,
-                entityId=shared_event_id,
-                type="event",
-                name=row["shared_event_title"],
-                date=row["shared_event_date"],
-            )
+        nodes[shared_event_node_id] = GraphNode(
+            id=shared_event_node_id,
+            entityId=shared_event_id,
+            type="event",
+            name=row["shared_event_title"],
+            date=row["shared_event_date"],
+        )
         nodes[other_event_node_id] = GraphNode(
             id=other_event_node_id,
             entityId=row["other_event_id"],
@@ -291,32 +279,22 @@ def promoter_recommendation_graph(
             name=row["other_event_title"],
             date=row["other_event_date"],
         )
-        if shared_event_node_id is not None:
-            add_link(
-                graph_node_id("artist", source_artist_id),
-                shared_event_node_id,
-                "played",
-                evidence_type="warm_network",
-                style="solid",
-                strength=warm_strength,
-            )
-            add_link(
-                co_artist_node_id,
-                shared_event_node_id,
-                "played",
-                evidence_type="warm_network",
-                style="solid",
-                strength=warm_strength,
-            )
-        elif is_manual_connection:
-            add_link(
-                graph_node_id("artist", source_artist_id),
-                co_artist_node_id,
-                "knows",
-                evidence_type="warm_network",
-                style="dashed",
-                strength=min(1.0, warm_strength + 0.1),
-            )
+        add_link(
+            graph_node_id("artist", source_artist_id),
+            shared_event_node_id,
+            "played",
+            evidence_type="warm_network",
+            style="solid",
+            strength=warm_strength,
+        )
+        add_link(
+            co_artist_node_id,
+            shared_event_node_id,
+            "played",
+            evidence_type="warm_network",
+            style="solid",
+            strength=warm_strength,
+        )
         add_link(
             co_artist_node_id,
             other_event_node_id,
@@ -619,29 +597,6 @@ def promoter_warm_network_evidence(
         return []
 
     with connection.cursor() as cursor:
-        cursor.execute("SELECT to_regclass('public.artist_manual_connections') IS NOT NULL AS exists")
-        manual_connections_table_exists = bool(cursor.fetchone()["exists"])
-        if manual_connections_table_exists:
-            manual_known_artists_cte = """
-            manual_known_artists AS (
-                SELECT
-                    amc.connected_artist_id AS co_artist_id,
-                    NULL::bigint AS shared_event_id,
-                    TRUE AS is_manual_connection
-                FROM artist_manual_connections amc
-                WHERE amc.source_artist_id = %(source_artist_id)s
-            ),
-            """
-        else:
-            manual_known_artists_cte = """
-            manual_known_artists AS (
-                SELECT
-                    NULL::bigint AS co_artist_id,
-                    NULL::bigint AS shared_event_id,
-                    FALSE AS is_manual_connection
-                WHERE FALSE
-            ),
-            """
         cursor.execute(
             f"""
             WITH source_events AS (
@@ -649,22 +604,14 @@ def promoter_warm_network_evidence(
                 FROM event_artists
                 WHERE artist_id = %(source_artist_id)s
             ),
-            {manual_known_artists_cte}
             co_played_artists AS (
                 SELECT DISTINCT
                     ea_shared.artist_id AS co_artist_id,
-                    se.event_id AS shared_event_id,
-                    FALSE AS is_manual_connection
+                    se.event_id AS shared_event_id
                 FROM source_events se
                 JOIN event_artists ea_shared
                     ON ea_shared.event_id = se.event_id
                 WHERE ea_shared.artist_id <> %(source_artist_id)s
-                UNION
-                SELECT
-                    mka.co_artist_id,
-                    mka.shared_event_id,
-                    mka.is_manual_connection
-                FROM manual_known_artists mka
             ),
             warm_counts AS (
                 SELECT
@@ -687,7 +634,6 @@ def promoter_warm_network_evidence(
                     cpa.co_artist_id,
                     a.name AS co_artist_name,
                     cpa.shared_event_id,
-                    cpa.is_manual_connection,
                     shared_event.title AS shared_event_title,
                     shared_event.event_date::date AS shared_event_date,
                     e.id AS other_event_id,
@@ -698,7 +644,7 @@ def promoter_warm_network_evidence(
                     wc.warm_connection_count,
                     row_number() OVER (
                         PARTITION BY ep.promoter_id
-                        ORDER BY cpa.is_manual_connection DESC, e.event_date DESC NULLS LAST, e.id DESC
+                        ORDER BY e.event_date DESC NULLS LAST, e.id DESC
                     ) AS row_number
                 FROM co_played_artists cpa
                 JOIN artists a

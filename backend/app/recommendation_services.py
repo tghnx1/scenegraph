@@ -264,10 +264,10 @@ def build_artist_promoter_recommendation_response(
     }
     artist_ids = list(candidate_scores.keys())
     artist_scores = [candidate_scores[artist_id] for artist_id in artist_ids]
+    manual_known_artist_ids: set[int] = set()
     with connection.cursor() as cursor:
         cursor.execute("SELECT to_regclass('public.artist_manual_connections') IS NOT NULL AS exists")
         manual_connections_table_exists = bool(cursor.fetchone()["exists"])
-        manual_known_artist_ids: set[int] = set()
         if manual_connections_table_exists:
             cursor.execute(
                 """
@@ -326,11 +326,6 @@ def build_artist_promoter_recommendation_response(
                 JOIN event_artists ea_shared
                     ON ea_shared.event_id = se.event_id
                 WHERE ea_shared.artist_id <> %(source_artist_id)s
-                UNION
-                SELECT
-                    mka.co_artist_id,
-                    mka.shared_event_id
-                FROM manual_known_artists mka
             ),
             semantic_promoters AS (
                 SELECT
@@ -391,12 +386,27 @@ def build_artist_promoter_recommendation_response(
                 WHERE cpa.shared_event_id IS NULL OR e.id <> cpa.shared_event_id
                 GROUP BY ep.promoter_id
             ),
+            manual_warm_promoters AS (
+                SELECT
+                    ep.promoter_id,
+                    count(DISTINCT mka.co_artist_id)::int AS manual_warm_connection_count
+                FROM manual_known_artists mka
+                JOIN event_artists ea
+                    ON ea.artist_id = mka.co_artist_id
+                JOIN events e
+                    ON e.id = ea.event_id
+                JOIN event_promoters ep
+                    ON ep.event_id = e.id
+                GROUP BY ep.promoter_id
+            ),
             candidate_promoters AS (
                 SELECT promoter_id FROM semantic_promoters
                 UNION
                 SELECT promoter_id FROM direct_promoters
                 UNION
                 SELECT promoter_id FROM warm_promoters
+                UNION
+                SELECT promoter_id FROM manual_warm_promoters
             )
             SELECT
                 p.id,
@@ -431,7 +441,8 @@ def build_artist_promoter_recommendation_response(
                 )::date AS latest_event_date,
                 COALESCE(dp.direct_connection_count, 0)::int AS direct_connection_count,
                 COALESCE(wp.warm_connection_count, 0)::int AS warm_connection_count,
-                COALESCE(wp.warm_connection_artists, '[]'::jsonb) AS warm_connection_artists
+                COALESCE(wp.warm_connection_artists, '[]'::jsonb) AS warm_connection_artists,
+                COALESCE(mwp.manual_warm_connection_count, 0)::int AS manual_warm_connection_count
             FROM candidate_promoters cp
             JOIN promoters p
                 ON p.id = cp.promoter_id
@@ -441,6 +452,8 @@ def build_artist_promoter_recommendation_response(
                 ON dp.promoter_id = p.id
             LEFT JOIN warm_promoters wp
                 ON wp.promoter_id = p.id
+            LEFT JOIN manual_warm_promoters mwp
+                ON mwp.promoter_id = p.id
             ORDER BY semantic_score DESC, direct_connection_count DESC, warm_connection_count DESC, event_count DESC, p.id ASC
             LIMIT %(sql_candidate_limit)s
             """,
@@ -608,10 +621,15 @@ def build_artist_promoter_recommendation_response(
                     }
                 )
         warm_connection_artists.sort(key=lambda item: item["id"])
-        manual_warm_connection_count = sum(
+        manual_warm_connection_count_raw = int(row.get("manual_warm_connection_count", 0) or 0)
+        manual_overlap_with_warm_count = sum(
             1
             for item in warm_connection_artists
             if int(item["id"]) in manual_known_artist_ids
+        )
+        manual_warm_connection_count = max(
+            manual_warm_connection_count_raw - manual_overlap_with_warm_count,
+            0,
         )
         matched_artist_names_raw = row.get("matched_artist_names")
         matched_artist_names = (
@@ -710,6 +728,8 @@ def build_artist_promoter_recommendation_response(
                         "directConnectionCount": row["direct_connection_count"],
                         "warmConnectionCount": row["warm_connection_count"],
                         "manualWarmConnectionCount": manual_warm_connection_count,
+                        "manualWarmConnectionCountRaw": manual_warm_connection_count_raw,
+                        "manualWarmOverlapWithWarmCount": manual_overlap_with_warm_count,
                         "manualWarmBoostWeight": scoring_config.manual_warm_boost_weight,
                         "eventSimilarityCount": event_similarity_count,
                         "eventSimilaritySymbolicScore": event_similarity_symbolic_score,
