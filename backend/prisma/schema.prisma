@@ -259,3 +259,13 @@ model RecommendationFeedback {
   @@index([candidateEntityType, candidateEntityId])
   @@map("recommendation_feedback")
 }
+
+model User {
+  id            BigInt    @id @default(autoincrement())
+  username      String    @unique
+  email         String    @unique
+  passwordHash  String    @map("password_hash")
+  createdAt     DateTime  @default(now()) @map("created at") @db.Timestamptz(6)
+
+  @@map("users")
+}

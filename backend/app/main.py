@@ -16,6 +16,9 @@ from app.schemas import (
     VenuesResponse,
 )
 
+from passlib.context import CryptContext    # for password hashing
+
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 @asynccontextmanager
 async def lifespan(app_instance: FastAPI):
@@ -54,13 +57,17 @@ app.add_middleware(
 from app.routers.index import router
 app.include_router(router, prefix="/api")
 
-dummy_users = [
-    {"id": 1, "username": "maksim", "password": "12345", "artist_id": 2178},
-    {"id": 2, "username": "howard", "password": "12345"},
-    {"id": 3, "username": "tarcisio", "password": "12345"},
-    {"id": 4, "username": "herold", "password": "12345"},
-    {"id": 5, "username": "aaron", "password": "12345"},
-]
+class RegisterRequest(BaseModel):
+    username: str
+    email: str
+    password: str
+    password_confirm: str    
+
+class RegisterResponse(BaseModel): 
+    success: bool
+    message: str
+    user_id: int | None = None
+
 
 @app.get("/health")
 async def health(connection: Connection = Depends(get_db)) -> dict[str, object]:
@@ -119,22 +126,96 @@ async def root() -> dict[str, str]:
 #response_model = LoginResponse means FastAPI should validate and document the returned JSON using LoginResponse  
 #async means this function can pause while waiting without blocking whole server
 @app.post("/api/login", response_model=LoginResponse, response_model_exclude_none=True)        
-async def login(login_data: LoginRequest) -> LoginResponse:
-    for user in dummy_users:
-        if (user["username"] == login_data.username and user["password"] == login_data.password):
-            return LoginResponse(
-                success=True,
-                message="Login successful",
-                user_id=user["id"],
-                username=user["username"],
-                artist_id=user.get("artist_id"),
-                access_token="dummy-token",
-            )
+async def login(
+    login_data: LoginRequest,
+    connection: Connection = Depends(get_db),
+) -> LoginResponse:
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT id, username, password_hash
+            FROM users
+            WHERE username = %s
+            """,
+            (login_data.username,),
+        )
+        user = cursor.fetchone()
+
+    if user is None:
+        return LoginResponse(
+            success=False,
+            message="Invalid username or password",
+        )
+    
+    if not pwd_context.verify(login_data.password, user["password_hash"]):
+        return LoginResponse(
+            success=False,
+            message="Invalid username or password",
+        )
+    
     return LoginResponse(
-        success=False,
-        message="Invalid username or password"
+        success=True,
+        message="Login successful",
+        user_id=user["id"],
+        username=user["username"],
+        access_token="dummy-token",
     )
 
+@app.post("/api/register", response_model=RegisterResponse, response_model_exclude_none=True)
+async def register(
+    register_data: RegisterRequest,
+    connection: Connection = Depends(get_db),
+) -> RegisterResponse:
+
+    if register_data.password != register_data.password_confirm:
+        return RegisterResponse(
+            success=False,
+            message="Passwords do not match",
+        )
+    
+    with connection.cursor() as cursor:
+
+        cursor.execute(
+            """
+            SELECT id
+            FROM users
+            WHERE username = %s OR email = %s
+            """,
+            (register_data.username, register_data.email)
+        )
+
+        existing_user = cursor.fetchone()
+
+        if existing_user is not None:
+            return RegisterResponse(
+                success=False,
+                message="Username or email already exists",
+            )
+        
+        hashed_password = pwd_context.hash(register_data.password)
+
+        cursor.execute(
+            """
+            INSERT INTO users (username, email, password_hash)
+            VALUES (%s, %s, %s)
+            RETURNING id
+            """,
+            (
+                register_data.username,
+                register_data.email,
+                hashed_password,
+            ),
+        )
+
+        created_user = cursor.fetchone()
+
+        connection.commit() # ensure to save the changes...
+    
+    return RegisterResponse(
+        success=True,
+        message="Registration successful",
+        user_id=created_user["id"],
+    )
 
 @app.get("/api/venues", response_model=VenuesResponse)
 async def list_venues(connection: Connection = Depends(get_db)) -> VenuesResponse:
