@@ -3,6 +3,7 @@ from pydantic import BaseModel
 from typing import List, Optional
 from psycopg import Connection
 from app.db import get_db
+from app.style_tags import extract_style_tags
 
 router = APIRouter()
 
@@ -35,18 +36,22 @@ ARTIST_SQL = """
 SELECT
     a.id,
     a.name,
+    a.biography_normalized,
     a.biography
 FROM artists a
 WHERE a.id = %s;
 """
 
-ARTIST_GENRES_SQL = """
-SELECT DISTINCT g.name
-FROM event_artists ea
-JOIN event_genres eg ON eg.event_id = ea.event_id
-JOIN genres g        ON g.id = eg.genre_id
-WHERE ea.artist_id = %s
-ORDER BY g.name;
+ARTIST_STYLE_TAGS_SQL = """
+SELECT
+    tag_value,
+    MAX(confidence) AS confidence
+FROM artist_extracted_tags
+WHERE artist_id = %s
+  AND tag_type = 'style'
+  AND confidence >= 0.6
+GROUP BY tag_value
+ORDER BY confidence DESC, tag_value ASC;
 """
 
 ARTIST_EVENTS_SQL = """
@@ -76,6 +81,41 @@ ORDER BY shared_events DESC
 LIMIT 10;
 """
 
+STYLE_LABEL_OVERRIDES = {
+    "ebm": "EBM",
+    "idm": "IDM",
+    "r&b": "R&B",
+    "hi-nrg": "Hi-NRG",
+    "uk garage": "UK Garage",
+    "uk bass": "UK Bass",
+    "drum and bass": "Drum & Bass",
+}
+
+STYLE_TOKEN_OVERRIDES = {
+    "uk": "UK",
+    "dj": "DJ",
+}
+
+
+def present_style_label(value: str) -> str:
+    normalized = " ".join(value.split())
+    if not normalized:
+        return ""
+
+    lowered = normalized.lower()
+    if lowered in STYLE_LABEL_OVERRIDES:
+        return STYLE_LABEL_OVERRIDES[lowered]
+
+    def format_token(token: str) -> str:
+        token_lower = token.lower()
+        if token_lower in STYLE_TOKEN_OVERRIDES:
+            return STYLE_TOKEN_OVERRIDES[token_lower]
+        if "-" in token_lower:
+            return "-".join(format_token(part) for part in token_lower.split("-"))
+        return token_lower.capitalize()
+
+    return " ".join(format_token(token) for token in lowered.split(" "))
+
 
 @router.get("", response_model=ArtistResponse)
 def get_artist(
@@ -89,9 +129,29 @@ def get_artist(
     if not artist:
         raise HTTPException(status_code=404, detail="Artist not found")
 
+    biography = artist.get("biography_normalized") or artist.get("biography") or ""
+    profile_style_tags: list[str] = []
     with db.cursor() as cur:
-        cur.execute(ARTIST_GENRES_SQL, (id,))
-        genres = [row["name"] for row in cur.fetchall()]
+        cur.execute("SELECT to_regclass('public.artist_extracted_tags') AS table_name")
+        has_artist_extracted_tags = cur.fetchone()["table_name"] is not None
+        if has_artist_extracted_tags:
+            cur.execute(ARTIST_STYLE_TAGS_SQL, (id,))
+            profile_style_tags = [
+                row["tag_value"]
+                for row in cur.fetchall()
+                if isinstance(row["tag_value"], str) and row["tag_value"].strip()
+            ]
+
+    if not profile_style_tags:
+        profile_style_tags = extract_style_tags(biography)
+
+    genres = sorted(
+        {
+            present_style_label(tag)
+            for tag in profile_style_tags
+            if isinstance(tag, str) and tag.strip()
+        }
+    )
 
     with db.cursor() as cur:
         cur.execute(ARTIST_EVENTS_SQL, (id,))
@@ -125,7 +185,7 @@ def get_artist(
         id=artist["id"],
         name=artist["name"],
         genres=genres,
-        bio=artist["biography"],
+        bio=biography,
         event_count=len(events),
         events=events,
         connected_artists=connected_artists,

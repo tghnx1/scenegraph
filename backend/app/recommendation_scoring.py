@@ -139,7 +139,7 @@ DEFAULT_RECOMMENDATION_SCORING = RecommendationScoringConfig(
         GraphFeatureWeight("played same events", "events", 0.40, cap=2),
         GraphFeatureWeight("shared promoters", "promoters", 0.25, cap=3),
         GraphFeatureWeight("shared venues", "venues", 0.20, cap=3),
-        GraphFeatureWeight("shared abstract genres", "genres", 0.15, cap=3),
+        GraphFeatureWeight("shared styles", "extracted_styles", 0.15, cap=3),
     ),
 )
 
@@ -757,7 +757,10 @@ def recommendation_scoring_from_env() -> RecommendationScoringConfig:
             env_float("ARTIST_GRAPH_PLAYED_SAME_EVENTS_WEIGHT", 0.40),
             env_float("ARTIST_GRAPH_SHARED_PROMOTERS_WEIGHT", 0.25),
             env_float("ARTIST_GRAPH_SHARED_VENUES_WEIGHT", 0.20),
-            env_float("ARTIST_GRAPH_SHARED_GENRES_WEIGHT", 0.15),
+            env_float(
+                "ARTIST_GRAPH_SHARED_STYLES_WEIGHT",
+                env_float("ARTIST_GRAPH_SHARED_GENRES_WEIGHT", 0.15),
+            ),
         )
     )
     return RecommendationScoringConfig(
@@ -817,8 +820,8 @@ def recommendation_scoring_from_env() -> RecommendationScoringConfig:
                 cap=3,
             ),
             GraphFeatureWeight(
-                "shared abstract genres",
-                "genres",
+                "shared styles",
+                "extracted_styles",
                 artist_graph_weight_values[3],
                 cap=3,
             ),

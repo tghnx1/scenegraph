@@ -46,19 +46,19 @@ def test_artist_graph_score_uses_default_config():
         "events": {1, 2},
         "promoters": {10, 11, 12},
         "venues": {20},
-        "genres": {30, 31},
+        "extracted_styles": {"ebm", "dark disco"},
     }
     candidate = {
         "events": {1, 2, 3},
         "promoters": {10},
         "venues": {21},
-        "genres": {30, 31, 32},
+        "extracted_styles": {"ebm", "dark disco", "new wave"},
     }
 
     score, reasons = hybrid_graph_score("artist", source, candidate)
 
     assert round(score, 4) == round(0.40 + (1 / 3 * 0.25) + (2 / 3 * 0.15), 4)
-    assert reasons == ["2 played same events", "2 shared abstract genres", "1 shared promoters"]
+    assert reasons == ["2 played same events", "2 shared styles", "1 shared promoters"]
 
 
 def test_artist_graph_score_can_isolate_direct_event_overlap():
