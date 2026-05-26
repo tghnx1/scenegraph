@@ -259,7 +259,7 @@ def build_artist_promoter_recommendation_response(
 
     candidate_scores = {
         item["entity_id"]: item["score"]
-        for item in semantic_candidates[:500]
+        for item in semantic_candidates[:scoring_config.semantic_artist_pool_limit]
         if item["score"] > 0
     }
     artist_ids = list(candidate_scores.keys())
