@@ -6,6 +6,6 @@ export interface VenueDetail {
   name: string
   address?: string
   district?: string
-  eventCount: number
+  event_count: number
   events: EventSummary[]
 }

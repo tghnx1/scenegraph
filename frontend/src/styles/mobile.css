@@ -51,30 +51,22 @@
     grid-template-columns: 1fr;
     grid-template-rows:
       minmax(540px, var(--profile-tall-panel-height))
-      minmax(560px, var(--profile-tall-panel-height))
-      minmax(360px, var(--profile-panel-height))
       minmax(720px, 120dvh)
-      repeat(2, minmax(360px, var(--profile-panel-height)));
+      repeat(2, minmax(540px, var(--profile-tall-panel-height)));
     grid-template-areas:
       "context"
       "graph"
       "profile"
-      "recommendations"
-      "stats"
       "communications";
   }
 
   .recommendations-content {
     grid-template-columns: 1fr;
-    grid-template-rows: minmax(360px, 52dvh) auto;
+    grid-template-rows: minmax(240px, 0.65fr) minmax(360px, 1fr);
   }
 
   .recommendation-graph-empty {
     min-height: 360px;
-  }
-
-  .recommendations-panel {
-    overflow: visible;
   }
 
   .context-panel {
@@ -84,10 +76,6 @@
   .profile-page .graph-canvas--large {
     min-height: 420px;
     height: min(640px, 68dvh);
-  }
-
-  .stat-grid {
-    grid-template-columns: 1fr;
   }
 
   .panel-heading {

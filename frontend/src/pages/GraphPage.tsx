@@ -2,16 +2,15 @@ import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
 import { fetchEntityDetail } from '../api/entityDetails'
-import { fetchArtist } from '../api/artists'
 import { fetchSearch } from '../api/search'
 import { useGraphStore } from '../store/graphStore'
-import type { Artist } from '../types/artist'
-import { graphEntityId, type GraphNode, type NodeType } from '../types/graph'
+import type { EntityDetail } from '../types/entityDetail'
+import { graphEntityId, type NodeType } from '../types/graph'
 import type { SearchResponse, SearchResult } from '../types/search'
 import { useDebouncedValue } from './hooks/useDebouncedValue'
-import { GraphSidebarDetails } from './components/DetailsPanel.tsx'
-import { ScenegraphMapPanel } from './components/ScenegraphMapPanel.tsx'
-import { SearchQueryForm } from './components/SearchQueryForm.tsx'
+import { DetailsPanel } from './components/DetailsPanel.tsx'
+import { ScenegraphMapPanel } from './components/GraphPanel.tsx'
+import { SearchQueryForm } from './components/SearchQuery.tsx'
 
 export function GraphPage() {
   const [searchParams, setSearchParams] = useSearchParams()
@@ -21,27 +20,20 @@ export function GraphPage() {
   const debouncedSearchValue = useDebouncedValue(searchValue.trim(), 350)
   const selectedTypeParam = searchParams.get('selectedType')
   const selectedIdParam = searchParams.get('selectedId')
-  const selectedArtistId = selectedNode?.type === 'artist'
-    ? selectedNode.id
-    : selectedTypeParam === 'artist'
-      ? selectedIdParam
-      : null
-  const selectedDetailType = selectedNode && selectedNode.type !== 'artist'
+  const selectedDetailType = selectedNode
     ? selectedNode.type
-    : selectedTypeParam && selectedTypeParam !== 'artist'
+    : selectedTypeParam
       ? selectedTypeParam
       : null
-  const selectedDetailId = selectedNode && selectedNode.type !== 'artist' ? selectedNode.id : selectedIdParam
+  const selectedDetailNodeId = selectedNode ? selectedNode.id : selectedIdParam
+  const selectedDetailId = selectedDetailType && selectedDetailNodeId
+    ? String(graphEntityId(selectedDetailNodeId, selectedDetailType as NodeType) ?? selectedDetailNodeId)
+    : null
 
-  const { data: selectedArtist } = useApi<Artist | null>(
-    () => (selectedArtistId ? fetchArtist(selectedArtistId) : Promise.resolve(null)),
-    [selectedArtistId]
-  )
-
-  const { data: selectedEntityDetail, isLoading: isSelectedEntityDetailLoading } = useApi<SearchResult | null>(
+  const { data: selectedEntityDetail, isLoading: isSelectedEntityDetailLoading } = useApi<EntityDetail | null>(
     () => (
       selectedDetailType && selectedDetailId
-        ? fetchEntityDetail(selectedDetailType as Exclude<NodeType, 'artist'>, selectedDetailId)
+        ? fetchEntityDetail(selectedDetailType as NodeType, selectedDetailId)
         : Promise.resolve(null)
     ),
     [selectedDetailType, selectedDetailId]
@@ -125,21 +117,10 @@ export function GraphPage() {
     debouncedSearchValue === trimmedSearchValue &&
     debouncedSearchValue !== trimmedSubmittedQuery
   const dropdownSearchResults = shouldFetchDropdownSearch ? dropdownSearchData?.results ?? [] : []
-  const detailSearchResults = selectedEntityDetail ? [selectedEntityDetail] : searchResults
   const detailsSearchError = searchError
   const isDetailsSearchLoading = isSearchLoading || isSelectedEntityDetailLoading
   const hasActiveSearchState = Boolean(searchValue || submittedQuery || selectedNode)
-  const selectedArtistNode: GraphNode | null = selectedArtist
-    ? {
-        id: selectedArtist.id,
-        entityId: graphEntityId(selectedArtist.id, 'artist') ?? 0,
-        type: 'artist',
-        name: selectedArtist.name,
-        genres: selectedArtist.genres,
-        eventCount: selectedArtist.eventCount,
-      }
-    : null
-  const detailsSelectedNode = selectedEntityDetail ? null : selectedNode ?? selectedArtistNode
+  const detailsSelectedNode = selectedEntityDetail ? null : selectedNode
 
   return (
     <div className="graph-page-shell">
@@ -160,13 +141,13 @@ export function GraphPage() {
             {/* <p className="search-query-hint">Enter a name, then press Enter to update the search.</p> */}
           </div>
 
-          <GraphSidebarDetails
+          <DetailsPanel
             searchQuery={submittedQuery}
-            searchResults={detailSearchResults}
+            searchResults={searchResults}
             isSearchLoading={isDetailsSearchLoading}
             searchError={detailsSearchError}
             selectedNode={detailsSelectedNode}
-            selectedArtist={selectedArtist}
+            selectedEntityDetail={selectedEntityDetail}
           />
         </article>
       </aside>

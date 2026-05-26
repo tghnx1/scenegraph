@@ -4,7 +4,7 @@ import {
   useCallback //memoizes the load function so it doesn't re-create on every render
 } from 'react' //react hooks
 
-interface ApiState<T> { //T is filled in by the caller, could be GraphData, Artist, etc.
+interface ApiState<T> { //T is filled in by the caller, could be GraphData, EntityDetail, etc.
   data:      T | null //the result
   isLoading: boolean //whether it's otw
   error:     string | null

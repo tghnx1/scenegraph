@@ -1,29 +1,23 @@
 import ForceGraph2D from 'react-force-graph-2d'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { fetchEgoGraph, fetchGraph, type GraphParams } from '../../api/graph'
-import { fetchGenres } from '../../api/genres'
-import { useApi } from '../../hooks/useApi'
-import { useGraphStore } from '../../store/graphStore'
-import { getCssVar, hexToRgba } from '../../styles/colors'
-import type { GraphData, GraphNode, NodeType } from '../../types/graph'
-import type { SearchEntityType } from '../../types/search'
-import { drawNodeShape } from '../hooks/drawNode'
-import { useGraphHighlights } from '../hooks/useGraphHighlights'
-import { useGraphPhysics } from '../hooks/useGraphPhysics'
-import { GraphFilters } from './GraphFilters.tsx'
+import { fetchEgoGraph, fetchGraph, type GraphParams } from '../../api/graph.ts'
+import { fetchGenres } from '../../api/genres.ts'
+import { useApi } from '../../hooks/useApi.ts'
+import { useGraphStore } from '../../store/graphStore.ts'
+import { getCssVar, hexToRgba } from '../../styles/colors.ts'
+import { graphEntityId, type GraphData, type GraphNode, type NodeType } from '../../types/graph.ts'
+import type { SearchEntityType } from '../../types/search.ts'
+import { drawNodeShape } from '../hooks/drawNode.ts'
+import { useGraphHighlights } from '../hooks/useGraphHighlights.ts'
+import { useGraphPhysics } from '../hooks/useGraphPhysics.ts'
+import { GraphFilters } from './GraphDataFilter.tsx'
+import { GRAPH_NODE_TYPES, GraphNodeFilter } from './GraphNodeFilter.tsx'
 
 const MIN_GRAPH_HEIGHT = 320
 const DEFAULT_GRAPH_FILTERS: GraphParams = { limit: 100 }
 const EMPTY_GRAPH_DATA: GraphData = { nodes: [], links: [] }
-const NODE_LEGEND_ITEMS = [
-  { type: 'artist', label: 'Artist' },
-  { type: 'venue', label: 'Venue' },
-  { type: 'promoter', label: 'Promoter' },
-  { type: 'event', label: 'Event' },
-] satisfies Array<{ type: NodeType; label: string }>
-
-const DEFAULT_VISIBLE_NODE_TYPES = new Set<NodeType>(NODE_LEGEND_ITEMS.map((item) => item.type))
+const DEFAULT_VISIBLE_NODE_TYPES = new Set<NodeType>(GRAPH_NODE_TYPES)
 type LinkEndpoint = string | { id: string }
 
 function isSearchEntityType(value: string | null): value is SearchEntityType {
@@ -36,9 +30,19 @@ function getLinkNodeId(endpoint: LinkEndpoint) {
 
 interface ScenegraphMapPanelProps {
   title?: string
+  providedData?: GraphData
+  showFilters?: boolean
+  highlightLinks?: boolean
+  highlightPathToNodeId?: string
 }
 
-export function ScenegraphMapPanel({ title }: ScenegraphMapPanelProps) {
+export function ScenegraphMapPanel({
+  title,
+  providedData,
+  showFilters = true,
+  highlightLinks = true,
+  highlightPathToNodeId,
+}: ScenegraphMapPanelProps) {
   const graphRef = useRef<any>(null)
   const containerRef = useRef<HTMLDivElement | null>(null)
   const [graphSize, setGraphSize] = useState({ width: 0, height: 0 })
@@ -49,9 +53,14 @@ export function ScenegraphMapPanel({ title }: ScenegraphMapPanelProps) {
   const selectedTypeParam = searchParams.get('selectedType')
   const selectedType = isSearchEntityType(selectedTypeParam) ? selectedTypeParam : null
   const selectedId = searchParams.get('selectedId') ?? ''
+  const selectedEntityId = selectedType && selectedId ? graphEntityId(selectedId, selectedType) : null
 
   const { data, isLoading, error, refetch } = useApi<GraphData>(
     () => {
+      if (providedData) {
+        return Promise.resolve(providedData)
+      }
+
       if (selectedType && selectedId) {
         return fetchEgoGraph({
           type: selectedType,
@@ -63,12 +72,12 @@ export function ScenegraphMapPanel({ title }: ScenegraphMapPanelProps) {
 
       return fetchGraph(graphFilters)
     },
-    [selectedType, selectedId, graphFilters.genre, graphFilters.dateFrom, graphFilters.dateTo, graphFilters.limit]
+    [providedData, selectedType, selectedId, graphFilters.genre, graphFilters.dateFrom, graphFilters.dateTo, graphFilters.limit]
   )
 
   const { data: genres, isLoading: isGenresLoading, error: genresError } = useApi(
-    () => fetchGenres(),
-    []
+    () => (showFilters ? fetchGenres() : Promise.resolve([])),
+    [showFilters]
   )
 
   const rawGraphData = data || EMPTY_GRAPH_DATA
@@ -86,17 +95,19 @@ export function ScenegraphMapPanel({ title }: ScenegraphMapPanelProps) {
     }
   }, [rawGraphData, visibleNodeTypes])
 
-  const { connectedNodes } = useGraphHighlights(selectedNode || null, graphData)
+  const { connectedNodes, pathLinks } = useGraphHighlights(selectedNode || null, graphData, highlightPathToNodeId)
   useGraphPhysics(graphRef, graphData)
 
   useEffect(() => {
-    if (!selectedType || !selectedId || !data) return
+    if (!selectedType || selectedEntityId === null || !data) return
 
-    const nextSelectedNode = data.nodes.find((node) => node.id === selectedId)
+    const nextSelectedNode = data.nodes.find((node) => (
+      node.type === selectedType && node.entityId === selectedEntityId
+    ))
     if (nextSelectedNode && selectedNode?.id !== nextSelectedNode.id) {
       setSelected(nextSelectedNode)
     }
-  }, [data, selectedId, selectedNode?.id, selectedType, setSelected])
+  }, [data, selectedEntityId, selectedNode?.id, selectedType, setSelected])
 
   useEffect(() => {
     const container = containerRef.current
@@ -126,11 +137,11 @@ export function ScenegraphMapPanel({ title }: ScenegraphMapPanelProps) {
       nextParams.delete('artist')
 
       const isSameSelectedNode = selectedNode?.id === nextNode.id
-      const isCurrentEgoGraph = selectedType === nextNode.type && selectedId === nextNode.id
+      const isCurrentEgoGraph = selectedType === nextNode.type && selectedEntityId === nextNode.entityId
 
       if (isSameSelectedNode && !isCurrentEgoGraph) {
         nextParams.set('selectedType', nextNode.type)
-        nextParams.set('selectedId', nextNode.id)
+        nextParams.set('selectedId', String(nextNode.entityId))
       } else {
         nextParams.delete('selectedType')
         nextParams.delete('selectedId')
@@ -139,7 +150,7 @@ export function ScenegraphMapPanel({ title }: ScenegraphMapPanelProps) {
       setSearchParams(nextParams, { replace: false })
       setSelected(nextNode)
     },
-    [searchParams, selectedId, selectedNode?.id, selectedType, setSearchParams, setSelected]
+    [searchParams, selectedEntityId, selectedNode?.id, selectedType, setSearchParams, setSelected]
   )
 
   const handleGraphFiltersChange = useCallback(
@@ -185,24 +196,34 @@ export function ScenegraphMapPanel({ title }: ScenegraphMapPanelProps) {
           to: displayedEventDates[displayedEventDates.length - 1],
         }
       : null
+  const isHighlightedLink = (source: string, target: string) => (
+    highlightPathToNodeId
+      ? pathLinks.has([source, target].sort().join('|'))
+      : connectedNodes.has(source) && connectedNodes.has(target)
+  )
 
   return (
-    <section className={`scenegraph-map-panel${title ? ' has-heading' : ''}`} aria-label="Scenegraph database">
+    <section
+      className={`scenegraph-map-panel${title ? ' has-heading' : ''}${showFilters ? '' : ' without-filters'}`}
+      aria-label="Scenegraph database"
+    >
       {title && (
         <div className="scenegraph-map-heading">
           <span className="search-query-label">{title}</span>
         </div>
       )}
-      <article className="graph-filter-card scenegraph-map-filters">
-        <GraphFilters
-          filters={graphFilters}
-          genres={genres ?? []}
-          isGenresLoading={isGenresLoading}
-          genresError={genresError}
-          displayedDateRange={displayedDateRange}
-          onChange={handleGraphFiltersChange}
-        />
-      </article>
+      {showFilters && (
+        <article className="graph-filter-card scenegraph-map-filters">
+          <GraphFilters
+            filters={graphFilters}
+            genres={genres ?? []}
+            isGenresLoading={isGenresLoading}
+            genresError={genresError}
+            displayedDateRange={displayedDateRange}
+            onChange={handleGraphFiltersChange}
+          />
+        </article>
+      )}
 
       <div ref={containerRef} className="graph-canvas graph-canvas--large">
         {isLoading && !data && <div className="graph-canvas-status">Loading graph...</div>}
@@ -215,20 +236,7 @@ export function ScenegraphMapPanel({ title }: ScenegraphMapPanelProps) {
           <span>{nodeCount} nodes</span>
           <span>{linkCount} links</span>
         </div>
-        <div className="graph-legend" aria-label="Filter graph by entity type">
-          {NODE_LEGEND_ITEMS.map((item) => (
-            <button
-              type="button"
-              className={`graph-legend-item${visibleNodeTypes.has(item.type) ? ' active' : ''}`}
-              key={item.type}
-              onClick={() => handleLegendToggle(item.type)}
-              aria-pressed={visibleNodeTypes.has(item.type)}
-            >
-              <span className={`graph-legend-marker graph-legend-marker--${item.type}`} aria-hidden="true" />
-              <span>{item.label}</span>
-            </button>
-          ))}
-        </div>
+        <GraphNodeFilter visibleNodeTypes={visibleNodeTypes} onToggle={handleLegendToggle} />
         <ForceGraph2D
           ref={graphRef}
           width={graphSize.width || undefined}
@@ -244,7 +252,7 @@ export function ScenegraphMapPanel({ title }: ScenegraphMapPanelProps) {
           linkWidth={(l: any) => {
             const source = typeof l.source === 'object' ? l.source.id : l.source
             const target = typeof l.target === 'object' ? l.target.id : l.target
-            if (connectedNodes.has(source) && connectedNodes.has(target)) {
+            if (highlightLinks && isHighlightedLink(source, target)) {
               return Math.sqrt(l.value ?? l.weight ?? 1) * 2
             }
             return Math.sqrt(l.value ?? l.weight ?? 1)
@@ -252,7 +260,7 @@ export function ScenegraphMapPanel({ title }: ScenegraphMapPanelProps) {
           linkColor={(l: any) => {
             const source = typeof l.source === 'object' ? l.source.id : l.source
             const target = typeof l.target === 'object' ? l.target.id : l.target
-            if (connectedNodes.has(source) && connectedNodes.has(target)) {
+            if (highlightLinks && isHighlightedLink(source, target)) {
               return hexToRgba(linkHighlight, 0.8)
             }
             return hexToRgba(linkDim, 0.6)

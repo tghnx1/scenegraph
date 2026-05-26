@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent, type KeyboardEvent } from 'react'
+import { SEARCH_RESULT_LIMIT } from '../../api/search'
 import type { SearchResult } from '../../types/search'
 
 interface SearchQueryFormProps {
@@ -32,7 +33,7 @@ export function SearchQueryForm({
 }: SearchQueryFormProps) {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false)
   const [activeResultIndex, setActiveResultIndex] = useState(-1)
-  const visibleResults = results.slice(0, 8)
+  const visibleResults = results.slice(0, SEARCH_RESULT_LIMIT)
   const shouldShowDropdown = Boolean(onSelectResult && isDropdownOpen && value.trim().length >= 2 && (isLoading || results.length > 0))
   const activeResult = activeResultIndex >= 0 ? visibleResults[activeResultIndex] : undefined
 
