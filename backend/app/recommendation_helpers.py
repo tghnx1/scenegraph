@@ -12,12 +12,12 @@ from app.recommendation_scoring import (
 from app.schemas import EntityKind, RecommendationFeedbackItem
 from app.style_tags import extract_style_tags, style_overlap_score
 
-
+# Build stable graph node ids used across graph payloads.
 def graph_node_id(node_type: str, entity_id: int) -> str:
     """Create stable graph node ids used in API graph payloads."""
     return f"{node_type}-{entity_id}"
 
-
+# Map feedback DB rows to API schema objects.
 def feedback_item_from_row(row: dict) -> RecommendationFeedbackItem:
     """Convert raw feedback SQL rows into API DTOs."""
     return RecommendationFeedbackItem(
@@ -32,7 +32,7 @@ def feedback_item_from_row(row: dict) -> RecommendationFeedbackItem:
         updatedAt=row["updated_at"],
     )
 
-
+# Validate that a referenced artist/event exists for feedback operations.
 def ensure_feedback_entity_exists(
     connection: Connection,
     *,
@@ -49,7 +49,7 @@ def ensure_feedback_entity_exists(
                 detail=f"{entity_type} {entity_id} not found",
             )
 
-
+# Load display metadata for recommendation entities.
 def recommendation_item_metadata(
     connection: Connection,
     entity_type: EntityType,
@@ -106,7 +106,7 @@ def recommendation_item_metadata(
 
     return {row["id"]: row for row in rows}
 
-
+# Load artist semantic metadata (styles and extracted tags).
 def artist_semantic_metadata(
     connection: Connection,
     artist_ids: list[int],
@@ -165,7 +165,7 @@ def artist_semantic_metadata(
     }
     return metadata
 
-
+# Compute capped overlap score between two tag lists.
 def tag_overlap_score(source_tags: list[str], candidate_tags: list[str], cap: int = 1) -> float:
     """Compute case-insensitive overlap score with an upper cap."""
     if not source_tags or not candidate_tags:
@@ -174,7 +174,7 @@ def tag_overlap_score(source_tags: list[str], candidate_tags: list[str], cap: in
     overlap = {tag.casefold() for tag in source_tags} & {tag.casefold() for tag in candidate_tags}
     return min(len(overlap) / cap, 1.0)
 
-
+# Return shared tag values with candidate-side canonical casing.
 def shared_tag_values(source_tags: list[str], candidate_tags: list[str]) -> list[str]:
     """Return shared tag values preserving candidate-side canonical values."""
     candidate_lookup = {tag.casefold(): tag for tag in candidate_tags}
@@ -183,7 +183,7 @@ def shared_tag_values(source_tags: list[str], candidate_tags: list[str]) -> list
         for key in ({tag.casefold() for tag in source_tags} & set(candidate_lookup.keys()))
     )
 
-
+# Compute weighted score across extracted artist tag groups.
 def extracted_tag_score(
     source_tags: dict[str, list[str]],
     candidate_tags: dict[str, list[str]],
@@ -212,7 +212,7 @@ def extracted_tag_score(
         + config.role_weight * role_overlap
     )
 
-
+# Collect shared extracted tags grouped by tag type.
 def shared_extracted_tags(
     source_tags: dict[str, list[str]],
     candidate_tags: dict[str, list[str]],
@@ -225,7 +225,7 @@ def shared_extracted_tags(
             shared[tag_type] = values
     return shared
 
-
+# Build and rank semantic artist candidates for recommendation flows.
 def build_artist_semantic_candidates(
     connection: Connection,
     *,

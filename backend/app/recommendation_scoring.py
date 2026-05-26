@@ -71,6 +71,8 @@ class PromoterRecommendationScoringConfig:
     strength_event_cap: int
     direct_connection_cap: int
     warm_connection_cap: int
+    manual_warm_connection_cap: int
+    manual_warm_boost_weight: float
     event_similarity_count_cap: int
     event_similarity_symbolic_weight: float
     event_similarity_embedding_weight: float
@@ -156,6 +158,8 @@ DEFAULT_PROMOTER_RECOMMENDATION_SCORING = PromoterRecommendationScoringConfig(
     strength_event_cap=20,
     direct_connection_cap=3,
     warm_connection_cap=3,
+    manual_warm_connection_cap=1,
+    manual_warm_boost_weight=0.6,
     event_similarity_count_cap=8,
     event_similarity_symbolic_weight=0.6,
     event_similarity_embedding_weight=0.4,
@@ -179,7 +183,7 @@ DEFAULT_PROMOTER_RECOMMENDATION_SCORING = PromoterRecommendationScoringConfig(
     event_similarity_overfetch_min=500,
 )
 
-
+# Normalize arbitrary positive weights into a unit-sum tuple.
 def normalized_weights(values: tuple[float, ...]) -> tuple[float, ...]:
     if any(value < 0 for value in values):
         raise ValueError("Scoring weights must be non-negative")
@@ -190,21 +194,21 @@ def normalized_weights(values: tuple[float, ...]) -> tuple[float, ...]:
 
     return tuple(value / total for value in values)
 
-
+# Read float config from environment with a fallback default.
 def env_float(name: str, default: float) -> float:
     raw = os.environ.get(name)
     if raw is None or not raw.strip():
         return default
     return float(raw)
 
-
+# Read integer config from environment with a fallback default.
 def env_int(name: str, default: int) -> int:
     raw = os.environ.get(name)
     if raw is None or not raw.strip():
         return default
     return int(raw)
 
-
+# Build semantic-artist scoring config from environment variables.
 def semantic_artist_scoring_from_env() -> SemanticArtistScoringConfig:
     weights = normalized_weights(
         (
@@ -229,7 +233,7 @@ def semantic_artist_scoring_from_env() -> SemanticArtistScoringConfig:
         tag_weight=weights[2],
     )
 
-
+# Build extracted-tag scoring config for semantic artist ranking.
 def semantic_artist_tag_scoring_from_env() -> SemanticArtistTagScoringConfig:
     weights = normalized_weights(
         (
@@ -266,7 +270,7 @@ def semantic_artist_tag_scoring_from_env() -> SemanticArtistTagScoringConfig:
         role_overlap_cap=role_overlap_cap,
     )
 
-
+# Build full Artist -> Promoter scoring config from environment.
 def promoter_recommendation_scoring_from_env() -> PromoterRecommendationScoringConfig:
     weights = normalized_weights(
         (
@@ -332,6 +336,14 @@ def promoter_recommendation_scoring_from_env() -> PromoterRecommendationScoringC
     warm_connection_cap = env_int(
         "PROMOTER_REC_WARM_CONNECTION_CAP",
         DEFAULT_PROMOTER_RECOMMENDATION_SCORING.warm_connection_cap,
+    )
+    manual_warm_connection_cap = env_int(
+        "PROMOTER_REC_MANUAL_WARM_CONNECTION_CAP",
+        DEFAULT_PROMOTER_RECOMMENDATION_SCORING.manual_warm_connection_cap,
+    )
+    manual_warm_boost_weight = env_float(
+        "PROMOTER_REC_MANUAL_WARM_BOOST_WEIGHT",
+        DEFAULT_PROMOTER_RECOMMENDATION_SCORING.manual_warm_boost_weight,
     )
     event_similarity_count_cap = env_int(
         "PROMOTER_REC_EVENT_SIMILARITY_COUNT_CAP",
@@ -434,6 +446,10 @@ def promoter_recommendation_scoring_from_env() -> PromoterRecommendationScoringC
         raise ValueError("PROMOTER_REC_DIRECT_CONNECTION_CAP must be greater than zero")
     if warm_connection_cap <= 0:
         raise ValueError("PROMOTER_REC_WARM_CONNECTION_CAP must be greater than zero")
+    if manual_warm_connection_cap <= 0:
+        raise ValueError("PROMOTER_REC_MANUAL_WARM_CONNECTION_CAP must be greater than zero")
+    if manual_warm_boost_weight < 0:
+        raise ValueError("PROMOTER_REC_MANUAL_WARM_BOOST_WEIGHT must be non-negative")
     if event_similarity_count_cap <= 0:
         raise ValueError("PROMOTER_REC_EVENT_SIMILARITY_COUNT_CAP must be greater than zero")
     if activity_event_cap <= 0:
@@ -495,6 +511,8 @@ def promoter_recommendation_scoring_from_env() -> PromoterRecommendationScoringC
         strength_event_cap=strength_event_cap,
         direct_connection_cap=direct_connection_cap,
         warm_connection_cap=warm_connection_cap,
+        manual_warm_connection_cap=manual_warm_connection_cap,
+        manual_warm_boost_weight=manual_warm_boost_weight,
         event_similarity_count_cap=event_similarity_count_cap,
         event_similarity_symbolic_weight=event_similarity_mix_weights[0],
         event_similarity_embedding_weight=event_similarity_mix_weights[1],
@@ -518,14 +536,14 @@ def promoter_recommendation_scoring_from_env() -> PromoterRecommendationScoringC
         event_similarity_overfetch_min=event_similarity_overfetch_min,
     )
 
-
+# Read and validate API max limit for promoter recommendation endpoint.
 def promoter_recommendation_api_limit_max_from_env() -> int:
     value = env_int("PROMOTER_REC_API_LIMIT_MAX", 50)
     if value <= 0:
         raise ValueError("PROMOTER_REC_API_LIMIT_MAX must be greater than zero")
     return value
 
-
+# Compute semantic artist score from embedding/style/tag components.
 def semantic_artist_score(
     embedding_score: float,
     style_score: float,
@@ -539,17 +557,17 @@ def semantic_artist_score(
         + config.tag_weight * tag_score
     )
 
-
+# Compute capped overlap ratio for two id sets.
 def capped_overlap_score(left: set[int], right: set[int], cap: int) -> float:
     if not left or not right:
         return 0.0
     return min(len(left & right) / cap, 1.0)
 
-
+# Compute boolean overlap score (1 if any overlap exists, else 0).
 def boolean_overlap_score(left: set[int], right: set[int]) -> float:
     return 1.0 if left and right and bool(left & right) else 0.0
 
-
+# Compute weighted contribution for a single graph feature.
 def graph_feature_score(
     weight: GraphFeatureWeight,
     source: dict[str, set[int]],
@@ -564,7 +582,7 @@ def graph_feature_score(
         raise ValueError(f"Graph feature {weight.label} needs either cap or boolean=True")
     return weight.weight * capped_overlap_score(source_values, candidate_values, weight.cap)
 
-
+# Build reason text for a single graph feature overlap.
 def graph_feature_reason(
     weight: GraphFeatureWeight,
     source: dict[str, set[int]],
@@ -575,7 +593,7 @@ def graph_feature_reason(
         return weight.label
     return f"{overlap_count} {weight.label}"
 
-
+# Compute total graph score and top graph reasons for a pair of entities.
 def hybrid_graph_score(
     entity_type: EntityType,
     source: dict[str, set[int]],
@@ -598,7 +616,7 @@ def hybrid_graph_score(
     ][:3]
     return sum(score for score, _ in components), reasons
 
-
+# Blend semantic and graph scores into final recommendation score.
 def final_recommendation_score(
     semantic_score: float,
     graph_score: float,
@@ -606,7 +624,7 @@ def final_recommendation_score(
 ) -> float:
     return config.semantic_weight * semantic_score + config.graph_weight * graph_score
 
-
+# Apply entity-type specific eligibility thresholds before returning candidates.
 def is_similarity_candidate_eligible(
     entity_type: EntityType,
     semantic_score: float,
@@ -619,6 +637,9 @@ def is_similarity_candidate_eligible(
         graph_score >= config.event_graph_min_threshold
         or semantic_score >= config.event_semantic_if_weak_graph_threshold
     )
+
+
+# Build general similarity scoring config (artists/events) from environment.
 def recommendation_scoring_from_env() -> RecommendationScoringConfig:
     weights = normalized_weights(
         (

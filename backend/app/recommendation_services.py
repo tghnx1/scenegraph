@@ -40,7 +40,7 @@ from app.schemas import (
 
 logger = logging.getLogger(__name__)
 
-
+# Build short explanation strings for semantic artist matches.
 def semantic_artist_reasons(item: dict) -> list[str]:
     """Build short human-readable reasons for artist-to-artist semantic similarity."""
     reasons = []
@@ -60,7 +60,7 @@ def semantic_artist_reasons(item: dict) -> list[str]:
         reasons.append("semantic similarity")
     return reasons[:3]
 
-
+# Read source artist scale statistics used by size-fit scoring.
 def source_artist_scale_stats(connection: Connection, *, artist_id: int) -> dict[str, int | float | None]:
     """Return source artist scale stats used for promoter size-fit normalization."""
     with connection.cursor() as cursor:
@@ -96,7 +96,7 @@ def source_artist_scale_stats(connection: Connection, *, artist_id: int) -> dict
         return {"event_count": 0, "median_interested": None}
     return row
 
-
+# Convert source/promoter scale ratio into a smooth fit score.
 def scale_fit_score(
     *,
     artist_scale: float,
@@ -108,7 +108,7 @@ def scale_fit_score(
     ratio = (promoter_scale + alpha) / (artist_scale + alpha)
     return math.exp(-abs(math.log(ratio)) / tau)
 
-
+# Map event volume into coarse scale buckets.
 def scale_bucket(event_count: int) -> int:
     """
     Coarse promoter scale buckets by related event volume.
@@ -120,7 +120,7 @@ def scale_bucket(event_count: int) -> int:
         return 1
     return 2
 
-
+# Penalize bucket distance between source artist and promoter scale.
 def scale_bucket_match_multiplier(source_event_count: int, promoter_event_count: int) -> float:
     """Convert discrete source/promoter bucket distance into a multiplicative penalty."""
     distance = abs(scale_bucket(source_event_count) - scale_bucket(promoter_event_count))
@@ -130,7 +130,7 @@ def scale_bucket_match_multiplier(source_event_count: int, promoter_event_count:
         return 0.65
     return 0.30
 
-
+# Build semantic similar-artists API payload.
 def build_artist_semantic_response(
     connection: Connection,
     *,
@@ -167,7 +167,7 @@ def build_artist_semantic_response(
         similar=similar,
     )
 
-
+# Build hybrid artist recommendations (semantic + graph).
 def build_artist_recommendation_response(
     connection: Connection,
     *,
@@ -236,7 +236,7 @@ def build_artist_recommendation_response(
         )[:limit],
     )
 
-
+# Build the main Artist -> Promoter recommendation response.
 def build_artist_promoter_recommendation_response(
     connection: Connection,
     *,
@@ -267,7 +267,21 @@ def build_artist_promoter_recommendation_response(
     with connection.cursor() as cursor:
         cursor.execute("SELECT to_regclass('public.artist_manual_connections') IS NOT NULL AS exists")
         manual_connections_table_exists = bool(cursor.fetchone()["exists"])
+        manual_known_artist_ids: set[int] = set()
         if manual_connections_table_exists:
+            cursor.execute(
+                """
+                SELECT connected_artist_id
+                FROM artist_manual_connections
+                WHERE source_artist_id = %(source_artist_id)s
+                """,
+                {"source_artist_id": artist_id},
+            )
+            manual_known_artist_ids = {
+                int(row["connected_artist_id"])
+                for row in cursor.fetchall()
+                if row["connected_artist_id"] is not None
+            }
             manual_known_artists_cte = """
             manual_known_artists AS (
                 SELECT
@@ -506,6 +520,7 @@ def build_artist_promoter_recommendation_response(
                         "direct_connection_count": 0,
                         "warm_connection_count": 0,
                         "warm_connection_artists": [],
+                        "manual_warm_connection_count": 0,
                     }
                 )
 
@@ -533,10 +548,6 @@ def build_artist_promoter_recommendation_response(
         )
         direct_connection_score = min(
             row["direct_connection_count"] / scoring_config.direct_connection_cap,
-            1.0,
-        )
-        warm_network_score = min(
-            row["warm_connection_count"] / scoring_config.warm_connection_cap,
             1.0,
         )
         event_similarity_symbolic_score = (
@@ -597,6 +608,11 @@ def build_artist_promoter_recommendation_response(
                     }
                 )
         warm_connection_artists.sort(key=lambda item: item["id"])
+        manual_warm_connection_count = sum(
+            1
+            for item in warm_connection_artists
+            if int(item["id"]) in manual_known_artist_ids
+        )
         matched_artist_names_raw = row.get("matched_artist_names")
         matched_artist_names = (
             sorted({name.strip() for name in matched_artist_names_raw if isinstance(name, str) and name.strip()})
@@ -637,10 +653,24 @@ def build_artist_promoter_recommendation_response(
             "event_count": effective_event_count,
             "latest_event_date": effective_latest_event_date,
             "warm_connection_artists": warm_connection_artists,
+            "manual_warm_connection_count": manual_warm_connection_count,
             "matched_artist_names": matched_artist_names,
             "event_similarity_event_titles": event_similarity_event_titles,
             "related_event_titles": related_event_titles,
         }
+        base_warm_network_score = min(
+            row["warm_connection_count"] / scoring_config.warm_connection_cap,
+            1.0,
+        )
+        manual_warm_score = min(
+            manual_warm_connection_count / scoring_config.manual_warm_connection_cap,
+            1.0,
+        )
+        warm_network_score = min(
+            base_warm_network_score
+            + scoring_config.manual_warm_boost_weight * manual_warm_score,
+            1.0,
+        )
         direct_weight = 0.0 if exclude_existing else scoring_config.direct_connection_weight
         score_breakdown = {
             "semantic": scoring_config.semantic_weight * row["semantic_score"],
@@ -679,6 +709,8 @@ def build_artist_promoter_recommendation_response(
                         "eventCount": effective_event_count,
                         "directConnectionCount": row["direct_connection_count"],
                         "warmConnectionCount": row["warm_connection_count"],
+                        "manualWarmConnectionCount": manual_warm_connection_count,
+                        "manualWarmBoostWeight": scoring_config.manual_warm_boost_weight,
                         "eventSimilarityCount": event_similarity_count,
                         "eventSimilaritySymbolicScore": event_similarity_symbolic_score,
                         "eventSimilarityEmbeddingScore": event_similarity_embedding_score,
@@ -693,6 +725,8 @@ def build_artist_promoter_recommendation_response(
                     "normalizedScores": {
                         "strength": strength_score,
                         "directConnection": direct_connection_score,
+                        "baseWarmNetwork": base_warm_network_score,
+                        "manualWarm": manual_warm_score,
                         "warmNetwork": warm_network_score,
                         "eventSimilarity": event_similarity_score,
                         "scaleFit": scale_fit,
