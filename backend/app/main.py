@@ -12,6 +12,8 @@ from app.schema_preflight import check_schema_tables, schema_preflight_strict_mo
 from app.schemas import (
     LoginRequest,
     LoginResponse,
+    RegisterRequest,
+    RegisterResponse,
     Venue,
     VenuesResponse,
 )
@@ -56,17 +58,6 @@ app.add_middleware(
 
 from app.routers.index import router
 app.include_router(router, prefix="/api")
-
-class RegisterRequest(BaseModel):
-    username: str
-    email: str
-    password: str
-    password_confirm: str    
-
-class RegisterResponse(BaseModel): 
-    success: bool
-    message: str
-    user_id: int | None = None
 
 
 @app.get("/health")
