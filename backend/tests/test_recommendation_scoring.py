@@ -3,6 +3,7 @@ from app.recommendation_scoring import (
     PromoterRecommendationScoringConfig,
     SemanticArtistScoringConfig,
     SemanticArtistTagScoringConfig,
+    artist_recommendation_min_semantic_score_from_env,
     final_recommendation_score,
     hybrid_graph_score,
     is_similarity_candidate_eligible,
@@ -311,6 +312,21 @@ def test_promoter_recommendation_scoring_rejects_invalid_semantic_artist_pool_li
 def test_promoter_recommendation_api_limit_max_reads_env(monkeypatch):
     monkeypatch.setenv("PROMOTER_REC_API_LIMIT_MAX", "75")
     assert promoter_recommendation_api_limit_max_from_env() == 75
+
+
+def test_artist_recommendation_min_semantic_score_reads_env(monkeypatch):
+    monkeypatch.setenv("ARTIST_REC_MIN_SEMANTIC_SCORE", "0.52")
+    assert artist_recommendation_min_semantic_score_from_env() == 0.52
+
+
+def test_artist_recommendation_min_semantic_score_rejects_invalid(monkeypatch):
+    monkeypatch.setenv("ARTIST_REC_MIN_SEMANTIC_SCORE", "1.2")
+    try:
+        artist_recommendation_min_semantic_score_from_env()
+    except ValueError as exc:
+        assert "ARTIST_REC_MIN_SEMANTIC_SCORE" in str(exc)
+    else:
+        raise AssertionError("Expected ValueError")
 
 
 def test_normalized_weights_rejects_zero_total():
