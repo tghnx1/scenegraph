@@ -1,9 +1,9 @@
-import { SearchResultCard } from './SearchResultCard.tsx'
+import { SearchResultCard } from './SearchResultDetails.tsx'
 import type { EntityDetail } from '../../types/entityDetail'
 import type { GraphNode } from '../../types/graph'
 import type { SearchResult } from '../../types/search'
 
-interface GraphSidebarDetailsProps {
+interface DetailsPanelProps {
   searchQuery: string
   searchResults: SearchResult[]
   isSearchLoading: boolean
@@ -12,14 +12,14 @@ interface GraphSidebarDetailsProps {
   selectedEntityDetail: EntityDetail | null
 }
 
-export function GraphSidebarDetails({
+export function DetailsPanel({
   searchQuery,
   searchResults,
   isSearchLoading,
   searchError,
   selectedNode,
   selectedEntityDetail,
-}: GraphSidebarDetailsProps) {
+}: DetailsPanelProps) {
   const activeSearchResult = searchResults[0] ?? null
 
   if (selectedEntityDetail) {
