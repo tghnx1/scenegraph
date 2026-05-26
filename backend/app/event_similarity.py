@@ -11,6 +11,7 @@ from app.recommendation_scoring import (
 from app.schemas import ArtistSimilarEventItem, ArtistSimilarEventsResponse
 from app.style_tags import extract_style_tags
 
+# Build scored similar-event rows for a source artist.
 def artist_similar_events_scored_rows(
     connection: Connection,
     *,
@@ -86,7 +87,7 @@ def artist_similar_events_scored_rows(
         "similarityLimitCutoff": max(len(scored_rows) - limit, 0),
     }
 
-
+# Compute candidate event embedding similarity against source events.
 def event_embedding_similarity_by_candidate(
     connection: Connection,
     *,
@@ -148,7 +149,7 @@ def event_embedding_similarity_by_candidate(
         )
     return scores, dimensions
 
-
+# Extract normalized style tags for a set of events.
 def event_style_tags_by_id(connection: Connection, event_ids: list[int]) -> dict[int, set[str]]:
     """Extract normalized style/genre tags from event title + description + lineup text."""
     if not event_ids:
@@ -185,7 +186,7 @@ def event_style_tags_by_id(connection: Connection, event_ids: list[int]) -> dict
         styles_by_event_id[int(row["id"])] = set(extract_style_tags(style_input))
     return styles_by_event_id
 
-
+# Fetch symbolic event-similarity candidates for an artist.
 def artist_event_similarity_candidates(
     connection: Connection,
     *,
@@ -315,7 +316,7 @@ def artist_event_similarity_candidates(
         )
         return cursor.fetchall()
 
-
+# Count how many candidates are filtered by same-promoter exclusion.
 def artist_event_similarity_same_promoter_filtered_count(
     connection: Connection,
     *,
@@ -415,7 +416,7 @@ def artist_event_similarity_same_promoter_filtered_count(
         row = cursor.fetchone()
     return int(row["filtered_count"]) if row else 0
 
-
+# Build artist similar-events API response.
 def build_artist_similar_events_response(
     connection: Connection,
     *,

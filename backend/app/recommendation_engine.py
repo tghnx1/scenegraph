@@ -14,11 +14,12 @@ from app.recommendation_scoring import (
 )
 from app.schemas import SimilarityItem, SimilarityResponse
 
+# Normalize nullable id arrays from SQL into a set.
 def as_id_set(values: list[int | None] | None) -> set[int]:
     """Normalize nullable integer lists from SQL rows into a set of ids."""
     return {int(value) for value in values or [] if value is not None}
 
-
+# Build per-feature overlap diagnostics for debug output.
 def similarity_graph_debug_components(
     *,
     entity_type: EntityType,
@@ -60,7 +61,7 @@ def similarity_graph_debug_components(
         }
     return components
 
-
+# Fetch core graph feature sets for artists or events.
 def recommendation_feature_sets(
     connection: Connection,
     entity_type: EntityType,
@@ -128,7 +129,7 @@ def recommendation_feature_sets(
             feature_sets[event_id]["extracted_styles"] = set(styles)  # type: ignore[assignment]
     return feature_sets
 
-
+# Fetch candidate/source artist features excluding direct shared source events.
 def artist_indirect_feature_sets(
     connection: Connection,
     *,
@@ -199,7 +200,7 @@ def artist_indirect_feature_sets(
         for row in rows
     }
 
-
+# Apply indirect-only artist features for reranking context.
 def apply_artist_indirect_features(
     connection: Connection,
     *,
@@ -231,7 +232,7 @@ def apply_artist_indirect_features(
 
     return features
 
-
+# Rerank embedding candidates with graph and event-level adjustments.
 def rerank_similar_entities(
     connection: Connection,
     *,
@@ -357,7 +358,7 @@ def rerank_similar_entities(
     }
     return sorted_rescored[:limit], debug_counts
 
-
+# Build final similar-entities API response with optional debug details.
 def build_similarity_response(
     connection: Connection,
     *,
