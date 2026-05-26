@@ -153,6 +153,8 @@ def test_promoter_recommendation_scoring_reads_and_normalizes_env(monkeypatch):
     monkeypatch.setenv("PROMOTER_REC_MANUAL_WARM_CONNECTION_CAP", "2")
     monkeypatch.setenv("PROMOTER_REC_MANUAL_WARM_BOOST_WEIGHT", "0.7")
     monkeypatch.setenv("PROMOTER_REC_EVENT_SIMILARITY_COUNT_CAP", "9")
+    monkeypatch.setenv("PROMOTER_REC_EVENT_SIMILARITY_MIN_TOTAL_SCORE", "0.58")
+    monkeypatch.setenv("PROMOTER_REC_EVENT_SIMILARITY_PER_PROMOTER_LIMIT", "12")
     monkeypatch.setenv("PROMOTER_REC_EVENT_SIMILARITY_SYMBOLIC_WEIGHT", "55")
     monkeypatch.setenv("PROMOTER_REC_EVENT_SIMILARITY_EMBEDDING_WEIGHT", "45")
     monkeypatch.setenv("PROMOTER_REC_EVENT_SIMILARITY_SAME_VENUE_WEIGHT", "40")
@@ -195,6 +197,8 @@ def test_promoter_recommendation_scoring_reads_and_normalizes_env(monkeypatch):
         manual_warm_connection_cap=2,
         manual_warm_boost_weight=0.7,
         event_similarity_count_cap=9,
+        event_similarity_min_total_score=0.58,
+        event_similarity_per_promoter_limit=12,
         event_similarity_symbolic_weight=0.55,
         event_similarity_embedding_weight=0.45,
         event_similarity_same_venue_weight=0.40,
@@ -265,6 +269,26 @@ def test_promoter_recommendation_scoring_rejects_invalid_manual_warm_boost(monke
         promoter_recommendation_scoring_from_env()
     except ValueError as exc:
         assert "PROMOTER_REC_MANUAL_WARM_BOOST_WEIGHT" in str(exc)
+    else:
+        raise AssertionError("Expected ValueError")
+
+
+def test_promoter_recommendation_scoring_rejects_invalid_event_similarity_min_total_score(monkeypatch):
+    monkeypatch.setenv("PROMOTER_REC_EVENT_SIMILARITY_MIN_TOTAL_SCORE", "1.1")
+    try:
+        promoter_recommendation_scoring_from_env()
+    except ValueError as exc:
+        assert "PROMOTER_REC_EVENT_SIMILARITY_MIN_TOTAL_SCORE" in str(exc)
+    else:
+        raise AssertionError("Expected ValueError")
+
+
+def test_promoter_recommendation_scoring_rejects_invalid_event_similarity_per_promoter_limit(monkeypatch):
+    monkeypatch.setenv("PROMOTER_REC_EVENT_SIMILARITY_PER_PROMOTER_LIMIT", "0")
+    try:
+        promoter_recommendation_scoring_from_env()
+    except ValueError as exc:
+        assert "PROMOTER_REC_EVENT_SIMILARITY_PER_PROMOTER_LIMIT" in str(exc)
     else:
         raise AssertionError("Expected ValueError")
 

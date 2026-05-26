@@ -335,6 +335,11 @@ def build_artist_promoter_recommendation_response(
                 JOIN event_artists ea_shared
                     ON ea_shared.event_id = se.event_id
                 WHERE ea_shared.artist_id <> %(source_artist_id)s
+                UNION
+                SELECT
+                    mka.co_artist_id,
+                    mka.shared_event_id
+                FROM manual_known_artists mka
             ),
             semantic_promoters AS (
                 SELECT
@@ -486,8 +491,30 @@ def build_artist_promoter_recommendation_response(
         scoring_config=scoring_config,
         collect_debug=debug,
     )
-    event_similarity_stats_by_promoter: dict[int, dict[str, object]] = {}
+    event_similarity_below_threshold_filtered = 0
+    event_similarity_per_promoter_limit_cutoff = 0
+    event_similarity_rows_by_promoter: dict[int, list[dict]] = {}
     for similar_row in similar_event_rows:
+        promoter_id = similar_row.get("promoter_id")
+        if promoter_id is None:
+            continue
+        if float(similar_row["total_similarity_score"]) < scoring_config.event_similarity_min_total_score:
+            event_similarity_below_threshold_filtered += 1
+            continue
+        event_similarity_rows_by_promoter.setdefault(int(promoter_id), []).append(similar_row)
+
+    filtered_similar_event_rows: list[dict] = []
+    for promoter_id, promoter_rows in event_similarity_rows_by_promoter.items():
+        ranked_rows = sorted(
+            promoter_rows,
+            key=lambda item: (-item["total_similarity_score"], item["candidate_event_id"]),
+        )
+        kept_rows = ranked_rows[: scoring_config.event_similarity_per_promoter_limit]
+        event_similarity_per_promoter_limit_cutoff += max(len(ranked_rows) - len(kept_rows), 0)
+        filtered_similar_event_rows.extend(kept_rows)
+
+    event_similarity_stats_by_promoter: dict[int, dict[str, object]] = {}
+    for similar_row in filtered_similar_event_rows:
         promoter_id = similar_row.get("promoter_id")
         if promoter_id is None:
             continue
@@ -583,7 +610,10 @@ def build_artist_promoter_recommendation_response(
             scoring_config.event_similarity_symbolic_weight * event_similarity_symbolic_score
             + scoring_config.event_similarity_embedding_weight * event_similarity_embedding_score
         )
-        effective_event_count = max(row["event_count"], event_similarity_count)
+        effective_event_count = max(
+            min(int(row["event_count"]), scoring_config.strength_event_cap),
+            event_similarity_count,
+        )
         effective_latest_event_date = row["latest_event_date"]
         if event_similarity_stats is not None and event_similarity_stats["latest_event_date"] is not None:
             similarity_latest_event_date = event_similarity_stats["latest_event_date"]
@@ -637,8 +667,8 @@ def build_artist_promoter_recommendation_response(
             if int(item["id"]) in manual_known_artist_ids
         )
         manual_warm_connection_count = max(
-            manual_warm_connection_count_raw - manual_overlap_with_warm_count,
-            0,
+            manual_warm_connection_count_raw,
+            manual_overlap_with_warm_count,
         )
         matched_artist_names_raw = row.get("matched_artist_names")
         matched_artist_names = (
@@ -734,6 +764,7 @@ def build_artist_promoter_recommendation_response(
                         "semanticScore": row["semantic_score"],
                         "matchedArtistCount": row["matched_artist_count"],
                         "eventCount": effective_event_count,
+                        "eventCountRaw": int(row["event_count"]),
                         "directConnectionCount": row["direct_connection_count"],
                         "warmConnectionCount": row["warm_connection_count"],
                         "manualWarmConnectionCount": manual_warm_connection_count,
@@ -817,6 +848,8 @@ def build_artist_promoter_recommendation_response(
                     "excludeExisting": exclude_existing_filtered_count,
                     "eventSimilaritySamePromoter": similar_event_debug_counts["samePromoterFiltered"],
                     "eventSimilarityLimitCutoff": similar_event_debug_counts["similarityLimitCutoff"],
+                    "eventSimilarityBelowThreshold": event_similarity_below_threshold_filtered,
+                    "eventSimilarityPerPromoterLimitCutoff": event_similarity_per_promoter_limit_cutoff,
                     "recommendationLimitCutoff": 0,
                     "warmLimitCutoff": 0,
                     "discoveryLimitCutoff": 0,
@@ -903,6 +936,8 @@ def build_artist_promoter_recommendation_response(
                 "excludeExisting": exclude_existing_filtered_count,
                 "eventSimilaritySamePromoter": similar_event_debug_counts["samePromoterFiltered"],
                 "eventSimilarityLimitCutoff": similar_event_debug_counts["similarityLimitCutoff"],
+                "eventSimilarityBelowThreshold": event_similarity_below_threshold_filtered,
+                "eventSimilarityPerPromoterLimitCutoff": event_similarity_per_promoter_limit_cutoff,
                 "recommendationLimitCutoff": recommendation_limit_cutoff,
                 "warmLimitCutoff": warm_limit_cutoff,
                 "discoveryLimitCutoff": discovery_limit_cutoff,

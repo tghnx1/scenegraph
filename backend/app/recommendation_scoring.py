@@ -74,6 +74,8 @@ class PromoterRecommendationScoringConfig:
     manual_warm_connection_cap: int
     manual_warm_boost_weight: float
     event_similarity_count_cap: int
+    event_similarity_min_total_score: float
+    event_similarity_per_promoter_limit: int
     event_similarity_symbolic_weight: float
     event_similarity_embedding_weight: float
     event_similarity_same_venue_weight: float
@@ -162,6 +164,8 @@ DEFAULT_PROMOTER_RECOMMENDATION_SCORING = PromoterRecommendationScoringConfig(
     manual_warm_connection_cap=1,
     manual_warm_boost_weight=0.6,
     event_similarity_count_cap=8,
+    event_similarity_min_total_score=0.45,
+    event_similarity_per_promoter_limit=20,
     event_similarity_symbolic_weight=0.6,
     event_similarity_embedding_weight=0.4,
     event_similarity_same_venue_weight=0.5,
@@ -351,6 +355,14 @@ def promoter_recommendation_scoring_from_env() -> PromoterRecommendationScoringC
         "PROMOTER_REC_EVENT_SIMILARITY_COUNT_CAP",
         DEFAULT_PROMOTER_RECOMMENDATION_SCORING.event_similarity_count_cap,
     )
+    event_similarity_min_total_score = env_float(
+        "PROMOTER_REC_EVENT_SIMILARITY_MIN_TOTAL_SCORE",
+        DEFAULT_PROMOTER_RECOMMENDATION_SCORING.event_similarity_min_total_score,
+    )
+    event_similarity_per_promoter_limit = env_int(
+        "PROMOTER_REC_EVENT_SIMILARITY_PER_PROMOTER_LIMIT",
+        DEFAULT_PROMOTER_RECOMMENDATION_SCORING.event_similarity_per_promoter_limit,
+    )
     event_similarity_mix_weights = normalized_weights(
         (
             env_float(
@@ -458,6 +470,10 @@ def promoter_recommendation_scoring_from_env() -> PromoterRecommendationScoringC
         raise ValueError("PROMOTER_REC_MANUAL_WARM_BOOST_WEIGHT must be non-negative")
     if event_similarity_count_cap <= 0:
         raise ValueError("PROMOTER_REC_EVENT_SIMILARITY_COUNT_CAP must be greater than zero")
+    if not (0.0 <= event_similarity_min_total_score <= 1.0):
+        raise ValueError("PROMOTER_REC_EVENT_SIMILARITY_MIN_TOTAL_SCORE must be between 0 and 1")
+    if event_similarity_per_promoter_limit <= 0:
+        raise ValueError("PROMOTER_REC_EVENT_SIMILARITY_PER_PROMOTER_LIMIT must be greater than zero")
     if activity_event_cap <= 0:
         raise ValueError("PROMOTER_REC_ACTIVITY_EVENT_CAP must be greater than zero")
     if existing_partner_direct_min <= 0:
@@ -522,6 +538,8 @@ def promoter_recommendation_scoring_from_env() -> PromoterRecommendationScoringC
         manual_warm_connection_cap=manual_warm_connection_cap,
         manual_warm_boost_weight=manual_warm_boost_weight,
         event_similarity_count_cap=event_similarity_count_cap,
+        event_similarity_min_total_score=event_similarity_min_total_score,
+        event_similarity_per_promoter_limit=event_similarity_per_promoter_limit,
         event_similarity_symbolic_weight=event_similarity_mix_weights[0],
         event_similarity_embedding_weight=event_similarity_mix_weights[1],
         event_similarity_same_venue_weight=event_similarity_signal_weights[0],
