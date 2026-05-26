@@ -169,6 +169,11 @@ def parse_args() -> argparse.Namespace:
         help="Output path for artist biographies JSON",
     )
     parser.add_argument(
+        "--skip-bio",
+        action="store_true",
+        help="Skip artists_bio.py execution (useful for fast event+artist refresh flows).",
+    )
+    parser.add_argument(
         "--bio-log",
         type=Path,
         default=DEFAULT_BIO_LOG,
@@ -288,12 +293,50 @@ def parse_args() -> argparse.Namespace:
         help="Delay before retrying an artist page that errored",
     )
     parser.add_argument(
+        "--dedup-with-db",
+        action="store_true",
+        help="Use database-backed dedup for events and artists to avoid reprocessing existing records.",
+    )
+    parser.add_argument(
+        "--dedup-db-url",
+        type=str,
+        default=os.environ.get("DATABASE_URL"),
+        help="Database URL for dedup checks in parse_past_events.py and extract_artists.py.",
+    )
+    parser.add_argument(
+        "--dedup-events-file",
+        type=Path,
+        default=None,
+        help="Optional newline-delimited file with existing RA event IDs for dedup.",
+    )
+    parser.add_argument(
+        "--dedup-artists-file",
+        type=Path,
+        default=None,
+        help="Optional newline-delimited file with existing RA artist IDs for dedup.",
+    )
+    parser.add_argument(
         "--debug-dir",
         type=Path,
         default=DEBUG_DIR,
         help="Debug output directory for artists_bio.py",
     )
     return parser.parse_args()
+
+
+def normalize_cli_path(path: Path, *, preserve_symlink: bool = False) -> Path:
+    """
+    Normalize CLI paths while optionally preserving symlinks.
+
+    For venv Python executables on macOS, resolve() can dereference
+    `<venv>/bin/python` to the global interpreter and drop venv packages.
+    """
+    expanded = path.expanduser()
+    if not expanded.is_absolute():
+        expanded = (Path.cwd() / expanded).absolute()
+    if preserve_symlink:
+        return expanded
+    return expanded.resolve()
 
 
 def run_extract_artists(args: argparse.Namespace) -> bool:
@@ -305,6 +348,12 @@ def run_extract_artists(args: argparse.Namespace) -> bool:
         "--output",
         str(args.artists_json),
     ]
+    if args.dedup_with_db:
+        cmd.append("--dedup-db")
+        if args.dedup_db_url:
+            cmd.extend(["--database-url", args.dedup_db_url])
+    if args.dedup_artists_file:
+        cmd.extend(["--existing-artist-ids-file", str(args.dedup_artists_file)])
     announce(f"[pipeline] Refreshing artists list from {args.events_json}")
     result = subprocess.run(cmd, cwd=str(SCRIPT_DIR))
     if result.returncode != 0:
@@ -326,6 +375,12 @@ def start_parse_process(args: argparse.Namespace) -> subprocess.Popen:
         "--min-date",
         args.events_min_date,
     ]
+    if args.dedup_with_db:
+        cmd.append("--dedup-db")
+        if args.dedup_db_url:
+            cmd.extend(["--database-url", args.dedup_db_url])
+    if args.dedup_events_file:
+        cmd.extend(["--existing-event-ids-file", str(args.dedup_events_file)])
     announce("[pipeline] Starting parse_past_events.py")
     return subprocess.Popen(cmd, cwd=str(GRAPHQL_DIR))
 
@@ -457,6 +512,24 @@ def ensure_chrome_cdp(
 
 def main() -> int:
     args = parse_args()
+    args.parse_python = normalize_cli_path(args.parse_python, preserve_symlink=True)
+    args.bio_python = normalize_cli_path(args.bio_python, preserve_symlink=True)
+    args.events_json = normalize_cli_path(args.events_json)
+    args.artists_json = normalize_cli_path(args.artists_json)
+    args.bio_json = normalize_cli_path(args.bio_json)
+    args.debug_dir = normalize_cli_path(args.debug_dir)
+    if args.dedup_events_file is not None:
+        args.dedup_events_file = normalize_cli_path(args.dedup_events_file)
+    if args.dedup_artists_file is not None:
+        args.dedup_artists_file = normalize_cli_path(args.dedup_artists_file)
+
+    if not args.parse_python.exists():
+        announce(f"[pipeline] Parse python not found: {args.parse_python}", logging.ERROR)
+        return 1
+    if not args.skip_bio and not args.bio_python.exists():
+        announce(f"[pipeline] Bio python not found: {args.bio_python}", logging.ERROR)
+        return 1
+
     ensure_output_target(args.events_json)
     args.artists_json.parent.mkdir(parents=True, exist_ok=True)
     args.bio_json.parent.mkdir(parents=True, exist_ok=True)
@@ -467,9 +540,14 @@ def main() -> int:
     announce(f"[pipeline] Data directory: {DATA_DIR}")
 
     chrome_proc: Optional[subprocess.Popen] = None
-    chrome_proc = ensure_chrome_cdp(args, chrome_proc)
+    if not args.skip_bio:
+        chrome_proc = ensure_chrome_cdp(args, chrome_proc)
     parse_proc = start_parse_process(args)
-    bio_proc = start_bio_process(args, watch=True)
+    bio_proc: Optional[subprocess.Popen] = None
+    if not args.skip_bio:
+        bio_proc = start_bio_process(args, watch=True)
+    else:
+        announce("[pipeline] Skipping artists_bio.py (--skip-bio enabled)")
     last_extracted_signature: Optional[tuple[int, int]] = None
     pending_extract_signature: Optional[tuple[int, int]] = None
     last_extract_ran_at: Optional[float] = None
@@ -477,7 +555,8 @@ def main() -> int:
 
     try:
         while True:
-            chrome_proc = ensure_chrome_cdp(args, chrome_proc)
+            if not args.skip_bio:
+                chrome_proc = ensure_chrome_cdp(args, chrome_proc)
             parse_returncode = parse_proc.poll()
             events_signature = file_signature(args.events_json)
 
@@ -500,14 +579,15 @@ def main() -> int:
                     last_extract_ran_at = now
 
             if parse_returncode is None:
-                bio_returncode = bio_proc.poll()
-                if bio_returncode is not None:
-                    announce(
-                        f"[pipeline] artists_bio.py exited with code {bio_returncode} while parse_past_events.py is still running. Restarting...",
-                        logging.WARNING,
-                    )
-                    chrome_proc = ensure_chrome_cdp(args, chrome_proc)
-                    bio_proc = start_bio_process(args, watch=True)
+                if bio_proc is not None:
+                    bio_returncode = bio_proc.poll()
+                    if bio_returncode is not None:
+                        announce(
+                            f"[pipeline] artists_bio.py exited with code {bio_returncode} while parse_past_events.py is still running. Restarting...",
+                            logging.WARNING,
+                        )
+                        chrome_proc = ensure_chrome_cdp(args, chrome_proc)
+                        bio_proc = start_bio_process(args, watch=True)
 
                 time.sleep(max(1.0, args.extract_poll_interval))
                 continue
@@ -526,20 +606,22 @@ def main() -> int:
                 pending_extract_signature = None
                 last_extract_ran_at = time.monotonic()
 
-            if bio_proc.poll() is None:
-                announce("[pipeline] Waiting for artists_bio.py to finish its watch cycle...")
-                bio_returncode = bio_proc.wait()
-            else:
-                bio_returncode = bio_proc.returncode
+            bio_returncode = 0
+            if bio_proc is not None:
+                if bio_proc.poll() is None:
+                    announce("[pipeline] Waiting for artists_bio.py to finish its watch cycle...")
+                    bio_returncode = bio_proc.wait()
+                else:
+                    bio_returncode = bio_proc.returncode
 
-            if bio_returncode != 0:
-                announce(
-                    f"[pipeline] artists_bio.py exited with code {bio_returncode}. Running one final one-shot pass...",
-                    logging.WARNING,
-                )
-                chrome_proc = ensure_chrome_cdp(args, chrome_proc)
-                bio_proc = start_bio_process(args, watch=False)
-                bio_returncode = bio_proc.wait()
+                if bio_returncode != 0:
+                    announce(
+                        f"[pipeline] artists_bio.py exited with code {bio_returncode}. Running one final one-shot pass...",
+                        logging.WARNING,
+                    )
+                    chrome_proc = ensure_chrome_cdp(args, chrome_proc)
+                    bio_proc = start_bio_process(args, watch=False)
+                    bio_returncode = bio_proc.wait()
 
             if parse_returncode != 0:
                 return parse_returncode
@@ -553,7 +635,7 @@ def main() -> int:
     finally:
         if parse_proc.poll() is None:
             parse_proc.terminate()
-        if bio_proc.poll() is None:
+        if bio_proc is not None and bio_proc.poll() is None:
             bio_proc.terminate()
 
 

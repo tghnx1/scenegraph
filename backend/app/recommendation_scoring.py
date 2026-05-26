@@ -62,6 +62,7 @@ class PromoterRecommendationScoringConfig:
     direct_connection_weight: float
     warm_network_weight: float
     event_similarity_weight: float
+    scale_fit_weight: float
     activity_weight: float
     recency_weight: float
     strength_matched_artist_weight: float
@@ -86,6 +87,11 @@ class PromoterRecommendationScoringConfig:
     warm_edge_strength_max: float
     event_similarity_edge_strength_min: float
     event_similarity_edge_strength_max: float
+    scale_fit_alpha: float
+    scale_fit_tau: float
+    sql_candidate_limit: int
+    event_similarity_overfetch_multiplier: int
+    event_similarity_overfetch_min: int
 
 
 DEFAULT_SEMANTIC_ARTIST_SCORING = SemanticArtistScoringConfig(
@@ -136,13 +142,14 @@ DEFAULT_RECOMMENDATION_SCORING = RecommendationScoringConfig(
 
 
 DEFAULT_PROMOTER_RECOMMENDATION_SCORING = PromoterRecommendationScoringConfig(
-    semantic_weight=0.35,
-    strength_weight=0.18,
-    direct_connection_weight=0.15,
-    warm_network_weight=0.12,
-    event_similarity_weight=0.15,
-    activity_weight=0.10,
-    recency_weight=0.08,
+    semantic_weight=0.25,
+    strength_weight=0.16,
+    direct_connection_weight=0.16,
+    warm_network_weight=0.25,
+    event_similarity_weight=0.07,
+    scale_fit_weight=0.08,
+    activity_weight=0.02,
+    recency_weight=0.01,
     strength_matched_artist_weight=0.60,
     strength_event_weight=0.40,
     strength_matched_artist_cap=5,
@@ -165,6 +172,11 @@ DEFAULT_PROMOTER_RECOMMENDATION_SCORING = PromoterRecommendationScoringConfig(
     warm_edge_strength_max=0.8,
     event_similarity_edge_strength_min=0.2,
     event_similarity_edge_strength_max=0.7,
+    scale_fit_alpha=75.0,
+    scale_fit_tau=0.55,
+    sql_candidate_limit=200,
+    event_similarity_overfetch_multiplier=20,
+    event_similarity_overfetch_min=500,
 )
 
 
@@ -279,6 +291,10 @@ def promoter_recommendation_scoring_from_env() -> PromoterRecommendationScoringC
                 DEFAULT_PROMOTER_RECOMMENDATION_SCORING.event_similarity_weight,
             ),
             env_float(
+                "PROMOTER_REC_SCALE_FIT_WEIGHT",
+                DEFAULT_PROMOTER_RECOMMENDATION_SCORING.scale_fit_weight,
+            ),
+            env_float(
                 "PROMOTER_REC_ACTIVITY_WEIGHT",
                 DEFAULT_PROMOTER_RECOMMENDATION_SCORING.activity_weight,
             ),
@@ -389,6 +405,26 @@ def promoter_recommendation_scoring_from_env() -> PromoterRecommendationScoringC
         "PROMOTER_REC_EVENT_SIMILARITY_EDGE_STRENGTH_MAX",
         DEFAULT_PROMOTER_RECOMMENDATION_SCORING.event_similarity_edge_strength_max,
     )
+    scale_fit_alpha = env_float(
+        "PROMOTER_REC_SCALE_FIT_ALPHA",
+        DEFAULT_PROMOTER_RECOMMENDATION_SCORING.scale_fit_alpha,
+    )
+    scale_fit_tau = env_float(
+        "PROMOTER_REC_SCALE_FIT_TAU",
+        DEFAULT_PROMOTER_RECOMMENDATION_SCORING.scale_fit_tau,
+    )
+    sql_candidate_limit = env_int(
+        "PROMOTER_REC_SQL_CANDIDATE_LIMIT",
+        DEFAULT_PROMOTER_RECOMMENDATION_SCORING.sql_candidate_limit,
+    )
+    event_similarity_overfetch_multiplier = env_int(
+        "PROMOTER_REC_EVENT_SIMILARITY_OVERFETCH_MULTIPLIER",
+        DEFAULT_PROMOTER_RECOMMENDATION_SCORING.event_similarity_overfetch_multiplier,
+    )
+    event_similarity_overfetch_min = env_int(
+        "PROMOTER_REC_EVENT_SIMILARITY_OVERFETCH_MIN",
+        DEFAULT_PROMOTER_RECOMMENDATION_SCORING.event_similarity_overfetch_min,
+    )
 
     if strength_matched_artist_cap <= 0:
         raise ValueError("PROMOTER_REC_STRENGTH_MATCHED_ARTIST_CAP must be greater than zero")
@@ -433,6 +469,16 @@ def promoter_recommendation_scoring_from_env() -> PromoterRecommendationScoringC
             "PROMOTER_REC_EVENT_SIMILARITY_EDGE_STRENGTH_MIN must be less than or equal to "
             "PROMOTER_REC_EVENT_SIMILARITY_EDGE_STRENGTH_MAX"
         )
+    if scale_fit_alpha <= 0.0:
+        raise ValueError("PROMOTER_REC_SCALE_FIT_ALPHA must be greater than zero")
+    if scale_fit_tau <= 0.0:
+        raise ValueError("PROMOTER_REC_SCALE_FIT_TAU must be greater than zero")
+    if sql_candidate_limit <= 0:
+        raise ValueError("PROMOTER_REC_SQL_CANDIDATE_LIMIT must be greater than zero")
+    if event_similarity_overfetch_multiplier <= 0:
+        raise ValueError("PROMOTER_REC_EVENT_SIMILARITY_OVERFETCH_MULTIPLIER must be greater than zero")
+    if event_similarity_overfetch_min <= 0:
+        raise ValueError("PROMOTER_REC_EVENT_SIMILARITY_OVERFETCH_MIN must be greater than zero")
 
     return PromoterRecommendationScoringConfig(
         semantic_weight=weights[0],
@@ -440,8 +486,9 @@ def promoter_recommendation_scoring_from_env() -> PromoterRecommendationScoringC
         direct_connection_weight=weights[2],
         warm_network_weight=weights[3],
         event_similarity_weight=weights[4],
-        activity_weight=weights[5],
-        recency_weight=weights[6],
+        scale_fit_weight=weights[5],
+        activity_weight=weights[6],
+        recency_weight=weights[7],
         strength_matched_artist_weight=strength_weights[0],
         strength_event_weight=strength_weights[1],
         strength_matched_artist_cap=strength_matched_artist_cap,
@@ -464,7 +511,19 @@ def promoter_recommendation_scoring_from_env() -> PromoterRecommendationScoringC
         warm_edge_strength_max=warm_edge_strength_max,
         event_similarity_edge_strength_min=event_similarity_edge_strength_min,
         event_similarity_edge_strength_max=event_similarity_edge_strength_max,
+        scale_fit_alpha=scale_fit_alpha,
+        scale_fit_tau=scale_fit_tau,
+        sql_candidate_limit=sql_candidate_limit,
+        event_similarity_overfetch_multiplier=event_similarity_overfetch_multiplier,
+        event_similarity_overfetch_min=event_similarity_overfetch_min,
     )
+
+
+def promoter_recommendation_api_limit_max_from_env() -> int:
+    value = env_int("PROMOTER_REC_API_LIMIT_MAX", 50)
+    if value <= 0:
+        raise ValueError("PROMOTER_REC_API_LIMIT_MAX must be greater than zero")
+    return value
 
 
 def semantic_artist_score(

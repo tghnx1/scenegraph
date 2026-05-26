@@ -30,6 +30,7 @@ export function ProfilePage() {
   const [isRecommendationsLoading, setIsRecommendationsLoading] = useState(false)
   const [recommendationsError, setRecommendationsError] = useState<string | null>(null)
   const [recommendationLoadingMessageIndex, setRecommendationLoadingMessageIndex] = useState(0)
+  const [expandedRecommendationId, setExpandedRecommendationId] = useState<number | null>(null)
   const submittedQuery = searchParams.get('q') ?? ''
   const [searchValue, setSearchValue] = useState(submittedQuery)
   const debouncedSearchValue = useDebouncedValue(searchValue.trim(), 350)
@@ -141,6 +142,7 @@ export function ProfilePage() {
   const handleLoadRecommendations = useCallback(async () => {
     setIsRecommendationsLoading(true)
     setRecommendationsError(null)
+    setExpandedRecommendationId(null)
 
     try {
       const response = await fetch(PROMOTER_RECOMMENDATIONS_URL)
@@ -167,6 +169,13 @@ export function ProfilePage() {
       setSelected(recommendationNode)
     }
   }, [recommendationsData, setSelected])
+
+  const handleToggleRecommendation = useCallback((recommendationId: number) => {
+    setExpandedRecommendationId((currentId) => (
+      currentId === recommendationId ? null : recommendationId
+    ))
+    handleSelectRecommendation(recommendationId)
+  }, [handleSelectRecommendation])
 
   const searchResults = searchData?.results ?? []
   const trimmedSearchValue = searchValue.trim()
@@ -288,15 +297,22 @@ export function ProfilePage() {
                             type="button"
                             className="recommendation-name"
                             aria-pressed={selectedNode?.id === `promoter-${recommendation.id}`}
-                            onClick={() => handleSelectRecommendation(recommendation.id)}
+                            aria-expanded={expandedRecommendationId === recommendation.id}
+                            aria-controls={`recommendation-reasons-${recommendation.id}`}
+                            onClick={() => handleToggleRecommendation(recommendation.id)}
                           >
                             {recommendation.name}
                           </button>
-                          <ul className="recommendation-reasons">
-                            {recommendation.reasons.map((reason) => (
-                              <li key={reason}>{reason}</li>
-                            ))}
-                          </ul>
+                          {expandedRecommendationId === recommendation.id && (
+                            <ul
+                              id={`recommendation-reasons-${recommendation.id}`}
+                              className="recommendation-reasons"
+                            >
+                              {recommendation.reasons.map((reason) => (
+                                <li key={reason}>{reason}</li>
+                              ))}
+                            </ul>
+                          )}
                         </article>
                       ))}
                     </section>
