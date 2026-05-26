@@ -1,0 +1,212 @@
+{
+  "generated_at": "2026-05-26T22:21:51.945780+00:00",
+  "database_url": "postgresql://scenegraph:change-me@127.0.0.1:5432/test3",
+  "source_artist_id": 2178,
+  "original_manual_ids_restored": [
+    1740,
+    3654
+  ],
+  "selected_relevant_ids": [
+    1740,
+    1468,
+    2829,
+    4431,
+    706
+  ],
+  "selected_irrelevant_ids": [
+    6,
+    10,
+    11,
+    12,
+    13
+  ],
+  "results": {
+    "S0_baseline": {
+      "manual_ids": [],
+      "summary": {
+        "recommendation_count": 50,
+        "top10_semantic_floor": 0.0,
+        "top10_warm_count": 10,
+        "top10_manual_count": 0,
+        "top10_irrelevant_manual_hits": 0,
+        "top10_irrelevant_manual_share": 0.0,
+        "top10_names": [
+          "://about blank",
+          "VOID",
+          "Crack Bellmer",
+          "Pulse Friction",
+          "Klunkerkranich",
+          "Kater",
+          "dOctOr doms",
+          "Tres Bienski",
+          "Sensorium",
+          "Der Weiße Hase"
+        ],
+        "k3llr": null,
+        "delta_semantic_floor_vs_baseline": 0.0
+      }
+    },
+    "S1_relevant_manual": {
+      "manual_ids": [
+        1740,
+        1468,
+        2829,
+        4431,
+        706
+      ],
+      "summary": {
+        "recommendation_count": 50,
+        "top10_semantic_floor": 0.0,
+        "top10_warm_count": 10,
+        "top10_manual_count": 5,
+        "top10_irrelevant_manual_hits": 0,
+        "top10_irrelevant_manual_share": 0.0,
+        "top10_names": [
+          "://about blank",
+          "VOID",
+          "arkaoda Berlin",
+          "Crack Bellmer",
+          "K3LLR",
+          "Pulse Friction",
+          "Katja Ruge",
+          "TEARS",
+          "Klunkerkranich",
+          "Crave Tapes"
+        ],
+        "k3llr": {
+          "rank": 5,
+          "id": 227,
+          "name": "K3LLR",
+          "warmConnectionCount": 1,
+          "manualWarmConnectionCount": 1,
+          "warmConnectionArtists": [
+            {
+              "id": 1740,
+              "name": "Zee Mon"
+            }
+          ]
+        },
+        "delta_semantic_floor_vs_baseline": 0.0
+      }
+    },
+    "S2_irrelevant_manual": {
+      "manual_ids": [
+        6,
+        10,
+        11,
+        12,
+        13
+      ],
+      "summary": {
+        "recommendation_count": 50,
+        "top10_semantic_floor": 0.0,
+        "top10_warm_count": 10,
+        "top10_manual_count": 0,
+        "top10_irrelevant_manual_hits": 0,
+        "top10_irrelevant_manual_share": 0.0,
+        "top10_names": [
+          "://about blank",
+          "VOID",
+          "Crack Bellmer",
+          "Pulse Friction",
+          "Klunkerkranich",
+          "Kater",
+          "dOctOr doms",
+          "Tres Bienski",
+          "Sensorium",
+          "Der Weiße Hase"
+        ],
+        "k3llr": null,
+        "delta_semantic_floor_vs_baseline": 0.0
+      }
+    },
+    "S3_mixed_manual": {
+      "manual_ids": [
+        1740,
+        1468,
+        2829,
+        6,
+        10
+      ],
+      "summary": {
+        "recommendation_count": 50,
+        "top10_semantic_floor": 0.0,
+        "top10_warm_count": 10,
+        "top10_manual_count": 4,
+        "top10_irrelevant_manual_hits": 0,
+        "top10_irrelevant_manual_share": 0.0,
+        "top10_names": [
+          "://about blank",
+          "VOID",
+          "arkaoda Berlin",
+          "Crack Bellmer",
+          "K3LLR",
+          "Pulse Friction",
+          "TEARS",
+          "Klunkerkranich",
+          "Crave Tapes",
+          "Kater"
+        ],
+        "k3llr": {
+          "rank": 5,
+          "id": 227,
+          "name": "K3LLR",
+          "warmConnectionCount": 1,
+          "manualWarmConnectionCount": 1,
+          "warmConnectionArtists": [
+            {
+              "id": 1740,
+              "name": "Zee Mon"
+            }
+          ]
+        },
+        "delta_semantic_floor_vs_baseline": 0.0
+      }
+    },
+    "S4_regression_k3llr": {
+      "manual_ids": [
+        1740
+      ],
+      "summary": {
+        "recommendation_count": 50,
+        "top10_semantic_floor": 0.0,
+        "top10_warm_count": 10,
+        "top10_manual_count": 3,
+        "top10_irrelevant_manual_hits": 0,
+        "top10_irrelevant_manual_share": 0.0,
+        "top10_names": [
+          "://about blank",
+          "VOID",
+          "arkaoda Berlin",
+          "Crack Bellmer",
+          "K3LLR",
+          "Pulse Friction",
+          "Klunkerkranich",
+          "Crave Tapes",
+          "Kater",
+          "dOctOr doms"
+        ],
+        "k3llr": {
+          "rank": 5,
+          "id": 227,
+          "name": "K3LLR",
+          "warmConnectionCount": 1,
+          "manualWarmConnectionCount": 1,
+          "warmConnectionArtists": [
+            {
+              "id": 1740,
+              "name": "Zee Mon"
+            }
+          ]
+        },
+        "delta_semantic_floor_vs_baseline": 0.0
+      }
+    }
+  },
+  "acceptance": {
+    "semantic_floor_drop_ok": true,
+    "stress_irrelevant_share_ok": true,
+    "k3llr_regression_ok": true
+  },
+  "overall_go": true
+}
