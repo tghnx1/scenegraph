@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
+
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from psycopg import Connection
 
-from app.db import get_db
+from app.db import get_connection, get_db
 from app.recommendation_helpers import extracted_tag_score
+from app.schema_preflight import check_schema_tables, schema_preflight_strict_mode
 from app.schemas import (
     LoginRequest,
     LoginResponse,
@@ -14,7 +17,31 @@ from app.schemas import (
 )
 
 
-app = FastAPI(title="Berlin Scene Graph API")
+@asynccontextmanager
+async def lifespan(app_instance: FastAPI):
+    schema_report: dict[str, object] = {
+        "status": "unknown",
+        "checkedAt": None,
+        "requiredTableCount": 0,
+        "optionalTableCount": 0,
+        "missingRequiredTables": [],
+        "missingOptionalTables": [],
+    }
+    with get_connection() as connection:
+        schema_report = check_schema_tables(connection)
+    app_instance.state.schema_preflight = schema_report
+
+    if schema_preflight_strict_mode() and schema_report["missingRequiredTables"]:
+        missing = ", ".join(schema_report["missingRequiredTables"])
+        raise RuntimeError(
+            "Database schema preflight failed. Missing required tables: "
+            f"{missing}. Run migrations before starting the API."
+        )
+
+    yield
+
+
+app = FastAPI(title="Berlin Scene Graph API", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -36,12 +63,52 @@ dummy_users = [
 ]
 
 @app.get("/health")
-async def health(connection: Connection = Depends(get_db)) -> dict[str, str]:
+async def health(connection: Connection = Depends(get_db)) -> dict[str, object]:
     with connection.cursor() as cursor:
         cursor.execute("SELECT 1 AS ready")
         ready = cursor.fetchone()["ready"]
 
-    return {"status": "ok", "database": "ok" if ready == 1 else "error"}
+    schema_report = getattr(
+        app.state,
+        "schema_preflight",
+        {
+            "status": "unknown",
+            "checkedAt": None,
+            "requiredTableCount": 0,
+            "optionalTableCount": 0,
+            "missingRequiredTables": [],
+            "missingOptionalTables": [],
+        },
+    )
+    database_status = "ok" if ready == 1 else "error"
+    overall_status = (
+        "ok"
+        if database_status == "ok" and schema_report["status"] in {"ok", "degraded"}
+        else "error"
+    )
+
+    return {
+        "status": overall_status,
+        "database": database_status,
+        "schema": schema_report,
+    }
+
+
+@app.get("/health/schema")
+@app.get("/api/health/schema")
+async def health_schema() -> dict[str, object]:
+    return getattr(
+        app.state,
+        "schema_preflight",
+        {
+            "status": "unknown",
+            "checkedAt": None,
+            "requiredTableCount": 0,
+            "optionalTableCount": 0,
+            "missingRequiredTables": [],
+            "missingOptionalTables": [],
+        },
+    )
 
 
 @app.get("/api")

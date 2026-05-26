@@ -17,7 +17,7 @@ REFRESH_CDP_URL ?= http://localhost:9222
 REFRESH_PIPELINE_ARGS ?=
 CHECK_ARTIST_ID ?= 2178
 
-.PHONY: help env build up upd down stop restart logs ps health prisma-migrate prisma-studio db-shell import-events backfill-normalized-texts backfill-lineup-residual backfill-artist-biographies extract-artist-tags generate-embeddings validate-import refresh-data-check refresh-data-check-bio refresh-data-check-bio-embeddings import-dump clean list fclean
+.PHONY: help env build up upd down stop restart logs ps health prisma-migrate prisma-studio db-shell import-events backfill-normalized-texts backfill-lineup-residual backfill-artist-biographies extract-artist-tags generate-embeddings validate-import refresh-data-check refresh-data-check-bio refresh-data-check-bio-embeddings import-dump export-dump clean reset-db list fclean
 
 help:
 	@printf "\n"
@@ -47,7 +47,9 @@ help:
 	@printf "  make refresh-data-check-bio Same as refresh-data-check, but includes artists biographies scraping\n"
 	@printf "  make refresh-data-check-bio-embeddings Same as refresh-data-check-bio + incremental embeddings for check DB\n"
 	@printf "  make import-dump   Import a local SQL dump; supports DB_NAME=... and prompts before overwrite\n"
-	@printf "  make clean    Stop stack and remove volumes\n"
+	@printf "  make export-dump   Export database dump; supports DB_NAME=... OUT=... FORMAT=sql|custom\n"
+	@printf "  make clean    Stop stack and remove containers (keeps DB volumes)\n"
+	@printf "  make reset-db DANGEROUS: remove containers and DB volumes (requires RESET_DB=yes)\n"
 	@printf "  make list     List Docker resources\n"
 	@printf "  make fclean   Remove containers, images, volumes, and builder cache\n"
 	@printf "\n"
@@ -145,6 +147,9 @@ refresh-data-check-bio-embeddings: refresh-data-check-bio
 import-dump: env
 	DUMP="$(DUMP)" RESET_DB="$(RESET_DB)" ./scripts/import_dump.sh
 
+export-dump: env
+	DB_NAME="$(DB_NAME)" OUT="$(OUT)" FORMAT="$(FORMAT)" sh ./scripts/export_dump.sh
+
 list:
 	@printf "%b\n" "${BLU}== Images ==${RES}" && docker images
 	@printf "%b\n" "${RED}== Containers ==${RES}" && docker ps -a
@@ -157,6 +162,14 @@ list:
 	done
 
 clean:
+	$(COMPOSE) down --remove-orphans
+
+reset-db:
+	@if [ "$$RESET_DB" != "yes" ]; then \
+		echo "Refusing to delete database volumes."; \
+		echo "Run: make reset-db RESET_DB=yes"; \
+		exit 1; \
+	fi
 	$(COMPOSE) down -v
 
 fclean:
