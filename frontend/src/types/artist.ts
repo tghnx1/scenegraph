@@ -1,23 +1,23 @@
 export interface ArtistEventItem {
-  id: string
+  id: number
   title: string
-  date: string | null
+  event_date: string | null
   venue_name: string | null
 }
 
 export interface ConnectedArtistItem {
-  id: string
+  id: number
   name: string
-  shared_events_count: number
+  shared_events: number
 }
 
-export interface Artist {
+export interface ArtistDetail {
   type: 'artist'
-  id: string
+  id: number
   name: string
   genres: string[]
   bio: string | null
-  eventCount: number
+  event_count: number
   events: ArtistEventItem[]
-  connectedArtists: ConnectedArtistItem[]
+  connected_artists: ConnectedArtistItem[]
 }

@@ -2,12 +2,10 @@ import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
 import { fetchEntityDetail } from '../api/entityDetails'
-import { fetchArtist } from '../api/artists'
 import { fetchSearch } from '../api/search'
 import { useGraphStore } from '../store/graphStore'
-import type { Artist } from '../types/artist'
 import type { EntityDetail } from '../types/entityDetail'
-import { graphEntityId, type GraphNode, type NodeType } from '../types/graph'
+import { graphEntityId, type NodeType } from '../types/graph'
 import type { SearchResponse, SearchResult } from '../types/search'
 import { useDebouncedValue } from './hooks/useDebouncedValue'
 import { GraphSidebarDetails } from './components/DetailsPanel.tsx'
@@ -22,33 +20,20 @@ export function GraphPage() {
   const debouncedSearchValue = useDebouncedValue(searchValue.trim(), 350)
   const selectedTypeParam = searchParams.get('selectedType')
   const selectedIdParam = searchParams.get('selectedId')
-  const selectedArtistNodeId = selectedNode?.type === 'artist'
-    ? selectedNode.id
-    : selectedTypeParam === 'artist'
-      ? selectedIdParam
-      : null
-  const selectedArtistId = selectedArtistNodeId
-    ? String(graphEntityId(selectedArtistNodeId, 'artist') ?? selectedArtistNodeId)
-    : null
-  const selectedDetailType = selectedNode && selectedNode.type !== 'artist'
+  const selectedDetailType = selectedNode
     ? selectedNode.type
-    : selectedTypeParam && selectedTypeParam !== 'artist'
+    : selectedTypeParam
       ? selectedTypeParam
       : null
-  const selectedDetailNodeId = selectedNode && selectedNode.type !== 'artist' ? selectedNode.id : selectedIdParam
+  const selectedDetailNodeId = selectedNode ? selectedNode.id : selectedIdParam
   const selectedDetailId = selectedDetailType && selectedDetailNodeId
     ? String(graphEntityId(selectedDetailNodeId, selectedDetailType as NodeType) ?? selectedDetailNodeId)
     : null
 
-  const { data: selectedArtist } = useApi<Artist | null>(
-    () => (selectedArtistId ? fetchArtist(selectedArtistId) : Promise.resolve(null)),
-    [selectedArtistId]
-  )
-
   const { data: selectedEntityDetail, isLoading: isSelectedEntityDetailLoading } = useApi<EntityDetail | null>(
     () => (
       selectedDetailType && selectedDetailId
-        ? fetchEntityDetail(selectedDetailType as Exclude<NodeType, 'artist'>, selectedDetailId)
+        ? fetchEntityDetail(selectedDetailType as NodeType, selectedDetailId)
         : Promise.resolve(null)
     ),
     [selectedDetailType, selectedDetailId]
@@ -135,18 +120,7 @@ export function GraphPage() {
   const detailsSearchError = searchError
   const isDetailsSearchLoading = isSearchLoading || isSelectedEntityDetailLoading
   const hasActiveSearchState = Boolean(searchValue || submittedQuery || selectedNode)
-  const activeSelectedArtist = selectedArtistId ? selectedArtist : null
-  const selectedArtistNode: GraphNode | null = activeSelectedArtist
-    ? {
-        id: activeSelectedArtist.id,
-        entityId: graphEntityId(activeSelectedArtist.id, 'artist') ?? 0,
-        type: 'artist',
-        name: activeSelectedArtist.name,
-        genres: activeSelectedArtist.genres,
-        eventCount: activeSelectedArtist.eventCount,
-      }
-    : null
-  const detailsSelectedNode = selectedEntityDetail ? null : selectedNode ?? selectedArtistNode
+  const detailsSelectedNode = selectedEntityDetail ? null : selectedNode
 
   return (
     <div className="graph-page-shell">
@@ -173,7 +147,6 @@ export function GraphPage() {
             isSearchLoading={isDetailsSearchLoading}
             searchError={detailsSearchError}
             selectedNode={detailsSelectedNode}
-            selectedArtist={activeSelectedArtist}
             selectedEntityDetail={selectedEntityDetail}
           />
         </article>

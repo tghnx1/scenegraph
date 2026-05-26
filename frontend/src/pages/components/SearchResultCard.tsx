@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import type { Artist } from '../../types/artist'
+import type { ArtistDetail } from '../../types/artist'
 import type { EntityDetail } from '../../types/entityDetail'
 import type { EventDetail } from '../../types/event'
 import type { PromoterDetail } from '../../types/promoter'
@@ -7,14 +7,14 @@ import type { SearchResult } from '../../types/search'
 import type { VenueDetail } from '../../types/venue'
 
 type SearchResultCardProps = {
-  result: SearchResult | Artist | EntityDetail
+  result: SearchResult | EntityDetail
   variant?: 'card' | 'inline'
 }
 
-type DisplayResult = SearchResult | Artist | EntityDetail
+type DisplayResult = SearchResult | EntityDetail
 
-function isArtistDetail(result: DisplayResult): result is Artist {
-  return result.type === 'artist' && 'connectedArtists' in result
+function isArtistDetail(result: DisplayResult): result is ArtistDetail {
+  return result.type === 'artist' && 'connected_artists' in result
 }
 
 function isPromoterDetail(result: DisplayResult): result is PromoterDetail {
@@ -33,7 +33,7 @@ export function SearchResultCard({ result, variant = 'card' }: SearchResultCardP
   const articleClassName = variant === 'inline' ? 'search-result-card search-result-card--inline' : 'search-result-card'
 
   if (isArtistDetail(result)) {
-    const linkedArtists = result.connectedArtists
+    const linkedArtists = result.connected_artists
     const linkedEvents = result.events
 
     return (
@@ -44,7 +44,7 @@ export function SearchResultCard({ result, variant = 'card' }: SearchResultCardP
             <h2>{result.name}</h2>
             <p className="result-meta">{result.genres.join(' · ') || 'No genres yet'}</p>
           </div>
-          <span className="result-badge">{result.eventCount} events</span>
+          <span className="result-badge">{result.event_count} events</span>
         </div>
 
         <section className="result-section">
@@ -65,7 +65,7 @@ export function SearchResultCard({ result, variant = 'card' }: SearchResultCardP
                       to={`/graph?selectedType=artist&selectedId=${encodeURIComponent(artist.id)}`}
                       className="result-pill"
                     >
-                      {artist.name} <span>{artist.shared_events_count} shared</span>
+                      {artist.name} <span>{artist.shared_events} shared</span>
                     </Link>
                   ))
                 ) : (
@@ -84,7 +84,7 @@ export function SearchResultCard({ result, variant = 'card' }: SearchResultCardP
                       to={`/graph?selectedType=event&selectedId=${encodeURIComponent(event.id)}`}
                       className="result-pill"
                     >
-                      {event.title} <span>{event.date}</span>
+                      {event.title} <span>{event.event_date}</span>
                     </Link>
                   ))
                 ) : (
