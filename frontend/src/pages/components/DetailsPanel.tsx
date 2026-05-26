@@ -1,5 +1,4 @@
 import { SearchResultCard } from './SearchResultCard.tsx'
-import type { Artist } from '../../types/artist'
 import type { EntityDetail } from '../../types/entityDetail'
 import type { GraphNode } from '../../types/graph'
 import type { SearchResult } from '../../types/search'
@@ -10,7 +9,6 @@ interface GraphSidebarDetailsProps {
   isSearchLoading: boolean
   searchError: string | null
   selectedNode: GraphNode | null
-  selectedArtist: Artist | null
   selectedEntityDetail: EntityDetail | null
 }
 
@@ -20,7 +18,6 @@ export function GraphSidebarDetails({
   isSearchLoading,
   searchError,
   selectedNode,
-  selectedArtist,
   selectedEntityDetail,
 }: GraphSidebarDetailsProps) {
   const activeSearchResult = searchResults[0] ?? null
@@ -29,14 +26,6 @@ export function GraphSidebarDetails({
     return (
       <div className="graph-sidebar-content">
         <SearchResultCard variant="inline" result={selectedEntityDetail} />
-      </div>
-    )
-  }
-
-  if (selectedArtist) {
-    return (
-      <div className="graph-sidebar-content">
-        <SearchResultCard variant="inline" result={selectedArtist} />
       </div>
     )
   }
