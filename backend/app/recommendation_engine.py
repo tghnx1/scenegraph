@@ -15,6 +15,7 @@ from app.recommendation_scoring import (
 from app.schemas import SimilarityItem, SimilarityResponse
 
 def as_id_set(values: list[int | None] | None) -> set[int]:
+    """Normalize nullable integer lists from SQL rows into a set of ids."""
     return {int(value) for value in values or [] if value is not None}
 
 
@@ -25,6 +26,7 @@ def similarity_graph_debug_components(
     candidate_features: dict[str, set[int]],
     scoring_config=DEFAULT_RECOMMENDATION_SCORING,
 ) -> dict[str, dict[str, object]]:
+    """Build per-feature graph overlap diagnostics for debug responses."""
     weights = (
         scoring_config.event_graph_weights
         if entity_type == "event"
@@ -64,6 +66,7 @@ def recommendation_feature_sets(
     entity_type: EntityType,
     entity_ids: list[int],
 ) -> dict[int, dict[str, set[int]]]:
+    """Fetch graph feature sets for a list of artists or events."""
     if not entity_ids:
         return {}
 
@@ -132,6 +135,7 @@ def artist_indirect_feature_sets(
     source_artist_id: int,
     candidate_artist_ids: list[int],
 ) -> dict[int, dict[str, set[int]]]:
+    """Fetch artist feature sets excluding direct source events for indirect scoring."""
     if not candidate_artist_ids:
         return {}
 
@@ -204,6 +208,7 @@ def apply_artist_indirect_features(
     candidate_ids: list[int],
     features: dict[int, dict[str, set[int]]],
 ) -> dict[int, dict[str, set[int]]]:
+    """Apply indirect feature overrides for artist similarity reranking."""
     if entity_type != "artist":
         return features
     if entity_id not in features:
@@ -236,6 +241,7 @@ def rerank_similar_entities(
     limit: int,
     scoring_config=DEFAULT_RECOMMENDATION_SCORING,
 ) -> tuple[list[dict], dict[str, int]]:
+    """Rerank embedding candidates with graph signals and event-specific adjustments."""
     candidate_ids = [item["entity_id"] for item in ranked]
     features = recommendation_feature_sets(connection, entity_type, [entity_id, *candidate_ids])
     features = apply_artist_indirect_features(
@@ -361,6 +367,7 @@ def build_similarity_response(
     debug: bool = False,
     exclude_same_promoter: bool = False,
 ) -> SimilarityResponse:
+    """Build API response for similar entities with optional debug diagnostics."""
     config = EmbeddingConfig.from_env()
     scoring_config = recommendation_scoring_from_env()
     overfetch_multiplier = 25 if entity_type == "event" and exclude_same_promoter else 10
