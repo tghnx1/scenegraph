@@ -92,6 +92,7 @@ class PromoterRecommendationScoringConfig:
     scale_fit_alpha: float
     scale_fit_tau: float
     sql_candidate_limit: int
+    semantic_artist_pool_limit: int
     event_similarity_overfetch_multiplier: int
     event_similarity_overfetch_min: int
 
@@ -179,6 +180,7 @@ DEFAULT_PROMOTER_RECOMMENDATION_SCORING = PromoterRecommendationScoringConfig(
     scale_fit_alpha=75.0,
     scale_fit_tau=0.55,
     sql_candidate_limit=200,
+    semantic_artist_pool_limit=20,
     event_similarity_overfetch_multiplier=20,
     event_similarity_overfetch_min=500,
 )
@@ -429,6 +431,10 @@ def promoter_recommendation_scoring_from_env() -> PromoterRecommendationScoringC
         "PROMOTER_REC_SQL_CANDIDATE_LIMIT",
         DEFAULT_PROMOTER_RECOMMENDATION_SCORING.sql_candidate_limit,
     )
+    semantic_artist_pool_limit = env_int(
+        "PROMOTER_REC_SEMANTIC_ARTIST_POOL_LIMIT",
+        DEFAULT_PROMOTER_RECOMMENDATION_SCORING.semantic_artist_pool_limit,
+    )
     event_similarity_overfetch_multiplier = env_int(
         "PROMOTER_REC_EVENT_SIMILARITY_OVERFETCH_MULTIPLIER",
         DEFAULT_PROMOTER_RECOMMENDATION_SCORING.event_similarity_overfetch_multiplier,
@@ -491,6 +497,8 @@ def promoter_recommendation_scoring_from_env() -> PromoterRecommendationScoringC
         raise ValueError("PROMOTER_REC_SCALE_FIT_TAU must be greater than zero")
     if sql_candidate_limit <= 0:
         raise ValueError("PROMOTER_REC_SQL_CANDIDATE_LIMIT must be greater than zero")
+    if semantic_artist_pool_limit <= 0:
+        raise ValueError("PROMOTER_REC_SEMANTIC_ARTIST_POOL_LIMIT must be greater than zero")
     if event_similarity_overfetch_multiplier <= 0:
         raise ValueError("PROMOTER_REC_EVENT_SIMILARITY_OVERFETCH_MULTIPLIER must be greater than zero")
     if event_similarity_overfetch_min <= 0:
@@ -532,6 +540,7 @@ def promoter_recommendation_scoring_from_env() -> PromoterRecommendationScoringC
         scale_fit_alpha=scale_fit_alpha,
         scale_fit_tau=scale_fit_tau,
         sql_candidate_limit=sql_candidate_limit,
+        semantic_artist_pool_limit=semantic_artist_pool_limit,
         event_similarity_overfetch_multiplier=event_similarity_overfetch_multiplier,
         event_similarity_overfetch_min=event_similarity_overfetch_min,
     )

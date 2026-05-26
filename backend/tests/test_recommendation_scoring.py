@@ -170,6 +170,7 @@ def test_promoter_recommendation_scoring_reads_and_normalizes_env(monkeypatch):
     monkeypatch.setenv("PROMOTER_REC_SCALE_FIT_ALPHA", "80")
     monkeypatch.setenv("PROMOTER_REC_SCALE_FIT_TAU", "0.6")
     monkeypatch.setenv("PROMOTER_REC_SQL_CANDIDATE_LIMIT", "260")
+    monkeypatch.setenv("PROMOTER_REC_SEMANTIC_ARTIST_POOL_LIMIT", "21")
     monkeypatch.setenv("PROMOTER_REC_EVENT_SIMILARITY_OVERFETCH_MULTIPLIER", "24")
     monkeypatch.setenv("PROMOTER_REC_EVENT_SIMILARITY_OVERFETCH_MIN", "640")
 
@@ -211,6 +212,7 @@ def test_promoter_recommendation_scoring_reads_and_normalizes_env(monkeypatch):
         scale_fit_alpha=80,
         scale_fit_tau=0.6,
         sql_candidate_limit=260,
+        semantic_artist_pool_limit=21,
         event_similarity_overfetch_multiplier=24,
         event_similarity_overfetch_min=640,
     )
@@ -292,6 +294,16 @@ def test_promoter_recommendation_scoring_rejects_invalid_sql_candidate_limit(mon
         promoter_recommendation_scoring_from_env()
     except ValueError as exc:
         assert "PROMOTER_REC_SQL_CANDIDATE_LIMIT" in str(exc)
+    else:
+        raise AssertionError("Expected ValueError")
+
+
+def test_promoter_recommendation_scoring_rejects_invalid_semantic_artist_pool_limit(monkeypatch):
+    monkeypatch.setenv("PROMOTER_REC_SEMANTIC_ARTIST_POOL_LIMIT", "0")
+    try:
+        promoter_recommendation_scoring_from_env()
+    except ValueError as exc:
+        assert "PROMOTER_REC_SEMANTIC_ARTIST_POOL_LIMIT" in str(exc)
     else:
         raise AssertionError("Expected ValueError")
 
