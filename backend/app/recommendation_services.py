@@ -42,6 +42,7 @@ logger = logging.getLogger(__name__)
 
 
 def semantic_artist_reasons(item: dict) -> list[str]:
+    """Build short human-readable reasons for artist-to-artist semantic similarity."""
     reasons = []
     shared_styles = item["shared_styles"]
     shared_tags = item["shared_tags"]
@@ -61,6 +62,7 @@ def semantic_artist_reasons(item: dict) -> list[str]:
 
 
 def source_artist_scale_stats(connection: Connection, *, artist_id: int) -> dict[str, int | float | None]:
+    """Return source artist scale stats used for promoter size-fit normalization."""
     with connection.cursor() as cursor:
         cursor.execute(
             """
@@ -102,6 +104,7 @@ def scale_fit_score(
     alpha: float,
     tau: float,
 ) -> float:
+    """Score how close promoter scale is to source-artist scale in log-ratio space."""
     ratio = (promoter_scale + alpha) / (artist_scale + alpha)
     return math.exp(-abs(math.log(ratio)) / tau)
 
@@ -119,6 +122,7 @@ def scale_bucket(event_count: int) -> int:
 
 
 def scale_bucket_match_multiplier(source_event_count: int, promoter_event_count: int) -> float:
+    """Convert discrete source/promoter bucket distance into a multiplicative penalty."""
     distance = abs(scale_bucket(source_event_count) - scale_bucket(promoter_event_count))
     if distance == 0:
         return 1.0
@@ -134,6 +138,7 @@ def build_artist_semantic_response(
     limit: int,
     debug: bool = False,
 ) -> SemanticArtistResponse:
+    """Build API response for similar artists with semantic score breakdown."""
     source, scored = build_artist_semantic_candidates(
         connection,
         artist_id=artist_id,
@@ -169,6 +174,7 @@ def build_artist_recommendation_response(
     artist_id: int,
     limit: int,
 ) -> ArtistRecommendationResponse:
+    """Build hybrid artist recommendations (semantic + graph) for an artist source."""
     source, semantic_candidates = build_artist_semantic_candidates(
         connection,
         artist_id=artist_id,
@@ -239,6 +245,7 @@ def build_artist_promoter_recommendation_response(
     exclude_existing: bool,
     debug: bool,
 ) -> PromoterRecommendationResponse:
+    """Build Artist -> Promoter recommendations with all weighted internal signals."""
     scoring_config = promoter_recommendation_scoring_from_env()
     source, semantic_candidates = build_artist_semantic_candidates(
         connection,

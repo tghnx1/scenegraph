@@ -20,6 +20,7 @@ def artist_similar_events_scored_rows(
     scoring_config: PromoterRecommendationScoringConfig,
     collect_debug: bool = False,
 ) -> tuple[list[dict], int | None, dict[str, int]]:
+    """Collect and score similar-event rows for an artist using symbolic+embedding blend."""
     same_promoter_filtered_count = 0
     if collect_debug and exclude_same_promoter:
         same_promoter_filtered_count = artist_event_similarity_same_promoter_filtered_count(
@@ -92,6 +93,7 @@ def event_embedding_similarity_by_candidate(
     source_event_ids: list[int],
     candidate_event_ids: list[int],
 ) -> tuple[dict[int, float], int | None]:
+    """Compute max cosine similarity from candidate event to any source event embedding."""
     if not source_event_ids or not candidate_event_ids:
         return {}, None
 
@@ -148,6 +150,7 @@ def event_embedding_similarity_by_candidate(
 
 
 def event_style_tags_by_id(connection: Connection, event_ids: list[int]) -> dict[int, set[str]]:
+    """Extract normalized style/genre tags from event title + description + lineup text."""
     if not event_ids:
         return {}
 
@@ -191,6 +194,7 @@ def artist_event_similarity_candidates(
     exclude_same_promoter: bool,
     scoring_config: PromoterRecommendationScoringConfig,
 ) -> list[dict]:
+    """Fetch raw symbolic similarity candidates between source-artist events and other events."""
     with connection.cursor() as cursor:
         cursor.execute(
             """
@@ -318,6 +322,7 @@ def artist_event_similarity_same_promoter_filtered_count(
     source_artist_id: int,
     scoring_config: PromoterRecommendationScoringConfig,
 ) -> int:
+    """Count event candidates removed solely because they share source promoters."""
     with connection.cursor() as cursor:
         cursor.execute(
             """
@@ -419,6 +424,7 @@ def build_artist_similar_events_response(
     debug: bool,
     exclude_same_promoter: bool,
 ) -> ArtistSimilarEventsResponse:
+    """Build artist->similar-events response with blended symbolic and semantic signals."""
     with connection.cursor() as cursor:
         cursor.execute(
             """
@@ -547,5 +553,3 @@ def build_artist_similar_events_response(
         if debug
         else None,
     )
-
-
