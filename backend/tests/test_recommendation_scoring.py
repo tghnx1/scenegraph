@@ -149,6 +149,8 @@ def test_promoter_recommendation_scoring_reads_and_normalizes_env(monkeypatch):
     monkeypatch.setenv("PROMOTER_REC_STRENGTH_EVENT_CAP", "24")
     monkeypatch.setenv("PROMOTER_REC_DIRECT_CONNECTION_CAP", "4")
     monkeypatch.setenv("PROMOTER_REC_WARM_CONNECTION_CAP", "5")
+    monkeypatch.setenv("PROMOTER_REC_MANUAL_WARM_CONNECTION_CAP", "2")
+    monkeypatch.setenv("PROMOTER_REC_MANUAL_WARM_BOOST_WEIGHT", "0.7")
     monkeypatch.setenv("PROMOTER_REC_EVENT_SIMILARITY_COUNT_CAP", "9")
     monkeypatch.setenv("PROMOTER_REC_EVENT_SIMILARITY_SYMBOLIC_WEIGHT", "55")
     monkeypatch.setenv("PROMOTER_REC_EVENT_SIMILARITY_EMBEDDING_WEIGHT", "45")
@@ -188,6 +190,8 @@ def test_promoter_recommendation_scoring_reads_and_normalizes_env(monkeypatch):
         strength_event_cap=24,
         direct_connection_cap=4,
         warm_connection_cap=5,
+        manual_warm_connection_cap=2,
+        manual_warm_boost_weight=0.7,
         event_similarity_count_cap=9,
         event_similarity_symbolic_weight=0.55,
         event_similarity_embedding_weight=0.45,
@@ -238,6 +242,26 @@ def test_promoter_recommendation_scoring_rejects_invalid_warm_range(monkeypatch)
         promoter_recommendation_scoring_from_env()
     except ValueError as exc:
         assert "PROMOTER_REC_WARM_EDGE_STRENGTH_MIN" in str(exc)
+    else:
+        raise AssertionError("Expected ValueError")
+
+
+def test_promoter_recommendation_scoring_rejects_invalid_manual_warm_cap(monkeypatch):
+    monkeypatch.setenv("PROMOTER_REC_MANUAL_WARM_CONNECTION_CAP", "0")
+    try:
+        promoter_recommendation_scoring_from_env()
+    except ValueError as exc:
+        assert "PROMOTER_REC_MANUAL_WARM_CONNECTION_CAP" in str(exc)
+    else:
+        raise AssertionError("Expected ValueError")
+
+
+def test_promoter_recommendation_scoring_rejects_invalid_manual_warm_boost(monkeypatch):
+    monkeypatch.setenv("PROMOTER_REC_MANUAL_WARM_BOOST_WEIGHT", "-0.1")
+    try:
+        promoter_recommendation_scoring_from_env()
+    except ValueError as exc:
+        assert "PROMOTER_REC_MANUAL_WARM_BOOST_WEIGHT" in str(exc)
     else:
         raise AssertionError("Expected ValueError")
 
