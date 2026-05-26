@@ -1,44 +1,50 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { fetchEntityDetail } from '../api/entityDetails'
-import { fetchArtist } from '../api/artists'
 import { fetchSearch } from '../api/search'
 import { useApi } from '../hooks/useApi'
 import { useGraphStore } from '../store/graphStore'
-import type { Artist } from '../types/artist'
-import { graphEntityId, type GraphNode, type NodeType } from '../types/graph'
+import type { EntityDetail } from '../types/entityDetail'
+import { graphEntityId, type NodeType } from '../types/graph'
+import type { PromoterRecommendationResponse } from '../types/recommendation'
 import type { SearchResponse, SearchResult } from '../types/search'
-import { GraphSidebarDetails } from './components/DetailsPanel.tsx'
-import { ScenegraphMapPanel } from './components/ScenegraphMapPanel.tsx'
-import { SearchQueryForm } from './components/SearchQueryForm.tsx'
+import { DetailsPanel } from './components/DetailsPanel.tsx'
+import { RecommendationLoading } from './components/LoadingScreen.tsx'
+import { ScenegraphMapPanel } from './components/GraphPanel.tsx'
+import { SearchQueryForm } from './components/SearchQuery.tsx'
 import { useDebouncedValue } from './hooks/useDebouncedValue'
 
-const stats = [
-  { label: 'Connected nodes', value: '0' },
-  { label: 'Shared events', value: '0' },
-  { label: 'Recommendations', value: '0' },
+const PROMOTER_RECOMMENDATIONS_URL = 'http://localhost:8080/api/recommendations/artists/2178/promoters?limit=10'
+const RECOMMENDATION_LOADING_MESSAGES = [
+  'Finding similar artists',
+  'Comparing related events',
+  'Building promoter graph',
 ]
+type ProfileWorkspaceTab = 'graph' | 'recommendations'
 
 export function ProfilePage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const { setSelected, selectedNode } = useGraphStore()
-  const [isRecommendationGraphVisible, setIsRecommendationGraphVisible] = useState(false)
+  const [activeWorkspaceTab, setActiveWorkspaceTab] = useState<ProfileWorkspaceTab>('graph')
+  const [recommendationsData, setRecommendationsData] = useState<PromoterRecommendationResponse | null>(null)
+  const [isRecommendationsLoading, setIsRecommendationsLoading] = useState(false)
+  const [recommendationsError, setRecommendationsError] = useState<string | null>(null)
+  const [recommendationLoadingMessageIndex, setRecommendationLoadingMessageIndex] = useState(0)
+  const [expandedRecommendationId, setExpandedRecommendationId] = useState<number | null>(null)
   const submittedQuery = searchParams.get('q') ?? ''
   const [searchValue, setSearchValue] = useState(submittedQuery)
   const debouncedSearchValue = useDebouncedValue(searchValue.trim(), 350)
   const selectedTypeParam = searchParams.get('selectedType')
   const selectedIdParam = searchParams.get('selectedId')
-  const selectedArtistId = selectedNode?.type === 'artist'
-    ? selectedNode.id
-    : selectedTypeParam === 'artist'
-      ? selectedIdParam
-      : null
-  const selectedDetailType = selectedNode && selectedNode.type !== 'artist'
+  const selectedDetailType = selectedNode
     ? selectedNode.type
-    : selectedTypeParam && selectedTypeParam !== 'artist'
+    : selectedTypeParam
       ? selectedTypeParam
       : null
-  const selectedDetailId = selectedNode && selectedNode.type !== 'artist' ? selectedNode.id : selectedIdParam
+  const selectedDetailNodeId = selectedNode ? selectedNode.id : selectedIdParam
+  const selectedDetailId = selectedDetailType && selectedDetailNodeId
+    ? String(graphEntityId(selectedDetailNodeId, selectedDetailType as NodeType) ?? selectedDetailNodeId)
+    : null
 
   const {
     data: searchData,
@@ -47,11 +53,6 @@ export function ProfilePage() {
   } = useApi<SearchResponse>(
     () => (submittedQuery ? fetchSearch(submittedQuery) : Promise.resolve({ query: '', results: [] })),
     [submittedQuery]
-  )
-
-  const { data: selectedArtist } = useApi<Artist | null>(
-    () => (selectedArtistId ? fetchArtist(selectedArtistId) : Promise.resolve(null)),
-    [selectedArtistId]
   )
 
   const { data: dropdownSearchData, isLoading: isDropdownSearchLoading } = useApi<SearchResponse>(
@@ -65,10 +66,10 @@ export function ProfilePage() {
     [debouncedSearchValue, searchValue, submittedQuery]
   )
 
-  const { data: selectedEntityDetail, isLoading: isSelectedEntityDetailLoading } = useApi(
+  const { data: selectedEntityDetail, isLoading: isSelectedEntityDetailLoading } = useApi<EntityDetail | null>(
     () => (
       selectedDetailType && selectedDetailId
-        ? fetchEntityDetail(selectedDetailType as Exclude<NodeType, 'artist'>, selectedDetailId)
+        ? fetchEntityDetail(selectedDetailType as NodeType, selectedDetailId)
         : Promise.resolve(null)
     ),
     [selectedDetailType, selectedDetailId]
@@ -77,6 +78,21 @@ export function ProfilePage() {
   useEffect(() => {
     setSearchValue(submittedQuery)
   }, [submittedQuery])
+
+  useEffect(() => {
+    if (!isRecommendationsLoading) {
+      setRecommendationLoadingMessageIndex(0)
+      return
+    }
+
+    const messageInterval = window.setInterval(() => {
+      setRecommendationLoadingMessageIndex((currentIndex) => (
+        (currentIndex + 1) % RECOMMENDATION_LOADING_MESSAGES.length
+      ))
+    }, 1800)
+
+    return () => window.clearInterval(messageInterval)
+  }, [isRecommendationsLoading])
 
   const handleSearchSubmit = useCallback(
     (event: FormEvent<HTMLFormElement>) => {
@@ -123,6 +139,44 @@ export function ProfilePage() {
     [searchParams, setSearchParams, setSelected]
   )
 
+  const handleLoadRecommendations = useCallback(async () => {
+    setIsRecommendationsLoading(true)
+    setRecommendationsError(null)
+    setExpandedRecommendationId(null)
+
+    try {
+      const response = await fetch(PROMOTER_RECOMMENDATIONS_URL)
+
+      if (!response.ok) {
+        throw new Error(`${response.status} ${response.statusText}`)
+      }
+
+      setRecommendationsData(await response.json() as PromoterRecommendationResponse)
+    } catch (error) {
+      setRecommendationsData(null)
+      setRecommendationsError(error instanceof Error ? error.message : 'Failed to load recommendations')
+    } finally {
+      setIsRecommendationsLoading(false)
+    }
+  }, [])
+
+  const handleSelectRecommendation = useCallback((recommendationId: number) => {
+    const recommendationNode = recommendationsData?.graph.nodes.find((node) => (
+      node.type === 'promoter' && node.entityId === recommendationId
+    ))
+
+    if (recommendationNode) {
+      setSelected(recommendationNode)
+    }
+  }, [recommendationsData, setSelected])
+
+  const handleToggleRecommendation = useCallback((recommendationId: number) => {
+    setExpandedRecommendationId((currentId) => (
+      currentId === recommendationId ? null : recommendationId
+    ))
+    handleSelectRecommendation(recommendationId)
+  }, [handleSelectRecommendation])
+
   const searchResults = searchData?.results ?? []
   const trimmedSearchValue = searchValue.trim()
   const trimmedSubmittedQuery = submittedQuery.trim()
@@ -132,21 +186,10 @@ export function ProfilePage() {
     debouncedSearchValue === trimmedSearchValue &&
     debouncedSearchValue !== trimmedSubmittedQuery
   const dropdownSearchResults = shouldFetchDropdownSearch ? dropdownSearchData?.results ?? [] : []
-  const detailSearchResults = selectedEntityDetail ? [selectedEntityDetail] : searchResults
   const detailsSearchError = searchError
   const isDetailsSearchLoading = isSearchLoading || isSelectedEntityDetailLoading
   const hasActiveSearchState = Boolean(searchValue || submittedQuery || selectedNode)
-  const selectedArtistNode: GraphNode | null = selectedArtist
-    ? {
-        id: selectedArtist.id,
-        entityId: graphEntityId(selectedArtist.id, 'artist') ?? 0,
-        type: 'artist',
-        name: selectedArtist.name,
-        genres: selectedArtist.genres,
-        eventCount: selectedArtist.eventCount,
-      }
-    : null
-  const detailsSelectedNode = selectedEntityDetail ? null : selectedNode ?? selectedArtistNode
+  const detailsSelectedNode = selectedEntityDetail ? null : selectedNode
 
   return (
     <div className="profile-page">
@@ -172,19 +215,117 @@ export function ProfilePage() {
           {/* <div className="panel-heading">
             <span className="search-query-label">Node details</span>
           </div> */}
-          <GraphSidebarDetails
+          <DetailsPanel
             searchQuery={submittedQuery}
-            searchResults={detailSearchResults}
+            searchResults={searchResults}
             isSearchLoading={isDetailsSearchLoading}
             searchError={detailsSearchError}
             selectedNode={detailsSelectedNode}
-            selectedArtist={selectedArtist}
+            selectedEntityDetail={selectedEntityDetail}
           />
         </article>
 
         <section className="graph-workspace" aria-label="Profile graph workspace">
           <article className="profile-card graph-panel">
-            <ScenegraphMapPanel /* title="Scenegraph Database" */ />
+            <div className="profile-workspace-tabs" role="tablist" aria-label="Profile graph views">
+              <button
+                type="button"
+                id="profile-workspace-tab-graph"
+                className={`profile-workspace-tab${activeWorkspaceTab === 'graph' ? ' active' : ''}`}
+                role="tab"
+                aria-selected={activeWorkspaceTab === 'graph'}
+                aria-controls="profile-workspace-panel-graph"
+                onClick={() => setActiveWorkspaceTab('graph')}
+              >
+                Graph
+              </button>
+              <button
+                type="button"
+                id="profile-workspace-tab-recommendations"
+                className={`profile-workspace-tab${activeWorkspaceTab === 'recommendations' ? ' active' : ''}`}
+                role="tab"
+                aria-selected={activeWorkspaceTab === 'recommendations'}
+                aria-controls="profile-workspace-panel-recommendations"
+                onClick={() => setActiveWorkspaceTab('recommendations')}
+              >
+                Recommendations
+              </button>
+            </div>
+            <section
+              id="profile-workspace-panel-graph"
+              className="profile-workspace-content"
+              role="tabpanel"
+              aria-labelledby="profile-workspace-tab-graph"
+              hidden={activeWorkspaceTab !== 'graph'}
+            >
+              <ScenegraphMapPanel />
+            </section>
+            <section
+              id="profile-workspace-panel-recommendations"
+              className="profile-workspace-content recommendations-panel"
+              role="tabpanel"
+              aria-labelledby="profile-workspace-tab-recommendations"
+              hidden={activeWorkspaceTab !== 'recommendations'}
+            >
+                <div className="panel-heading">
+                  <span className="search-query-label">Promoter Recommendations</span>
+                </div>
+                {recommendationsData === null && !isRecommendationsLoading && (
+                  <div className="recommendations-start">
+                    <p className={recommendationsError ? 'error' : 'recommendations-help'}>
+                      {recommendationsError
+                        ?? 'Click the button to load recommendations. Load time may be quite long. Let the wizard does its magic.'}
+                    </p>
+                    <button
+                      type="button"
+                      className="recommendations-load-button"
+                      onClick={() => void handleLoadRecommendations()}
+                    >
+                      {recommendationsError ? 'Retry' : 'The button'}
+                    </button>
+                  </div>
+                )}
+                {isRecommendationsLoading && (
+                  <RecommendationLoading activity={RECOMMENDATION_LOADING_MESSAGES[recommendationLoadingMessageIndex]} />
+                )}
+                {recommendationsData !== null && (
+                  <div className="recommendations-content">
+                    <section className="recommendation-list" aria-label="Recommended promoters">
+                      {recommendationsData.recommendations.map((recommendation) => (
+                        <article className="recommendation-item" key={recommendation.id}>
+                          <button
+                            type="button"
+                            className="recommendation-name"
+                            aria-pressed={selectedNode?.id === `promoter-${recommendation.id}`}
+                            aria-expanded={expandedRecommendationId === recommendation.id}
+                            aria-controls={`recommendation-reasons-${recommendation.id}`}
+                            onClick={() => handleToggleRecommendation(recommendation.id)}
+                          >
+                            {recommendation.name}
+                          </button>
+                          {expandedRecommendationId === recommendation.id && (
+                            <ul
+                              id={`recommendation-reasons-${recommendation.id}`}
+                              className="recommendation-reasons"
+                            >
+                              {recommendation.reasons.map((reason) => (
+                                <li key={reason}>{reason}</li>
+                              ))}
+                            </ul>
+                          )}
+                        </article>
+                      ))}
+                    </section>
+                    <section className="recommendation-graph-map" aria-label="Recommendation evidence graph">
+                      <ScenegraphMapPanel
+                        providedData={recommendationsData.graph}
+                        showFilters={false}
+                        highlightPathToNodeId={`artist-${recommendationsData.entityId}`}
+                      />
+                    </section>
+                  </div>
+                )}
+            </section>
           </article>
         </section>
 
@@ -199,51 +340,6 @@ export function ProfilePage() {
             <span>Name</span>
             <span>Genres</span>
             <span>Location</span>
-          </div>
-        </article>
-
-        <article className="profile-card stats-panel">
-          <div className="panel-heading">
-            <span className="search-query-label">Statistics</span>
-            {/* <span className="panel-status">Overview</span> */}
-          </div>
-          <div className="stat-grid">
-            {stats.map((item) => (
-              <div key={item.label} className="stat-tile">
-                <strong>{item.value}</strong>
-                <span>{item.label}</span>
-              </div>
-            ))}
-          </div>
-          <div className="chart-placeholder" aria-label="Chart placeholder" />
-        </article>
-
-        <article className="profile-card recommendations-panel">
-          <div className="panel-heading">
-            <span className="search-query-label">Recommendations</span>
-            <button
-              type="button"
-              onClick={() => setIsRecommendationGraphVisible((isVisible) => !isVisible)}
-            >
-              {isRecommendationGraphVisible ? 'Hide map' : 'The button'}
-            </button>
-          </div>
-          <div className="recommendations-content">
-            {isRecommendationGraphVisible ? (
-              <>
-                <div className="recommendation-graph-map">
-                  <ScenegraphMapPanel />
-                </div>
-                <div className="placeholder-list recommendation-list">
-                  <span>Recommended names</span>
-                  <span>A list of names/connections.</span>
-                </div>
-              </>
-            ) : (
-              <div className="recommendation-graph-empty">
-                <p>Click the button to calculate recommendation connections.</p>
-              </div>
-            )}
           </div>
         </article>
 
