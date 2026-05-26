@@ -1,29 +1,23 @@
 import ForceGraph2D from 'react-force-graph-2d'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { fetchEgoGraph, fetchGraph, type GraphParams } from '../../api/graph'
-import { fetchGenres } from '../../api/genres'
-import { useApi } from '../../hooks/useApi'
-import { useGraphStore } from '../../store/graphStore'
-import { getCssVar, hexToRgba } from '../../styles/colors'
-import { graphEntityId, type GraphData, type GraphNode, type NodeType } from '../../types/graph'
-import type { SearchEntityType } from '../../types/search'
-import { drawNodeShape } from '../hooks/drawNode'
-import { useGraphHighlights } from '../hooks/useGraphHighlights'
-import { useGraphPhysics } from '../hooks/useGraphPhysics'
-import { GraphFilters } from './GraphFilters.tsx'
+import { fetchEgoGraph, fetchGraph, type GraphParams } from '../../api/graph.ts'
+import { fetchGenres } from '../../api/genres.ts'
+import { useApi } from '../../hooks/useApi.ts'
+import { useGraphStore } from '../../store/graphStore.ts'
+import { getCssVar, hexToRgba } from '../../styles/colors.ts'
+import { graphEntityId, type GraphData, type GraphNode, type NodeType } from '../../types/graph.ts'
+import type { SearchEntityType } from '../../types/search.ts'
+import { drawNodeShape } from '../hooks/drawNode.ts'
+import { useGraphHighlights } from '../hooks/useGraphHighlights.ts'
+import { useGraphPhysics } from '../hooks/useGraphPhysics.ts'
+import { GraphFilters } from './GraphDataFilter.tsx'
+import { GRAPH_NODE_TYPES, GraphNodeFilter } from './GraphNodeFilter.tsx'
 
 const MIN_GRAPH_HEIGHT = 320
 const DEFAULT_GRAPH_FILTERS: GraphParams = { limit: 100 }
 const EMPTY_GRAPH_DATA: GraphData = { nodes: [], links: [] }
-const NODE_LEGEND_ITEMS = [
-  { type: 'artist', label: 'Artist' },
-  { type: 'venue', label: 'Venue' },
-  { type: 'promoter', label: 'Promoter' },
-  { type: 'event', label: 'Event' },
-] satisfies Array<{ type: NodeType; label: string }>
-
-const DEFAULT_VISIBLE_NODE_TYPES = new Set<NodeType>(NODE_LEGEND_ITEMS.map((item) => item.type))
+const DEFAULT_VISIBLE_NODE_TYPES = new Set<NodeType>(GRAPH_NODE_TYPES)
 type LinkEndpoint = string | { id: string }
 
 function isSearchEntityType(value: string | null): value is SearchEntityType {
@@ -242,20 +236,7 @@ export function ScenegraphMapPanel({
           <span>{nodeCount} nodes</span>
           <span>{linkCount} links</span>
         </div>
-        <div className="graph-legend" aria-label="Filter graph by entity type">
-          {NODE_LEGEND_ITEMS.map((item) => (
-            <button
-              type="button"
-              className={`graph-legend-item${visibleNodeTypes.has(item.type) ? ' active' : ''}`}
-              key={item.type}
-              onClick={() => handleLegendToggle(item.type)}
-              aria-pressed={visibleNodeTypes.has(item.type)}
-            >
-              <span className={`graph-legend-marker graph-legend-marker--${item.type}`} aria-hidden="true" />
-              <span>{item.label}</span>
-            </button>
-          ))}
-        </div>
+        <GraphNodeFilter visibleNodeTypes={visibleNodeTypes} onToggle={handleLegendToggle} />
         <ForceGraph2D
           ref={graphRef}
           width={graphSize.width || undefined}

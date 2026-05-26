@@ -8,9 +8,9 @@ import type { EntityDetail } from '../types/entityDetail'
 import { graphEntityId, type NodeType } from '../types/graph'
 import type { SearchResponse, SearchResult } from '../types/search'
 import { useDebouncedValue } from './hooks/useDebouncedValue'
-import { GraphSidebarDetails } from './components/DetailsPanel.tsx'
-import { ScenegraphMapPanel } from './components/ScenegraphMapPanel.tsx'
-import { SearchQueryForm } from './components/SearchQueryForm.tsx'
+import { DetailsPanel } from './components/DetailsPanel.tsx'
+import { ScenegraphMapPanel } from './components/GraphPanel.tsx'
+import { SearchQueryForm } from './components/SearchQuery.tsx'
 
 export function GraphPage() {
   const [searchParams, setSearchParams] = useSearchParams()
@@ -141,7 +141,7 @@ export function GraphPage() {
             {/* <p className="search-query-hint">Enter a name, then press Enter to update the search.</p> */}
           </div>
 
-          <GraphSidebarDetails
+          <DetailsPanel
             searchQuery={submittedQuery}
             searchResults={searchResults}
             isSearchLoading={isDetailsSearchLoading}
