@@ -2,19 +2,15 @@ import os
 
 os.environ.setdefault("DATABASE_URL", "postgresql://scenegraph:change-me@db:5432/scenegraph")
 
-from app.embeddings import EmbeddingConfig, cosine_similarity, embedding_text_hash
+from app.embeddings import EmbeddingConfig, embedding_text_hash, embedding_vector_literal
 
 
 def test_embedding_text_hash_normalizes_whitespace():
     assert embedding_text_hash("Night\n\nMusic") == embedding_text_hash("  Night Music  ")
 
 
-def test_cosine_similarity_scores_related_vectors_higher():
-    source = [1.0, 0.0, 0.0]
-    close = [0.9, 0.1, 0.0]
-    far = [0.0, 1.0, 0.0]
-
-    assert cosine_similarity(source, close) > cosine_similarity(source, far)
+def test_embedding_vector_literal_formats_for_pgvector():
+    assert embedding_vector_literal([0.1, 2.0, -3.5]) == "[0.1,2,-3.5]"
 
 
 def test_embedding_config_reads_env(monkeypatch):

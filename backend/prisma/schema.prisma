@@ -172,6 +172,7 @@ model EntityEmbedding {
   textHash    String   @map("text_hash")
   textProfile String   @map("text_profile")
   embedding   Float[]
+  embeddingVec Unsupported("vector(1536)")? @map("embedding_vec")
   createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt   DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
