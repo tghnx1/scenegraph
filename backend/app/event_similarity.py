@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi import HTTPException
 from psycopg import Connection
 
-from app.embeddings import EmbeddingConfig, cosine_similarity
+from app.embeddings import EmbeddingConfig, cosine_similarity, embedding_vector_supported
 from app.recommendation_scoring import (
     PromoterRecommendationScoringConfig,
     promoter_recommendation_scoring_from_env,
@@ -99,6 +99,88 @@ def event_embedding_similarity_by_candidate(
         return {}, None
 
     config = EmbeddingConfig.from_env()
+    if embedding_vector_supported(connection):
+        dimensions_filter = ""
+        params: list[object] = [
+            source_event_ids,
+            config.provider_model_key,
+        ]
+        if config.dimensions is not None:
+            dimensions_filter = "AND dimensions = %s"
+            params.append(config.dimensions)
+        params.extend((candidate_event_ids, config.provider_model_key))
+        if config.dimensions is not None:
+            params.append(config.dimensions)
+
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                WITH source_embeddings AS (
+                    SELECT DISTINCT ON (entity_id)
+                        entity_id,
+                        dimensions,
+                        embedding_vec
+                    FROM entity_embeddings
+                    WHERE entity_type = 'event'
+                      AND entity_id = ANY(%s)
+                      AND model = %s
+                      AND embedding_vec IS NOT NULL
+                      {dimensions_filter}
+                    ORDER BY entity_id ASC, updated_at DESC
+                ),
+                candidate_embeddings AS (
+                    SELECT DISTINCT ON (entity_id)
+                        entity_id,
+                        dimensions,
+                        embedding_vec
+                    FROM entity_embeddings
+                    WHERE entity_type = 'event'
+                      AND entity_id = ANY(%s)
+                      AND model = %s
+                      AND embedding_vec IS NOT NULL
+                      {dimensions_filter}
+                    ORDER BY entity_id ASC, updated_at DESC
+                ),
+                scored_candidates AS (
+                    SELECT
+                        c.entity_id AS candidate_event_id,
+                        max(
+                            GREATEST(
+                                1 - (s.embedding_vec <=> c.embedding_vec),
+                                0.0
+                            )
+                        )::double precision AS score
+                    FROM candidate_embeddings c
+                    JOIN source_embeddings s
+                        ON s.dimensions = c.dimensions
+                    GROUP BY c.entity_id
+                ),
+                source_dims AS (
+                    SELECT max(dimensions)::int AS dimensions
+                    FROM source_embeddings
+                )
+                SELECT
+                    sc.candidate_event_id,
+                    sc.score,
+                    sd.dimensions
+                FROM scored_candidates sc
+                CROSS JOIN source_dims sd
+                """,
+                params,
+            )
+            rows = cursor.fetchall()
+
+        if not rows:
+            return {}, config.dimensions
+
+        dimensions = rows[0].get("dimensions")
+        scores = {
+            int(row["candidate_event_id"]): float(row["score"])
+            for row in rows
+            if row["candidate_event_id"] is not None
+        }
+        return scores, int(dimensions) if dimensions is not None else config.dimensions
+
     target_event_ids = set(source_event_ids) | set(candidate_event_ids)
     dimensions_filter = ""
     params: list[object] = ["event", list(target_event_ids), config.provider_model_key]
