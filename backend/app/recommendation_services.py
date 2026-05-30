@@ -924,6 +924,10 @@ def build_artist_promoter_recommendation_response(
                 "candidateCounts": {
                     "sqlPromoterCandidates": len(rows),
                     "semanticArtistsUsed": len(candidate_scores),
+                    "sourceEventsTotal": similar_event_debug_counts["sourceEventsTotal"],
+                    "sourceEventsAfterRelevanceGate": similar_event_debug_counts[
+                        "sourceEventsAfterRelevanceGate"
+                    ],
                     "eventSimilarityPromotersAdded": len(additional_promoter_ids),
                     "warmCandidates": 0,
                     "coPlayedCandidates": 0,
@@ -938,6 +942,10 @@ def build_artist_promoter_recommendation_response(
                 "filteredOut": {
                     "excludeExisting": exclude_existing_filtered_count,
                     "semanticArtistBelowThreshold": semantic_artist_below_threshold_filtered,
+                    "sourceEventRelevance": similar_event_debug_counts["sourceEventsRelevanceFiltered"],
+                    "sourceEventMissingEmbedding": similar_event_debug_counts[
+                        "sourceEventsMissingEmbedding"
+                    ],
                     "eventSimilaritySamePromoter": similar_event_debug_counts["samePromoterFiltered"],
                     "eventSimilarityLimitCutoff": similar_event_debug_counts["similarityLimitCutoff"],
                     "eventSimilarityEmbeddingGate": event_similarity_embedding_gate_filtered,
@@ -1018,6 +1026,10 @@ def build_artist_promoter_recommendation_response(
             "candidateCounts": {
                 "sqlPromoterCandidates": len(rows),
                 "semanticArtistsUsed": len(candidate_scores),
+                "sourceEventsTotal": similar_event_debug_counts["sourceEventsTotal"],
+                "sourceEventsAfterRelevanceGate": similar_event_debug_counts[
+                    "sourceEventsAfterRelevanceGate"
+                ],
                 "eventSimilarityPromotersAdded": len(additional_promoter_ids),
                 "warmCandidates": len(warm_recommendations_all),
                 "coPlayedCandidates": sum(
@@ -1038,6 +1050,10 @@ def build_artist_promoter_recommendation_response(
             "filteredOut": {
                 "excludeExisting": exclude_existing_filtered_count,
                 "semanticArtistBelowThreshold": semantic_artist_below_threshold_filtered,
+                "sourceEventRelevance": similar_event_debug_counts["sourceEventsRelevanceFiltered"],
+                "sourceEventMissingEmbedding": similar_event_debug_counts[
+                    "sourceEventsMissingEmbedding"
+                ],
                 "eventSimilaritySamePromoter": similar_event_debug_counts["samePromoterFiltered"],
                 "eventSimilarityLimitCutoff": similar_event_debug_counts["similarityLimitCutoff"],
                 "eventSimilarityEmbeddingGate": event_similarity_embedding_gate_filtered,

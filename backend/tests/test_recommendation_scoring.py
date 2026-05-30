@@ -180,6 +180,9 @@ def test_promoter_recommendation_scoring_reads_and_normalizes_env(monkeypatch):
     monkeypatch.setenv("PROMOTER_REC_SEMANTIC_ARTIST_MIN_SCORE", "0.51")
     monkeypatch.setenv("PROMOTER_REC_EVENT_SIMILARITY_OVERFETCH_MULTIPLIER", "24")
     monkeypatch.setenv("PROMOTER_REC_EVENT_SIMILARITY_OVERFETCH_MIN", "640")
+    monkeypatch.setenv("PROMOTER_REC_SOURCE_EVENT_RELEVANCE_GATE_ENABLED", "true")
+    monkeypatch.setenv("PROMOTER_REC_SOURCE_EVENT_RELEVANCE_MIN_EMBEDDING_SCORE", "0.57")
+    monkeypatch.setenv("PROMOTER_REC_SOURCE_EVENT_RELEVANCE_TOP_K", "4")
 
     config = promoter_recommendation_scoring_from_env()
 
@@ -228,6 +231,9 @@ def test_promoter_recommendation_scoring_reads_and_normalizes_env(monkeypatch):
         semantic_artist_min_score=0.51,
         event_similarity_overfetch_multiplier=24,
         event_similarity_overfetch_min=640,
+        source_event_relevance_gate_enabled=True,
+        source_event_relevance_min_embedding_score=0.57,
+        source_event_relevance_top_k=4,
     )
 
 
@@ -266,6 +272,7 @@ def test_recommendation_scoring_supports_legacy_extracted_styles_env_keys(monkey
 
 
 def test_promoter_recommendation_scoring_supports_legacy_extracted_style_weight_env_key(monkeypatch):
+    monkeypatch.delenv("PROMOTER_REC_EVENT_SIMILARITY_EXTRACTED_GENRE_WEIGHT", raising=False)
     monkeypatch.setenv("PROMOTER_REC_EVENT_SIMILARITY_EXTRACTED_STYLE_WEIGHT", "20")
     monkeypatch.setenv("PROMOTER_REC_EVENT_SIMILARITY_SAME_VENUE_WEIGHT", "40")
     monkeypatch.setenv("PROMOTER_REC_EVENT_SIMILARITY_SHARED_GENRE_WEIGHT", "10")

@@ -1,7 +1,11 @@
 from fastapi.testclient import TestClient
 from app.db import get_connection
+from app.event_similarity import artist_relevant_source_event_ids
 from app.main import app, extracted_tag_score
-from app.recommendation_scoring import DEFAULT_SEMANTIC_ARTIST_TAG_SCORING
+from app.recommendation_scoring import (
+    DEFAULT_SEMANTIC_ARTIST_TAG_SCORING,
+    promoter_recommendation_scoring_from_env,
+)
 
 # docker compose exec backend sh -lc 'cd /app && pytest tests/test_graph_api.py -q'
 client = TestClient(app)
@@ -288,7 +292,23 @@ def test_artist_similar_events_exclude_same_promoters_by_default():
     data = response.json()
 
     with get_connection() as connection:
+        scoring_config = promoter_recommendation_scoring_from_env()
+        relevant_source_event_ids, _ = artist_relevant_source_event_ids(
+            connection,
+            source_artist_id=2178,
+            scoring_config=scoring_config,
+        )
         with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT DISTINCT ep.promoter_id
+                FROM event_promoters ep
+                WHERE ep.event_id = ANY(%s)
+                """,
+                (relevant_source_event_ids,),
+            )
+            source_promoters = {row["promoter_id"] for row in cursor.fetchall()}
+
             cursor.execute(
                 """
                 SELECT DISTINCT ep.promoter_id
@@ -299,7 +319,8 @@ def test_artist_similar_events_exclude_same_promoters_by_default():
                 """,
                 (2178,),
             )
-            source_promoters = {row["promoter_id"] for row in cursor.fetchall()}
+            full_history_promoters = {row["promoter_id"] for row in cursor.fetchall()}
+            assert source_promoters <= full_history_promoters
 
             for item in data["similarEvents"]:
                 promoter_id = item.get("promoterId")
@@ -318,7 +339,10 @@ def test_artist_similar_events_endpoint_debug_includes_component_scores():
     assert "debug" in data
     assert set(data["debug"]) == {"candidateCounts", "filteredOut"}
     assert set(data["debug"]["filteredOut"]) == {
+        "sourceEventRelevance",
+        "sourceEventMissingEmbedding",
         "samePromoter",
+        "embeddingGate",
         "similarityLimitCutoff",
         "responseLimitCutoff",
     }
@@ -337,7 +361,7 @@ def test_artist_similar_events_endpoint_debug_includes_component_scores():
         "symbolicScore",
         "embeddingScore",
     }
-    assert set(first["debug"]["weights"]) == {"symbolic", "embedding"}
+    assert set(first["debug"]["weights"]) == {"symbolic", "embedding", "semanticOnlyMode"}
     assert set(first["debug"]["weightedScores"]) == {"symbolic", "embedding", "total"}
 
 
