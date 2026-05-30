@@ -163,6 +163,8 @@ class PromoterRecommendationItem(BaseModel):
     coPlayedConnectionArtists: list[WarmConnectionArtistItem] = Field(default_factory=list)
     manualConnectionCount: int = 0
     manualConnectionArtists: list[WarmConnectionArtistItem] = Field(default_factory=list)
+    promoterInterestedSum: int = 0
+    promoterSizeSegment: Literal["small", "medium", "large"] = "small"
     directConnectionCount: int = 0
     evidence: list[RecommendationEvidenceItem] = Field(default_factory=list)
     debug: dict[str, object] | None = None
@@ -174,6 +176,9 @@ class PromoterRecommendationResponse(BaseModel):
     model: str
     dimensions: int
     recommendations: list[PromoterRecommendationItem]
+    largeRecommendations: list[PromoterRecommendationItem] = Field(default_factory=list)
+    mediumRecommendations: list[PromoterRecommendationItem] = Field(default_factory=list)
+    smallRecommendations: list[PromoterRecommendationItem] = Field(default_factory=list)
     warmRecommendations: list[PromoterRecommendationItem] = Field(default_factory=list)
     discoveryRecommendations: list[PromoterRecommendationItem] = Field(default_factory=list)
     graph: GraphResponse
