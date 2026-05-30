@@ -391,6 +391,8 @@ def test_artist_promoter_recommendations_include_graph_payload():
     assert isinstance(first["reasons"], list)
     assert first["status"] in {"new_relevant", "existing_partner", "warm_relevant"}
     assert first["warmConnectionCount"] >= 0
+    assert first["coPlayedConnectionCount"] >= 0
+    assert first["manualConnectionCount"] >= 0
     assert first["directConnectionCount"] >= 0
     assert isinstance(first["evidence"], list)
     assert first["evidence"]
