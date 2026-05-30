@@ -60,7 +60,8 @@ class PromoterRecommendationScoringConfig:
     semantic_weight: float
     strength_weight: float
     direct_connection_weight: float
-    warm_network_weight: float
+    co_played_connection_weight: float
+    manual_connection_weight: float
     event_similarity_weight: float
     scale_fit_weight: float
     activity_weight: float
@@ -72,10 +73,11 @@ class PromoterRecommendationScoringConfig:
     direct_connection_cap: int
     warm_connection_cap: int
     manual_warm_connection_cap: int
-    manual_warm_boost_weight: float
     manual_warm_min_artist_semantic_score: float
     event_similarity_count_cap: int
     event_similarity_min_total_score: float
+    event_similarity_min_embedding_score: float
+    event_similarity_semantic_only: bool
     event_similarity_per_promoter_limit: int
     event_similarity_symbolic_weight: float
     event_similarity_embedding_weight: float
@@ -152,7 +154,8 @@ DEFAULT_PROMOTER_RECOMMENDATION_SCORING = PromoterRecommendationScoringConfig(
     semantic_weight=0.25,
     strength_weight=0.16,
     direct_connection_weight=0.16,
-    warm_network_weight=0.25,
+    co_played_connection_weight=0.16,
+    manual_connection_weight=0.09,
     event_similarity_weight=0.07,
     scale_fit_weight=0.08,
     activity_weight=0.02,
@@ -164,10 +167,11 @@ DEFAULT_PROMOTER_RECOMMENDATION_SCORING = PromoterRecommendationScoringConfig(
     direct_connection_cap=3,
     warm_connection_cap=3,
     manual_warm_connection_cap=1,
-    manual_warm_boost_weight=0.6,
     manual_warm_min_artist_semantic_score=0.45,
     event_similarity_count_cap=8,
     event_similarity_min_total_score=0.45,
+    event_similarity_min_embedding_score=0.0,
+    event_similarity_semantic_only=False,
     event_similarity_per_promoter_limit=20,
     event_similarity_symbolic_weight=0.6,
     event_similarity_embedding_weight=0.4,
@@ -237,6 +241,19 @@ def env_int_alias(primary_name: str, legacy_name: str, default: int) -> int:
     if legacy_raw is not None and legacy_raw.strip():
         return int(legacy_raw)
     return default
+
+
+# Read boolean config from environment with a fallback default.
+def env_bool(name: str, default: bool) -> bool:
+    raw = os.environ.get(name)
+    if raw is None or not raw.strip():
+        return default
+    value = raw.strip().lower()
+    if value in {"1", "true", "yes", "on"}:
+        return True
+    if value in {"0", "false", "no", "off"}:
+        return False
+    raise ValueError(f"{name} must be a boolean value")
 
 # Build semantic-artist scoring config from environment variables.
 def semantic_artist_scoring_from_env() -> SemanticArtistScoringConfig:
@@ -316,9 +333,14 @@ def promoter_recommendation_scoring_from_env() -> PromoterRecommendationScoringC
                 "PROMOTER_REC_DIRECT_CONNECTION_WEIGHT",
                 DEFAULT_PROMOTER_RECOMMENDATION_SCORING.direct_connection_weight,
             ),
-            env_float(
+            env_float_alias(
+                "PROMOTER_REC_CO_PLAYED_CONNECTION_WEIGHT",
                 "PROMOTER_REC_WARM_NETWORK_WEIGHT",
-                DEFAULT_PROMOTER_RECOMMENDATION_SCORING.warm_network_weight,
+                DEFAULT_PROMOTER_RECOMMENDATION_SCORING.co_played_connection_weight,
+            ),
+            env_float(
+                "PROMOTER_REC_MANUAL_CONNECTION_WEIGHT",
+                DEFAULT_PROMOTER_RECOMMENDATION_SCORING.manual_connection_weight,
             ),
             env_float(
                 "PROMOTER_REC_EVENT_SIMILARITY_WEIGHT",
@@ -371,10 +393,6 @@ def promoter_recommendation_scoring_from_env() -> PromoterRecommendationScoringC
         "PROMOTER_REC_MANUAL_WARM_CONNECTION_CAP",
         DEFAULT_PROMOTER_RECOMMENDATION_SCORING.manual_warm_connection_cap,
     )
-    manual_warm_boost_weight = env_float(
-        "PROMOTER_REC_MANUAL_WARM_BOOST_WEIGHT",
-        DEFAULT_PROMOTER_RECOMMENDATION_SCORING.manual_warm_boost_weight,
-    )
     manual_warm_min_artist_semantic_score = env_float(
         "PROMOTER_REC_MANUAL_WARM_MIN_ARTIST_SEMANTIC_SCORE",
         DEFAULT_PROMOTER_RECOMMENDATION_SCORING.manual_warm_min_artist_semantic_score,
@@ -386,6 +404,14 @@ def promoter_recommendation_scoring_from_env() -> PromoterRecommendationScoringC
     event_similarity_min_total_score = env_float(
         "PROMOTER_REC_EVENT_SIMILARITY_MIN_TOTAL_SCORE",
         DEFAULT_PROMOTER_RECOMMENDATION_SCORING.event_similarity_min_total_score,
+    )
+    event_similarity_min_embedding_score = env_float(
+        "PROMOTER_REC_EVENT_SIMILARITY_MIN_EMBEDDING_SCORE",
+        DEFAULT_PROMOTER_RECOMMENDATION_SCORING.event_similarity_min_embedding_score,
+    )
+    event_similarity_semantic_only = env_bool(
+        "PROMOTER_REC_EVENT_SIMILARITY_SEMANTIC_ONLY",
+        DEFAULT_PROMOTER_RECOMMENDATION_SCORING.event_similarity_semantic_only,
     )
     event_similarity_per_promoter_limit = env_int(
         "PROMOTER_REC_EVENT_SIMILARITY_PER_PROMOTER_LIMIT",
@@ -403,6 +429,8 @@ def promoter_recommendation_scoring_from_env() -> PromoterRecommendationScoringC
             ),
         )
     )
+    if event_similarity_semantic_only:
+        event_similarity_mix_weights = (0.0, 1.0)
     event_similarity_signal_weights = normalized_weights(
         (
             env_float(
@@ -499,8 +527,6 @@ def promoter_recommendation_scoring_from_env() -> PromoterRecommendationScoringC
         raise ValueError("PROMOTER_REC_WARM_CONNECTION_CAP must be greater than zero")
     if manual_warm_connection_cap <= 0:
         raise ValueError("PROMOTER_REC_MANUAL_WARM_CONNECTION_CAP must be greater than zero")
-    if manual_warm_boost_weight < 0:
-        raise ValueError("PROMOTER_REC_MANUAL_WARM_BOOST_WEIGHT must be non-negative")
     if not (0.0 <= manual_warm_min_artist_semantic_score <= 1.0):
         raise ValueError(
             "PROMOTER_REC_MANUAL_WARM_MIN_ARTIST_SEMANTIC_SCORE must be between 0 and 1"
@@ -509,6 +535,10 @@ def promoter_recommendation_scoring_from_env() -> PromoterRecommendationScoringC
         raise ValueError("PROMOTER_REC_EVENT_SIMILARITY_COUNT_CAP must be greater than zero")
     if not (0.0 <= event_similarity_min_total_score <= 1.0):
         raise ValueError("PROMOTER_REC_EVENT_SIMILARITY_MIN_TOTAL_SCORE must be between 0 and 1")
+    if not (0.0 <= event_similarity_min_embedding_score <= 1.0):
+        raise ValueError(
+            "PROMOTER_REC_EVENT_SIMILARITY_MIN_EMBEDDING_SCORE must be between 0 and 1"
+        )
     if event_similarity_per_promoter_limit <= 0:
         raise ValueError("PROMOTER_REC_EVENT_SIMILARITY_PER_PROMOTER_LIMIT must be greater than zero")
     if activity_event_cap <= 0:
@@ -563,11 +593,12 @@ def promoter_recommendation_scoring_from_env() -> PromoterRecommendationScoringC
         semantic_weight=weights[0],
         strength_weight=weights[1],
         direct_connection_weight=weights[2],
-        warm_network_weight=weights[3],
-        event_similarity_weight=weights[4],
-        scale_fit_weight=weights[5],
-        activity_weight=weights[6],
-        recency_weight=weights[7],
+        co_played_connection_weight=weights[3],
+        manual_connection_weight=weights[4],
+        event_similarity_weight=weights[5],
+        scale_fit_weight=weights[6],
+        activity_weight=weights[7],
+        recency_weight=weights[8],
         strength_matched_artist_weight=strength_weights[0],
         strength_event_weight=strength_weights[1],
         strength_matched_artist_cap=strength_matched_artist_cap,
@@ -575,10 +606,11 @@ def promoter_recommendation_scoring_from_env() -> PromoterRecommendationScoringC
         direct_connection_cap=direct_connection_cap,
         warm_connection_cap=warm_connection_cap,
         manual_warm_connection_cap=manual_warm_connection_cap,
-        manual_warm_boost_weight=manual_warm_boost_weight,
         manual_warm_min_artist_semantic_score=manual_warm_min_artist_semantic_score,
         event_similarity_count_cap=event_similarity_count_cap,
         event_similarity_min_total_score=event_similarity_min_total_score,
+        event_similarity_min_embedding_score=event_similarity_min_embedding_score,
+        event_similarity_semantic_only=event_similarity_semantic_only,
         event_similarity_per_promoter_limit=event_similarity_per_promoter_limit,
         event_similarity_symbolic_weight=event_similarity_mix_weights[0],
         event_similarity_embedding_weight=event_similarity_mix_weights[1],

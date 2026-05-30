@@ -40,6 +40,7 @@ def artist_similar_events_scored_rows(
         return [], None, {
             "candidateRowsFetched": 0,
             "samePromoterFiltered": same_promoter_filtered_count,
+            "embeddingGateFiltered": 0,
             "similarityLimitCutoff": 0,
         }
 
@@ -53,6 +54,7 @@ def artist_similar_events_scored_rows(
     )
 
     scored_rows: list[dict] = []
+    embedding_gate_filtered_count = 0
     for row in candidate_rows:
         source_styles = event_styles.get(int(row["source_event_id"]), set())
         candidate_styles = event_styles.get(int(row["candidate_event_id"]), set())
@@ -62,8 +64,18 @@ def artist_similar_events_scored_rows(
         )
         symbolic_score = min(float(row["symbolic_score"]) + extracted_genre_score, 1.0)
         embedding_score = float(embedding_scores.get(row["candidate_event_id"], 0.0))
-        weighted_symbolic_score = scoring_config.event_similarity_symbolic_weight * symbolic_score
-        weighted_embedding_score = scoring_config.event_similarity_embedding_weight * embedding_score
+        if embedding_score < scoring_config.event_similarity_min_embedding_score:
+            embedding_gate_filtered_count += 1
+            continue
+        weighted_symbolic_score = (
+            scoring_config.event_similarity_symbolic_weight * symbolic_score
+        )
+        weighted_embedding_score = (
+            scoring_config.event_similarity_embedding_weight * embedding_score
+        )
+        if scoring_config.event_similarity_semantic_only:
+            weighted_symbolic_score = 0.0
+            weighted_embedding_score = embedding_score
 
         scored_rows.append(
             {
@@ -84,6 +96,7 @@ def artist_similar_events_scored_rows(
     return scored_rows[:limit], embedding_dimensions, {
         "candidateRowsFetched": len(candidate_rows),
         "samePromoterFiltered": same_promoter_filtered_count,
+        "embeddingGateFiltered": embedding_gate_filtered_count,
         "similarityLimitCutoff": max(len(scored_rows) - limit, 0),
     }
 
@@ -544,6 +557,7 @@ def build_artist_similar_events_response(
                 },
                 "filteredOut": {
                     "samePromoter": similar_events_debug_counts["samePromoterFiltered"],
+                    "embeddingGate": similar_events_debug_counts["embeddingGateFiltered"],
                     "similarityLimitCutoff": similar_events_debug_counts["similarityLimitCutoff"],
                     "responseLimitCutoff": 0,
                 },
@@ -600,6 +614,7 @@ def build_artist_similar_events_response(
                     "weights": {
                         "symbolic": scoring_config.event_similarity_symbolic_weight,
                         "embedding": scoring_config.event_similarity_embedding_weight,
+                        "semanticOnlyMode": scoring_config.event_similarity_semantic_only,
                     },
                     "weightedScores": {
                         "symbolic": score_breakdown["symbolic"],
@@ -629,6 +644,7 @@ def build_artist_similar_events_response(
             },
             "filteredOut": {
                 "samePromoter": similar_events_debug_counts["samePromoterFiltered"],
+                "embeddingGate": similar_events_debug_counts["embeddingGateFiltered"],
                 "similarityLimitCutoff": similar_events_debug_counts["similarityLimitCutoff"],
                 "responseLimitCutoff": response_limit_cutoff,
             },
