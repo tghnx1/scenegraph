@@ -3,7 +3,7 @@ from __future__ import annotations
 from psycopg import Connection
 
 from app.embeddings import EmbeddingConfig, EntityType, rank_similar_embeddings
-from app.event_similarity import event_style_tags_by_id
+from app.event_similarity import event_extracted_genres_by_id
 from app.recommendation_helpers import recommendation_item_metadata
 from app.recommendation_scoring import (
     DEFAULT_RECOMMENDATION_SCORING,
@@ -37,7 +37,6 @@ def similarity_graph_debug_components(
     components: dict[str, dict[str, object]] = {}
     public_feature_names = {
         "genres": "abstract_genres",
-        "extracted_styles": "extracted_genres",
     }
     for weight in weights:
         source_values = source_features.get(weight.feature, set())
@@ -120,11 +119,11 @@ def recommendation_feature_sets(
         for row in rows
     }
     if entity_type == "event":
-        style_tags = event_style_tags_by_id(connection, entity_ids)
-        for event_id, styles in style_tags.items():
+        extracted_genres_by_event = event_extracted_genres_by_id(connection, entity_ids)
+        for event_id, extracted_genres in extracted_genres_by_event.items():
             if event_id not in feature_sets:
                 continue
-            feature_sets[event_id]["extracted_styles"] = set(styles)  # type: ignore[assignment]
+            feature_sets[event_id]["extracted_genres"] = set(extracted_genres)  # type: ignore[assignment]
     else:
         with connection.cursor() as cursor:
             cursor.execute(
@@ -136,35 +135,34 @@ def recommendation_feature_sets(
                 (entity_ids,),
             )
             artist_rows = cursor.fetchall()
-            cursor.execute("SELECT to_regclass('public.artist_extracted_tags') AS table_name")
-            has_extracted_tags = cursor.fetchone()["table_name"] is not None
+            cursor.execute("SELECT to_regclass('public.artist_extracted_genres') AS table_name")
+            has_extracted_genres_view = cursor.fetchone()["table_name"] is not None
 
-            extracted_style_tags_by_artist: dict[int, set[str]] = {}
-            if has_extracted_tags:
+            extracted_genres_by_artist: dict[int, set[str]] = {}
+            if has_extracted_genres_view:
                 cursor.execute(
                     """
-                    SELECT artist_id, tag_value
-                    FROM artist_extracted_tags
+                    SELECT artist_id, extracted_genre
+                    FROM artist_extracted_genres
                     WHERE artist_id = ANY(%s)
-                      AND tag_type = 'style'
                       AND confidence >= 0.6
                     """,
                     (entity_ids,),
                 )
                 for row in cursor.fetchall():
                     artist_id = int(row["artist_id"])
-                    tag = str(row["tag_value"]).strip().lower()
-                    if not tag:
+                    extracted_genre = str(row["extracted_genre"]).strip().lower()
+                    if not extracted_genre:
                         continue
-                    extracted_style_tags_by_artist.setdefault(artist_id, set()).add(tag)
+                    extracted_genres_by_artist.setdefault(artist_id, set()).add(extracted_genre)
 
         for row in artist_rows:
             artist_id = int(row["id"])
             if artist_id not in feature_sets:
                 continue
             biography_styles = set(extract_style_tags(row["biography"]))
-            extracted_styles = extracted_style_tags_by_artist.get(artist_id, set())
-            feature_sets[artist_id]["extracted_styles"] = biography_styles | extracted_styles  # type: ignore[assignment]
+            extracted_genres = extracted_genres_by_artist.get(artist_id, set())
+            feature_sets[artist_id]["extracted_genres"] = biography_styles | extracted_genres  # type: ignore[assignment]
     return feature_sets
 
 # Fetch candidate/source artist features excluding direct shared source events.
@@ -335,7 +333,7 @@ def rerank_similar_entities(
         )
         event_rerank_adjustments: dict[str, float] = {}
         if entity_type == "event":
-            extracted_overlap = len(source_features.get("extracted_styles", set()) & candidate_features.get("extracted_styles", set()))
+            extracted_overlap = len(source_features.get("extracted_genres", set()) & candidate_features.get("extracted_genres", set()))
             artist_overlap = len(source_features.get("artists", set()) & candidate_features.get("artists", set()))
             if graph_score < scoring_config.event_rerank_min_graph_for_neutral:
                 event_rerank_adjustments["lowGraphPenalty"] = -scoring_config.event_rerank_low_graph_penalty
@@ -481,11 +479,11 @@ def build_similarity_response(
             candidate_features=candidate_features,
             scoring_config=scoring_config,
         )
-        shared_extracted_styles: list[str] = []
+        shared_extracted_genres: list[str] = []
         if entity_type == "event":
-            source_styles = source_features.get("extracted_styles", set())
-            candidate_styles = candidate_features.get("extracted_styles", set())
-            shared_extracted_styles = sorted(source_styles & candidate_styles)[:10]
+            source_styles = source_features.get("extracted_genres", set())
+            candidate_styles = candidate_features.get("extracted_genres", set())
+            shared_extracted_genres = sorted(source_styles & candidate_styles)[:10]
         similar.append(
             SimilarityItem(
                 id=candidate_id,
@@ -508,7 +506,7 @@ def build_similarity_response(
                         "graphScore": item["graph_score"],
                     },
                     "graphComponents": graph_components,
-                    "sharedExtractedGenres": shared_extracted_styles if entity_type == "event" else None,
+                    "sharedExtractedGenres": shared_extracted_genres if entity_type == "event" else None,
                     "sourceInterestedCount": item.get("source_interested_count") if entity_type == "event" else None,
                     "candidateInterestedCount": item.get("candidate_interested_count")
                     if entity_type == "event"

@@ -44,14 +44,13 @@ WHERE a.id = %s;
 
 ARTIST_STYLE_TAGS_SQL = """
 SELECT
-    tag_value,
+    extracted_genre,
     MAX(confidence) AS confidence
-FROM artist_extracted_tags
+FROM artist_extracted_genres
 WHERE artist_id = %s
-  AND tag_type = 'style'
   AND confidence >= 0.6
-GROUP BY tag_value
-ORDER BY confidence DESC, tag_value ASC;
+GROUP BY extracted_genre
+ORDER BY confidence DESC, extracted_genre ASC;
 """
 
 ARTIST_EVENTS_SQL = """
@@ -132,14 +131,14 @@ def get_artist(
     biography = artist.get("biography_normalized") or artist.get("biography") or ""
     profile_style_tags: list[str] = []
     with db.cursor() as cur:
-        cur.execute("SELECT to_regclass('public.artist_extracted_tags') AS table_name")
-        has_artist_extracted_tags = cur.fetchone()["table_name"] is not None
-        if has_artist_extracted_tags:
+        cur.execute("SELECT to_regclass('public.artist_extracted_genres') AS table_name")
+        has_artist_extracted_genres = cur.fetchone()["table_name"] is not None
+        if has_artist_extracted_genres:
             cur.execute(ARTIST_STYLE_TAGS_SQL, (id,))
             profile_style_tags = [
-                row["tag_value"]
+                row["extracted_genre"]
                 for row in cur.fetchall()
-                if isinstance(row["tag_value"], str) and row["tag_value"].strip()
+                if isinstance(row["extracted_genre"], str) and row["extracted_genre"].strip()
             ]
 
     if not profile_style_tags:

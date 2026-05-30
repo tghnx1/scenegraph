@@ -333,7 +333,7 @@ def test_artist_similar_events_endpoint_debug_includes_component_scores():
         "sharedGenreCount",
         "sharedExtractedGenres",
         "sharedLineupCount",
-        "extractedStyleScore",
+        "extractedGenreScore",
         "symbolicScore",
         "embeddingScore",
     }
