@@ -61,7 +61,14 @@ def promoter_recommendation_reasons(row: dict) -> list[str]:
         else:
             reasons.append(f"{row['warm_connection_count']} co-played artists connected")
     if manual_warm_connection_count > 0:
-        reasons.append(f"{manual_warm_connection_count} manually added trusted artist links")
+        manual_names = artist_names(row.get("manual_warm_connection_artists"))
+        if manual_names:
+            reasons.append(
+                f"{manual_warm_connection_count} manually added trusted artist links: "
+                f"{', '.join(manual_names)}"
+            )
+        else:
+            reasons.append(f"{manual_warm_connection_count} manually added trusted artist links")
     if row["matched_artist_count"] > 0:
         matched_artist_names = names_list(row.get("matched_artist_names"))
         if matched_artist_names:

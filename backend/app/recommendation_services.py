@@ -442,10 +442,18 @@ def build_artist_promoter_recommendation_response(
             manual_warm_promoters AS (
                 SELECT
                     ep.promoter_id,
-                    count(DISTINCT mka.co_artist_id)::int AS manual_warm_connection_count
+                    count(DISTINCT mka.co_artist_id)::int AS manual_warm_connection_count,
+                    jsonb_agg(
+                        DISTINCT jsonb_build_object(
+                            'id', mka.co_artist_id,
+                            'name', co_artist.name
+                        )
+                    ) AS manual_warm_connection_artists
                 FROM manual_known_artists mka
                 JOIN event_artists ea
                     ON ea.artist_id = mka.co_artist_id
+                JOIN artists co_artist
+                    ON co_artist.id = mka.co_artist_id
                 JOIN events e
                     ON e.id = ea.event_id
                 JOIN event_promoters ep
@@ -495,7 +503,8 @@ def build_artist_promoter_recommendation_response(
                 COALESCE(dp.direct_connection_count, 0)::int AS direct_connection_count,
                 COALESCE(wp.warm_connection_count, 0)::int AS warm_connection_count,
                 COALESCE(wp.warm_connection_artists, '[]'::jsonb) AS warm_connection_artists,
-                COALESCE(mwp.manual_warm_connection_count, 0)::int AS manual_warm_connection_count
+                COALESCE(mwp.manual_warm_connection_count, 0)::int AS manual_warm_connection_count,
+                COALESCE(mwp.manual_warm_connection_artists, '[]'::jsonb) AS manual_warm_connection_artists
             FROM candidate_promoters cp
             JOIN promoters p
                 ON p.id = cp.promoter_id
@@ -613,6 +622,7 @@ def build_artist_promoter_recommendation_response(
                         "warm_connection_count": 0,
                         "warm_connection_artists": [],
                         "manual_warm_connection_count": 0,
+                        "manual_warm_connection_artists": [],
                     }
                 )
 
@@ -703,6 +713,23 @@ def build_artist_promoter_recommendation_response(
                     }
                 )
         warm_connection_artists.sort(key=lambda item: item["id"])
+        manual_connection_artists_raw = row.get("manual_warm_connection_artists")
+        manual_connection_artists: list[dict[str, object]] = []
+        if isinstance(manual_connection_artists_raw, list):
+            for item in manual_connection_artists_raw:
+                if not isinstance(item, dict):
+                    continue
+                artist_id_value = item.get("id")
+                artist_name_value = item.get("name")
+                if artist_id_value is None or artist_name_value is None:
+                    continue
+                manual_connection_artists.append(
+                    {
+                        "id": int(artist_id_value),
+                        "name": str(artist_name_value),
+                    }
+                )
+        manual_connection_artists.sort(key=lambda item: item["id"])
         manual_warm_connection_count_raw = int(row.get("manual_warm_connection_count", 0) or 0)
         manual_overlap_with_warm_count = sum(
             1
@@ -763,6 +790,7 @@ def build_artist_promoter_recommendation_response(
             "latest_event_date": effective_latest_event_date,
             "warm_connection_artists": warm_connection_artists,
             "manual_warm_connection_count": manual_warm_connection_count,
+            "manual_warm_connection_artists": manual_connection_artists,
             "matched_artist_names": matched_artist_names,
             "event_similarity_event_titles": event_similarity_event_titles,
             "related_event_titles": related_event_titles,
@@ -834,6 +862,7 @@ def build_artist_promoter_recommendation_response(
                 coPlayedConnectionCount=row["warm_connection_count"],
                 coPlayedConnectionArtists=warm_connection_artists,
                 manualConnectionCount=manual_warm_connection_count,
+                manualConnectionArtists=manual_connection_artists,
                 directConnectionCount=row["direct_connection_count"],
                 evidence=promoter_recommendation_item_evidence(row_with_similarity),
                 debug={
@@ -858,6 +887,7 @@ def build_artist_promoter_recommendation_response(
                         "manualWarmMinArtistSemanticScore": scoring_config.manual_warm_min_artist_semantic_score,
                         "coPlayedConnectionWeight": scoring_config.co_played_connection_weight,
                         "manualConnectionWeight": scoring_config.manual_connection_weight,
+                        "manualConnectionArtists": manual_connection_artists,
                         "eventSimilarityCount": event_similarity_count,
                         "eventSimilaritySymbolicScore": event_similarity_symbolic_score,
                         "eventSimilarityEmbeddingScore": event_similarity_embedding_score,

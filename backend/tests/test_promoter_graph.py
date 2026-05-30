@@ -38,6 +38,23 @@ def test_promoter_recommendation_reasons_show_manual_even_without_coplayed():
     assert reasons == ["1 manually added trusted artist links"]
 
 
+def test_promoter_recommendation_reasons_show_manual_artist_names():
+    row = {
+        "direct_connection_count": 0,
+        "warm_connection_count": 0,
+        "manual_warm_connection_count": 1,
+        "manual_warm_connection_artists": [{"id": 42, "name": "Zee Mon"}],
+        "matched_artist_count": 0,
+        "event_similarity_count": 0,
+        "event_count": 0,
+        "latest_event_date": None,
+    }
+
+    reasons = promoter_recommendation_reasons(row)
+
+    assert reasons == ["1 manually added trusted artist links: Zee Mon"]
+
+
 def test_promoter_recommendation_status_marks_manual_as_warm_relevant():
     row = {
         "direct_connection_count": 0,
