@@ -715,7 +715,10 @@ def build_artist_promoter_recommendation_response(
             for item in warm_connection_artists
             if int(item["id"]) in manual_relevant_artist_ids
         )
-        manual_relevant_warm_connection_count = manual_relevant_overlap_with_warm_count
+        manual_relevant_warm_connection_count = max(
+            manual_warm_connection_count_raw,
+            manual_relevant_overlap_with_warm_count,
+        )
         matched_artist_names_raw = row.get("matched_artist_names")
         matched_artist_names = (
             sorted({name.strip() for name in matched_artist_names_raw if isinstance(name, str) and name.strip()})

@@ -508,6 +508,18 @@ def test_artist_promoter_recommendations_include_warm_network_connections():
         assert not warm_links
 
 
+def test_artist_promoter_recommendations_manual_connections_boost_warm_score():
+    response = client.get("/api/recommendations/artists/2178/promoters", params={"limit": 50})
+    assert response.status_code == 200
+    data = response.json()
+
+    manual_recommendations = [
+        item for item in data["recommendations"] if item.get("manualConnectionCount", 0) > 0
+    ]
+    if manual_recommendations:
+        assert all(item["scoreBreakdown"]["warmNetwork"] > 0 for item in manual_recommendations)
+
+
 def test_artist_promoter_recommendations_include_event_similarity_connections():
     response = client.get("/api/recommendations/artists/2178/promoters", params={"limit": 50})
     assert response.status_code == 200
