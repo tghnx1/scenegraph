@@ -7,7 +7,7 @@ from typing import Literal
 from app.embeddings import EntityType
 
 
-GraphFeature = Literal["artists", "events", "venues", "promoters", "genres", "extracted_styles"]
+GraphFeature = Literal["artists", "events", "venues", "promoters", "genres", "extracted_genres"]
 
 
 @dataclass(frozen=True)
@@ -82,7 +82,7 @@ class PromoterRecommendationScoringConfig:
     event_similarity_same_venue_weight: float
     event_similarity_shared_genre_weight: float
     event_similarity_shared_lineup_weight: float
-    event_similarity_extracted_style_weight: float
+    event_similarity_extracted_genre_weight: float
     activity_event_cap: int
     existing_partner_direct_min: int
     warm_relevant_connection_min: int
@@ -137,13 +137,13 @@ DEFAULT_RECOMMENDATION_SCORING = RecommendationScoringConfig(
         GraphFeatureWeight("shared promoters", "promoters", 0.20, cap=2),
         GraphFeatureWeight("same venue", "venues", 0.08, boolean=True),
         GraphFeatureWeight("shared abstract genres", "genres", 0.05, cap=3),
-        GraphFeatureWeight("shared extracted genres", "extracted_styles", 0.17, cap=3),
+        GraphFeatureWeight("shared extracted genres", "extracted_genres", 0.17, cap=3),
     ),
     artist_graph_weights=(
         GraphFeatureWeight("played same events", "events", 0.40, cap=2),
         GraphFeatureWeight("shared promoters", "promoters", 0.25, cap=3),
         GraphFeatureWeight("shared venues", "venues", 0.20, cap=3),
-        GraphFeatureWeight("shared styles", "extracted_styles", 0.15, cap=3),
+        GraphFeatureWeight("shared styles", "extracted_genres", 0.15, cap=3),
     ),
 )
 
@@ -174,7 +174,7 @@ DEFAULT_PROMOTER_RECOMMENDATION_SCORING = PromoterRecommendationScoringConfig(
     event_similarity_same_venue_weight=0.5,
     event_similarity_shared_genre_weight=0.1,
     event_similarity_shared_lineup_weight=0.2,
-    event_similarity_extracted_style_weight=0.2,
+    event_similarity_extracted_genre_weight=0.2,
     activity_event_cap=25,
     existing_partner_direct_min=1,
     warm_relevant_connection_min=1,
@@ -211,12 +211,32 @@ def env_float(name: str, default: float) -> float:
         return default
     return float(raw)
 
+# Read float config from primary env var with optional legacy fallback.
+def env_float_alias(primary_name: str, legacy_name: str, default: float) -> float:
+    primary_raw = os.environ.get(primary_name)
+    if primary_raw is not None and primary_raw.strip():
+        return float(primary_raw)
+    legacy_raw = os.environ.get(legacy_name)
+    if legacy_raw is not None and legacy_raw.strip():
+        return float(legacy_raw)
+    return default
+
 # Read integer config from environment with a fallback default.
 def env_int(name: str, default: int) -> int:
     raw = os.environ.get(name)
     if raw is None or not raw.strip():
         return default
     return int(raw)
+
+# Read integer config from primary env var with optional legacy fallback.
+def env_int_alias(primary_name: str, legacy_name: str, default: int) -> int:
+    primary_raw = os.environ.get(primary_name)
+    if primary_raw is not None and primary_raw.strip():
+        return int(primary_raw)
+    legacy_raw = os.environ.get(legacy_name)
+    if legacy_raw is not None and legacy_raw.strip():
+        return int(legacy_raw)
+    return default
 
 # Build semantic-artist scoring config from environment variables.
 def semantic_artist_scoring_from_env() -> SemanticArtistScoringConfig:
@@ -397,9 +417,10 @@ def promoter_recommendation_scoring_from_env() -> PromoterRecommendationScoringC
                 "PROMOTER_REC_EVENT_SIMILARITY_SHARED_LINEUP_WEIGHT",
                 DEFAULT_PROMOTER_RECOMMENDATION_SCORING.event_similarity_shared_lineup_weight,
             ),
-            env_float(
+            env_float_alias(
+                "PROMOTER_REC_EVENT_SIMILARITY_EXTRACTED_GENRE_WEIGHT",
                 "PROMOTER_REC_EVENT_SIMILARITY_EXTRACTED_STYLE_WEIGHT",
-                DEFAULT_PROMOTER_RECOMMENDATION_SCORING.event_similarity_extracted_style_weight,
+                DEFAULT_PROMOTER_RECOMMENDATION_SCORING.event_similarity_extracted_genre_weight,
             ),
         )
     )
@@ -564,7 +585,7 @@ def promoter_recommendation_scoring_from_env() -> PromoterRecommendationScoringC
         event_similarity_same_venue_weight=event_similarity_signal_weights[0],
         event_similarity_shared_genre_weight=event_similarity_signal_weights[1],
         event_similarity_shared_lineup_weight=event_similarity_signal_weights[2],
-        event_similarity_extracted_style_weight=event_similarity_signal_weights[3],
+        event_similarity_extracted_genre_weight=event_similarity_signal_weights[3],
         activity_event_cap=activity_event_cap,
         existing_partner_direct_min=existing_partner_direct_min,
         warm_relevant_connection_min=warm_relevant_connection_min,
@@ -783,7 +804,11 @@ def recommendation_scoring_from_env() -> RecommendationScoringConfig:
         env_int("EVENT_GRAPH_SHARED_ARTISTS_CAP", 3),
         env_int("EVENT_GRAPH_SHARED_PROMOTERS_CAP", 2),
         env_int("EVENT_GRAPH_SHARED_GENRES_CAP", 3),
-        env_int("EVENT_GRAPH_SHARED_EXTRACTED_STYLES_CAP", 3),
+        env_int_alias(
+            "EVENT_GRAPH_SHARED_EXTRACTED_GENRES_CAP",
+            "EVENT_GRAPH_SHARED_EXTRACTED_STYLES_CAP",
+            3,
+        ),
     )
     if any(cap <= 0 for cap in event_caps):
         raise ValueError("EVENT_GRAPH_*_CAP values must be greater than zero")
@@ -794,7 +819,11 @@ def recommendation_scoring_from_env() -> RecommendationScoringConfig:
             env_float("EVENT_GRAPH_SHARED_PROMOTERS_WEIGHT", 0.20),
             env_float("EVENT_GRAPH_SAME_VENUE_WEIGHT", 0.08),
             env_float("EVENT_GRAPH_SHARED_GENRES_WEIGHT", 0.05),
-            env_float("EVENT_GRAPH_SHARED_EXTRACTED_STYLES_WEIGHT", 0.17),
+            env_float_alias(
+                "EVENT_GRAPH_SHARED_EXTRACTED_GENRES_WEIGHT",
+                "EVENT_GRAPH_SHARED_EXTRACTED_STYLES_WEIGHT",
+                0.17,
+            ),
         )
     )
     artist_graph_weight_values = normalized_weights(
@@ -840,7 +869,7 @@ def recommendation_scoring_from_env() -> RecommendationScoringConfig:
             ),
             GraphFeatureWeight(
                 "shared extracted genres",
-                "extracted_styles",
+                "extracted_genres",
                 event_graph_weight_values[4],
                 cap=event_caps[3],
             ),
@@ -866,7 +895,7 @@ def recommendation_scoring_from_env() -> RecommendationScoringConfig:
             ),
             GraphFeatureWeight(
                 "shared styles",
-                "extracted_styles",
+                "extracted_genres",
                 artist_graph_weight_values[3],
                 cap=3,
             ),

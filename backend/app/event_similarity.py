@@ -45,7 +45,7 @@ def artist_similar_events_scored_rows(
 
     source_event_ids = sorted({int(row["source_event_id"]) for row in candidate_rows})
     candidate_event_ids = [int(row["candidate_event_id"]) for row in candidate_rows]
-    event_styles = event_style_tags_by_id(connection, source_event_ids + candidate_event_ids)
+    event_styles = event_extracted_genres_by_id(connection, source_event_ids + candidate_event_ids)
     embedding_scores, embedding_dimensions = event_embedding_similarity_by_candidate(
         connection,
         source_event_ids=source_event_ids,
@@ -57,10 +57,10 @@ def artist_similar_events_scored_rows(
         source_styles = event_styles.get(int(row["source_event_id"]), set())
         candidate_styles = event_styles.get(int(row["candidate_event_id"]), set())
         shared_extracted_genres = sorted(source_styles & candidate_styles)
-        extracted_style_score = (
-            scoring_config.event_similarity_extracted_style_weight if shared_extracted_genres else 0.0
+        extracted_genre_score = (
+            scoring_config.event_similarity_extracted_genre_weight if shared_extracted_genres else 0.0
         )
-        symbolic_score = min(float(row["symbolic_score"]) + extracted_style_score, 1.0)
+        symbolic_score = min(float(row["symbolic_score"]) + extracted_genre_score, 1.0)
         embedding_score = float(embedding_scores.get(row["candidate_event_id"], 0.0))
         weighted_symbolic_score = scoring_config.event_similarity_symbolic_weight * symbolic_score
         weighted_embedding_score = scoring_config.event_similarity_embedding_weight * embedding_score
@@ -69,7 +69,7 @@ def artist_similar_events_scored_rows(
             {
                 **row,
                 "shared_extracted_genres": shared_extracted_genres,
-                "extracted_style_score": extracted_style_score,
+                "extracted_genre_score": extracted_genre_score,
                 "symbolic_score_final": symbolic_score,
                 "embedding_score": embedding_score,
                 "weighted_symbolic_score": weighted_symbolic_score,
@@ -232,7 +232,7 @@ def event_embedding_similarity_by_candidate(
     return scores, dimensions
 
 # Extract normalized style tags for a set of events.
-def event_style_tags_by_id(connection: Connection, event_ids: list[int]) -> dict[int, set[str]]:
+def event_extracted_genres_by_id(connection: Connection, event_ids: list[int]) -> dict[int, set[str]]:
     """Extract normalized style/genre tags from event title + description + lineup text."""
     if not event_ids:
         return {}
@@ -593,7 +593,7 @@ def build_artist_similar_events_response(
                         "sharedGenreCount": row["shared_genre_count"],
                         "sharedExtractedGenres": row["shared_extracted_genres"],
                         "sharedLineupCount": row["shared_lineup_count"],
-                        "extractedStyleScore": row["extracted_style_score"],
+                        "extractedGenreScore": row["extracted_genre_score"],
                         "symbolicScore": row["symbolic_score_final"],
                         "embeddingScore": row["embedding_score"],
                     },

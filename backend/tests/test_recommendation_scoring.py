@@ -23,14 +23,14 @@ def test_event_graph_score_uses_capped_overlap_counts():
         "promoters": {10, 11},
         "venues": {20},
         "genres": {30, 31, 32},
-        "extracted_styles": {"electro", "breaks", "dark disco"},
+        "extracted_genres": {"electro", "breaks", "dark disco"},
     }
     candidate = {
         "artists": {1, 2},
         "promoters": {10, 11, 12},
         "venues": {20},
         "genres": {31},
-        "extracted_styles": {"electro", "dark disco"},
+        "extracted_genres": {"electro", "dark disco"},
     }
 
     score, reasons = hybrid_graph_score("event", source, candidate)
@@ -47,13 +47,13 @@ def test_artist_graph_score_uses_default_config():
         "events": {1, 2},
         "promoters": {10, 11, 12},
         "venues": {20},
-        "extracted_styles": {"ebm", "dark disco"},
+        "extracted_genres": {"ebm", "dark disco"},
     }
     candidate = {
         "events": {1, 2, 3},
         "promoters": {10},
         "venues": {21},
-        "extracted_styles": {"ebm", "dark disco", "new wave"},
+        "extracted_genres": {"ebm", "dark disco", "new wave"},
     }
 
     score, reasons = hybrid_graph_score("artist", source, candidate)
@@ -161,7 +161,7 @@ def test_promoter_recommendation_scoring_reads_and_normalizes_env(monkeypatch):
     monkeypatch.setenv("PROMOTER_REC_EVENT_SIMILARITY_SAME_VENUE_WEIGHT", "40")
     monkeypatch.setenv("PROMOTER_REC_EVENT_SIMILARITY_SHARED_GENRE_WEIGHT", "10")
     monkeypatch.setenv("PROMOTER_REC_EVENT_SIMILARITY_SHARED_LINEUP_WEIGHT", "30")
-    monkeypatch.setenv("PROMOTER_REC_EVENT_SIMILARITY_EXTRACTED_STYLE_WEIGHT", "20")
+    monkeypatch.setenv("PROMOTER_REC_EVENT_SIMILARITY_EXTRACTED_GENRE_WEIGHT", "20")
     monkeypatch.setenv("PROMOTER_REC_ACTIVITY_EVENT_CAP", "30")
     monkeypatch.setenv("PROMOTER_REC_EXISTING_PARTNER_DIRECT_MIN", "2")
     monkeypatch.setenv("PROMOTER_REC_WARM_RELEVANT_CONNECTION_MIN", "1")
@@ -207,7 +207,7 @@ def test_promoter_recommendation_scoring_reads_and_normalizes_env(monkeypatch):
         event_similarity_same_venue_weight=0.40,
         event_similarity_shared_genre_weight=0.10,
         event_similarity_shared_lineup_weight=0.30,
-        event_similarity_extracted_style_weight=0.20,
+        event_similarity_extracted_genre_weight=0.20,
         activity_event_cap=30,
         existing_partner_direct_min=2,
         warm_relevant_connection_min=1,
@@ -232,8 +232,8 @@ def test_recommendation_scoring_reads_event_graph_weights_from_env(monkeypatch):
     monkeypatch.setenv("EVENT_GRAPH_SHARED_PROMOTERS_WEIGHT", "20")
     monkeypatch.setenv("EVENT_GRAPH_SAME_VENUE_WEIGHT", "5")
     monkeypatch.setenv("EVENT_GRAPH_SHARED_GENRES_WEIGHT", "5")
-    monkeypatch.setenv("EVENT_GRAPH_SHARED_EXTRACTED_STYLES_WEIGHT", "30")
-    monkeypatch.setenv("EVENT_GRAPH_SHARED_EXTRACTED_STYLES_CAP", "4")
+    monkeypatch.setenv("EVENT_GRAPH_SHARED_EXTRACTED_GENRES_WEIGHT", "30")
+    monkeypatch.setenv("EVENT_GRAPH_SHARED_EXTRACTED_GENRES_CAP", "4")
 
     config = recommendation_scoring_from_env()
     weights = {item.feature: item for item in config.event_graph_weights}
@@ -242,8 +242,34 @@ def test_recommendation_scoring_reads_event_graph_weights_from_env(monkeypatch):
     assert round(weights["promoters"].weight, 4) == 0.2
     assert round(weights["venues"].weight, 4) == 0.05
     assert round(weights["genres"].weight, 4) == 0.05
-    assert round(weights["extracted_styles"].weight, 4) == 0.3
-    assert weights["extracted_styles"].cap == 4
+    assert round(weights["extracted_genres"].weight, 4) == 0.3
+    assert weights["extracted_genres"].cap == 4
+
+
+def test_recommendation_scoring_supports_legacy_extracted_styles_env_keys(monkeypatch):
+    monkeypatch.setenv("EVENT_GRAPH_SHARED_ARTISTS_WEIGHT", "40")
+    monkeypatch.setenv("EVENT_GRAPH_SHARED_PROMOTERS_WEIGHT", "20")
+    monkeypatch.setenv("EVENT_GRAPH_SAME_VENUE_WEIGHT", "5")
+    monkeypatch.setenv("EVENT_GRAPH_SHARED_GENRES_WEIGHT", "5")
+    monkeypatch.setenv("EVENT_GRAPH_SHARED_EXTRACTED_STYLES_WEIGHT", "30")
+    monkeypatch.setenv("EVENT_GRAPH_SHARED_EXTRACTED_STYLES_CAP", "4")
+
+    config = recommendation_scoring_from_env()
+    weights = {item.feature: item for item in config.event_graph_weights}
+
+    assert round(weights["extracted_genres"].weight, 4) == 0.3
+    assert weights["extracted_genres"].cap == 4
+
+
+def test_promoter_recommendation_scoring_supports_legacy_extracted_style_weight_env_key(monkeypatch):
+    monkeypatch.setenv("PROMOTER_REC_EVENT_SIMILARITY_EXTRACTED_STYLE_WEIGHT", "20")
+    monkeypatch.setenv("PROMOTER_REC_EVENT_SIMILARITY_SAME_VENUE_WEIGHT", "40")
+    monkeypatch.setenv("PROMOTER_REC_EVENT_SIMILARITY_SHARED_GENRE_WEIGHT", "10")
+    monkeypatch.setenv("PROMOTER_REC_EVENT_SIMILARITY_SHARED_LINEUP_WEIGHT", "30")
+
+    config = promoter_recommendation_scoring_from_env()
+
+    assert round(config.event_similarity_extracted_genre_weight, 4) == 0.2
 
 
 def test_promoter_recommendation_scoring_rejects_invalid_warm_range(monkeypatch):
