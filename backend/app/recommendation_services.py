@@ -83,6 +83,7 @@ def source_artist_scale_stats(connection: Connection, *, artist_id: int) -> dict
             ),
             source_interested AS (
                 SELECT
+                    avg(e.interested_count)::double precision AS avg_interested,
                     percentile_cont(0.5) WITHIN GROUP (ORDER BY e.interested_count)::double precision
                         AS median_interested
                 FROM source_events se
@@ -90,7 +91,7 @@ def source_artist_scale_stats(connection: Connection, *, artist_id: int) -> dict
                     ON e.id = se.event_id
                 WHERE e.interested_count IS NOT NULL
             )
-            SELECT ss.event_count, si.median_interested
+            SELECT ss.event_count, si.avg_interested, si.median_interested
             FROM source_scales ss
             CROSS JOIN source_interested si
             """,
@@ -98,7 +99,7 @@ def source_artist_scale_stats(connection: Connection, *, artist_id: int) -> dict
         )
         row = cursor.fetchone()
     if row is None:
-        return {"event_count": 0, "median_interested": None}
+        return {"event_count": 0, "avg_interested": None, "median_interested": None}
     return row
 
 # Convert source/promoter scale ratio into a smooth fit score.
@@ -134,6 +135,69 @@ def scale_bucket_match_multiplier(source_event_count: int, promoter_event_count:
     if distance == 1:
         return 0.65
     return 0.30
+
+
+def interested_tertile_thresholds(values: list[int]) -> tuple[float, float]:
+    if not values:
+        return 0.0, 0.0
+    sorted_values = sorted(float(value) for value in values)
+    if len(sorted_values) == 1:
+        return sorted_values[0], sorted_values[0]
+
+    def percentile(percent: float) -> float:
+        index = (len(sorted_values) - 1) * percent
+        lower_index = math.floor(index)
+        upper_index = math.ceil(index)
+        if lower_index == upper_index:
+            return sorted_values[lower_index]
+        ratio = index - lower_index
+        return (
+            sorted_values[lower_index]
+            + (sorted_values[upper_index] - sorted_values[lower_index]) * ratio
+        )
+
+    return percentile(1.0 / 3.0), percentile(2.0 / 3.0)
+
+
+# Compute distribution thresholds for artist size segmentation by average interested count.
+def artist_interest_segment_thresholds(connection: Connection) -> tuple[float, float]:
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            WITH artist_interest AS (
+                SELECT
+                    ea.artist_id,
+                    avg(e.interested_count)::double precision AS avg_interested
+                FROM event_artists ea
+                JOIN events e
+                    ON e.id = ea.event_id
+                WHERE e.interested_count IS NOT NULL
+                GROUP BY ea.artist_id
+            )
+            SELECT
+                COALESCE(percentile_cont(0.333333) WITHIN GROUP (ORDER BY avg_interested), 0)::double precision
+                    AS low_threshold,
+                COALESCE(percentile_cont(0.666667) WITHIN GROUP (ORDER BY avg_interested), 0)::double precision
+                    AS high_threshold
+            FROM artist_interest
+            """
+        )
+        row = cursor.fetchone()
+    if row is None:
+        return 0.0, 0.0
+    return float(row["low_threshold"]), float(row["high_threshold"])
+
+
+# Map an interested metric into small/medium/large segment.
+def interest_segment_label(value: float | int | None, *, low_threshold: float, high_threshold: float) -> str:
+    if value is None:
+        return "small"
+    numeric_value = float(value)
+    if numeric_value <= low_threshold:
+        return "small"
+    if numeric_value <= high_threshold:
+        return "medium"
+    return "large"
 
 # Build semantic similar-artists API payload.
 def build_artist_semantic_response(
@@ -269,6 +333,9 @@ def build_artist_promoter_recommendation_response(
     source_artist = source_metadata.get(artist_id)
     if source_artist is None:
         raise HTTPException(status_code=404, detail=f"Artist {artist_id} not found")
+    artist_interest_low_threshold, artist_interest_high_threshold = (
+        artist_interest_segment_thresholds(connection)
+    )
 
     semantic_candidates_filtered = [
         item
@@ -468,6 +535,17 @@ def build_artist_promoter_recommendation_response(
                 SELECT promoter_id FROM warm_promoters
                 UNION
                 SELECT promoter_id FROM manual_warm_promoters
+            ),
+            promoter_interest AS (
+                SELECT
+                    cp.promoter_id,
+                    COALESCE(sum(GREATEST(e.interested_count, 0)), 0)::bigint AS promoter_interested_sum
+                FROM candidate_promoters cp
+                JOIN event_promoters ep
+                    ON ep.promoter_id = cp.promoter_id
+                JOIN events e
+                    ON e.id = ep.event_id
+                GROUP BY cp.promoter_id
             )
             SELECT
                 p.id,
@@ -504,7 +582,8 @@ def build_artist_promoter_recommendation_response(
                 COALESCE(wp.warm_connection_count, 0)::int AS warm_connection_count,
                 COALESCE(wp.warm_connection_artists, '[]'::jsonb) AS warm_connection_artists,
                 COALESCE(mwp.manual_warm_connection_count, 0)::int AS manual_warm_connection_count,
-                COALESCE(mwp.manual_warm_connection_artists, '[]'::jsonb) AS manual_warm_connection_artists
+                COALESCE(mwp.manual_warm_connection_artists, '[]'::jsonb) AS manual_warm_connection_artists,
+                COALESCE(pi.promoter_interested_sum, 0)::bigint AS promoter_interested_sum
             FROM candidate_promoters cp
             JOIN promoters p
                 ON p.id = cp.promoter_id
@@ -516,6 +595,8 @@ def build_artist_promoter_recommendation_response(
                 ON wp.promoter_id = p.id
             LEFT JOIN manual_warm_promoters mwp
                 ON mwp.promoter_id = p.id
+            LEFT JOIN promoter_interest pi
+                ON pi.promoter_id = p.id
             ORDER BY semantic_score DESC, direct_connection_count DESC, warm_connection_count DESC, event_count DESC, p.id ASC
             LIMIT %(sql_candidate_limit)s
             """,
@@ -601,9 +682,17 @@ def build_artist_promoter_recommendation_response(
         with connection.cursor() as cursor:
             cursor.execute(
                 """
-                SELECT id, name
-                FROM promoters
-                WHERE id = ANY(%s)
+                SELECT
+                    p.id,
+                    p.name,
+                    COALESCE(sum(GREATEST(e.interested_count, 0)), 0)::bigint AS promoter_interested_sum
+                FROM promoters p
+                LEFT JOIN event_promoters ep
+                    ON ep.promoter_id = p.id
+                LEFT JOIN events e
+                    ON e.id = ep.event_id
+                WHERE p.id = ANY(%s)
+                GROUP BY p.id, p.name
                 """,
                 (additional_promoter_ids,),
             )
@@ -623,11 +712,22 @@ def build_artist_promoter_recommendation_response(
                         "warm_connection_artists": [],
                         "manual_warm_connection_count": 0,
                         "manual_warm_connection_artists": [],
+                        "promoter_interested_sum": int(promoter["promoter_interested_sum"] or 0),
                     }
                 )
 
+    promoter_interest_low_threshold, promoter_interest_high_threshold = interested_tertile_thresholds(
+        [int(row.get("promoter_interested_sum", 0) or 0) for row in rows]
+    )
+
     source_scale_stats = source_artist_scale_stats(connection, artist_id=artist_id)
     source_artist_event_count = max(int(source_scale_stats["event_count"]), 1)
+    source_artist_avg_interested = source_scale_stats.get("avg_interested")
+    source_artist_size_segment = interest_segment_label(
+        source_artist_avg_interested,
+        low_threshold=artist_interest_low_threshold,
+        high_threshold=artist_interest_high_threshold,
+    )
     source_artist_scale = float(source_artist_event_count)
 
     recommendations = []
@@ -686,6 +786,12 @@ def build_artist_promoter_recommendation_response(
         activity_score = min(effective_event_count / scoring_config.activity_event_cap, 1.0)
         recency_score = date_recency_score(effective_latest_event_date)
         promoter_scale = float(max(effective_event_count, 1))
+        promoter_interested_sum = int(row.get("promoter_interested_sum", 0) or 0)
+        promoter_size_segment = interest_segment_label(
+            promoter_interested_sum,
+            low_threshold=promoter_interest_low_threshold,
+            high_threshold=promoter_interest_high_threshold,
+        )
         scale_bucket_multiplier = scale_bucket_match_multiplier(
             source_artist_event_count,
             effective_event_count,
@@ -863,6 +969,8 @@ def build_artist_promoter_recommendation_response(
                 coPlayedConnectionArtists=warm_connection_artists,
                 manualConnectionCount=manual_warm_connection_count,
                 manualConnectionArtists=manual_connection_artists,
+                promoterInterestedSum=promoter_interested_sum,
+                promoterSizeSegment=promoter_size_segment,
                 directConnectionCount=row["direct_connection_count"],
                 evidence=promoter_recommendation_item_evidence(row_with_similarity),
                 debug={
@@ -893,6 +1001,8 @@ def build_artist_promoter_recommendation_response(
                         "eventSimilarityEmbeddingScore": event_similarity_embedding_score,
                         "artistScale": source_artist_scale,
                         "promoterScale": promoter_scale,
+                        "promoterInterestedSum": promoter_interested_sum,
+                        "promoterSizeSegment": promoter_size_segment,
                         "artistScaleEventCount": source_artist_event_count,
                         "promoterScaleEventCount": effective_event_count,
                         "scaleBucketMultiplier": scale_bucket_multiplier,
@@ -938,6 +1048,24 @@ def build_artist_promoter_recommendation_response(
     remaining_slots = max(limit - len(warm_recommendations), 0)
     discovery_recommendations = discovery_recommendations_all[:remaining_slots]
     recommendations = [*warm_recommendations, *discovery_recommendations]
+    size_sort_order = {"large": 0, "medium": 1, "small": 2}
+    recommendations = sorted(
+        recommendations,
+        key=lambda recommendation: (
+            size_sort_order.get(recommendation.promoterSizeSegment, 3),
+            -recommendation.score,
+            recommendation.id,
+        ),
+    )
+    large_recommendations = [
+        recommendation for recommendation in recommendations if recommendation.promoterSizeSegment == "large"
+    ]
+    medium_recommendations = [
+        recommendation for recommendation in recommendations if recommendation.promoterSizeSegment == "medium"
+    ]
+    small_recommendations = [
+        recommendation for recommendation in recommendations if recommendation.promoterSizeSegment == "small"
+    ]
     recommendation_limit_cutoff = max(len(sorted_recommendations) - len(recommendations), 0)
     warm_limit_cutoff = max(len(warm_recommendations_all) - len(warm_recommendations), 0)
     discovery_limit_cutoff = max(len(discovery_recommendations_all) - len(discovery_recommendations), 0)
@@ -947,6 +1075,9 @@ def build_artist_promoter_recommendation_response(
             model=source["model"],
             dimensions=source["dimensions"],
             recommendations=[],
+            largeRecommendations=[],
+            mediumRecommendations=[],
+            smallRecommendations=[],
             warmRecommendations=[],
             discoveryRecommendations=[],
             graph=GraphResponse(nodes=[], links=[]),
@@ -968,6 +1099,9 @@ def build_artist_promoter_recommendation_response(
                     "returnedWarmRecommendations": 0,
                     "returnedCoPlayedRecommendations": 0,
                     "returnedDiscoveryRecommendations": 0,
+                    "returnedLargeRecommendations": 0,
+                    "returnedMediumRecommendations": 0,
+                    "returnedSmallRecommendations": 0,
                 },
                 "filteredOut": {
                     "excludeExisting": exclude_existing_filtered_count,
@@ -984,6 +1118,18 @@ def build_artist_promoter_recommendation_response(
                     "recommendationLimitCutoff": 0,
                     "warmLimitCutoff": 0,
                     "discoveryLimitCutoff": 0,
+                },
+                "segments": {
+                    "promoterInterestedSumThresholds": {
+                        "smallMax": promoter_interest_low_threshold,
+                        "mediumMax": promoter_interest_high_threshold,
+                    },
+                    "sourceArtistAverageInterested": source_artist_avg_interested,
+                    "sourceArtistSizeSegment": source_artist_size_segment,
+                    "artistAverageInterestedThresholds": {
+                        "smallMax": artist_interest_low_threshold,
+                        "mediumMax": artist_interest_high_threshold,
+                    },
                 },
             }
             if debug
@@ -1040,6 +1186,9 @@ def build_artist_promoter_recommendation_response(
         model=source["model"],
         dimensions=source["dimensions"],
         recommendations=recommendations,
+        largeRecommendations=large_recommendations,
+        mediumRecommendations=medium_recommendations,
+        smallRecommendations=small_recommendations,
         warmRecommendations=warm_recommendations,
         discoveryRecommendations=discovery_recommendations,
         graph=promoter_recommendation_graph(
@@ -1076,6 +1225,9 @@ def build_artist_promoter_recommendation_response(
                     1 for recommendation in warm_recommendations if recommendation.warmConnectionCount > 0
                 ),
                 "returnedDiscoveryRecommendations": len(discovery_recommendations),
+                "returnedLargeRecommendations": len(large_recommendations),
+                "returnedMediumRecommendations": len(medium_recommendations),
+                "returnedSmallRecommendations": len(small_recommendations),
             },
             "filteredOut": {
                 "excludeExisting": exclude_existing_filtered_count,
@@ -1092,6 +1244,18 @@ def build_artist_promoter_recommendation_response(
                 "recommendationLimitCutoff": recommendation_limit_cutoff,
                 "warmLimitCutoff": warm_limit_cutoff,
                 "discoveryLimitCutoff": discovery_limit_cutoff,
+            },
+            "segments": {
+                "promoterInterestedSumThresholds": {
+                    "smallMax": promoter_interest_low_threshold,
+                    "mediumMax": promoter_interest_high_threshold,
+                },
+                "sourceArtistAverageInterested": source_artist_avg_interested,
+                "sourceArtistSizeSegment": source_artist_size_segment,
+                "artistAverageInterestedThresholds": {
+                    "smallMax": artist_interest_low_threshold,
+                    "mediumMax": artist_interest_high_threshold,
+                },
             },
         }
         if debug

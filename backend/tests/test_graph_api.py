@@ -419,6 +419,8 @@ def test_artist_promoter_recommendations_include_graph_payload():
     assert first["warmConnectionCount"] >= 0
     assert first["coPlayedConnectionCount"] >= 0
     assert first["manualConnectionCount"] >= 0
+    assert first["promoterInterestedSum"] >= 0
+    assert first["promoterSizeSegment"] in {"small", "medium", "large"}
     assert first["directConnectionCount"] >= 0
     assert isinstance(first["evidence"], list)
     assert first["evidence"]
@@ -439,6 +441,7 @@ def test_artist_promoter_recommendations_include_graph_payload():
     assert semantic_link["style"] in {"solid", "dashed", "dotted"}
     assert isinstance(semantic_link["strength"], (int, float))
     assert 0.0 <= semantic_link["strength"] <= 1.0
+    assert set(data) >= {"largeRecommendations", "mediumRecommendations", "smallRecommendations"}
 
 
 def test_artist_promoter_recommendations_include_debug_when_requested():
@@ -450,12 +453,18 @@ def test_artist_promoter_recommendations_include_debug_when_requested():
 
     data = response.json()
     assert "debug" in data
-    assert set(data["debug"]) == {"candidateCounts", "filteredOut"}
+    assert set(data["debug"]) == {"candidateCounts", "filteredOut", "segments"}
     assert set(data["debug"]["filteredOut"]) >= {
         "excludeExisting",
         "eventSimilaritySamePromoter",
         "eventSimilarityLimitCutoff",
         "recommendationLimitCutoff",
+    }
+    assert set(data["debug"]["segments"]) >= {
+        "promoterInterestedSumThresholds",
+        "sourceArtistAverageInterested",
+        "sourceArtistSizeSegment",
+        "artistAverageInterestedThresholds",
     }
     assert data["recommendations"]
     first = data["recommendations"][0]
