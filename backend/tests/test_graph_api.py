@@ -380,6 +380,8 @@ def test_artist_promoter_recommendations_include_graph_payload():
         "semantic",
         "strength",
         "directConnection",
+        "coPlayedConnection",
+        "manualConnection",
         "warmNetwork",
         "eventSimilarity",
         "scaleFit",
@@ -491,7 +493,10 @@ def test_artist_promoter_recommendations_include_warm_network_connections():
         item for item in data["recommendations"] if item["warmConnectionCount"] > 0
     ]
     for item in warm_recommendations:
-        assert item["scoreBreakdown"]["warmNetwork"] > 0
+        assert (
+            item["scoreBreakdown"]["coPlayedConnection"] > 0
+            or item["scoreBreakdown"]["manualConnection"] > 0
+        )
         assert item["warmConnectionArtists"]
         assert all("id" in artist and "name" in artist for artist in item["warmConnectionArtists"])
         assert any(evidence["type"] == "warm_network" for evidence in item["evidence"])
@@ -517,7 +522,7 @@ def test_artist_promoter_recommendations_manual_connections_boost_warm_score():
         item for item in data["recommendations"] if item.get("manualConnectionCount", 0) > 0
     ]
     if manual_recommendations:
-        assert all(item["scoreBreakdown"]["warmNetwork"] > 0 for item in manual_recommendations)
+        assert all(item["scoreBreakdown"]["manualConnection"] > 0 for item in manual_recommendations)
 
 
 def test_artist_promoter_recommendations_include_event_similarity_connections():

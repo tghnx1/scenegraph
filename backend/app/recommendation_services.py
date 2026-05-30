@@ -532,6 +532,9 @@ def build_artist_promoter_recommendation_response(
         collect_debug=debug,
     )
     event_similarity_below_threshold_filtered = 0
+    event_similarity_embedding_gate_filtered = int(
+        similar_event_debug_counts.get("embeddingGateFiltered", 0)
+    )
     event_similarity_per_promoter_limit_cutoff = 0
     event_similarity_rows_by_promoter: dict[int, list[dict]] = {}
     for similar_row in similar_event_rows:
@@ -764,31 +767,53 @@ def build_artist_promoter_recommendation_response(
             "event_similarity_event_titles": event_similarity_event_titles,
             "related_event_titles": related_event_titles,
         }
-        base_warm_network_score = min(
+        co_played_connection_score = min(
             row["warm_connection_count"] / scoring_config.warm_connection_cap,
             1.0,
         )
-        manual_warm_score = min(
+        manual_connection_score = min(
             manual_relevant_warm_connection_count / scoring_config.manual_warm_connection_cap,
             1.0,
         )
-        warm_network_score = min(
-            base_warm_network_score
-            + scoring_config.manual_warm_boost_weight * manual_warm_score,
-            1.0,
-        )
         direct_weight = 0.0 if exclude_existing else scoring_config.direct_connection_weight
+        co_played_contribution = (
+            scoring_config.co_played_connection_weight * co_played_connection_score
+        )
+        manual_connection_contribution = (
+            scoring_config.manual_connection_weight * manual_connection_score
+        )
+        semantic_contribution = scoring_config.semantic_weight * row["semantic_score"]
+        strength_contribution = scoring_config.strength_weight * strength_score
+        direct_contribution = direct_weight * direct_connection_score
+        event_similarity_contribution = (
+            scoring_config.event_similarity_weight * event_similarity_score
+        )
+        scale_fit_contribution = scoring_config.scale_fit_weight * scale_fit
+        activity_contribution = scoring_config.activity_weight * activity_score
+        recency_contribution = scoring_config.recency_weight * recency_score
         score_breakdown = {
-            "semantic": scoring_config.semantic_weight * row["semantic_score"],
-            "strength": scoring_config.strength_weight * strength_score,
-            "directConnection": direct_weight * direct_connection_score,
-            "warmNetwork": scoring_config.warm_network_weight * warm_network_score,
-            "eventSimilarity": scoring_config.event_similarity_weight * event_similarity_score,
-            "scaleFit": scoring_config.scale_fit_weight * scale_fit,
-            "activity": scoring_config.activity_weight * activity_score,
-            "recency": scoring_config.recency_weight * recency_score,
+            "semantic": semantic_contribution,
+            "strength": strength_contribution,
+            "directConnection": direct_contribution,
+            "coPlayedConnection": co_played_contribution,
+            "manualConnection": manual_connection_contribution,
+            "warmNetwork": co_played_contribution + manual_connection_contribution,
+            "eventSimilarity": event_similarity_contribution,
+            "scaleFit": scale_fit_contribution,
+            "activity": activity_contribution,
+            "recency": recency_contribution,
         }
-        total_score = sum(score_breakdown.values())
+        total_score = (
+            semantic_contribution
+            + strength_contribution
+            + direct_contribution
+            + co_played_contribution
+            + manual_connection_contribution
+            + event_similarity_contribution
+            + scale_fit_contribution
+            + activity_contribution
+            + recency_contribution
+        )
         recommendations.append(
             PromoterRecommendationItem(
                 id=row["id"],
@@ -831,7 +856,8 @@ def build_artist_promoter_recommendation_response(
                         "manualRelevantByProfileFallbackCount": len(manual_relevant_by_profile_fallback_ids),
                         "manualSemanticGateFilteredCount": manual_semantic_gate_filtered_count,
                         "manualWarmMinArtistSemanticScore": scoring_config.manual_warm_min_artist_semantic_score,
-                        "manualWarmBoostWeight": scoring_config.manual_warm_boost_weight,
+                        "coPlayedConnectionWeight": scoring_config.co_played_connection_weight,
+                        "manualConnectionWeight": scoring_config.manual_connection_weight,
                         "eventSimilarityCount": event_similarity_count,
                         "eventSimilaritySymbolicScore": event_similarity_symbolic_score,
                         "eventSimilarityEmbeddingScore": event_similarity_embedding_score,
@@ -847,11 +873,8 @@ def build_artist_promoter_recommendation_response(
                     "normalizedScores": {
                         "strength": strength_score,
                         "directConnection": direct_connection_score,
-                        "baseWarmNetwork": base_warm_network_score,
-                        "baseCoPlayedNetwork": base_warm_network_score,
-                        "manualWarm": manual_warm_score,
-                        "warmNetwork": warm_network_score,
-                        "coPlayedNetwork": warm_network_score,
+                        "coPlayedConnection": co_played_connection_score,
+                        "manualConnection": manual_connection_score,
                         "eventSimilarity": event_similarity_score,
                         "scaleFit": scale_fit,
                         "activity": activity_score,
@@ -917,6 +940,7 @@ def build_artist_promoter_recommendation_response(
                     "semanticArtistBelowThreshold": semantic_artist_below_threshold_filtered,
                     "eventSimilaritySamePromoter": similar_event_debug_counts["samePromoterFiltered"],
                     "eventSimilarityLimitCutoff": similar_event_debug_counts["similarityLimitCutoff"],
+                    "eventSimilarityEmbeddingGate": event_similarity_embedding_gate_filtered,
                     "eventSimilarityBelowThreshold": event_similarity_below_threshold_filtered,
                     "eventSimilarityPerPromoterLimitCutoff": event_similarity_per_promoter_limit_cutoff,
                     "recommendationLimitCutoff": 0,
@@ -1016,6 +1040,7 @@ def build_artist_promoter_recommendation_response(
                 "semanticArtistBelowThreshold": semantic_artist_below_threshold_filtered,
                 "eventSimilaritySamePromoter": similar_event_debug_counts["samePromoterFiltered"],
                 "eventSimilarityLimitCutoff": similar_event_debug_counts["similarityLimitCutoff"],
+                "eventSimilarityEmbeddingGate": event_similarity_embedding_gate_filtered,
                 "eventSimilarityBelowThreshold": event_similarity_below_threshold_filtered,
                 "eventSimilarityPerPromoterLimitCutoff": event_similarity_per_promoter_limit_cutoff,
                 "recommendationLimitCutoff": recommendation_limit_cutoff,
