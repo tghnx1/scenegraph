@@ -101,6 +101,9 @@ class PromoterRecommendationScoringConfig:
     semantic_artist_min_score: float
     event_similarity_overfetch_multiplier: int
     event_similarity_overfetch_min: int
+    source_event_relevance_gate_enabled: bool
+    source_event_relevance_min_embedding_score: float
+    source_event_relevance_top_k: int
 
 
 DEFAULT_SEMANTIC_ARTIST_SCORING = SemanticArtistScoringConfig(
@@ -195,6 +198,9 @@ DEFAULT_PROMOTER_RECOMMENDATION_SCORING = PromoterRecommendationScoringConfig(
     semantic_artist_min_score=0.45,
     event_similarity_overfetch_multiplier=20,
     event_similarity_overfetch_min=500,
+    source_event_relevance_gate_enabled=True,
+    source_event_relevance_min_embedding_score=0.45,
+    source_event_relevance_top_k=6,
 )
 
 # Normalize arbitrary positive weights into a unit-sum tuple.
@@ -516,6 +522,18 @@ def promoter_recommendation_scoring_from_env() -> PromoterRecommendationScoringC
         "PROMOTER_REC_EVENT_SIMILARITY_OVERFETCH_MIN",
         DEFAULT_PROMOTER_RECOMMENDATION_SCORING.event_similarity_overfetch_min,
     )
+    source_event_relevance_gate_enabled = env_bool(
+        "PROMOTER_REC_SOURCE_EVENT_RELEVANCE_GATE_ENABLED",
+        DEFAULT_PROMOTER_RECOMMENDATION_SCORING.source_event_relevance_gate_enabled,
+    )
+    source_event_relevance_min_embedding_score = env_float(
+        "PROMOTER_REC_SOURCE_EVENT_RELEVANCE_MIN_EMBEDDING_SCORE",
+        DEFAULT_PROMOTER_RECOMMENDATION_SCORING.source_event_relevance_min_embedding_score,
+    )
+    source_event_relevance_top_k = env_int(
+        "PROMOTER_REC_SOURCE_EVENT_RELEVANCE_TOP_K",
+        DEFAULT_PROMOTER_RECOMMENDATION_SCORING.source_event_relevance_top_k,
+    )
 
     if strength_matched_artist_cap <= 0:
         raise ValueError("PROMOTER_REC_STRENGTH_MATCHED_ARTIST_CAP must be greater than zero")
@@ -588,6 +606,12 @@ def promoter_recommendation_scoring_from_env() -> PromoterRecommendationScoringC
         raise ValueError("PROMOTER_REC_EVENT_SIMILARITY_OVERFETCH_MULTIPLIER must be greater than zero")
     if event_similarity_overfetch_min <= 0:
         raise ValueError("PROMOTER_REC_EVENT_SIMILARITY_OVERFETCH_MIN must be greater than zero")
+    if not (0.0 <= source_event_relevance_min_embedding_score <= 1.0):
+        raise ValueError(
+            "PROMOTER_REC_SOURCE_EVENT_RELEVANCE_MIN_EMBEDDING_SCORE must be between 0 and 1"
+        )
+    if source_event_relevance_top_k <= 0:
+        raise ValueError("PROMOTER_REC_SOURCE_EVENT_RELEVANCE_TOP_K must be greater than zero")
 
     return PromoterRecommendationScoringConfig(
         semantic_weight=weights[0],
@@ -634,6 +658,9 @@ def promoter_recommendation_scoring_from_env() -> PromoterRecommendationScoringC
         semantic_artist_min_score=semantic_artist_min_score,
         event_similarity_overfetch_multiplier=event_similarity_overfetch_multiplier,
         event_similarity_overfetch_min=event_similarity_overfetch_min,
+        source_event_relevance_gate_enabled=source_event_relevance_gate_enabled,
+        source_event_relevance_min_embedding_score=source_event_relevance_min_embedding_score,
+        source_event_relevance_top_k=source_event_relevance_top_k,
     )
 
 # Read and validate API max limit for promoter recommendation endpoint.
