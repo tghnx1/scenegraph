@@ -159,6 +159,9 @@ class PromoterRecommendationItem(BaseModel):
     status: str | None = None
     warmConnectionCount: int = 0
     warmConnectionArtists: list[WarmConnectionArtistItem] = Field(default_factory=list)
+    coPlayedConnectionCount: int = 0
+    coPlayedConnectionArtists: list[WarmConnectionArtistItem] = Field(default_factory=list)
+    manualConnectionCount: int = 0
     directConnectionCount: int = 0
     evidence: list[RecommendationEvidenceItem] = Field(default_factory=list)
     debug: dict[str, object] | None = None

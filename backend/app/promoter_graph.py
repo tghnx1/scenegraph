@@ -51,17 +51,17 @@ def promoter_recommendation_reasons(row: dict) -> list[str]:
     reasons = []
     if row["direct_connection_count"] > 0:
         reasons.append(f"{row['direct_connection_count']} direct artist-promoter events")
+    manual_warm_connection_count = int(row.get("manual_warm_connection_count", 0) or 0)
     if row["warm_connection_count"] > 0:
         warm_names = artist_names(row.get("warm_connection_artists"))
-        manual_warm_connection_count = int(row.get("manual_warm_connection_count", 0) or 0)
         if warm_names:
             reasons.append(
-                f"{row['warm_connection_count']} warm-network artists connected: {', '.join(warm_names)}"
+                f"{row['warm_connection_count']} co-played artists connected: {', '.join(warm_names)}"
             )
         else:
-            reasons.append(f"{row['warm_connection_count']} warm-network artists connected")
-        if manual_warm_connection_count > 0:
-            reasons.append(f"{manual_warm_connection_count} manually added trusted artist links")
+            reasons.append(f"{row['warm_connection_count']} co-played artists connected")
+    if manual_warm_connection_count > 0:
+        reasons.append(f"{manual_warm_connection_count} manually added trusted artist links")
     if row["matched_artist_count"] > 0:
         matched_artist_names = names_list(row.get("matched_artist_names"))
         if matched_artist_names:
@@ -73,16 +73,20 @@ def promoter_recommendation_reasons(row: dict) -> list[str]:
     if row["event_similarity_count"] > 0:
         event_similarity_titles = names_list(row.get("event_similarity_event_titles"))
         if event_similarity_titles:
+            displayed_event_similarity_count = len(event_similarity_titles)
             reasons.append(
-                f"{row['event_similarity_count']} similar promoter events: {', '.join(event_similarity_titles)}"
+                f"{displayed_event_similarity_count} similar promoter events: "
+                f"{', '.join(event_similarity_titles)}"
             )
         else:
             reasons.append(f"{row['event_similarity_count']} similar promoter events")
     if row["event_count"] > 0:
         related_event_titles = names_list(row.get("related_event_titles"))
         if related_event_titles:
+            displayed_related_event_count = len(related_event_titles)
             reasons.append(
-                f"{row['event_count']} related promoter events: {', '.join(related_event_titles)}"
+                f"{displayed_related_event_count} related promoter events: "
+                f"{', '.join(related_event_titles)}"
             )
         else:
             reasons.append(f"{row['event_count']} related promoter events")
@@ -95,9 +99,13 @@ def promoter_recommendation_status(
     row: dict,
     scoring_config: PromoterRecommendationScoringConfig,
 ) -> str:
+    manual_warm_connection_count = int(row.get("manual_warm_connection_count", 0) or 0)
     if row["direct_connection_count"] >= scoring_config.existing_partner_direct_min:
         return "existing_partner"
-    if row["warm_connection_count"] >= scoring_config.warm_relevant_connection_min:
+    if (
+        row["warm_connection_count"] >= scoring_config.warm_relevant_connection_min
+        or manual_warm_connection_count > 0
+    ):
         return "warm_relevant"
     return "new_relevant"
 

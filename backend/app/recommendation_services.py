@@ -379,11 +379,6 @@ def build_artist_promoter_recommendation_response(
                 JOIN event_artists ea_shared
                     ON ea_shared.event_id = se.event_id
                 WHERE ea_shared.artist_id <> %(source_artist_id)s
-                UNION
-                SELECT
-                    mka.co_artist_id,
-                    mka.shared_event_id
-                FROM manual_known_artists mka
             ),
             semantic_promoters AS (
                 SELECT
@@ -808,6 +803,9 @@ def build_artist_promoter_recommendation_response(
                 status=promoter_recommendation_status(row_with_similarity, scoring_config),
                 warmConnectionCount=row["warm_connection_count"],
                 warmConnectionArtists=warm_connection_artists,
+                coPlayedConnectionCount=row["warm_connection_count"],
+                coPlayedConnectionArtists=warm_connection_artists,
+                manualConnectionCount=manual_warm_connection_count,
                 directConnectionCount=row["direct_connection_count"],
                 evidence=promoter_recommendation_item_evidence(row_with_similarity),
                 debug={
@@ -818,6 +816,7 @@ def build_artist_promoter_recommendation_response(
                         "eventCountRaw": int(row["event_count"]),
                         "directConnectionCount": row["direct_connection_count"],
                         "warmConnectionCount": row["warm_connection_count"],
+                        "coPlayedConnectionCount": row["warm_connection_count"],
                         "manualWarmConnectionCount": manual_warm_connection_count,
                         "manualWarmConnectionCountRaw": manual_warm_connection_count_raw,
                         "manualWarmOverlapWithWarmCount": manual_overlap_with_warm_count,
@@ -840,13 +839,16 @@ def build_artist_promoter_recommendation_response(
                         "scaleBucketMultiplier": scale_bucket_multiplier,
                         "scaleFit": scale_fit,
                         "warmConnectionArtists": warm_connection_artists,
+                        "coPlayedConnectionArtists": warm_connection_artists,
                     },
                     "normalizedScores": {
                         "strength": strength_score,
                         "directConnection": direct_connection_score,
                         "baseWarmNetwork": base_warm_network_score,
+                        "baseCoPlayedNetwork": base_warm_network_score,
                         "manualWarm": manual_warm_score,
                         "warmNetwork": warm_network_score,
+                        "coPlayedNetwork": warm_network_score,
                         "eventSimilarity": event_similarity_score,
                         "scaleFit": scale_fit,
                         "activity": activity_score,
@@ -869,12 +871,12 @@ def build_artist_promoter_recommendation_response(
     warm_recommendations_all = [
         recommendation
         for recommendation in sorted_recommendations
-        if recommendation.warmConnectionCount > 0
+        if recommendation.warmConnectionCount > 0 or recommendation.manualConnectionCount > 0
     ]
     discovery_recommendations_all = [
         recommendation
         for recommendation in sorted_recommendations
-        if recommendation.warmConnectionCount == 0
+        if recommendation.warmConnectionCount == 0 and recommendation.manualConnectionCount == 0
     ]
     warm_recommendations = warm_recommendations_all[:limit]
     remaining_slots = max(limit - len(warm_recommendations), 0)
@@ -898,10 +900,13 @@ def build_artist_promoter_recommendation_response(
                     "semanticArtistsUsed": len(candidate_scores),
                     "eventSimilarityPromotersAdded": len(additional_promoter_ids),
                     "warmCandidates": 0,
+                    "coPlayedCandidates": 0,
+                    "manualConnectionCandidates": 0,
                     "discoveryCandidates": 0,
                     "recommendationsBeforeLimit": 0,
                     "returnedRecommendations": 0,
                     "returnedWarmRecommendations": 0,
+                    "returnedCoPlayedRecommendations": 0,
                     "returnedDiscoveryRecommendations": 0,
                 },
                 "filteredOut": {
@@ -988,10 +993,19 @@ def build_artist_promoter_recommendation_response(
                 "semanticArtistsUsed": len(candidate_scores),
                 "eventSimilarityPromotersAdded": len(additional_promoter_ids),
                 "warmCandidates": len(warm_recommendations_all),
+                "coPlayedCandidates": sum(
+                    1 for recommendation in warm_recommendations_all if recommendation.warmConnectionCount > 0
+                ),
+                "manualConnectionCandidates": sum(
+                    1 for recommendation in warm_recommendations_all if recommendation.manualConnectionCount > 0
+                ),
                 "discoveryCandidates": len(discovery_recommendations_all),
                 "recommendationsBeforeLimit": len(recommendations) + recommendation_limit_cutoff,
                 "returnedRecommendations": len(recommendations),
                 "returnedWarmRecommendations": len(warm_recommendations),
+                "returnedCoPlayedRecommendations": sum(
+                    1 for recommendation in warm_recommendations if recommendation.warmConnectionCount > 0
+                ),
                 "returnedDiscoveryRecommendations": len(discovery_recommendations),
             },
             "filteredOut": {
