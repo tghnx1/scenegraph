@@ -190,33 +190,42 @@ These metrics should be precomputed offline where possible, then exposed through
 ## Phase 4 — Style and text enrichment
 
 ### Goal
-Represent scene semantics more accurately than coarse platform genres alone.
+Represent scene semantics through text, not through coarse genre labels.
 
-### Keep coarse genres
-RA / source genres remain useful for:
+### Genre decision for MVP recommendations
+Do **not** use genres as a recommendation scoring signal in the first version.
+
+Genres can still exist as:
 - simple filtering
-- fallback categorization
-- cheap coarse segmentation
+- display metadata
+- debugging context
+
+But the recommendation algorithm should not say:
+
+`same genre = similar`
+
+For MVP scoring, similarity should come from:
+- factual graph proximity
+- event description embeddings
+- artist biography embeddings
 
 ### Add richer style context
-Build text for each entity from available sources.
+Build text profiles from fields that carry scene meaning.
 
 ### Artist text profile
 Combine:
 - biography
-- coarse genres
-- titles/descriptions of played events
-- recurring promoters
-- recurring venues
+- fallback: titles/descriptions/lineup text from events the artist played
+- recurring venue names
+- recurring promoter names
 
 ### Event text profile
 Combine:
 - title
-- description
-- lineup names
+- description_text
+- lineup_raw
 - promoter names
 - venue name
-- coarse genres
 
 ### Promoter text profile
 Combine:
@@ -256,8 +265,16 @@ Use a **hybrid model**:
 - graph = factual structure
 - embeddings = semantic similarity signal
 
+### MVP embedding scope
+Start with only:
+- `event_embeddings`
+- `artist_embeddings`
+
+Promoter and venue recommendations can be derived from the events and artists
+connected to them. Dedicated promoter and venue embeddings can come later.
+
 ### Offline embedding pipeline
-For each entity type:
+For each event and artist:
 1. build aggregated text profile
 2. generate embedding vector offline
 3. store vector with model version and source text hash
@@ -266,8 +283,8 @@ For each entity type:
 ### Suggested storage
 - `artist_embeddings`
 - `event_embeddings`
-- `promoter_embeddings`
-- `venue_embeddings`
+- later: `promoter_embeddings`
+- later: `venue_embeddings`
 
 Each row should include:
 - entity id
@@ -280,8 +297,9 @@ Each row should include:
 ### First similarity products
 - artist-to-artist similarity
 - event-to-event similarity
-- artist-to-promoter affinity
-- artist-to-venue affinity
+- artist-to-event affinity
+- later: artist-to-promoter affinity
+- later: artist-to-venue affinity
 
 These should be treated as **derived relations**, not canonical ingestion edges.
 
@@ -301,7 +319,6 @@ From weighted combinations of:
 - repeated co-lineups
 - shared promoters
 - shared venues
-- style overlap
 - embedding cosine similarity
 - recency/activity adjustments
 
@@ -319,32 +336,130 @@ Do not mix them with canonical source edges, because they answer different quest
 ### Goal
 Generate realistic candidate opportunities for a user.
 
-### User mapping inputs
-- known artists
-- known past events
-- optionally claimed profile / biography
-- optionally preferred genres or styles
+### MVP input
+Start with one seed artist:
+
+`artistId`
+
+The seed artist becomes the starting point for graph traversal and semantic
+matching.
+
+### Step 1 — build seed artist context
+
+For seed artist `A`, collect factual graph context:
+
+- events where `A` played
+- co-lineup artists from those events
+- venues of those events
+- promoters of those events
+
+Then collect semantic context:
+
+- artist biography for `A`
+- descriptions of events where `A` played
+- lineup text from events where `A` played
+
+This is the seed artist's scene neighborhood.
+
+### Step 2 — controlled graph traversal
+
+Do **not** run an unlimited graph search.
+
+The graph can expand forever:
+
+`Artist -> Event -> Venue -> Event -> Artist -> Event -> ...`
+
+After a few hops, almost every artist can become connected through a popular
+venue or promoter. That makes recommendations noisy.
+
+For MVP, use controlled traversal with these rules:
+
+#### Default max depth
+
+`maxDepth = 3`
+
+The endpoint may expose this as a tuning parameter:
+
+```http
+GET /api/recommendations?artistId=4353&limit=10&maxDepth=3
+```
+
+#### Allowed paths
+
+Allow:
+
+- `Artist A -> Event -> Artist`
+- `Artist A -> Event -> Venue`
+- `Artist A -> Event -> Promoter`
+- `Artist A -> Event -> Venue -> Event`
+- `Artist A -> Event -> Promoter -> Event`
+- `Artist A -> Event -> Venue -> Event -> Artist`
+- `Artist A -> Event -> Promoter -> Event -> Artist`
+
+Stop after that.
+
+Do not allow repeated artist expansion:
+
+- `Artist -> Event -> Artist -> Event -> Artist -> ...`
+
+This path grows too fast and becomes hard to explain.
+
+#### Fan-out limits
+
+Popular venues and promoters can explode the candidate set. Limit expansion:
+
+- max events per venue: `20`
+- max events per promoter: `20`
+- max artists per expanded event: `30`
+
+Use recency and embedding similarity to choose which events survive the fan-out
+limit.
+
+#### Embedding threshold
+
+When expanding through venues or promoters, keep only semantically related
+events:
+
+- compare candidate event description embedding with the seed event profile
+- default threshold: `minEventSimilarity = 0.72`
+
+This means graph expansion creates possible candidates, and embeddings decide
+which ones remain relevant.
+
+### Step 3 — embedding candidate search
+
+In parallel with graph traversal, use embeddings directly:
+
+- find events with descriptions similar to the seed artist's event profile
+- find artists with biographies similar to the seed artist biography/profile
+
+This allows useful recommendations even when there is no direct co-lineup path.
 
 ### Candidate generation rules
 
 #### Candidate artists
 From:
 - co-lineup artists
-- artists on similar events
-- artists from nearby promoters/venues
+- artists from venue/promoter-expanded events
+- artists with similar biography embeddings
+- artists connected to semantically similar events
 
 #### Candidate promoters
 From:
-- promoters connected to artists the user is near
-- promoters repeatedly appearing in the user neighborhood
+- promoters from seed artist events
+- promoters from semantically similar events
+- promoters repeatedly appearing in the controlled neighborhood
 
 #### Candidate venues
 From:
-- venues connected to nearby artists/promoters
+- venues from seed artist events
 - venues hosting semantically similar events
+- venues repeatedly appearing in the controlled neighborhood
 
 #### Candidate events
 From:
+- events from seed venues/promoters that pass semantic similarity threshold
+- events with descriptions similar to seed artist events
 - future or recent events connected to similar artists/promoters/venues
 
 ---
@@ -352,29 +467,78 @@ From:
 ## Phase 8 — Scoring
 
 ### High-level scoring formula
-`score = proximity + strength + semantic_similarity + relevance + reachability`
+For MVP:
+
+`score = graph_score + embedding_similarity + activity_or_recency`
+
+Recommended first weights:
+
+```text
+score =
+  0.45 * graph_score
++ 0.40 * embedding_similarity
++ 0.15 * activity_or_recency
+```
+
+Do not include genre matching in this score yet.
 
 ### Signals
 
-#### Proximity
-- shorter path length is better
+#### Graph score
+Use:
+- direct shared event
+- shared venue through controlled traversal
+- shared promoter through controlled traversal
+- shorter path length
+- repeated appearances in the seed neighborhood
 
-#### Strength
-- repeated interactions matter more than single encounters
+Apply distance decay:
+
+```text
+depth 1: 1.00
+depth 2: 0.70
+depth 3: 0.40
+```
+
+Candidates below the useful depth/score threshold should be dropped.
 
 #### Semantic similarity
-- embedding similarity between text profiles
+Use:
+- event description embedding similarity
+- artist biography/profile embedding similarity
 
-#### Relevance
-- activity, followers, hosted events, interested counts
+#### Activity or recency
+Use as a small tie-breaker:
+- recent events
+- hosted events count
+- artist event count
+- event interested_count when present
 
-#### Reachability
-- prefer opportunities close to the user’s current scene level
-- penalize jumps that are too large
+Do not let popularity dominate the ranking.
 
 ### Recommendation
 Start with a transparent weighted formula, not ML.
 This keeps the system explainable and easier to debug.
+
+### Tunable config
+
+The first implementation should return the config used:
+
+```json
+{
+  "config": {
+    "maxDepth": 3,
+    "maxEventsPerVenue": 20,
+    "maxEventsPerPromoter": 20,
+    "minEventSimilarity": 0.72,
+    "graphWeight": 0.45,
+    "embeddingWeight": 0.40,
+    "recencyWeight": 0.15
+  }
+}
+```
+
+This makes the algorithm easy to adjust after we see real results.
 
 ---
 
@@ -387,12 +551,14 @@ Each recommendation should be able to answer:
 
 ### Example explanations
 - `You played with Artist A, Artist A also played two events organized by Promoter P.`
-- `Venue V repeatedly hosts artists similar to your recent scene cluster.`
-- `Event E is close to your profile through shared artists and high semantic text similarity.`
+- `Venue V hosts events whose descriptions are semantically similar to your recent event context.`
+- `Artist B is close through a shared promoter and has a similar biography profile.`
+- `Event E is close through Venue V and high event-description similarity.`
 
 ### Output shape should include
 - target entity
 - score
+- config used
 - explanation path
 - top contributing signals
 
@@ -408,6 +574,7 @@ The current backend/frontend slice already matches the design in these ways:
 - it supports filtering by genre and date
 - it exposes graph data to the frontend, not just tables
 - it has a first lightweight metric: `eventCount`
+- it has normalized imported tables for artists, events, venues, promoters, and joins
 
 This means the current implementation is a valid **Phase 2 MVP**.
 
@@ -416,15 +583,13 @@ This means the current implementation is a valid **Phase 2 MVP**.
 ## 6. What is still missing compared to the intended algorithm
 
 The current implementation does **not** yet include:
-- real event-first import over the 5-year Berlin dataset
 - promoter support in the runtime graph endpoint
 - canonical `event_promoters` runtime usage
-- coarse genre join-table usage from imported data
-- raw payload archive usage
-- style extraction
 - aggregated entity text profiles
-- embeddings
+- event description embeddings
+- artist biography embeddings
 - derived similarity relations
+- controlled recommendation traversal
 - recommendation scoring
 - explanation outputs
 - user-to-graph mapping
@@ -435,16 +600,16 @@ So the current code matches the **structural graph browsing layer**, but not yet
 
 ## 7. Recommended implementation order starting tomorrow
 
-1. Replace seed-only graph data with the real normalized import schema.
-2. Implement idempotent event-first import for the 5-year Berlin dataset.
-3. Add promoter tables and runtime promoter edges to `/api/graph`.
-4. Keep coarse source genres as filter and metadata.
-5. Compute basic counts and recency metrics offline.
-6. Build aggregated text profiles per entity.
-7. Add `pgvector` and offline embedding generation.
-8. Compute derived similarity tables.
-9. Add recommendation candidate generation.
-10. Add ranking and explanation responses.
+1. Add promoter edges to `/api/graph` so runtime graph browsing matches the canonical graph.
+2. Build event text profiles from title, description, lineup, venue, and promoter names.
+3. Build artist text profiles from biography, with event text fallback when biography is missing.
+4. Add `pgvector` and store `event_embeddings` plus `artist_embeddings`.
+5. Implement controlled traversal from a seed artist with `maxDepth`, path rules, fan-out limits, and semantic thresholds.
+6. Add recommendation candidate generation from graph candidates and embedding candidates.
+7. Add transparent scoring without genre matching.
+8. Add explanation paths and response config.
+9. Add `GET /api/recommendations?artistId=...&limit=...&maxDepth=...`.
+10. Tune weights after inspecting real results.
 
 ---
 
@@ -460,9 +625,17 @@ So the current code matches the **structural graph browsing layer**, but not yet
 - artist-to-artist is derived, not canonical
 
 ### Semantics
-- keep coarse genres
-- add embeddings for richer meaning
+- keep coarse genres as metadata/filter only
+- do not use genres in MVP recommendation scoring
+- use event description embeddings and artist biography embeddings for similarity
 - use graph + embeddings together
+
+### Traversal
+- default `maxDepth = 3`
+- expand only through allowed path types
+- limit venue/promoter fan-out
+- use embedding similarity to filter expanded events
+- stop before repeated artist-to-event expansion
 
 ### Infrastructure
 - keep PostgreSQL

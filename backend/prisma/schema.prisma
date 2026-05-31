@@ -17,10 +17,25 @@ model Artist {
   biographyUrl        String?       @map("biography_url")
   biographyStatus     String?       @map("biography_status")
   eventArtists        EventArtist[]
+  manualKnownArtists     ArtistManualConnection[] @relation("manual_known_source")
+  manuallyKnownByArtists ArtistManualConnection[] @relation("manual_known_connected")
   extractedTags       ArtistExtractedTag[]
   tagExtractionRuns   ArtistTagExtractionRun[]
 
   @@map("artists")
+}
+
+model ArtistManualConnection {
+  sourceArtistId    BigInt   @map("source_artist_id")
+  connectedArtistId BigInt   @map("connected_artist_id")
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  sourceArtist      Artist   @relation("manual_known_source", fields: [sourceArtistId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  connectedArtist   Artist   @relation("manual_known_connected", fields: [connectedArtistId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@id([sourceArtistId, connectedArtistId])
+  @@index([connectedArtistId])
+  @@map("artist_manual_connections")
 }
 
 model Event {
@@ -50,6 +65,8 @@ model Event {
   eventImages         EventImage[]
   eventPromoters      EventPromoter[]
   eventSourcePayloads EventSourcePayload[]
+  extractedTags       EventExtractedTag[]
+  tagExtractionRuns   EventTagExtractionRun[]
 
   @@map("events")
 }
@@ -192,6 +209,37 @@ model ArtistTagExtractionRun {
   artist    Artist   @relation(fields: [artistId], references: [id], onDelete: Cascade, onUpdate: Cascade)
 
   @@map("artist_tag_extraction_runs")
+}
+
+model EventExtractedTag {
+  id         BigInt   @id @default(autoincrement())
+  eventId    BigInt   @map("event_id")
+  tagType    String   @map("tag_type")
+  tagValue   String   @map("tag_value")
+  source     String   @default("description")
+  confidence Float    @default(0)
+  extractor  String
+  evidence   String?
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  event      Event    @relation(fields: [eventId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([eventId, tagType])
+  @@map("event_extracted_tags")
+}
+
+model EventTagExtractionRun {
+  id        BigInt   @id @default(autoincrement())
+  eventId   BigInt   @map("event_id")
+  source    String   @default("description")
+  extractor String
+  textHash  String   @map("text_hash")
+  tagCount  Int      @default(0) @map("tag_count")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  event     Event    @relation(fields: [eventId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@map("event_tag_extraction_runs")
 }
 
 model RecommendationFeedback {

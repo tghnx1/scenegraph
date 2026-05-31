@@ -5,28 +5,41 @@ PROJECT_ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 DEFAULT_DUMP="$PROJECT_ROOT/backend/data/scenegraph_dump.sql"
 DUMP_FILE=${1:-${DUMP:-$DEFAULT_DUMP}}
 RESET_DB=${RESET_DB:-0}
+DB_NAME=${DB_NAME:-}
+
+db_exec() {
+  if [ -n "$DB_NAME" ]; then
+    docker compose exec -T -e DB_NAME="$DB_NAME" db sh -lc "$1"
+  else
+    docker compose exec -T db sh -lc "$1"
+  fi
+}
 
 usage() {
   cat <<'EOF'
 Usage:
   make import-dump DUMP=/absolute/path/to/scenegraph_dump.sql
+  DB_NAME=scenegraph_check make import-dump DUMP=/absolute/path/to/scenegraph_dump.sql
   RESET_DB=1 make import-dump DUMP=/absolute/path/to/scenegraph_dump.sql
 
 Notes:
   - Supports plain SQL dumps.
   - Keep dump files local; they are ignored by git.
-  - If the configured database does not exist, it is created automatically.
-  - If the configured database exists, the script asks before overwriting it.
-  - RESET_DB=1 skips the prompt and overwrites the configured database.
+  - By default imports into POSTGRES_DB from compose env.
+  - Set DB_NAME to import into a separate database name.
+  - If target database does not exist, it is created automatically.
+  - If target database exists, the script asks before overwriting it.
+  - RESET_DB=1 skips the prompt and overwrites the target database.
 EOF
 }
 
 database_exists() {
-  docker compose exec -T db sh -lc '
+  db_exec '
+    target_db="${DB_NAME:-$POSTGRES_DB}"
     psql -v ON_ERROR_STOP=1 \
       -U "$POSTGRES_USER" \
       -d postgres \
-      -v db="$POSTGRES_DB" \
+      -v db="$target_db" \
       -tA <<'"'"'SQL'"'"'
 SELECT 1 FROM pg_database WHERE datname = :'"'"'db'"'"';
 SQL
@@ -34,11 +47,12 @@ SQL
 }
 
 create_database() {
-  docker compose exec -T db sh -lc '
+  db_exec '
+    target_db="${DB_NAME:-$POSTGRES_DB}"
     psql -v ON_ERROR_STOP=1 \
       -U "$POSTGRES_USER" \
       -d postgres \
-      -v db="$POSTGRES_DB" \
+      -v db="$target_db" \
       -v owner="$POSTGRES_USER" <<'"'"'SQL'"'"'
 CREATE DATABASE :"db" OWNER :"owner";
 SQL
@@ -47,12 +61,13 @@ SQL
 
 recreate_database() {
   docker compose stop backend frontend nginx >/dev/null 2>&1 || true
-  docker compose exec -T db sh -lc '
+  db_exec '
     set -eu
+    target_db="${DB_NAME:-$POSTGRES_DB}"
     psql -v ON_ERROR_STOP=1 \
       -U "$POSTGRES_USER" \
       -d postgres \
-      -v db="$POSTGRES_DB" \
+      -v db="$target_db" \
       -v owner="$POSTGRES_USER" <<'"'"'SQL'"'"'
 SELECT pg_terminate_backend(pid)
 FROM pg_stat_activity
@@ -86,7 +101,7 @@ echo "Starting database container if needed..."
 docker compose up -d db
 
 echo "Waiting for Postgres to accept connections..."
-docker compose exec -T db sh -lc '
+db_exec '
   until pg_isready -U "$POSTGRES_USER" -d postgres >/dev/null 2>&1; do
     sleep 1
   done
@@ -121,8 +136,9 @@ else
 fi
 
 echo "Importing SQL dump into database..."
-docker compose exec -T db sh -lc '
-  psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"
+db_exec '
+  target_db="${DB_NAME:-$POSTGRES_DB}"
+  psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$target_db"
 ' < "$DUMP_FILE"
 
 echo "Import complete."

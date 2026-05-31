@@ -67,7 +67,61 @@ def parse_args() -> argparse.Namespace:
         default=DEFAULT_OUTPUT_PATH,
         help="Path to the extracted artists JSON file",
     )
+    parser.add_argument(
+        "--dedup-db",
+        action="store_true",
+        help="Skip artists that already exist in the database (artists.ra_artist_id).",
+    )
+    parser.add_argument(
+        "--database-url",
+        type=str,
+        default=os.environ.get("DATABASE_URL"),
+        help="Database URL used when --dedup-db is enabled. Defaults to DATABASE_URL env var.",
+    )
+    parser.add_argument(
+        "--existing-artist-ids-file",
+        type=Path,
+        default=None,
+        help="Optional newline-delimited file of RA artist IDs to skip.",
+    )
     return parser.parse_args()
+
+
+def load_existing_artist_ids_from_db(database_url: str) -> set[str]:
+    try:
+        import psycopg  # type: ignore
+    except Exception as exc:
+        raise RuntimeError(
+            "psycopg is required for --dedup-db. Install it or run with a Python env that has psycopg."
+        ) from exc
+
+    existing_ids: set[str] = set()
+    with psycopg.connect(database_url) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT ra_artist_id
+                FROM artists
+                WHERE ra_artist_id IS NOT NULL
+                """
+            )
+            for row in cursor.fetchall():
+                value = row[0]
+                if value is not None:
+                    existing_ids.add(str(value))
+    return existing_ids
+
+
+def load_existing_artist_ids_from_file(path: Path) -> set[str]:
+    existing_ids: set[str] = set()
+    if not path.exists():
+        return existing_ids
+    with path.open("r", encoding="utf-8") as handle:
+        for raw_line in handle:
+            value = raw_line.strip()
+            if value:
+                existing_ids.add(value)
+    return existing_ids
 
 
 def main() -> None:
@@ -75,6 +129,22 @@ def main() -> None:
     args.output.parent.mkdir(parents=True, exist_ok=True)
 
     unique_artists = {}
+    skipped_existing = 0
+    existing_artist_ids: set[str] = set()
+    if args.dedup_db:
+        if not args.database_url:
+            raise ValueError("--dedup-db requires --database-url or DATABASE_URL")
+        existing_artist_ids = load_existing_artist_ids_from_db(args.database_url)
+        print(f"Loaded {len(existing_artist_ids)} existing artists from DB for dedup")
+    if args.existing_artist_ids_file:
+        file_ids = load_existing_artist_ids_from_file(args.existing_artist_ids_file)
+        before = len(existing_artist_ids)
+        existing_artist_ids.update(file_ids)
+        print(
+            f"Loaded {len(file_ids)} existing artists from file {args.existing_artist_ids_file} for dedup; "
+            f"dedup set size: {before} -> {len(existing_artist_ids)}"
+        )
+
     event_files = iter_event_files(args.input)
 
     for event_file in event_files:
@@ -90,7 +160,15 @@ def main() -> None:
                 artist_id = artist.get("id")
                 content_url = artist.get("contentUrl")
 
-                if artist_id and content_url and artist_id not in unique_artists:
+                if not artist_id or not content_url:
+                    continue
+
+                artist_id = str(artist_id)
+                if artist_id in existing_artist_ids:
+                    skipped_existing += 1
+                    continue
+
+                if artist_id not in unique_artists:
                     unique_artists[artist_id] = {
                         "id": artist_id,
                         "url": f"https://ra.co{content_url}/biography",
@@ -98,7 +176,10 @@ def main() -> None:
 
     write_json_atomic(args.output, list(unique_artists.values()))
 
-    print(f"Saved {len(unique_artists)} artists to {args.output} from {len(event_files)} event file(s)")
+    print(
+        f"Saved {len(unique_artists)} artists to {args.output} from {len(event_files)} event file(s); "
+        f"skipped_existing_db_artists={skipped_existing}"
+    )
 
 
 if __name__ == "__main__":
