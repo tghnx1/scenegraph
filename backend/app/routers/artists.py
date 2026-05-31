@@ -77,9 +77,9 @@ LIMIT 10;
 """
 
 
-@router.get("", response_model=ArtistResponse)
+@router.get("/{id}", response_model=ArtistResponse)
 def get_artist(
-    id: int = Query(...),
+    id: int,
     db: Connection = Depends(get_db),
 ):
     with db.cursor() as cur:
