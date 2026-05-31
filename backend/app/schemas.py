@@ -45,6 +45,8 @@ class GraphLink(BaseModel):
 class GraphResponse(BaseModel):
     nodes: list[GraphNode]
     links: list[GraphLink]
+    promoterPathNodeIds: dict[str, list[str]] = Field(default_factory=dict)
+    promoterPathLinkKeys: dict[str, list[str]] = Field(default_factory=dict)
 
 
 class LoginRequest(BaseModel):
@@ -133,7 +135,7 @@ class ArtistRecommendationResponse(BaseModel):
 
 
 class RecommendationEvidenceItem(BaseModel):
-    type: Literal["semantic_bridge", "direct_connection", "warm_network", "event_similarity"]
+    type: Literal["semantic_bridge", "direct_connection", "warm_network", "manual_connection", "event_similarity"]
     path: str
 
 

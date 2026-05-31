@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import defaultdict
 from datetime import date as DateValue
 from datetime import datetime
 from typing import Literal
@@ -167,6 +168,14 @@ def promoter_recommendation_item_evidence(row: dict) -> list[RecommendationEvide
                 path="Source Artist -> Shared Event -> Co-played Artist -> Other Event -> Promoter",
             )
         )
+    manual_warm_connection_count = int(row.get("manual_warm_connection_count", 0) or 0)
+    if manual_warm_connection_count > 0:
+        evidence.append(
+            RecommendationEvidenceItem(
+                type="manual_connection",
+                path="Source Artist -> Trusted Artist Link -> Event -> Promoter",
+            )
+        )
     if row["event_similarity_count"] > 0:
         evidence.append(
             RecommendationEvidenceItem(
@@ -192,12 +201,14 @@ def promoter_recommendation_graph(
     semantic_evidence_rows: list[dict],
     direct_evidence_rows: list[dict],
     warm_evidence_rows: list[dict],
+    manual_evidence_rows: list[dict],
     event_similarity_evidence_rows: list[dict],
     scoring_config: PromoterRecommendationScoringConfig,
 ) -> GraphResponse:
+    source_artist_node_id = graph_node_id("artist", source_artist_id)
     nodes: dict[str, GraphNode] = {
-        graph_node_id("artist", source_artist_id): GraphNode(
-            id=graph_node_id("artist", source_artist_id),
+        source_artist_node_id: GraphNode(
+            id=source_artist_node_id,
             entityId=source_artist_id,
             type="artist",
             name=source_artist_name,
@@ -205,6 +216,10 @@ def promoter_recommendation_graph(
     }
     links: list[GraphLink] = []
     seen_links: set[tuple[str, str, str]] = set()
+    preferred_path_node_ids: dict[str, set[str]] = defaultdict(set)
+    preferred_path_link_keys: dict[str, set[str]] = defaultdict(set)
+    preferred_co_played_artist_ids_by_promoter: dict[int, set[int]] = {}
+    preferred_manual_artist_ids_by_promoter: dict[int, set[int]] = {}
 
     for recommendation in recommendations:
         promoter_node_id = graph_node_id("promoter", recommendation.id)
@@ -215,6 +230,24 @@ def promoter_recommendation_graph(
             name=recommendation.name,
             eventCount=recommendation.eventCount,
         )
+        preferred_co_played_artist_ids_by_promoter[recommendation.id] = {
+            artist.id for artist in recommendation.coPlayedConnectionArtists
+        }
+        preferred_manual_artist_ids_by_promoter[recommendation.id] = {
+            artist.id for artist in recommendation.manualConnectionArtists
+        }
+
+    # Build a deterministic undirected link key used by frontend path focus.
+    def undirected_link_key(source: str, target: str) -> str:
+        return "|".join(sorted((source, target)))
+
+    # Register a path edge into per-promoter focused path payload.
+    def add_preferred_path_edge(promoter_id: int, source: str, target: str) -> None:
+        promoter_node_id = graph_node_id("promoter", promoter_id)
+        preferred_path_node_ids[promoter_node_id].add(source)
+        preferred_path_node_ids[promoter_node_id].add(target)
+        preferred_path_link_keys[promoter_node_id].add(undirected_link_key(source, target))
+
     # Add a graph link once and preserve deduplication by key.
     def add_link(
         source: str,
@@ -261,7 +294,7 @@ def promoter_recommendation_graph(
             date=row["event_date"],
         )
         add_link(
-            graph_node_id("artist", source_artist_id),
+            source_artist_node_id,
             event_node_id,
             "played",
             evidence_type="direct_connection",
@@ -295,7 +328,8 @@ def promoter_recommendation_graph(
             )
 
     for row in warm_evidence_rows:
-        promoter_node_id = graph_node_id("promoter", row["promoter_id"])
+        promoter_id = int(row["promoter_id"])
+        promoter_node_id = graph_node_id("promoter", promoter_id)
         co_artist_node_id = graph_node_id("artist", row["co_artist_id"])
         shared_event_id = row["shared_event_id"]
         shared_event_node_id = graph_node_id("event", shared_event_id)
@@ -329,7 +363,7 @@ def promoter_recommendation_graph(
             date=row["other_event_date"],
         )
         add_link(
-            graph_node_id("artist", source_artist_id),
+            source_artist_node_id,
             shared_event_node_id,
             "played",
             evidence_type="warm_network",
@@ -361,6 +395,13 @@ def promoter_recommendation_graph(
             strength=warm_strength,
         )
 
+        preferred_co_played_artist_ids = preferred_co_played_artist_ids_by_promoter.get(promoter_id, set())
+        if int(row["co_artist_id"]) in preferred_co_played_artist_ids:
+            add_preferred_path_edge(promoter_id, source_artist_node_id, shared_event_node_id)
+            add_preferred_path_edge(promoter_id, shared_event_node_id, co_artist_node_id)
+            add_preferred_path_edge(promoter_id, co_artist_node_id, other_event_node_id)
+            add_preferred_path_edge(promoter_id, other_event_node_id, promoter_node_id)
+
         if row["other_venue_id"] is not None:
             venue_node_id = graph_node_id("venue", row["other_venue_id"])
             nodes[venue_node_id] = GraphNode(
@@ -377,11 +418,91 @@ def promoter_recommendation_graph(
                 style="solid",
                 strength=max(0.3, warm_strength * 0.9),
             )
+            if int(row["co_artist_id"]) in preferred_co_played_artist_ids:
+                add_preferred_path_edge(promoter_id, other_event_node_id, venue_node_id)
+
+    # Add explicit trusted-artist connection paths used by manual connection signal.
+    for row in manual_evidence_rows:
+        promoter_id = int(row["promoter_id"])
+        promoter_node_id = graph_node_id("promoter", promoter_id)
+        trusted_artist_node_id = graph_node_id("artist", row["co_artist_id"])
+        trusted_event_node_id = graph_node_id("event", row["event_id"])
+        manual_strength = max(
+            scoring_config.warm_edge_strength_min,
+            min(
+                scoring_config.warm_edge_strength_max,
+                row["manual_connection_count"] / scoring_config.manual_warm_connection_cap,
+            ),
+        )
+
+        nodes[trusted_artist_node_id] = GraphNode(
+            id=trusted_artist_node_id,
+            entityId=row["co_artist_id"],
+            type="artist",
+            name=row["co_artist_name"],
+        )
+        nodes[trusted_event_node_id] = GraphNode(
+            id=trusted_event_node_id,
+            entityId=row["event_id"],
+            type="event",
+            name=row["event_title"],
+            date=row["event_date"],
+        )
+        add_link(
+            source_artist_node_id,
+            trusted_artist_node_id,
+            "trusted",
+            evidence_type="manual_connection",
+            style="solid",
+            strength=manual_strength,
+        )
+        add_link(
+            trusted_artist_node_id,
+            trusted_event_node_id,
+            "played",
+            evidence_type="manual_connection",
+            style="solid",
+            strength=max(0.4, manual_strength),
+        )
+        add_link(
+            promoter_node_id,
+            trusted_event_node_id,
+            "organized",
+            evidence_type="manual_connection",
+            style="solid",
+            strength=max(0.4, manual_strength),
+        )
+
+        preferred_manual_artist_ids = preferred_manual_artist_ids_by_promoter.get(promoter_id, set())
+        if int(row["co_artist_id"]) in preferred_manual_artist_ids:
+            add_preferred_path_edge(promoter_id, source_artist_node_id, trusted_artist_node_id)
+            add_preferred_path_edge(promoter_id, trusted_artist_node_id, trusted_event_node_id)
+            add_preferred_path_edge(promoter_id, trusted_event_node_id, promoter_node_id)
+
+        if row["venue_id"] is not None:
+            venue_node_id = graph_node_id("venue", row["venue_id"])
+            nodes[venue_node_id] = GraphNode(
+                id=venue_node_id,
+                entityId=row["venue_id"],
+                type="venue",
+                name=row["venue_name"],
+            )
+            add_link(
+                trusted_event_node_id,
+                venue_node_id,
+                "at",
+                evidence_type="manual_connection",
+                style="solid",
+                strength=max(0.3, manual_strength * 0.9),
+            )
+            if int(row["co_artist_id"]) in preferred_manual_artist_ids:
+                add_preferred_path_edge(promoter_id, trusted_event_node_id, venue_node_id)
 
     for row in event_similarity_evidence_rows:
         promoter_node_id = graph_node_id("promoter", row["promoter_id"])
         source_event_node_id = graph_node_id("event", row["source_event_id"])
         promoter_event_node_id = graph_node_id("event", row["promoter_event_id"])
+        shared_artists = row.get("shared_artists") or []
         event_similarity_strength = max(
             scoring_config.event_similarity_edge_strength_min,
             min(
@@ -420,6 +541,34 @@ def promoter_recommendation_graph(
             style="dotted",
             strength=event_similarity_strength,
         )
+
+        for shared_artist in shared_artists:
+            shared_artist_id = int(shared_artist["id"])
+            shared_artist_name = shared_artist["name"]
+            shared_artist_node_id = graph_node_id("artist", shared_artist_id)
+            nodes[shared_artist_node_id] = GraphNode(
+                id=shared_artist_node_id,
+                entityId=shared_artist_id,
+                type="artist",
+                name=shared_artist_name,
+            )
+            add_link(
+                source_event_node_id,
+                shared_artist_node_id,
+                "played",
+                evidence_type="event_similarity",
+                style="solid",
+                strength=max(0.4, event_similarity_strength),
+            )
+            add_link(
+                shared_artist_node_id,
+                promoter_event_node_id,
+                "played",
+                evidence_type="event_similarity",
+                style="solid",
+                strength=max(0.4, event_similarity_strength),
+            )
+
         add_link(
             promoter_node_id,
             promoter_event_node_id,
@@ -509,7 +658,20 @@ def promoter_recommendation_graph(
                 strength=max(0.3, semantic_strength * 0.8),
             )
 
-    return GraphResponse(nodes=list(nodes.values()), links=links)
+    return GraphResponse(
+        nodes=list(nodes.values()),
+        links=links,
+        promoterPathNodeIds={
+            promoter_node_id: sorted(node_ids)
+            for promoter_node_id, node_ids in preferred_path_node_ids.items()
+            if node_ids
+        },
+        promoterPathLinkKeys={
+            promoter_node_id: sorted(link_keys)
+            for promoter_node_id, link_keys in preferred_path_link_keys.items()
+            if link_keys
+        },
+    )
 
 # Load semantic-bridge evidence rows used for recommendation graph building.
 def promoter_recommendation_evidence(
@@ -721,6 +883,80 @@ def promoter_warm_network_evidence(
             {
                 "source_artist_id": source_artist_id,
                 "promoter_ids": promoter_ids,
+            },
+        )
+        return cursor.fetchall()
+
+# Load manual trusted-artist evidence rows (source -> trusted artist -> event -> promoter).
+def promoter_manual_connection_evidence(
+    connection: Connection,
+    *,
+    promoter_manual_artist_ids: dict[int, list[int]],
+) -> list[dict]:
+    flattened_pairs: list[tuple[int, int]] = []
+    for promoter_id, artist_ids in promoter_manual_artist_ids.items():
+        for artist_id in artist_ids:
+            flattened_pairs.append((int(promoter_id), int(artist_id)))
+
+    if not flattened_pairs:
+        return []
+
+    promoter_ids = [pair[0] for pair in flattened_pairs]
+    artist_ids = [pair[1] for pair in flattened_pairs]
+
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            WITH requested_pairs AS (
+                SELECT DISTINCT *
+                FROM unnest(%(promoter_ids)s::bigint[], %(artist_ids)s::bigint[])
+                    AS pair(promoter_id, co_artist_id)
+            ),
+            manual_counts AS (
+                SELECT
+                    promoter_id,
+                    count(DISTINCT co_artist_id)::int AS manual_connection_count
+                FROM requested_pairs
+                GROUP BY promoter_id
+            ),
+            ranked_paths AS (
+                SELECT
+                    rp.promoter_id,
+                    rp.co_artist_id,
+                    a.name AS co_artist_name,
+                    e.id AS event_id,
+                    e.title AS event_title,
+                    e.event_date::date AS event_date,
+                    e.venue_id,
+                    v.name AS venue_name,
+                    mc.manual_connection_count,
+                    row_number() OVER (
+                        PARTITION BY rp.promoter_id, rp.co_artist_id
+                        ORDER BY e.event_date DESC NULLS LAST, e.id DESC
+                    ) AS row_number
+                FROM requested_pairs rp
+                JOIN artists a
+                    ON a.id = rp.co_artist_id
+                JOIN event_artists ea
+                    ON ea.artist_id = rp.co_artist_id
+                JOIN events e
+                    ON e.id = ea.event_id
+                JOIN event_promoters ep
+                    ON ep.event_id = e.id
+                   AND ep.promoter_id = rp.promoter_id
+                JOIN manual_counts mc
+                    ON mc.promoter_id = rp.promoter_id
+                LEFT JOIN venues v
+                    ON v.id = e.venue_id
+            )
+            SELECT *
+            FROM ranked_paths
+            WHERE row_number <= 2
+            ORDER BY promoter_id ASC, co_artist_name ASC, event_date DESC NULLS LAST, event_id DESC
+            """,
+            {
+                "promoter_ids": promoter_ids,
+                "artist_ids": artist_ids,
             },
         )
         return cursor.fetchall()

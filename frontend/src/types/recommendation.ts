@@ -6,6 +6,8 @@ export interface PromoterRecommendation {
   name: string
   score?: number
   reasons: string[]
+  warmConnectionArtists?: Array<{ id: number; name: string }>
+  manualConnectionArtists?: Array<{ id: number; name: string }>
   promoterSizeSegment: 'small' | 'medium' | 'large'
   reasonDetails?: {
     relatedEventTitles?: string[]

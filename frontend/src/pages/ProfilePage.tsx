@@ -322,13 +322,12 @@ export function ProfilePage() {
     setSelected(null)
   }, [setSelected])
 
-  // Handle clicks on recommendation graph nodes: show entity details and open matching promoter card.
+  // Handle recommendation graph clicks: update details + list card, but keep graph focus unchanged.
   const handleRecommendationGraphNodeClick = useCallback((node: GraphNode, promoterNodeId: string | null) => {
     setSelected(node)
 
     if (!promoterNodeId) {
       setExpandedRecommendationId(null)
-      setFocusedRecommendationPromoterId(null)
       return
     }
 
@@ -336,7 +335,6 @@ export function ProfilePage() {
     if (promoterId === null) return
 
     setExpandedRecommendationId(promoterId)
-    setFocusedRecommendationPromoterId(promoterId)
   }, [setSelected])
 
   const searchResults = searchData?.results ?? []
@@ -398,7 +396,6 @@ export function ProfilePage() {
     () => filteredRecommendations.map((recommendation) => `promoter-${recommendation.id}`),
     [filteredRecommendations],
   )
-
   useEffect(() => {
     if (expandedRecommendationId === null) return
     const isStillVisible = filteredRecommendations.some((recommendation) => (
@@ -623,7 +620,6 @@ export function ProfilePage() {
                         providedData={recommendationsData.graph}
                         showFilters={false}
                         highlightPathToNodeId={`artist-${recommendationsData.entityId}`}
-                        recommendationStrengthThreshold={recommendationStrengthThreshold}
                         visibleRecommendationPromoterNodeIds={filteredRecommendationPromoterNodeIds}
                         focusedRecommendationPromoterNodeId={focusedRecommendationPromoterId === null ? null : `promoter-${focusedRecommendationPromoterId}`}
                         onRecommendationGraphNodeClick={handleRecommendationGraphNodeClick}

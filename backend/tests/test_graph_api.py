@@ -63,7 +63,12 @@ def test_graph_limit_validation():
 def test_graph_empty_result():
     response = client.get("/api/graph", params={"genre": "no-such-genre"})
     assert response.status_code == 200
-    assert response.json() == {"nodes": [], "links": []}
+    assert response.json() == {
+        "nodes": [],
+        "links": [],
+        "promoterPathNodeIds": {},
+        "promoterPathLinkKeys": {},
+    }
 
 
 def test_graph_links_reference_existing_nodes():
@@ -432,13 +437,16 @@ def test_artist_promoter_recommendations_include_graph_payload():
         "manualArtistNames",
     }
     assert all(
-        item["type"] in {"semantic_bridge", "direct_connection", "warm_network", "event_similarity"}
+        item["type"]
+        in {"semantic_bridge", "direct_connection", "warm_network", "manual_connection", "event_similarity"}
         for item in first["evidence"]
     )
 
     graph = data["graph"]
     assert graph["nodes"]
     assert graph["links"]
+    assert "promoterPathNodeIds" in graph
+    assert "promoterPathLinkKeys" in graph
     assert any(node["type"] == "promoter" for node in graph["nodes"])
     semantic_link = next(
         (link for link in graph["links"] if link.get("evidenceType") == "semantic_bridge"),
