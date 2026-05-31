@@ -1,4 +1,5 @@
 export type NodeType = 'artist' | 'event' | 'venue' | 'promoter'
+export type GraphEvidenceType = 'semantic_bridge' | 'direct_connection' | 'warm_network' | 'event_similarity'
 
 export interface GraphNode {
   id: string
@@ -19,6 +20,9 @@ export interface GraphEdge {
   target: string
   relationship: string
   weight: number
+  evidenceType?: GraphEvidenceType | string
+  style?: 'solid' | 'dashed' | 'dotted' | string
+  strength?: number | null
 }
 
 export interface GraphData {

@@ -4,6 +4,7 @@ export interface PromoterRecommendation {
   id: number
   type: 'promoter'
   name: string
+  score?: number
   reasons: string[]
   promoterSizeSegment: 'small' | 'medium' | 'large'
   reasonDetails?: {
@@ -14,6 +15,9 @@ export interface PromoterRecommendation {
     manualArtistNames?: string[]
   }
   debug?: {
+    weightedScores?: {
+      total?: number
+    }
     rawSignals?: {
       relatedEventTitles?: string[]
       eventSimilarityEventTitles?: string[]
