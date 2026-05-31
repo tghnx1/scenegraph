@@ -8,11 +8,21 @@ function getNodeColor(type: string, isSelected: boolean) {
   return getCssVar(`--${type}`)
 }
 
-export const drawNodeShape = (ctx: CanvasRenderingContext2D, x: number, y: number, size: number, type: string, isSelected: boolean) => {
+// Draw one graph node with optional opacity for focus/dim rendering.
+export const drawNodeShape = (
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  size: number,
+  type: string,
+  isSelected: boolean,
+  opacity = 1,
+) => {
   if (x === undefined || y === undefined) return
 
   ctx.save()
   ctx.translate(x, y)
+  ctx.globalAlpha = Math.max(Math.min(opacity, 1), 0)
 
   const displaySize = isSelected ? size * 1.5 : size
   const color = getNodeColor(type, isSelected)
