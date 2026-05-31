@@ -5,7 +5,7 @@ import { fetchSearch } from '../api/search'
 import { useApi } from '../hooks/useApi'
 import { useGraphStore } from '../store/graphStore'
 import type { EntityDetail } from '../types/entityDetail'
-import { graphEntityId, type NodeType } from '../types/graph'
+import { graphEntityId, type GraphNode, type NodeType } from '../types/graph'
 import type { PromoterRecommendationResponse } from '../types/recommendation'
 import type { SearchResponse, SearchResult } from '../types/search'
 import { DetailsPanel } from './components/DetailsPanel.tsx'
@@ -146,6 +146,7 @@ export function ProfilePage() {
     DEFAULT_RECOMMENDATION_STRENGTH_THRESHOLD,
   )
   const [expandedRecommendationId, setExpandedRecommendationId] = useState<number | null>(null)
+  const [focusedRecommendationPromoterId, setFocusedRecommendationPromoterId] = useState<number | null>(null)
   const [expandedReasonItems, setExpandedReasonItems] = useState<Record<string, boolean>>({})
   const submittedQuery = searchParams.get('q') ?? ''
   const [searchValue, setSearchValue] = useState(submittedQuery)
@@ -264,6 +265,7 @@ export function ProfilePage() {
     setIsRecommendationsLoading(true)
     setRecommendationsError(null)
     setExpandedRecommendationId(null)
+    setFocusedRecommendationPromoterId(null)
     setExpandedReasonItems({})
 
     try {
@@ -289,6 +291,7 @@ export function ProfilePage() {
 
     if (recommendationNode) {
       setSelected(recommendationNode)
+      setFocusedRecommendationPromoterId(recommendationId)
     }
   }, [recommendationsData, setSelected])
 
@@ -298,6 +301,7 @@ export function ProfilePage() {
 
     if (isCollapsingCurrent) {
       setExpandedRecommendationId(null)
+      setFocusedRecommendationPromoterId(null)
       setSelected(null)
       return
     }
@@ -314,7 +318,25 @@ export function ProfilePage() {
   const handleRecommendationStrengthChange = useCallback((nextThreshold: number) => {
     setRecommendationStrengthThreshold(nextThreshold)
     setExpandedRecommendationId(null)
+    setFocusedRecommendationPromoterId(null)
     setSelected(null)
+  }, [setSelected])
+
+  // Handle clicks on recommendation graph nodes: show entity details and open matching promoter card.
+  const handleRecommendationGraphNodeClick = useCallback((node: GraphNode, promoterNodeId: string | null) => {
+    setSelected(node)
+
+    if (!promoterNodeId) {
+      setExpandedRecommendationId(null)
+      setFocusedRecommendationPromoterId(null)
+      return
+    }
+
+    const promoterId = graphEntityId(promoterNodeId, 'promoter')
+    if (promoterId === null) return
+
+    setExpandedRecommendationId(promoterId)
+    setFocusedRecommendationPromoterId(promoterId)
   }, [setSelected])
 
   const searchResults = searchData?.results ?? []
@@ -384,6 +406,7 @@ export function ProfilePage() {
     ))
     if (!isStillVisible) {
       setExpandedRecommendationId(null)
+      setFocusedRecommendationPromoterId(null)
     }
   }, [expandedRecommendationId, filteredRecommendations])
 
@@ -488,7 +511,7 @@ export function ProfilePage() {
                   <div className="recommendations-content">
                     <div className="recommendation-threshold-control" aria-label="Recommendation strength control">
                       <label htmlFor="recommendation-strength-threshold">
-                        Strength: {recommendationStrengthThreshold.toFixed(2)}
+                        Strength: {Math.round(recommendationStrengthThreshold * 100)}%
                       </label>
                       <input
                         id="recommendation-strength-threshold"
@@ -512,7 +535,7 @@ export function ProfilePage() {
                           <button
                             type="button"
                             className="recommendation-name"
-                            aria-pressed={selectedNode?.id === `promoter-${recommendation.id}`}
+                            aria-pressed={focusedRecommendationPromoterId === recommendation.id}
                             aria-expanded={expandedRecommendationId === recommendation.id}
                             aria-controls={`recommendation-reasons-${recommendation.id}`}
                             onClick={() => handleToggleRecommendation(recommendation.id)}
@@ -602,6 +625,8 @@ export function ProfilePage() {
                         highlightPathToNodeId={`artist-${recommendationsData.entityId}`}
                         recommendationStrengthThreshold={recommendationStrengthThreshold}
                         visibleRecommendationPromoterNodeIds={filteredRecommendationPromoterNodeIds}
+                        focusedRecommendationPromoterNodeId={focusedRecommendationPromoterId === null ? null : `promoter-${focusedRecommendationPromoterId}`}
+                        onRecommendationGraphNodeClick={handleRecommendationGraphNodeClick}
                       />
                     </section>
                   </div>
