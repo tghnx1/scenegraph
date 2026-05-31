@@ -55,6 +55,8 @@ interface ScenegraphMapPanelProps {
   highlightPathToNodeId?: string
   recommendationStrengthThreshold?: number
   visibleRecommendationPromoterNodeIds?: string[]
+  focusedRecommendationPromoterNodeId?: string | null
+  onRecommendationGraphNodeClick?: (node: GraphNode, promoterNodeId: string | null) => void
 }
 
 export function ScenegraphMapPanel({
@@ -65,6 +67,8 @@ export function ScenegraphMapPanel({
   highlightPathToNodeId,
   recommendationStrengthThreshold,
   visibleRecommendationPromoterNodeIds,
+  focusedRecommendationPromoterNodeId,
+  onRecommendationGraphNodeClick,
 }: ScenegraphMapPanelProps) {
   const graphRef = useRef<any>(null)
   const containerRef = useRef<HTMLDivElement | null>(null)
@@ -157,9 +161,9 @@ export function ScenegraphMapPanel({
       return graphData
     }
 
-    const selectedPromoterId = selectedNode?.type === 'promoter' ? selectedNode.id : null
-    const targetPromoterIds = selectedPromoterId
-      ? [selectedPromoterId]
+    const focusedPromoterId = focusedRecommendationPromoterNodeId
+    const targetPromoterIds = focusedPromoterId
+      ? [focusedPromoterId]
       : (visibleRecommendationPromoterNodeIds ?? [])
 
     if (targetPromoterIds.length === 0) {
@@ -237,15 +241,83 @@ export function ScenegraphMapPanel({
       links,
     }
   }, [
+    focusedRecommendationPromoterNodeId,
     graphData,
     hasRecommendationControls,
     highlightPathToNodeId,
-    selectedNode?.id,
-    selectedNode?.type,
     visibleRecommendationPromoterNodeIds,
   ])
 
-  const pathSelectedPromoter = selectedNode?.type === 'promoter' ? selectedNode : null
+  // Resolve a shortest path node set for source->target in the current recommendation graph.
+  const getPathNodeIds = useCallback((sourceId: string, targetId: string): Set<string> => {
+    const adjacency = new Map<string, Set<string>>()
+    recommendationPathGraphData.links.forEach((link) => {
+      const source = getLinkNodeId(link.source as LinkEndpoint)
+      const target = getLinkNodeId(link.target as LinkEndpoint)
+      if (!adjacency.has(source)) adjacency.set(source, new Set<string>())
+      if (!adjacency.has(target)) adjacency.set(target, new Set<string>())
+      adjacency.get(source)?.add(target)
+      adjacency.get(target)?.add(source)
+    })
+
+    const queue: string[] = [sourceId]
+    const visited = new Set<string>(queue)
+    const previous = new Map<string, string>()
+
+    while (queue.length > 0 && !visited.has(targetId)) {
+      const currentId = queue.shift()!
+      const neighbors = adjacency.get(currentId)
+      if (!neighbors) continue
+      for (const neighborId of neighbors) {
+        if (visited.has(neighborId)) continue
+        visited.add(neighborId)
+        previous.set(neighborId, currentId)
+        queue.push(neighborId)
+      }
+    }
+
+    if (!visited.has(targetId)) return new Set<string>()
+
+    const pathNodeIds = new Set<string>([targetId])
+    let currentId = targetId
+    while (currentId !== sourceId) {
+      const priorId = previous.get(currentId)
+      if (!priorId) return new Set<string>()
+      pathNodeIds.add(priorId)
+      currentId = priorId
+    }
+
+    return pathNodeIds
+  }, [recommendationPathGraphData.links])
+
+  // Choose which promoter path a clicked recommendation-graph node belongs to.
+  const resolvePromoterNodeForRecommendationNode = useCallback((nodeId: string): string | null => {
+    if (!highlightPathToNodeId) return null
+    if (nodeId.startsWith('promoter-')) return nodeId
+
+    const sourceId = highlightPathToNodeId
+    const promoterCandidates = focusedRecommendationPromoterNodeId
+      ? [focusedRecommendationPromoterNodeId]
+      : (visibleRecommendationPromoterNodeIds ?? [])
+
+    for (const promoterId of promoterCandidates) {
+      const pathNodes = getPathNodeIds(sourceId, promoterId)
+      if (pathNodes.has(nodeId)) {
+        return promoterId
+      }
+    }
+
+    return null
+  }, [
+    focusedRecommendationPromoterNodeId,
+    getPathNodeIds,
+    highlightPathToNodeId,
+    visibleRecommendationPromoterNodeIds,
+  ])
+
+  const pathSelectedPromoter = focusedRecommendationPromoterNodeId
+    ? recommendationPathGraphData.nodes.find((node) => node.id === focusedRecommendationPromoterNodeId) ?? null
+    : null
   const { connectedNodes, pathLinks, pathNodeIds } = useGraphHighlights(
     pathSelectedPromoter,
     recommendationPathGraphData,
@@ -289,10 +361,12 @@ export function ScenegraphMapPanel({
     (node: object) => {
       const nextNode = node as GraphNode
       if (providedData) {
-        if (highlightPathToNodeId && nextNode.type !== 'promoter') {
-          return
+        if (highlightPathToNodeId && onRecommendationGraphNodeClick) {
+          const resolvedPromoterNodeId = resolvePromoterNodeForRecommendationNode(nextNode.id)
+          onRecommendationGraphNodeClick(nextNode, resolvedPromoterNodeId)
+        } else {
+          setSelected(nextNode)
         }
-        setSelected(nextNode)
         return
       }
       const nextParams = new URLSearchParams(searchParams)
@@ -313,7 +387,18 @@ export function ScenegraphMapPanel({
       setSearchParams(nextParams, { replace: false })
       setSelected(nextNode)
     },
-    [providedData, searchParams, selectedEntityId, selectedNode?.id, selectedType, setSearchParams, setSelected]
+    [
+      highlightPathToNodeId,
+      onRecommendationGraphNodeClick,
+      providedData,
+      resolvePromoterNodeForRecommendationNode,
+      searchParams,
+      selectedEntityId,
+      selectedNode?.id,
+      selectedType,
+      setSearchParams,
+      setSelected,
+    ]
   )
 
   const handleGraphFiltersChange = useCallback(
