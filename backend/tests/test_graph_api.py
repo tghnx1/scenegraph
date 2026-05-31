@@ -406,7 +406,6 @@ def test_artist_promoter_recommendations_include_graph_payload():
         "directConnection",
         "coPlayedConnection",
         "manualConnection",
-        "warmNetwork",
         "eventSimilarity",
         "scaleFit",
         "activity",
@@ -424,6 +423,14 @@ def test_artist_promoter_recommendations_include_graph_payload():
     assert first["directConnectionCount"] >= 0
     assert isinstance(first["evidence"], list)
     assert first["evidence"]
+    assert "reasonDetails" in first
+    assert set(first["reasonDetails"]) == {
+        "relatedEventTitles",
+        "similarPromoterEventTitles",
+        "similarArtistNames",
+        "coPlayedArtistNames",
+        "manualArtistNames",
+    }
     assert all(
         item["type"] in {"semantic_bridge", "direct_connection", "warm_network", "event_similarity"}
         for item in first["evidence"]
@@ -464,7 +471,14 @@ def test_artist_promoter_recommendations_include_debug_when_requested():
         "promoterInterestedSumThresholds",
         "sourceArtistAverageInterested",
         "sourceArtistSizeSegment",
+        "appliedPromoterSegmentQuotaRatios",
+        "appliedPromoterSegmentQuotaCounts",
         "artistAverageInterestedThresholds",
+    }
+    assert set(data["debug"]["segments"]["appliedPromoterSegmentQuotaCounts"]) == {
+        "small",
+        "medium",
+        "large",
     }
     assert data["recommendations"]
     first = data["recommendations"][0]

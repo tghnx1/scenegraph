@@ -16,6 +16,9 @@ from app.schemas import (
     RecommendationEvidenceItem,
 )
 
+RECOMMENDATION_REASON_ITEM_LIMIT = 5
+RECOMMENDATION_REASON_MAX_CHARS = 220
+
 # Convert event date recency into a 0..1 score.
 def date_recency_score(value: DateValue | datetime | None) -> float:
     if value is None:
@@ -26,15 +29,42 @@ def date_recency_score(value: DateValue | datetime | None) -> float:
 
 # Build user-facing reason strings for a promoter recommendation row.
 def promoter_recommendation_reasons(row: dict) -> list[str]:
+    # Keep order while removing duplicates to avoid repeated names in reasons.
+    def dedupe_keep_order(values: list[str]) -> list[str]:
+        seen: set[str] = set()
+        result: list[str] = []
+        for value in values:
+            key = value.casefold()
+            if key in seen:
+                continue
+            seen.add(key)
+            result.append(value)
+        return result
+
+    # Format a list-valued reason with a stable display limit and +N suffix.
+    def list_reason(prefix: str, values: list[str]) -> str:
+        if not values:
+            return prefix
+        displayed = values[:RECOMMENDATION_REASON_ITEM_LIMIT]
+        hidden_count = max(len(values) - len(displayed), 0)
+        while displayed:
+            reason = f"{prefix}: {', '.join(displayed)}"
+            if hidden_count > 0:
+                reason += f", +{hidden_count} more"
+            if len(reason) <= RECOMMENDATION_REASON_MAX_CHARS:
+                return reason
+            # Keep removing one displayed item while preserving total hidden count.
+            displayed = displayed[:-1]
+            hidden_count += 1
+
+        return f"{prefix}: +{len(values)} more"
+
     # Normalize generic string arrays from DB rows.
     def names_list(values: object) -> list[str]:
         if not isinstance(values, list):
             return []
-        result: list[str] = []
-        for value in values:
-            if isinstance(value, str) and value.strip():
-                result.append(value.strip())
-        return result
+        result = [value.strip() for value in values if isinstance(value, str) and value.strip()]
+        return dedupe_keep_order(result)
 
     # Normalize artist objects into a list of artist names.
     def artist_names(values: object) -> list[str]:
@@ -46,7 +76,7 @@ def promoter_recommendation_reasons(row: dict) -> list[str]:
                 name = value.get("name")
                 if isinstance(name, str) and name.strip():
                     result.append(name.strip())
-        return result
+        return dedupe_keep_order(result)
 
     reasons = []
     if row["direct_connection_count"] > 0:
@@ -55,17 +85,17 @@ def promoter_recommendation_reasons(row: dict) -> list[str]:
     if row["warm_connection_count"] > 0:
         warm_names = artist_names(row.get("warm_connection_artists"))
         if warm_names:
-            reasons.append(
-                f"{row['warm_connection_count']} co-played artists connected: {', '.join(warm_names)}"
-            )
+            reasons.append(list_reason(f"{row['warm_connection_count']} co-played artists connected", warm_names))
         else:
             reasons.append(f"{row['warm_connection_count']} co-played artists connected")
     if manual_warm_connection_count > 0:
         manual_names = artist_names(row.get("manual_warm_connection_artists"))
         if manual_names:
             reasons.append(
-                f"{manual_warm_connection_count} manually added trusted artist links: "
-                f"{', '.join(manual_names)}"
+                list_reason(
+                    f"{manual_warm_connection_count} manually added trusted artist links",
+                    manual_names,
+                )
             )
         else:
             reasons.append(f"{manual_warm_connection_count} manually added trusted artist links")
@@ -73,7 +103,7 @@ def promoter_recommendation_reasons(row: dict) -> list[str]:
         matched_artist_names = names_list(row.get("matched_artist_names"))
         if matched_artist_names:
             reasons.append(
-                f"{row['matched_artist_count']} similar artists connected: {', '.join(matched_artist_names)}"
+                list_reason(f"{row['matched_artist_count']} similar artists connected", matched_artist_names)
             )
         else:
             reasons.append(f"{row['matched_artist_count']} similar artists connected")
@@ -82,8 +112,10 @@ def promoter_recommendation_reasons(row: dict) -> list[str]:
         if event_similarity_titles:
             displayed_event_similarity_count = len(event_similarity_titles)
             reasons.append(
-                f"{displayed_event_similarity_count} similar promoter events: "
-                f"{', '.join(event_similarity_titles)}"
+                list_reason(
+                    f"{displayed_event_similarity_count} similar promoter events",
+                    event_similarity_titles,
+                )
             )
         else:
             reasons.append(f"{row['event_similarity_count']} similar promoter events")
@@ -92,8 +124,10 @@ def promoter_recommendation_reasons(row: dict) -> list[str]:
         if related_event_titles:
             displayed_related_event_count = len(related_event_titles)
             reasons.append(
-                f"{displayed_related_event_count} related promoter events: "
-                f"{', '.join(related_event_titles)}"
+                list_reason(
+                    f"{displayed_related_event_count} related promoter events",
+                    related_event_titles,
+                )
             )
         else:
             reasons.append(f"{row['event_count']} related promoter events")

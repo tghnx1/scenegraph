@@ -31,6 +31,8 @@ from app.recommendation_scoring import (
     artist_recommendation_min_semantic_score_from_env,
     final_recommendation_score,
     hybrid_graph_score,
+    promoter_segment_quota_ratios_from_env,
+    promoter_segment_warm_share_from_env,
     promoter_recommendation_scoring_from_env,
 )
 from app.schemas import (
@@ -198,6 +200,38 @@ def interest_segment_label(value: float | int | None, *, low_threshold: float, h
     if numeric_value <= high_threshold:
         return "medium"
     return "large"
+
+
+def promoter_segment_sort_order(source_artist_size_segment: str) -> tuple[str, str, str]:
+    """Return segment priority order aligned with source artist size segment."""
+    if source_artist_size_segment == "small":
+        return ("small", "medium", "large")
+    if source_artist_size_segment == "medium":
+        return ("medium", "large", "small")
+    return ("large", "medium", "small")
+
+
+def segment_quota_counts(
+    *,
+    limit: int,
+    segment_order: tuple[str, str, str],
+    segment_ratios: dict[str, float],
+) -> dict[str, int]:
+    """Convert segment ratios into integer quota counts with deterministic remainder distribution."""
+    raw_quota = {
+        segment: float(limit) * max(float(segment_ratios.get(segment, 0.0)), 0.0)
+        for segment in segment_order
+    }
+    quota_counts = {segment: int(math.floor(value)) for segment, value in raw_quota.items()}
+    assigned = sum(quota_counts.values())
+    remainder = max(limit - assigned, 0)
+    segment_by_fraction = sorted(
+        segment_order,
+        key=lambda segment: (-(raw_quota[segment] - quota_counts[segment]), segment_order.index(segment)),
+    )
+    for segment in segment_by_fraction[:remainder]:
+        quota_counts[segment] += 1
+    return quota_counts
 
 # Build semantic similar-artists API payload.
 def build_artist_semantic_response(
@@ -931,7 +965,6 @@ def build_artist_promoter_recommendation_response(
             "directConnection": direct_contribution,
             "coPlayedConnection": co_played_contribution,
             "manualConnection": manual_connection_contribution,
-            "warmNetwork": co_played_contribution + manual_connection_contribution,
             "eventSimilarity": event_similarity_contribution,
             "scaleFit": scale_fit_contribution,
             "activity": activity_contribution,
@@ -973,6 +1006,13 @@ def build_artist_promoter_recommendation_response(
                 promoterSizeSegment=promoter_size_segment,
                 directConnectionCount=row["direct_connection_count"],
                 evidence=promoter_recommendation_item_evidence(row_with_similarity),
+                reasonDetails={
+                    "relatedEventTitles": related_event_titles,
+                    "similarPromoterEventTitles": event_similarity_event_titles,
+                    "similarArtistNames": matched_artist_names,
+                    "coPlayedArtistNames": [str(item.get("name", "")) for item in warm_connection_artists if item.get("name")],
+                    "manualArtistNames": [str(item.get("name", "")) for item in manual_connection_artists if item.get("name")],
+                },
                 debug={
                     "rawSignals": {
                         "semanticScore": row["semantic_score"],
@@ -999,6 +1039,9 @@ def build_artist_promoter_recommendation_response(
                         "eventSimilarityCount": event_similarity_count,
                         "eventSimilaritySymbolicScore": event_similarity_symbolic_score,
                         "eventSimilarityEmbeddingScore": event_similarity_embedding_score,
+                        "eventSimilarityEventTitles": event_similarity_event_titles,
+                        "relatedEventTitles": related_event_titles,
+                        "matchedArtistNames": matched_artist_names,
                         "artistScale": source_artist_scale,
                         "promoterScale": promoter_scale,
                         "promoterInterestedSum": promoter_interested_sum,
@@ -1034,6 +1077,16 @@ def build_artist_promoter_recommendation_response(
         recommendations,
         key=lambda recommendation: (-recommendation.score, recommendation.id),
     )
+    segment_order = promoter_segment_sort_order(source_artist_size_segment)
+    size_sort_order = {segment: index for index, segment in enumerate(segment_order)}
+    segment_quota_ratios_by_source = promoter_segment_quota_ratios_from_env()
+    segment_quota_ratios = segment_quota_ratios_by_source[source_artist_size_segment]
+    segment_warm_share = promoter_segment_warm_share_from_env()
+    applied_segment_quotas = segment_quota_counts(
+        limit=limit,
+        segment_order=segment_order,
+        segment_ratios=segment_quota_ratios,
+    )
     warm_recommendations_all = [
         recommendation
         for recommendation in sorted_recommendations
@@ -1044,19 +1097,88 @@ def build_artist_promoter_recommendation_response(
         for recommendation in sorted_recommendations
         if recommendation.warmConnectionCount == 0 and recommendation.manualConnectionCount == 0
     ]
-    warm_recommendations = warm_recommendations_all[:limit]
-    remaining_slots = max(limit - len(warm_recommendations), 0)
-    discovery_recommendations = discovery_recommendations_all[:remaining_slots]
-    recommendations = [*warm_recommendations, *discovery_recommendations]
-    size_sort_order = {"large": 0, "medium": 1, "small": 2}
-    recommendations = sorted(
-        recommendations,
-        key=lambda recommendation: (
-            size_sort_order.get(recommendation.promoterSizeSegment, 3),
-            -recommendation.score,
-            recommendation.id,
-        ),
-    )
+    segmented_ranked_pool: dict[str, list[PromoterRecommendationItem]] = {}
+    segment_quota_allocations: dict[str, dict[str, int]] = {}
+    for segment in segment_order:
+        segment_candidates = [
+            recommendation
+            for recommendation in sorted_recommendations
+            if recommendation.promoterSizeSegment == segment
+        ]
+        segment_warm = [
+            recommendation
+            for recommendation in segment_candidates
+            if recommendation.warmConnectionCount > 0 or recommendation.manualConnectionCount > 0
+        ]
+        segment_discovery = [
+            recommendation
+            for recommendation in segment_candidates
+            if recommendation.warmConnectionCount == 0 and recommendation.manualConnectionCount == 0
+        ]
+        quota = applied_segment_quotas.get(segment, 0)
+        warm_quota = min(len(segment_warm), int(math.floor(float(quota) * segment_warm_share)))
+        discovery_quota = min(len(segment_discovery), max(quota - warm_quota, 0))
+        selected_ids: set[int] = set()
+        selected_segment: list[PromoterRecommendationItem] = []
+        for recommendation in [*segment_warm[:warm_quota], *segment_discovery[:discovery_quota]]:
+            selected_segment.append(recommendation)
+            selected_ids.add(recommendation.id)
+        remaining_segment_slots = max(quota - len(selected_segment), 0)
+        if remaining_segment_slots > 0:
+            backfill_segment = [
+                recommendation
+                for recommendation in segment_candidates
+                if recommendation.id not in selected_ids
+            ][:remaining_segment_slots]
+            selected_segment.extend(backfill_segment)
+        segment_quota_allocations[segment] = {
+            "quota": quota,
+            "warmQuotaTarget": int(math.floor(float(quota) * segment_warm_share)),
+            "warmSelected": sum(
+                1
+                for recommendation in selected_segment
+                if recommendation.warmConnectionCount > 0 or recommendation.manualConnectionCount > 0
+            ),
+            "discoverySelected": sum(
+                1
+                for recommendation in selected_segment
+                if recommendation.warmConnectionCount == 0 and recommendation.manualConnectionCount == 0
+            ),
+        }
+        segmented_ranked_pool[segment] = selected_segment
+
+    recommendations = []
+    for segment in segment_order:
+        recommendations.extend(segmented_ranked_pool[segment])
+
+    remaining_slots = max(limit - len(recommendations), 0)
+    if remaining_slots > 0:
+        backfill_pool: list[PromoterRecommendationItem] = []
+        for segment in segment_order:
+            segment_candidates = [
+                recommendation
+                for recommendation in sorted_recommendations
+                if recommendation.promoterSizeSegment == segment
+            ]
+            selected_ids = {recommendation.id for recommendation in segmented_ranked_pool[segment]}
+            backfill_pool.extend(
+                recommendation
+                for recommendation in segment_candidates
+                if recommendation.id not in selected_ids
+            )
+        recommendations.extend(backfill_pool[:remaining_slots])
+
+    recommendations = recommendations[:limit]
+    warm_recommendations = [
+        recommendation
+        for recommendation in recommendations
+        if recommendation.warmConnectionCount > 0 or recommendation.manualConnectionCount > 0
+    ]
+    discovery_recommendations = [
+        recommendation
+        for recommendation in recommendations
+        if recommendation.warmConnectionCount == 0 and recommendation.manualConnectionCount == 0
+    ]
     large_recommendations = [
         recommendation for recommendation in recommendations if recommendation.promoterSizeSegment == "large"
     ]
@@ -1126,6 +1248,11 @@ def build_artist_promoter_recommendation_response(
                     },
                     "sourceArtistAverageInterested": source_artist_avg_interested,
                     "sourceArtistSizeSegment": source_artist_size_segment,
+                    "appliedPromoterSegmentSortOrder": [*size_sort_order.keys()],
+                    "appliedPromoterSegmentQuotaRatios": segment_quota_ratios,
+                    "appliedPromoterSegmentQuotaCounts": applied_segment_quotas,
+                    "appliedPromoterSegmentWarmShare": segment_warm_share,
+                    "appliedPromoterSegmentSelections": segment_quota_allocations,
                     "artistAverageInterestedThresholds": {
                         "smallMax": artist_interest_low_threshold,
                         "mediumMax": artist_interest_high_threshold,
@@ -1252,6 +1379,11 @@ def build_artist_promoter_recommendation_response(
                 },
                 "sourceArtistAverageInterested": source_artist_avg_interested,
                 "sourceArtistSizeSegment": source_artist_size_segment,
+                "appliedPromoterSegmentSortOrder": [*size_sort_order.keys()],
+                "appliedPromoterSegmentQuotaRatios": segment_quota_ratios,
+                "appliedPromoterSegmentQuotaCounts": applied_segment_quotas,
+                "appliedPromoterSegmentWarmShare": segment_warm_share,
+                "appliedPromoterSegmentSelections": segment_quota_allocations,
                 "artistAverageInterestedThresholds": {
                     "smallMax": artist_interest_low_threshold,
                     "mediumMax": artist_interest_high_threshold,
