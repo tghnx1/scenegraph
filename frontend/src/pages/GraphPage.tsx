@@ -1,110 +1,179 @@
-import ForceGraph2D from 'react-force-graph-2d'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useState, type FormEvent } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
-import { fetchGraph } from '../api/graph'
+import { fetchEntityDetail } from '../api/entityDetails'
+import { fetchArtist } from '../api/artists'
+import { fetchSearch } from '../api/search'
 import { useGraphStore } from '../store/graphStore'
-import type { GraphNode } from '../types/graph'
-import { useGraphHighlights } from './GraphPage/hooks/useGraphHighlights'
-import { useGraphPhysics } from './GraphPage/hooks/useGraphPhysics'
-import { GraphNodeDetailsPanel } from './GraphPage/components/DetailsPanel'
-import { drawNodeShape } from './GraphPage/drawNode.ts'
-import { LINK_HIGHLIGHT, LINK_DIM, BACKGROUND, hexToRgba } from '../styles/colors'
-
-const MIN_GRAPH_HEIGHT = 520
+import type { Artist } from '../types/artist'
+import { graphEntityId, type GraphNode, type NodeType } from '../types/graph'
+import type { SearchResponse, SearchResult } from '../types/search'
+import { useDebouncedValue } from './hooks/useDebouncedValue'
+import { GraphSidebarDetails } from './components/DetailsPanel.tsx'
+import { ScenegraphMapPanel } from './components/ScenegraphMapPanel.tsx'
+import { SearchQueryForm } from './components/SearchQueryForm.tsx'
 
 export function GraphPage() {
-  const graphRef = useRef<any>(null)
-  const containerRef = useRef<HTMLDivElement | null>(null)
-  const [graphSize, setGraphSize] = useState({ width: 0, height: 0 })
-  const { activeGenre, setSelected, selectedNode } = useGraphStore()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const { setSelected, selectedNode } = useGraphStore()
+  const submittedQuery = searchParams.get('q') ?? ''
+  const [searchValue, setSearchValue] = useState(submittedQuery)
+  const debouncedSearchValue = useDebouncedValue(searchValue.trim(), 350)
+  const selectedTypeParam = searchParams.get('selectedType')
+  const selectedIdParam = searchParams.get('selectedId')
+  const selectedArtistId = selectedNode?.type === 'artist'
+    ? selectedNode.id
+    : selectedTypeParam === 'artist'
+      ? selectedIdParam
+      : null
+  const selectedDetailType = selectedNode && selectedNode.type !== 'artist'
+    ? selectedNode.type
+    : selectedTypeParam && selectedTypeParam !== 'artist'
+      ? selectedTypeParam
+      : null
+  const selectedDetailId = selectedNode && selectedNode.type !== 'artist' ? selectedNode.id : selectedIdParam
 
-  const { data, isLoading, error, refetch } = useApi(
-    () => fetchGraph({ genre: activeGenre ?? undefined }),
-    [activeGenre]
+  const { data: selectedArtist } = useApi<Artist | null>(
+    () => (selectedArtistId ? fetchArtist(selectedArtistId) : Promise.resolve(null)),
+    [selectedArtistId]
   )
 
-  const { connectedNodes } = useGraphHighlights(selectedNode || null, data)
-  useGraphPhysics(graphRef, data)
+  const { data: selectedEntityDetail, isLoading: isSelectedEntityDetailLoading } = useApi<SearchResult | null>(
+    () => (
+      selectedDetailType && selectedDetailId
+        ? fetchEntityDetail(selectedDetailType as Exclude<NodeType, 'artist'>, selectedDetailId)
+        : Promise.resolve(null)
+    ),
+    [selectedDetailType, selectedDetailId]
+  )
+
+  const {
+    data: searchData,
+    isLoading: isSearchLoading,
+    error: searchError,
+  } = useApi<SearchResponse>(
+    () => (submittedQuery ? fetchSearch(submittedQuery) : Promise.resolve({ query: '', results: [] })),
+    [submittedQuery]
+  )
+
+  const { data: dropdownSearchData, isLoading: isDropdownSearchLoading } = useApi<SearchResponse>(
+    () => (
+      debouncedSearchValue.length >= 2 &&
+        debouncedSearchValue === searchValue.trim() &&
+        debouncedSearchValue !== submittedQuery.trim()
+        ? fetchSearch(debouncedSearchValue)
+        : Promise.resolve({ query: '', results: [] })
+    ),
+    [debouncedSearchValue, searchValue, submittedQuery]
+  )
 
   useEffect(() => {
-    const container = containerRef.current
-    if (!container) return
+    setSearchValue(submittedQuery)
+  }, [submittedQuery])
 
-    const updateSize = () => {
-      const rect = container.getBoundingClientRect()
-      setGraphSize({
-        width: Math.floor(rect.width),
-        height: Math.max(Math.floor(rect.height), MIN_GRAPH_HEIGHT),
-      })
-    }
-
-    updateSize()
-
-    const resizeObserver = new ResizeObserver(updateSize)
-    resizeObserver.observe(container)
-
-    return () => resizeObserver.disconnect()
-  }, [])
-
-  const handleNodeClick = useCallback(
-    (node: object) => {
-      setSelected(node as GraphNode)
+  const handleSearchSubmit = useCallback(
+    (event: FormEvent<HTMLFormElement>) => {
+      event.preventDefault()
+      const nextQuery = searchValue.trim()
+      if (!nextQuery) return
+      const nextParams = new URLSearchParams(searchParams)
+      nextParams.set('q', nextQuery)
+      nextParams.delete('artist')
+      nextParams.delete('selectedType')
+      nextParams.delete('selectedId')
+      setSelected(null)
+      setSearchParams(nextParams, { replace: true })
     },
-    [setSelected]
+    [searchParams, searchValue, setSearchParams, setSelected]
   )
 
-  if (isLoading) return <p style={{ padding: 24 }}>Loading graph...</p>
-  if (error) return <p style={{ padding: 24 }}>{error} — <button onClick={refetch}>retry</button></p>
+  const handleClearSearch = useCallback(() => {
+    setSearchValue('')
+    const nextParams = new URLSearchParams(searchParams)
+    nextParams.delete('q')
+    nextParams.delete('artist')
+    nextParams.delete('selectedType')
+    nextParams.delete('selectedId')
+    setSearchParams(nextParams, { replace: true })
+    setSelected(null)
+  }, [searchParams, setSearchParams, setSelected])
+
+  const handleSearchValueChange = useCallback((nextValue: string) => {
+    setSearchValue(nextValue)
+  }, [])
+
+  const handleSelectSearchResult = useCallback(
+    (result: SearchResult) => {
+      const nextParams = new URLSearchParams(searchParams)
+      nextParams.set('q', result.name)
+      nextParams.set('selectedType', result.type)
+      nextParams.set('selectedId', result.id)
+      nextParams.delete('artist')
+      setSearchValue(result.name)
+      setSelected(null)
+      setSearchParams(nextParams, { replace: false })
+    },
+    [searchParams, setSearchParams, setSelected]
+  )
+
+  const searchResults = searchData?.results ?? []
+  const trimmedSearchValue = searchValue.trim()
+  const trimmedSubmittedQuery = submittedQuery.trim()
+  const isDropdownWaiting = trimmedSearchValue.length >= 2 && debouncedSearchValue !== trimmedSearchValue
+  const shouldFetchDropdownSearch =
+    debouncedSearchValue.length >= 2 &&
+    debouncedSearchValue === trimmedSearchValue &&
+    debouncedSearchValue !== trimmedSubmittedQuery
+  const dropdownSearchResults = shouldFetchDropdownSearch ? dropdownSearchData?.results ?? [] : []
+  const detailSearchResults = selectedEntityDetail ? [selectedEntityDetail] : searchResults
+  const detailsSearchError = searchError
+  const isDetailsSearchLoading = isSearchLoading || isSelectedEntityDetailLoading
+  const hasActiveSearchState = Boolean(searchValue || submittedQuery || selectedNode)
+  const selectedArtistNode: GraphNode | null = selectedArtist
+    ? {
+        id: selectedArtist.id,
+        entityId: graphEntityId(selectedArtist.id, 'artist') ?? 0,
+        type: 'artist',
+        name: selectedArtist.name,
+        genres: selectedArtist.genres,
+        eventCount: selectedArtist.eventCount,
+      }
+    : null
+  const detailsSelectedNode = selectedEntityDetail ? null : selectedNode ?? selectedArtistNode
 
   return (
-    <div
-      ref={containerRef}
-      style={{ position: 'relative', width: '100%', height: '100%', minHeight: MIN_GRAPH_HEIGHT }}
-    >
-      <ForceGraph2D
-        ref={graphRef}
-        width={graphSize.width || undefined}
-        height={graphSize.height || undefined}
-        graphData={data || { nodes: [], links: [] }}
-        nodeCanvasObject={(node: any, ctx: CanvasRenderingContext2D) => {
-          drawNodeShape(ctx, node.x, node.y, 5, node.type, selectedNode?.id === node.id)
-        }}
-        nodeColor={() => 'transparent'}
-        nodeRelSize={3}
-        nodeVal={(n: any) => (selectedNode?.id === n.id ? 3 : 1)}
-        nodeLabel={(n: any) => n.name ?? n.id}
-        linkWidth={(l: any) => {
-          const source = typeof l.source === 'object' ? l.source.id : l.source
-          const target = typeof l.target === 'object' ? l.target.id : l.target
-          if (connectedNodes.has(source) && connectedNodes.has(target)) {
-            return Math.sqrt(l.value ?? l.weight ?? 1) * 2
-          }
-          return Math.sqrt(l.value ?? l.weight ?? 1)
-        }}
-        linkColor={(l: any) => {
-          const source = typeof l.source === 'object' ? l.source.id : l.source
-          const target = typeof l.target === 'object' ? l.target.id : l.target
-          if (connectedNodes.has(source) && connectedNodes.has(target)) {
-            return hexToRgba(LINK_HIGHLIGHT, 0.8)
-          }
-          return hexToRgba(LINK_DIM, 0.6)
-        }}
-        enableNodeDrag
-        onNodeDrag={(node: any) => {
-          node.fx = node.x
-          node.fy = node.y
-        }}
-        onNodeDragEnd={(node: any) => {
-          node.fx = null
-          node.fy = null
-        }}
-        onNodeClick={handleNodeClick}
-        backgroundColor={BACKGROUND}
-        warmupTicks={120}
-        cooldownTicks={180}
-      />
+    <div className="graph-page-shell">
+      <aside className="graph-sidebar">
+        <article className="graph-sidebar-card">
+          <div className="graph-sidebar-search">
+            <SearchQueryForm
+              inputId="graph-search-query-input"
+              value={searchValue}
+              onChange={handleSearchValueChange}
+              onSubmit={handleSearchSubmit}
+              onClear={handleClearSearch}
+              showClear={hasActiveSearchState}
+              results={dropdownSearchResults}
+              isLoading={isDropdownWaiting || isDropdownSearchLoading}
+              onSelectResult={handleSelectSearchResult}
+            />
+            {/* <p className="search-query-hint">Enter a name, then press Enter to update the search.</p> */}
+          </div>
 
-      <GraphNodeDetailsPanel selectedNode={selectedNode || null} onClose={() => setSelected(null)} />
+          <GraphSidebarDetails
+            searchQuery={submittedQuery}
+            searchResults={detailSearchResults}
+            isSearchLoading={isDetailsSearchLoading}
+            searchError={detailsSearchError}
+            selectedNode={detailsSelectedNode}
+            selectedArtist={selectedArtist}
+          />
+        </article>
+      </aside>
+
+      <section className="graph-main">
+        <ScenegraphMapPanel />
+      </section>
     </div>
   )
 }

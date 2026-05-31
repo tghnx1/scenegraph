@@ -96,8 +96,21 @@ def compose_event_text_profile(
     *,
     artist_names: Iterable[Any] = (),
     promoter_names: Iterable[Any] = (),
+    genre_names: Iterable[Any] = (),
     venue_name: str | None = None,
 ) -> str:
+    extracted_styles = extract_style_tags(
+        " ".join(
+            part
+            for part in [
+                normalize_text(event.get("title", "")),
+                normalize_text(event.get("description_text", "")),
+                normalize_text(event.get("lineup_residual_text") or event.get("lineup_raw", "")),
+            ]
+            if part
+        )
+    )
+
     return join_sections(
         [
             format_section("Event title", event.get("title", "")),
@@ -106,6 +119,8 @@ def compose_event_text_profile(
                 event.get("description_text", ""),
                 MAX_EVENT_DESCRIPTION_CHARS,
             ),
+            format_section("Genres", genre_names),
+            format_section("Extracted styles", extracted_styles),
             format_section("Structured lineup", artist_names),
             format_section(
                 "Lineup context",
@@ -199,10 +214,24 @@ def build_event_text_profile(connection: Connection, event_id: int) -> str:
         )
         promoter_names = [row["name"] for row in cursor.fetchall()]
 
+        cursor.execute(
+            """
+            SELECT g.name
+            FROM genres g
+            JOIN event_genres eg
+                ON eg.genre_id = g.id
+            WHERE eg.event_id = %s
+            ORDER BY g.name ASC
+            """,
+            (event_id,),
+        )
+        genre_names = [row["name"] for row in cursor.fetchall()]
+
     return compose_event_text_profile(
         event,
         artist_names=artist_names,
         promoter_names=promoter_names,
+        genre_names=genre_names,
         venue_name=event["venue_name"],
     )
 
