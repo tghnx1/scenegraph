@@ -10,6 +10,7 @@ from app.event_similarity import artist_similar_events_scored_rows
 from app.promoter_graph import (
     date_recency_score,
     promoter_direct_connection_evidence,
+    promoter_manual_connection_evidence,
     promoter_recommendation_evidence,
     promoter_recommendation_graph,
     promoter_recommendation_item_evidence,
@@ -232,6 +233,69 @@ def segment_quota_counts(
     for segment in segment_by_fraction[:remainder]:
         quota_counts[segment] += 1
     return quota_counts
+
+
+# Resolve shared artists for concrete source-event and candidate-event pairs.
+def event_similarity_shared_artists_by_pair(
+    connection: Connection,
+    *,
+    source_artist_id: int,
+    event_pairs: list[tuple[int, int]],
+) -> dict[tuple[int, int], list[dict[str, object]]]:
+    if not event_pairs:
+        return {}
+
+    source_event_ids = [source_event_id for source_event_id, _ in event_pairs]
+    candidate_event_ids = [candidate_event_id for _, candidate_event_id in event_pairs]
+
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            WITH requested_pairs AS (
+                SELECT *
+                FROM unnest(%(source_event_ids)s::bigint[], %(candidate_event_ids)s::bigint[])
+                    AS pair(source_event_id, candidate_event_id)
+            )
+            SELECT
+                pair.source_event_id,
+                pair.candidate_event_id,
+                a.id AS artist_id,
+                a.name AS artist_name
+            FROM requested_pairs pair
+            JOIN event_artists ea_source
+                ON ea_source.event_id = pair.source_event_id
+            JOIN event_artists ea_candidate
+                ON ea_candidate.event_id = pair.candidate_event_id
+               AND ea_candidate.artist_id = ea_source.artist_id
+            JOIN artists a
+                ON a.id = ea_source.artist_id
+            WHERE ea_source.artist_id <> %(source_artist_id)s
+            ORDER BY pair.source_event_id ASC, pair.candidate_event_id ASC, a.name ASC
+            """,
+            {
+                "source_event_ids": source_event_ids,
+                "candidate_event_ids": candidate_event_ids,
+                "source_artist_id": source_artist_id,
+            },
+        )
+        rows = cursor.fetchall()
+
+    result: dict[tuple[int, int], list[dict[str, object]]] = {}
+    for row in rows:
+        source_event_id = int(row["source_event_id"] if isinstance(row, dict) else row[0])
+        candidate_event_id = int(row["candidate_event_id"] if isinstance(row, dict) else row[1])
+        artist_id = int(row["artist_id"] if isinstance(row, dict) else row[2])
+        artist_name = row["artist_name"] if isinstance(row, dict) else row[3]
+
+        pair_key = (source_event_id, candidate_event_id)
+        result.setdefault(pair_key, []).append(
+            {
+                "id": artist_id,
+                "name": artist_name,
+            }
+        )
+
+    return result
 
 # Build semantic similar-artists API payload.
 def build_artist_semantic_response(
@@ -1283,7 +1347,17 @@ def build_artist_promoter_recommendation_response(
         source_artist_id=artist_id,
         promoter_ids=promoter_ids,
     )
+    promoter_manual_artist_ids: dict[int, list[int]] = {}
+    for recommendation in recommendations:
+        trusted_artist_ids = sorted({artist.id for artist in recommendation.manualConnectionArtists})
+        if trusted_artist_ids:
+            promoter_manual_artist_ids[recommendation.id] = trusted_artist_ids
+    manual_evidence = promoter_manual_connection_evidence(
+        connection,
+        promoter_manual_artist_ids=promoter_manual_artist_ids,
+    )
     event_similarity_evidence: list[dict] = []
+    event_similarity_pairs: list[tuple[int, int]] = []
     for promoter_id in promoter_ids:
         similarity_stats = event_similarity_stats_by_promoter.get(promoter_id)
         if similarity_stats is None:
@@ -1293,13 +1367,16 @@ def build_artist_promoter_recommendation_response(
             key=lambda item: (-item["total_similarity_score"], item["candidate_event_id"]),
         )[:5]
         for item in ranked_rows:
+            source_event_id = int(item["source_event_id"])
+            candidate_event_id = int(item["candidate_event_id"])
+            event_similarity_pairs.append((source_event_id, candidate_event_id))
             event_similarity_evidence.append(
                 {
                     "promoter_id": promoter_id,
-                    "source_event_id": item["source_event_id"],
+                    "source_event_id": source_event_id,
                     "source_event_title": item["source_event_title"],
                     "source_event_date": item["source_event_date"],
-                    "promoter_event_id": item["candidate_event_id"],
+                    "promoter_event_id": candidate_event_id,
                     "promoter_event_title": item["candidate_event_title"],
                     "promoter_event_date": item["candidate_event_date"],
                     "promoter_venue_id": item["candidate_venue_id"],
@@ -1307,6 +1384,15 @@ def build_artist_promoter_recommendation_response(
                     "path_similarity": item["symbolic_score_final"],
                 }
             )
+
+    shared_artists_by_pair = event_similarity_shared_artists_by_pair(
+        connection,
+        source_artist_id=artist_id,
+        event_pairs=event_similarity_pairs,
+    )
+    for row in event_similarity_evidence:
+        pair_key = (int(row["source_event_id"]), int(row["promoter_event_id"]))
+        row["shared_artists"] = shared_artists_by_pair.get(pair_key, [])
 
     return PromoterRecommendationResponse(
         entityId=artist_id,
@@ -1325,6 +1411,7 @@ def build_artist_promoter_recommendation_response(
             semantic_evidence_rows=semantic_evidence,
             direct_evidence_rows=direct_evidence,
             warm_evidence_rows=warm_evidence,
+            manual_evidence_rows=manual_evidence,
             event_similarity_evidence_rows=event_similarity_evidence,
             scoring_config=scoring_config,
         ),
