@@ -55,6 +55,36 @@ def test_promoter_recommendation_reasons_show_manual_artist_names():
     assert reasons == ["1 manually added trusted artist links: Zee Mon"]
 
 
+def test_promoter_recommendation_reasons_truncate_long_lists_and_dedupe():
+    row = {
+        "direct_connection_count": 0,
+        "warm_connection_count": 12,
+        "warm_connection_artists": [
+            {"id": 1, "name": "A"},
+            {"id": 2, "name": "B"},
+            {"id": 3, "name": "C"},
+            {"id": 4, "name": "D"},
+            {"id": 5, "name": "E"},
+            {"id": 6, "name": "F"},
+            {"id": 7, "name": "G"},
+            {"id": 8, "name": "H"},
+            {"id": 9, "name": "I"},
+            {"id": 10, "name": "A"},
+        ],
+        "manual_warm_connection_count": 0,
+        "matched_artist_count": 0,
+        "event_similarity_count": 0,
+        "event_count": 0,
+        "latest_event_date": None,
+    }
+
+    reasons = promoter_recommendation_reasons(row)
+
+    assert reasons == [
+        "12 co-played artists connected: A, B, C, D, E, +4 more",
+    ]
+
+
 def test_promoter_recommendation_status_marks_manual_as_warm_relevant():
     row = {
         "direct_connection_count": 0,

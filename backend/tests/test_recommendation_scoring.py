@@ -8,6 +8,8 @@ from app.recommendation_scoring import (
     hybrid_graph_score,
     is_similarity_candidate_eligible,
     normalized_weights,
+    promoter_segment_quota_ratios_from_env,
+    promoter_segment_warm_share_from_env,
     promoter_recommendation_api_limit_max_from_env,
     promoter_recommendation_scoring_from_env,
     recommendation_scoring_from_env,
@@ -425,6 +427,49 @@ def test_promoter_recommendation_scoring_rejects_invalid_semantic_artist_min_sco
 def test_promoter_recommendation_api_limit_max_reads_env(monkeypatch):
     monkeypatch.setenv("PROMOTER_REC_API_LIMIT_MAX", "75")
     assert promoter_recommendation_api_limit_max_from_env() == 75
+
+
+def test_promoter_segment_quota_ratios_read_from_env(monkeypatch):
+    monkeypatch.setenv("PROMOTER_REC_SEGMENT_QUOTA_SMALL_SMALL", "0.7")
+    monkeypatch.setenv("PROMOTER_REC_SEGMENT_QUOTA_SMALL_MEDIUM", "0.2")
+    monkeypatch.setenv("PROMOTER_REC_SEGMENT_QUOTA_SMALL_LARGE", "0.1")
+    monkeypatch.setenv("PROMOTER_REC_SEGMENT_QUOTA_MEDIUM_SMALL", "0.2")
+    monkeypatch.setenv("PROMOTER_REC_SEGMENT_QUOTA_MEDIUM_MEDIUM", "0.5")
+    monkeypatch.setenv("PROMOTER_REC_SEGMENT_QUOTA_MEDIUM_LARGE", "0.3")
+    monkeypatch.setenv("PROMOTER_REC_SEGMENT_QUOTA_LARGE_SMALL", "0.1")
+    monkeypatch.setenv("PROMOTER_REC_SEGMENT_QUOTA_LARGE_MEDIUM", "0.2")
+    monkeypatch.setenv("PROMOTER_REC_SEGMENT_QUOTA_LARGE_LARGE", "0.7")
+
+    ratios = promoter_segment_quota_ratios_from_env()
+
+    assert ratios["small"] == {"small": 0.7, "medium": 0.2, "large": 0.1}
+    assert ratios["medium"] == {"small": 0.2, "medium": 0.5, "large": 0.3}
+    assert ratios["large"] == {"small": 0.1, "medium": 0.2, "large": 0.7}
+
+
+def test_promoter_segment_quota_ratios_reject_negative_values(monkeypatch):
+    monkeypatch.setenv("PROMOTER_REC_SEGMENT_QUOTA_SMALL_SMALL", "-0.1")
+    try:
+        promoter_segment_quota_ratios_from_env()
+    except ValueError as exc:
+        assert "Scoring weights must be non-negative" in str(exc)
+    else:
+        raise AssertionError("Expected ValueError")
+
+
+def test_promoter_segment_warm_share_reads_env(monkeypatch):
+    monkeypatch.setenv("PROMOTER_REC_SEGMENT_WARM_SHARE", "0.65")
+    assert promoter_segment_warm_share_from_env() == 0.65
+
+
+def test_promoter_segment_warm_share_rejects_invalid_value(monkeypatch):
+    monkeypatch.setenv("PROMOTER_REC_SEGMENT_WARM_SHARE", "1.2")
+    try:
+        promoter_segment_warm_share_from_env()
+    except ValueError as exc:
+        assert "PROMOTER_REC_SEGMENT_WARM_SHARE" in str(exc)
+    else:
+        raise AssertionError("Expected ValueError")
 
 
 def test_artist_recommendation_min_semantic_score_reads_env(monkeypatch):

@@ -142,6 +142,14 @@ class WarmConnectionArtistItem(BaseModel):
     name: str
 
 
+class PromoterRecommendationReasonDetails(BaseModel):
+    relatedEventTitles: list[str] = Field(default_factory=list)
+    similarPromoterEventTitles: list[str] = Field(default_factory=list)
+    similarArtistNames: list[str] = Field(default_factory=list)
+    coPlayedArtistNames: list[str] = Field(default_factory=list)
+    manualArtistNames: list[str] = Field(default_factory=list)
+
+
 class PromoterRecommendationItem(BaseModel):
     id: int
     type: Literal["promoter"] = "promoter"
@@ -167,6 +175,9 @@ class PromoterRecommendationItem(BaseModel):
     promoterSizeSegment: Literal["small", "medium", "large"] = "small"
     directConnectionCount: int = 0
     evidence: list[RecommendationEvidenceItem] = Field(default_factory=list)
+    reasonDetails: PromoterRecommendationReasonDetails = Field(
+        default_factory=PromoterRecommendationReasonDetails
+    )
     debug: dict[str, object] | None = None
 
 

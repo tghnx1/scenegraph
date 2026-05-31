@@ -203,6 +203,13 @@ DEFAULT_PROMOTER_RECOMMENDATION_SCORING = PromoterRecommendationScoringConfig(
     source_event_relevance_top_k=6,
 )
 
+DEFAULT_PROMOTER_SEGMENT_QUOTA_RATIOS: dict[str, dict[str, float]] = {
+    "small": {"small": 0.50, "medium": 0.35, "large": 0.15},
+    "medium": {"small": 0.15, "medium": 0.50, "large": 0.35},
+    "large": {"small": 0.15, "medium": 0.35, "large": 0.50},
+}
+DEFAULT_PROMOTER_SEGMENT_WARM_SHARE = 0.70
+
 # Normalize arbitrary positive weights into a unit-sum tuple.
 def normalized_weights(values: tuple[float, ...]) -> tuple[float, ...]:
     if any(value < 0 for value in values):
@@ -675,6 +682,35 @@ def artist_recommendation_min_semantic_score_from_env() -> float:
     value = env_float("ARTIST_REC_MIN_SEMANTIC_SCORE", 0.45)
     if not (0.0 <= value <= 1.0):
         raise ValueError("ARTIST_REC_MIN_SEMANTIC_SCORE must be between 0 and 1")
+    return value
+
+
+def promoter_segment_quota_ratios_from_env() -> dict[str, dict[str, float]]:
+    """Return normalized per-source segment quota ratios for final promoter recommendation mix."""
+    config: dict[str, dict[str, float]] = {}
+    segments = ("small", "medium", "large")
+    for source_segment in segments:
+        raw_values = tuple(
+            env_float(
+                f"PROMOTER_REC_SEGMENT_QUOTA_{source_segment.upper()}_{target_segment.upper()}",
+                DEFAULT_PROMOTER_SEGMENT_QUOTA_RATIOS[source_segment][target_segment],
+            )
+            for target_segment in segments
+        )
+        normalized = normalized_weights(raw_values)
+        config[source_segment] = {
+            "small": normalized[0],
+            "medium": normalized[1],
+            "large": normalized[2],
+        }
+    return config
+
+
+def promoter_segment_warm_share_from_env() -> float:
+    """Return max warm/manual share per segment quota for final recommendation mix."""
+    value = env_float("PROMOTER_REC_SEGMENT_WARM_SHARE", DEFAULT_PROMOTER_SEGMENT_WARM_SHARE)
+    if not (0.0 <= value <= 1.0):
+        raise ValueError("PROMOTER_REC_SEGMENT_WARM_SHARE must be between 0 and 1")
     return value
 
 # Compute semantic artist score from embedding/style/tag components.

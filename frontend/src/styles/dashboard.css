@@ -149,7 +149,7 @@
 .recommendation-name {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: 10px;
   width: 100%;
   padding: 11px 12px;
@@ -160,6 +160,42 @@
   font-weight: 700;
   text-align: left;
   cursor: pointer;
+}
+
+.recommendation-name-label {
+  min-width: 0;
+}
+
+.recommendation-size-badge {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 68px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--surface-border);
+  background: var(--surface-panel-soft);
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.recommendation-size-small {
+  border-color: var(--artist-border);
+  background: color-mix(in srgb, var(--artist-soft) 65%, transparent);
+}
+
+.recommendation-size-medium {
+  border-color: var(--venue-border-soft);
+  background: color-mix(in srgb, var(--venue) 22%, transparent);
+}
+
+.recommendation-size-large {
+  border-color: var(--promoter-border);
+  background: color-mix(in srgb, var(--promoter-soft) 60%, transparent);
 }
 
 .recommendation-name::after {
@@ -187,6 +223,46 @@
   color: var(--text-muted);
   font-size: 0.9rem;
   line-height: 1.35;
+}
+
+.recommendation-reasons > li {
+  display: grid;
+  gap: 4px;
+}
+
+.recommendation-reasons-inline-list {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0 0 0 16px;
+  color: var(--text-muted);
+}
+
+.recommendation-reasons-more-button {
+  justify-self: start;
+  border: 1px solid var(--surface-border);
+  background: var(--surface-panel-soft);
+  color: var(--text);
+  border-radius: 999px;
+  padding: 1px 8px;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.recommendation-reasons-more-button:hover {
+  background: var(--selection-soft);
+  border-color: var(--selection-border);
+}
+
+.recommendation-reasons-more-list {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0 0 0 16px;
+  color: var(--text-muted);
+  font-size: 0.86rem;
 }
 
 .recommendations-help {
