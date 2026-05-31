@@ -39,6 +39,10 @@ type ReasonListKind =
 const MORE_SUFFIX_PATTERN = /,?\s*\+\d+\s+more\.?$/i
 const REASON_PREFIX_PATTERN = /^(.+?:)\s*/
 
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(Math.max(value, min), max)
+}
+
 // Remove empty entries and duplicates while preserving display order.
 function uniqueNonEmpty(values: string[]): string[] {
   const seen = new Set<string>()
@@ -288,16 +292,30 @@ export function ProfilePage() {
     }
   }, [recommendationsData, setSelected])
 
+  // Toggle recommendation card focus; collapsing clears selected promoter and resets graph focus.
   const handleToggleRecommendation = useCallback((recommendationId: number) => {
-    setExpandedRecommendationId((currentId) => (
-      currentId === recommendationId ? null : recommendationId
-    ))
+    const isCollapsingCurrent = expandedRecommendationId === recommendationId
+
+    if (isCollapsingCurrent) {
+      setExpandedRecommendationId(null)
+      setSelected(null)
+      return
+    }
+
+    setExpandedRecommendationId(recommendationId)
     handleSelectRecommendation(recommendationId)
-  }, [handleSelectRecommendation])
+  }, [expandedRecommendationId, handleSelectRecommendation, setSelected])
 
   const handleToggleReasonItems = useCallback((key: string) => {
     setExpandedReasonItems((current) => ({ ...current, [key]: !current[key] }))
   }, [])
+
+  // Slider change resets focused promoter so graph returns to threshold-based baseline paths.
+  const handleRecommendationStrengthChange = useCallback((nextThreshold: number) => {
+    setRecommendationStrengthThreshold(nextThreshold)
+    setExpandedRecommendationId(null)
+    setSelected(null)
+  }, [setSelected])
 
   const searchResults = searchData?.results ?? []
   const trimmedSearchValue = searchValue.trim()
@@ -321,6 +339,33 @@ export function ProfilePage() {
       return left.name.localeCompare(right.name)
     })
   }, [recommendationsData])
+  const recommendationScoreBounds = useMemo(() => {
+    if (sortedRecommendations.length === 0) {
+      return { min: 0, max: 1 }
+    }
+
+    const scores = sortedRecommendations.map((recommendation) => recommendationScore(recommendation))
+    const min = Math.min(...scores)
+    const max = Math.max(...scores)
+    return {
+      min,
+      max,
+    }
+  }, [sortedRecommendations])
+
+  useEffect(() => {
+    setRecommendationStrengthThreshold((current) => {
+      const bounded = clamp(current, recommendationScoreBounds.min, recommendationScoreBounds.max)
+      return Math.abs(current - bounded) < 1e-9 ? current : bounded
+    })
+  }, [recommendationScoreBounds.max, recommendationScoreBounds.min])
+
+  const recommendationStrengthStep = useMemo(() => {
+    const range = recommendationScoreBounds.max - recommendationScoreBounds.min
+    if (range <= 0) return 0.001
+    return Math.max(range / 500, 0.0005)
+  }, [recommendationScoreBounds.max, recommendationScoreBounds.min])
+
   const filteredRecommendations = useMemo(
     () => sortedRecommendations.filter((recommendation) => (
       recommendationScore(recommendation) >= recommendationStrengthThreshold
@@ -448,11 +493,11 @@ export function ProfilePage() {
                       <input
                         id="recommendation-strength-threshold"
                         type="range"
-                        min={0}
-                        max={1}
-                        step={0.01}
+                        min={recommendationScoreBounds.min}
+                        max={recommendationScoreBounds.max}
+                        step={recommendationStrengthStep}
                         value={recommendationStrengthThreshold}
-                        onChange={(event) => setRecommendationStrengthThreshold(Number(event.target.value))}
+                        onChange={(event) => handleRecommendationStrengthChange(Number(event.target.value))}
                       />
                       <p>{filteredRecommendations.length} / {sortedRecommendations.length} promoters shown</p>
                     </div>
