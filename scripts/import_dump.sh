@@ -15,6 +15,16 @@ db_exec() {
   fi
 }
 
+ensure_compat_roles() {
+  db_exec '
+    if [ "$(psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d postgres -tAc "SELECT 1 FROM pg_roles WHERE rolname = '\''postgres'\''")" != "1" ]; then
+      psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d postgres -c "CREATE ROLE postgres;"
+    fi
+
+    psql -U "$POSTGRES_USER" -d postgres -c "GRANT postgres TO \"$POSTGRES_USER\";" >/dev/null 2>&1 || true
+  '
+}
+
 usage() {
   cat <<'EOF'
 Usage:
@@ -106,6 +116,9 @@ db_exec '
     sleep 1
   done
 '
+
+echo "Ensuring dump compatibility roles exist..."
+ensure_compat_roles
 
 DB_EXISTS=$(database_exists)
 
