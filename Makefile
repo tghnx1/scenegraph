@@ -25,8 +25,8 @@ help:
 	@printf "\n"
 	@printf "  make env      Create .env from .env.example if missing\n"
 	@printf "  make build    Build containers\n"
-	@printf "  make up       Start stack in foreground\n"
-	@printf "  make upd      Start stack in background\n"
+	@printf "  make up       Start stack in foreground (runs migrations first)\n"
+	@printf "  make upd      Start stack in background (runs migrations first)\n"
 	@printf "  make down     Stop and remove containers\n"
 	@printf "  make stop     Stop running containers\n"
 	@printf "  make restart  Restart the stack in background\n"
@@ -66,10 +66,10 @@ env:
 build: env
 	$(COMPOSE) build
 
-up: env
+up: env prisma-migrate
 	$(COMPOSE) up --build
 
-upd: env
+upd: env prisma-migrate
 	$(COMPOSE) up --build -d
 
 down:
