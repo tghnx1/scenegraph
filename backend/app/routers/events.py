@@ -61,9 +61,9 @@ ORDER BY p.name ASC;
 """
 
 
-@router.get("/{id}", response_model=EventResponse)
+@router.get("", response_model=EventResponse)
 def get_event(
-    id: int,
+    id: int = Query(...),
     db: Connection = Depends(get_db),
 ):
     with db.cursor() as cur:

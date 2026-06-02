@@ -50,7 +50,7 @@ export function GraphFilters({
           </option>
           {genreOptions.map((option) => (
             <option key={option.value} value={option.value}>
-              {option.label}
+              {option.name}
             </option>
           ))}
         </select>
