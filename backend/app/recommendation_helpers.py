@@ -12,12 +12,14 @@ from app.recommendation_scoring import (
 from app.schemas import EntityKind, RecommendationFeedbackItem
 from app.style_tags import extract_style_tags, style_overlap_score
 
-
+# Build stable graph node ids used across graph payloads.
 def graph_node_id(node_type: str, entity_id: int) -> str:
+    """Create stable graph node ids used in API graph payloads."""
     return f"{node_type}-{entity_id}"
 
-
+# Map feedback DB rows to API schema objects.
 def feedback_item_from_row(row: dict) -> RecommendationFeedbackItem:
+    """Convert raw feedback SQL rows into API DTOs."""
     return RecommendationFeedbackItem(
         id=row["id"],
         sourceEntityType=row["source_entity_type"],
@@ -30,13 +32,14 @@ def feedback_item_from_row(row: dict) -> RecommendationFeedbackItem:
         updatedAt=row["updated_at"],
     )
 
-
+# Validate that a referenced artist/event exists for feedback operations.
 def ensure_feedback_entity_exists(
     connection: Connection,
     *,
     entity_type: EntityKind,
     entity_id: int,
 ) -> None:
+    """Ensure referenced recommendation entity exists or raise 404."""
     table_name = "artists" if entity_type == "artist" else "events"
     with connection.cursor() as cursor:
         cursor.execute(f"SELECT 1 FROM {table_name} WHERE id = %s", (entity_id,))
@@ -46,12 +49,13 @@ def ensure_feedback_entity_exists(
                 detail=f"{entity_type} {entity_id} not found",
             )
 
-
+# Load display metadata for recommendation entities.
 def recommendation_item_metadata(
     connection: Connection,
     entity_type: EntityType,
     entity_ids: list[int],
 ) -> dict[int, dict]:
+    """Load display metadata for recommendation candidates by entity type."""
     if not entity_ids:
         return {}
 
@@ -102,11 +106,12 @@ def recommendation_item_metadata(
 
     return {row["id"]: row for row in rows}
 
-
+# Load artist semantic metadata (styles and extracted tags).
 def artist_semantic_metadata(
     connection: Connection,
     artist_ids: list[int],
 ) -> dict[int, dict]:
+    """Load artist semantic metadata (styles + extracted tags) for scoring."""
     if not artist_ids:
         return {}
 
@@ -160,28 +165,31 @@ def artist_semantic_metadata(
     }
     return metadata
 
-
+# Compute capped overlap score between two tag lists.
 def tag_overlap_score(source_tags: list[str], candidate_tags: list[str], cap: int = 1) -> float:
+    """Compute case-insensitive overlap score with an upper cap."""
     if not source_tags or not candidate_tags:
         return 0.0
 
     overlap = {tag.casefold() for tag in source_tags} & {tag.casefold() for tag in candidate_tags}
     return min(len(overlap) / cap, 1.0)
 
-
+# Return shared tag values with candidate-side canonical casing.
 def shared_tag_values(source_tags: list[str], candidate_tags: list[str]) -> list[str]:
+    """Return shared tag values preserving candidate-side canonical values."""
     candidate_lookup = {tag.casefold(): tag for tag in candidate_tags}
     return sorted(
         candidate_lookup[key]
         for key in ({tag.casefold() for tag in source_tags} & set(candidate_lookup.keys()))
     )
 
-
+# Compute weighted score across extracted artist tag groups.
 def extracted_tag_score(
     source_tags: dict[str, list[str]],
     candidate_tags: dict[str, list[str]],
     config: SemanticArtistTagScoringConfig,
 ) -> float:
+    """Compute weighted overlap across extracted artist tag dimensions."""
     label_overlap = tag_overlap_score(source_tags.get("label", []), candidate_tags.get("label", []))
     collective_overlap = tag_overlap_score(
         source_tags.get("collective", []),
@@ -204,11 +212,12 @@ def extracted_tag_score(
         + config.role_weight * role_overlap
     )
 
-
+# Collect shared extracted tags grouped by tag type.
 def shared_extracted_tags(
     source_tags: dict[str, list[str]],
     candidate_tags: dict[str, list[str]],
 ) -> dict[str, list[str]]:
+    """Collect shared extracted tags grouped by tag type for explanations."""
     shared: dict[str, list[str]] = {}
     for tag_type in ("label", "collective", "role", "residency", "alias"):
         values = shared_tag_values(source_tags.get(tag_type, []), candidate_tags.get(tag_type, []))
@@ -216,13 +225,14 @@ def shared_extracted_tags(
             shared[tag_type] = values
     return shared
 
-
+# Build and rank semantic artist candidates for recommendation flows.
 def build_artist_semantic_candidates(
     connection: Connection,
     *,
     artist_id: int,
     debug: bool = False,
 ) -> tuple[dict, list[dict]]:
+    """Rank semantic artist candidates using embeddings, style tags, and extracted tags."""
     config = EmbeddingConfig.from_env()
     scoring_config = semantic_artist_scoring_from_env()
     tag_scoring_config = semantic_artist_tag_scoring_from_env()

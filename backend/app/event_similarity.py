@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi import HTTPException
 from psycopg import Connection
 
-from app.embeddings import EmbeddingConfig, cosine_similarity
+from app.embeddings import EmbeddingConfig, cosine_similarity, embedding_vector_supported
 from app.recommendation_scoring import (
     PromoterRecommendationScoringConfig,
     promoter_recommendation_scoring_from_env,
@@ -11,6 +11,7 @@ from app.recommendation_scoring import (
 from app.schemas import ArtistSimilarEventItem, ArtistSimilarEventsResponse
 from app.style_tags import extract_style_tags
 
+# Build scored similar-event rows for a source artist.
 def artist_similar_events_scored_rows(
     connection: Connection,
     *,
@@ -20,30 +21,67 @@ def artist_similar_events_scored_rows(
     scoring_config: PromoterRecommendationScoringConfig,
     collect_debug: bool = False,
 ) -> tuple[list[dict], int | None, dict[str, int]]:
+    """Collect and score similar-event rows for an artist using symbolic+embedding blend."""
+    source_event_ids, source_event_relevance_debug = artist_relevant_source_event_ids(
+        connection,
+        source_artist_id=source_artist_id,
+        scoring_config=scoring_config,
+    )
+    if not source_event_ids:
+        return [], None, {
+            "sourceEventsTotal": source_event_relevance_debug["sourceEventsTotal"],
+            "sourceEventsAfterRelevanceGate": source_event_relevance_debug[
+                "sourceEventsAfterRelevanceGate"
+            ],
+            "sourceEventsRelevanceFiltered": source_event_relevance_debug[
+                "sourceEventsRelevanceFiltered"
+            ],
+            "sourceEventsMissingEmbedding": source_event_relevance_debug[
+                "sourceEventsMissingEmbedding"
+            ],
+            "candidateRowsFetched": 0,
+            "samePromoterFiltered": 0,
+            "embeddingGateFiltered": 0,
+            "similarityLimitCutoff": 0,
+        }
+
     same_promoter_filtered_count = 0
     if collect_debug and exclude_same_promoter:
         same_promoter_filtered_count = artist_event_similarity_same_promoter_filtered_count(
             connection,
             source_artist_id=source_artist_id,
             scoring_config=scoring_config,
+            source_event_ids=source_event_ids,
         )
     candidate_rows = artist_event_similarity_candidates(
         connection,
         source_artist_id=source_artist_id,
+        source_event_ids=source_event_ids,
         limit=max(limit, 1),
         exclude_same_promoter=exclude_same_promoter,
         scoring_config=scoring_config,
     )
     if not candidate_rows:
         return [], None, {
+            "sourceEventsTotal": source_event_relevance_debug["sourceEventsTotal"],
+            "sourceEventsAfterRelevanceGate": source_event_relevance_debug[
+                "sourceEventsAfterRelevanceGate"
+            ],
+            "sourceEventsRelevanceFiltered": source_event_relevance_debug[
+                "sourceEventsRelevanceFiltered"
+            ],
+            "sourceEventsMissingEmbedding": source_event_relevance_debug[
+                "sourceEventsMissingEmbedding"
+            ],
             "candidateRowsFetched": 0,
             "samePromoterFiltered": same_promoter_filtered_count,
+            "embeddingGateFiltered": 0,
             "similarityLimitCutoff": 0,
         }
 
     source_event_ids = sorted({int(row["source_event_id"]) for row in candidate_rows})
     candidate_event_ids = [int(row["candidate_event_id"]) for row in candidate_rows]
-    event_styles = event_style_tags_by_id(connection, source_event_ids + candidate_event_ids)
+    event_styles = event_extracted_genres_by_id(connection, source_event_ids + candidate_event_ids)
     embedding_scores, embedding_dimensions = event_embedding_similarity_by_candidate(
         connection,
         source_event_ids=source_event_ids,
@@ -51,23 +89,34 @@ def artist_similar_events_scored_rows(
     )
 
     scored_rows: list[dict] = []
+    embedding_gate_filtered_count = 0
     for row in candidate_rows:
         source_styles = event_styles.get(int(row["source_event_id"]), set())
         candidate_styles = event_styles.get(int(row["candidate_event_id"]), set())
         shared_extracted_genres = sorted(source_styles & candidate_styles)
-        extracted_style_score = (
-            scoring_config.event_similarity_extracted_style_weight if shared_extracted_genres else 0.0
+        extracted_genre_score = (
+            scoring_config.event_similarity_extracted_genre_weight if shared_extracted_genres else 0.0
         )
-        symbolic_score = min(float(row["symbolic_score"]) + extracted_style_score, 1.0)
+        symbolic_score = min(float(row["symbolic_score"]) + extracted_genre_score, 1.0)
         embedding_score = float(embedding_scores.get(row["candidate_event_id"], 0.0))
-        weighted_symbolic_score = scoring_config.event_similarity_symbolic_weight * symbolic_score
-        weighted_embedding_score = scoring_config.event_similarity_embedding_weight * embedding_score
+        if embedding_score < scoring_config.event_similarity_min_embedding_score:
+            embedding_gate_filtered_count += 1
+            continue
+        weighted_symbolic_score = (
+            scoring_config.event_similarity_symbolic_weight * symbolic_score
+        )
+        weighted_embedding_score = (
+            scoring_config.event_similarity_embedding_weight * embedding_score
+        )
+        if scoring_config.event_similarity_semantic_only:
+            weighted_symbolic_score = 0.0
+            weighted_embedding_score = embedding_score
 
         scored_rows.append(
             {
                 **row,
                 "shared_extracted_genres": shared_extracted_genres,
-                "extracted_style_score": extracted_style_score,
+                "extracted_genre_score": extracted_genre_score,
                 "symbolic_score_final": symbolic_score,
                 "embedding_score": embedding_score,
                 "weighted_symbolic_score": weighted_symbolic_score,
@@ -80,22 +129,313 @@ def artist_similar_events_scored_rows(
         key=lambda item: (-item["total_similarity_score"], item["candidate_event_id"]),
     )
     return scored_rows[:limit], embedding_dimensions, {
+        "sourceEventsTotal": source_event_relevance_debug["sourceEventsTotal"],
+        "sourceEventsAfterRelevanceGate": source_event_relevance_debug[
+            "sourceEventsAfterRelevanceGate"
+        ],
+        "sourceEventsRelevanceFiltered": source_event_relevance_debug[
+            "sourceEventsRelevanceFiltered"
+        ],
+        "sourceEventsMissingEmbedding": source_event_relevance_debug[
+            "sourceEventsMissingEmbedding"
+        ],
         "candidateRowsFetched": len(candidate_rows),
         "samePromoterFiltered": same_promoter_filtered_count,
+        "embeddingGateFiltered": embedding_gate_filtered_count,
         "similarityLimitCutoff": max(len(scored_rows) - limit, 0),
     }
 
 
+# Select source-artist events that are semantically relevant to the artist profile.
+def artist_relevant_source_event_ids(
+    connection: Connection,
+    *,
+    source_artist_id: int,
+    scoring_config: PromoterRecommendationScoringConfig,
+) -> tuple[list[int], dict[str, int]]:
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT DISTINCT event_id
+            FROM event_artists
+            WHERE artist_id = %s
+            ORDER BY event_id ASC
+            """,
+            (source_artist_id,),
+        )
+        source_event_ids = [int(row["event_id"]) for row in cursor.fetchall()]
+    total_source_events = len(source_event_ids)
+    if total_source_events == 0:
+        return [], {
+            "sourceEventsTotal": 0,
+            "sourceEventsAfterRelevanceGate": 0,
+            "sourceEventsRelevanceFiltered": 0,
+            "sourceEventsMissingEmbedding": 0,
+        }
+    if not scoring_config.source_event_relevance_gate_enabled:
+        return source_event_ids, {
+            "sourceEventsTotal": total_source_events,
+            "sourceEventsAfterRelevanceGate": total_source_events,
+            "sourceEventsRelevanceFiltered": 0,
+            "sourceEventsMissingEmbedding": 0,
+        }
+
+    embedding_scores = artist_event_embedding_similarity_scores(
+        connection,
+        source_artist_id=source_artist_id,
+        source_event_ids=source_event_ids,
+    )
+    if not embedding_scores:
+        return source_event_ids, {
+            "sourceEventsTotal": total_source_events,
+            "sourceEventsAfterRelevanceGate": total_source_events,
+            "sourceEventsRelevanceFiltered": 0,
+            "sourceEventsMissingEmbedding": total_source_events,
+        }
+
+    scored_event_ids = sorted(
+        embedding_scores.items(),
+        key=lambda item: (-item[1], item[0]),
+    )
+    threshold_filtered_event_ids = [
+        event_id
+        for event_id, score in scored_event_ids
+        if score >= scoring_config.source_event_relevance_min_embedding_score
+    ]
+    if not threshold_filtered_event_ids:
+        threshold_filtered_event_ids = [scored_event_ids[0][0]]
+
+    kept_event_ids = threshold_filtered_event_ids[: scoring_config.source_event_relevance_top_k]
+    kept_event_id_set = set(kept_event_ids)
+    missing_embedding_count = sum(
+        1 for event_id in source_event_ids if event_id not in embedding_scores
+    )
+    relevance_filtered_count = max(total_source_events - len(kept_event_id_set), 0)
+    return sorted(kept_event_id_set), {
+        "sourceEventsTotal": total_source_events,
+        "sourceEventsAfterRelevanceGate": len(kept_event_id_set),
+        "sourceEventsRelevanceFiltered": relevance_filtered_count,
+        "sourceEventsMissingEmbedding": missing_embedding_count,
+    }
+
+
+# Compute semantic similarity between source artist profile embedding and each source event embedding.
+def artist_event_embedding_similarity_scores(
+    connection: Connection,
+    *,
+    source_artist_id: int,
+    source_event_ids: list[int],
+) -> dict[int, float]:
+    if not source_event_ids:
+        return {}
+
+    config = EmbeddingConfig.from_env()
+    if embedding_vector_supported(connection):
+        dimensions_filter = ""
+        params: list[object] = [source_artist_id, config.provider_model_key]
+        if config.dimensions is not None:
+            dimensions_filter = "AND dimensions = %s"
+            params.append(config.dimensions)
+        params.extend((source_event_ids, config.provider_model_key))
+        if config.dimensions is not None:
+            params.append(config.dimensions)
+
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                WITH source_artist_embedding AS (
+                    SELECT DISTINCT ON (entity_id)
+                        entity_id,
+                        dimensions,
+                        embedding_vec
+                    FROM entity_embeddings
+                    WHERE entity_type = 'artist'
+                      AND entity_id = %s
+                      AND model = %s
+                      AND embedding_vec IS NOT NULL
+                      {dimensions_filter}
+                    ORDER BY entity_id ASC, updated_at DESC
+                ),
+                source_event_embeddings AS (
+                    SELECT DISTINCT ON (entity_id)
+                        entity_id,
+                        dimensions,
+                        embedding_vec
+                    FROM entity_embeddings
+                    WHERE entity_type = 'event'
+                      AND entity_id = ANY(%s)
+                      AND model = %s
+                      AND embedding_vec IS NOT NULL
+                      {dimensions_filter}
+                    ORDER BY entity_id ASC, updated_at DESC
+                )
+                SELECT
+                    e.entity_id AS event_id,
+                    GREATEST(
+                        1 - (a.embedding_vec <=> e.embedding_vec),
+                        0.0
+                    )::double precision AS score
+                FROM source_event_embeddings e
+                JOIN source_artist_embedding a
+                    ON a.dimensions = e.dimensions
+                """,
+                params,
+            )
+            rows = cursor.fetchall()
+        return {
+            int(row["event_id"]): float(row["score"])
+            for row in rows
+            if row["event_id"] is not None
+        }
+
+    dimensions_filter = ""
+    artist_params: list[object] = ["artist", source_artist_id, config.provider_model_key]
+    event_params: list[object] = ["event", source_event_ids, config.provider_model_key]
+    if config.dimensions is not None:
+        dimensions_filter = "AND dimensions = %s"
+        artist_params.append(config.dimensions)
+        event_params.append(config.dimensions)
+
+    with connection.cursor() as cursor:
+        cursor.execute(
+            f"""
+            SELECT embedding
+            FROM entity_embeddings
+            WHERE entity_type = %s
+              AND entity_id = %s
+              AND model = %s
+              {dimensions_filter}
+            ORDER BY updated_at DESC
+            LIMIT 1
+            """,
+            artist_params,
+        )
+        source_artist_row = cursor.fetchone()
+        if source_artist_row is None:
+            return {}
+        source_artist_embedding = source_artist_row["embedding"]
+
+        cursor.execute(
+            f"""
+            SELECT DISTINCT ON (entity_id)
+                entity_id,
+                embedding
+            FROM entity_embeddings
+            WHERE entity_type = %s
+              AND entity_id = ANY(%s)
+              AND model = %s
+              {dimensions_filter}
+            ORDER BY entity_id ASC, updated_at DESC
+            """,
+            event_params,
+        )
+        event_rows = cursor.fetchall()
+
+    scores: dict[int, float] = {}
+    for row in event_rows:
+        event_embedding = row.get("embedding")
+        if event_embedding is None:
+            continue
+        scores[int(row["entity_id"])] = max(
+            cosine_similarity(source_artist_embedding, event_embedding),
+            0.0,
+        )
+    return scores
+
+# Compute candidate event embedding similarity against source events.
 def event_embedding_similarity_by_candidate(
     connection: Connection,
     *,
     source_event_ids: list[int],
     candidate_event_ids: list[int],
 ) -> tuple[dict[int, float], int | None]:
+    """Compute max cosine similarity from candidate event to any source event embedding."""
     if not source_event_ids or not candidate_event_ids:
         return {}, None
 
     config = EmbeddingConfig.from_env()
+    if embedding_vector_supported(connection):
+        dimensions_filter = ""
+        params: list[object] = [
+            source_event_ids,
+            config.provider_model_key,
+        ]
+        if config.dimensions is not None:
+            dimensions_filter = "AND dimensions = %s"
+            params.append(config.dimensions)
+        params.extend((candidate_event_ids, config.provider_model_key))
+        if config.dimensions is not None:
+            params.append(config.dimensions)
+
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                WITH source_embeddings AS (
+                    SELECT DISTINCT ON (entity_id)
+                        entity_id,
+                        dimensions,
+                        embedding_vec
+                    FROM entity_embeddings
+                    WHERE entity_type = 'event'
+                      AND entity_id = ANY(%s)
+                      AND model = %s
+                      AND embedding_vec IS NOT NULL
+                      {dimensions_filter}
+                    ORDER BY entity_id ASC, updated_at DESC
+                ),
+                candidate_embeddings AS (
+                    SELECT DISTINCT ON (entity_id)
+                        entity_id,
+                        dimensions,
+                        embedding_vec
+                    FROM entity_embeddings
+                    WHERE entity_type = 'event'
+                      AND entity_id = ANY(%s)
+                      AND model = %s
+                      AND embedding_vec IS NOT NULL
+                      {dimensions_filter}
+                    ORDER BY entity_id ASC, updated_at DESC
+                ),
+                scored_candidates AS (
+                    SELECT
+                        c.entity_id AS candidate_event_id,
+                        max(
+                            GREATEST(
+                                1 - (s.embedding_vec <=> c.embedding_vec),
+                                0.0
+                            )
+                        )::double precision AS score
+                    FROM candidate_embeddings c
+                    JOIN source_embeddings s
+                        ON s.dimensions = c.dimensions
+                    GROUP BY c.entity_id
+                ),
+                source_dims AS (
+                    SELECT max(dimensions)::int AS dimensions
+                    FROM source_embeddings
+                )
+                SELECT
+                    sc.candidate_event_id,
+                    sc.score,
+                    sd.dimensions
+                FROM scored_candidates sc
+                CROSS JOIN source_dims sd
+                """,
+                params,
+            )
+            rows = cursor.fetchall()
+
+        if not rows:
+            return {}, config.dimensions
+
+        dimensions = rows[0].get("dimensions")
+        scores = {
+            int(row["candidate_event_id"]): float(row["score"])
+            for row in rows
+            if row["candidate_event_id"] is not None
+        }
+        return scores, int(dimensions) if dimensions is not None else config.dimensions
+
     target_event_ids = set(source_event_ids) | set(candidate_event_ids)
     dimensions_filter = ""
     params: list[object] = ["event", list(target_event_ids), config.provider_model_key]
@@ -146,8 +486,9 @@ def event_embedding_similarity_by_candidate(
         )
     return scores, dimensions
 
-
-def event_style_tags_by_id(connection: Connection, event_ids: list[int]) -> dict[int, set[str]]:
+# Extract normalized style tags for a set of events.
+def event_extracted_genres_by_id(connection: Connection, event_ids: list[int]) -> dict[int, set[str]]:
+    """Extract normalized style/genre tags from event title + description + lineup text."""
     if not event_ids:
         return {}
 
@@ -182,15 +523,17 @@ def event_style_tags_by_id(connection: Connection, event_ids: list[int]) -> dict
         styles_by_event_id[int(row["id"])] = set(extract_style_tags(style_input))
     return styles_by_event_id
 
-
+# Fetch symbolic event-similarity candidates for an artist.
 def artist_event_similarity_candidates(
     connection: Connection,
     *,
     source_artist_id: int,
+    source_event_ids: list[int],
     limit: int,
     exclude_same_promoter: bool,
     scoring_config: PromoterRecommendationScoringConfig,
 ) -> list[dict]:
+    """Fetch raw symbolic similarity candidates between source-artist events and other events."""
     with connection.cursor() as cursor:
         cursor.execute(
             """
@@ -204,6 +547,7 @@ def artist_event_similarity_candidates(
                 JOIN events e
                     ON e.id = ea.event_id
                 WHERE ea.artist_id = %(source_artist_id)s
+                  AND e.id = ANY(%(source_event_ids)s)
             ),
             source_promoters AS (
                 SELECT DISTINCT ep.promoter_id
@@ -302,6 +646,7 @@ def artist_event_similarity_candidates(
             """,
             {
                 "source_artist_id": source_artist_id,
+                "source_event_ids": source_event_ids,
                 "limit": max(limit, 1),
                 "exclude_same_promoter": exclude_same_promoter,
                 "same_venue_weight": scoring_config.event_similarity_same_venue_weight,
@@ -311,13 +656,15 @@ def artist_event_similarity_candidates(
         )
         return cursor.fetchall()
 
-
+# Count how many candidates are filtered by same-promoter exclusion.
 def artist_event_similarity_same_promoter_filtered_count(
     connection: Connection,
     *,
     source_artist_id: int,
     scoring_config: PromoterRecommendationScoringConfig,
+    source_event_ids: list[int],
 ) -> int:
+    """Count event candidates removed solely because they share source promoters."""
     with connection.cursor() as cursor:
         cursor.execute(
             """
@@ -329,6 +676,7 @@ def artist_event_similarity_same_promoter_filtered_count(
                 JOIN events e
                     ON e.id = ea.event_id
                 WHERE ea.artist_id = %(source_artist_id)s
+                  AND e.id = ANY(%(source_event_ids)s)
             ),
             source_promoters AS (
                 SELECT DISTINCT ep.promoter_id
@@ -402,6 +750,7 @@ def artist_event_similarity_same_promoter_filtered_count(
             """,
             {
                 "source_artist_id": source_artist_id,
+                "source_event_ids": source_event_ids,
                 "same_venue_weight": scoring_config.event_similarity_same_venue_weight,
                 "shared_genre_weight": scoring_config.event_similarity_shared_genre_weight,
                 "shared_lineup_weight": scoring_config.event_similarity_shared_lineup_weight,
@@ -410,7 +759,7 @@ def artist_event_similarity_same_promoter_filtered_count(
         row = cursor.fetchone()
     return int(row["filtered_count"]) if row else 0
 
-
+# Build artist similar-events API response.
 def build_artist_similar_events_response(
     connection: Connection,
     *,
@@ -419,6 +768,7 @@ def build_artist_similar_events_response(
     debug: bool,
     exclude_same_promoter: bool,
 ) -> ArtistSimilarEventsResponse:
+    """Build artist->similar-events response with blended symbolic and semantic signals."""
     with connection.cursor() as cursor:
         cursor.execute(
             """
@@ -450,11 +800,22 @@ def build_artist_similar_events_response(
             similarEvents=[],
             debug={
                 "candidateCounts": {
+                    "sourceEventsTotal": similar_events_debug_counts["sourceEventsTotal"],
+                    "sourceEventsAfterRelevanceGate": similar_events_debug_counts[
+                        "sourceEventsAfterRelevanceGate"
+                    ],
                     "scoredCandidates": 0,
                     "returnedCandidates": 0,
                 },
                 "filteredOut": {
+                    "sourceEventRelevance": similar_events_debug_counts[
+                        "sourceEventsRelevanceFiltered"
+                    ],
+                    "sourceEventMissingEmbedding": similar_events_debug_counts[
+                        "sourceEventsMissingEmbedding"
+                    ],
                     "samePromoter": similar_events_debug_counts["samePromoterFiltered"],
+                    "embeddingGate": similar_events_debug_counts["embeddingGateFiltered"],
                     "similarityLimitCutoff": similar_events_debug_counts["similarityLimitCutoff"],
                     "responseLimitCutoff": 0,
                 },
@@ -504,13 +865,14 @@ def build_artist_similar_events_response(
                         "sharedGenreCount": row["shared_genre_count"],
                         "sharedExtractedGenres": row["shared_extracted_genres"],
                         "sharedLineupCount": row["shared_lineup_count"],
-                        "extractedStyleScore": row["extracted_style_score"],
+                        "extractedGenreScore": row["extracted_genre_score"],
                         "symbolicScore": row["symbolic_score_final"],
                         "embeddingScore": row["embedding_score"],
                     },
                     "weights": {
                         "symbolic": scoring_config.event_similarity_symbolic_weight,
                         "embedding": scoring_config.event_similarity_embedding_weight,
+                        "semanticOnlyMode": scoring_config.event_similarity_semantic_only,
                     },
                     "weightedScores": {
                         "symbolic": score_breakdown["symbolic"],
@@ -535,11 +897,20 @@ def build_artist_similar_events_response(
         similarEvents=similar_events,
         debug={
             "candidateCounts": {
+                "sourceEventsTotal": similar_events_debug_counts["sourceEventsTotal"],
+                "sourceEventsAfterRelevanceGate": similar_events_debug_counts[
+                    "sourceEventsAfterRelevanceGate"
+                ],
                 "scoredCandidates": similar_events_debug_counts["candidateRowsFetched"],
                 "returnedCandidates": len(similar_events),
             },
             "filteredOut": {
+                "sourceEventRelevance": similar_events_debug_counts["sourceEventsRelevanceFiltered"],
+                "sourceEventMissingEmbedding": similar_events_debug_counts[
+                    "sourceEventsMissingEmbedding"
+                ],
                 "samePromoter": similar_events_debug_counts["samePromoterFiltered"],
+                "embeddingGate": similar_events_debug_counts["embeddingGateFiltered"],
                 "similarityLimitCutoff": similar_events_debug_counts["similarityLimitCutoff"],
                 "responseLimitCutoff": response_limit_cutoff,
             },
@@ -547,5 +918,3 @@ def build_artist_similar_events_response(
         if debug
         else None,
     )
-
-

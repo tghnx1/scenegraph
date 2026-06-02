@@ -10,6 +10,7 @@ from app.event_similarity import artist_similar_events_scored_rows
 from app.promoter_graph import (
     date_recency_score,
     promoter_direct_connection_evidence,
+    promoter_manual_connection_evidence,
     promoter_recommendation_evidence,
     promoter_recommendation_graph,
     promoter_recommendation_item_evidence,
@@ -21,11 +22,18 @@ from app.recommendation_engine import (
     apply_artist_indirect_features,
     recommendation_feature_sets,
 )
-from app.recommendation_helpers import build_artist_semantic_candidates, recommendation_item_metadata
+from app.recommendation_helpers import (
+    artist_semantic_metadata,
+    build_artist_semantic_candidates,
+    recommendation_item_metadata,
+)
 from app.recommendation_scoring import (
     DEFAULT_RECOMMENDATION_SCORING,
+    artist_recommendation_min_semantic_score_from_env,
     final_recommendation_score,
     hybrid_graph_score,
+    promoter_segment_quota_ratios_from_env,
+    promoter_segment_warm_share_from_env,
     promoter_recommendation_scoring_from_env,
 )
 from app.schemas import (
@@ -40,8 +48,9 @@ from app.schemas import (
 
 logger = logging.getLogger(__name__)
 
-
+# Build short explanation strings for semantic artist matches.
 def semantic_artist_reasons(item: dict) -> list[str]:
+    """Build short human-readable reasons for artist-to-artist semantic similarity."""
     reasons = []
     shared_styles = item["shared_styles"]
     shared_tags = item["shared_tags"]
@@ -59,8 +68,9 @@ def semantic_artist_reasons(item: dict) -> list[str]:
         reasons.append("semantic similarity")
     return reasons[:3]
 
-
+# Read source artist scale statistics used by size-fit scoring.
 def source_artist_scale_stats(connection: Connection, *, artist_id: int) -> dict[str, int | float | None]:
+    """Return source artist scale stats used for promoter size-fit normalization."""
     with connection.cursor() as cursor:
         cursor.execute(
             """
@@ -76,6 +86,7 @@ def source_artist_scale_stats(connection: Connection, *, artist_id: int) -> dict
             ),
             source_interested AS (
                 SELECT
+                    avg(e.interested_count)::double precision AS avg_interested,
                     percentile_cont(0.5) WITHIN GROUP (ORDER BY e.interested_count)::double precision
                         AS median_interested
                 FROM source_events se
@@ -83,7 +94,7 @@ def source_artist_scale_stats(connection: Connection, *, artist_id: int) -> dict
                     ON e.id = se.event_id
                 WHERE e.interested_count IS NOT NULL
             )
-            SELECT ss.event_count, si.median_interested
+            SELECT ss.event_count, si.avg_interested, si.median_interested
             FROM source_scales ss
             CROSS JOIN source_interested si
             """,
@@ -91,10 +102,10 @@ def source_artist_scale_stats(connection: Connection, *, artist_id: int) -> dict
         )
         row = cursor.fetchone()
     if row is None:
-        return {"event_count": 0, "median_interested": None}
+        return {"event_count": 0, "avg_interested": None, "median_interested": None}
     return row
 
-
+# Convert source/promoter scale ratio into a smooth fit score.
 def scale_fit_score(
     *,
     artist_scale: float,
@@ -102,10 +113,11 @@ def scale_fit_score(
     alpha: float,
     tau: float,
 ) -> float:
+    """Score how close promoter scale is to source-artist scale in log-ratio space."""
     ratio = (promoter_scale + alpha) / (artist_scale + alpha)
     return math.exp(-abs(math.log(ratio)) / tau)
 
-
+# Map event volume into coarse scale buckets.
 def scale_bucket(event_count: int) -> int:
     """
     Coarse promoter scale buckets by related event volume.
@@ -117,8 +129,9 @@ def scale_bucket(event_count: int) -> int:
         return 1
     return 2
 
-
+# Penalize bucket distance between source artist and promoter scale.
 def scale_bucket_match_multiplier(source_event_count: int, promoter_event_count: int) -> float:
+    """Convert discrete source/promoter bucket distance into a multiplicative penalty."""
     distance = abs(scale_bucket(source_event_count) - scale_bucket(promoter_event_count))
     if distance == 0:
         return 1.0
@@ -127,6 +140,164 @@ def scale_bucket_match_multiplier(source_event_count: int, promoter_event_count:
     return 0.30
 
 
+def interested_tertile_thresholds(values: list[int]) -> tuple[float, float]:
+    if not values:
+        return 0.0, 0.0
+    sorted_values = sorted(float(value) for value in values)
+    if len(sorted_values) == 1:
+        return sorted_values[0], sorted_values[0]
+
+    def percentile(percent: float) -> float:
+        index = (len(sorted_values) - 1) * percent
+        lower_index = math.floor(index)
+        upper_index = math.ceil(index)
+        if lower_index == upper_index:
+            return sorted_values[lower_index]
+        ratio = index - lower_index
+        return (
+            sorted_values[lower_index]
+            + (sorted_values[upper_index] - sorted_values[lower_index]) * ratio
+        )
+
+    return percentile(1.0 / 3.0), percentile(2.0 / 3.0)
+
+
+# Compute distribution thresholds for artist size segmentation by average interested count.
+def artist_interest_segment_thresholds(connection: Connection) -> tuple[float, float]:
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            WITH artist_interest AS (
+                SELECT
+                    ea.artist_id,
+                    avg(e.interested_count)::double precision AS avg_interested
+                FROM event_artists ea
+                JOIN events e
+                    ON e.id = ea.event_id
+                WHERE e.interested_count IS NOT NULL
+                GROUP BY ea.artist_id
+            )
+            SELECT
+                COALESCE(percentile_cont(0.333333) WITHIN GROUP (ORDER BY avg_interested), 0)::double precision
+                    AS low_threshold,
+                COALESCE(percentile_cont(0.666667) WITHIN GROUP (ORDER BY avg_interested), 0)::double precision
+                    AS high_threshold
+            FROM artist_interest
+            """
+        )
+        row = cursor.fetchone()
+    if row is None:
+        return 0.0, 0.0
+    return float(row["low_threshold"]), float(row["high_threshold"])
+
+
+# Map an interested metric into small/medium/large segment.
+def interest_segment_label(value: float | int | None, *, low_threshold: float, high_threshold: float) -> str:
+    if value is None:
+        return "small"
+    numeric_value = float(value)
+    if numeric_value <= low_threshold:
+        return "small"
+    if numeric_value <= high_threshold:
+        return "medium"
+    return "large"
+
+
+def promoter_segment_sort_order(source_artist_size_segment: str) -> tuple[str, str, str]:
+    """Return segment priority order aligned with source artist size segment."""
+    if source_artist_size_segment == "small":
+        return ("small", "medium", "large")
+    if source_artist_size_segment == "medium":
+        return ("medium", "large", "small")
+    return ("large", "medium", "small")
+
+
+def segment_quota_counts(
+    *,
+    limit: int,
+    segment_order: tuple[str, str, str],
+    segment_ratios: dict[str, float],
+) -> dict[str, int]:
+    """Convert segment ratios into integer quota counts with deterministic remainder distribution."""
+    raw_quota = {
+        segment: float(limit) * max(float(segment_ratios.get(segment, 0.0)), 0.0)
+        for segment in segment_order
+    }
+    quota_counts = {segment: int(math.floor(value)) for segment, value in raw_quota.items()}
+    assigned = sum(quota_counts.values())
+    remainder = max(limit - assigned, 0)
+    segment_by_fraction = sorted(
+        segment_order,
+        key=lambda segment: (-(raw_quota[segment] - quota_counts[segment]), segment_order.index(segment)),
+    )
+    for segment in segment_by_fraction[:remainder]:
+        quota_counts[segment] += 1
+    return quota_counts
+
+
+# Resolve shared artists for concrete source-event and candidate-event pairs.
+def event_similarity_shared_artists_by_pair(
+    connection: Connection,
+    *,
+    source_artist_id: int,
+    event_pairs: list[tuple[int, int]],
+) -> dict[tuple[int, int], list[dict[str, object]]]:
+    if not event_pairs:
+        return {}
+
+    source_event_ids = [source_event_id for source_event_id, _ in event_pairs]
+    candidate_event_ids = [candidate_event_id for _, candidate_event_id in event_pairs]
+
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            WITH requested_pairs AS (
+                SELECT *
+                FROM unnest(%(source_event_ids)s::bigint[], %(candidate_event_ids)s::bigint[])
+                    AS pair(source_event_id, candidate_event_id)
+            )
+            SELECT
+                pair.source_event_id,
+                pair.candidate_event_id,
+                a.id AS artist_id,
+                a.name AS artist_name
+            FROM requested_pairs pair
+            JOIN event_artists ea_source
+                ON ea_source.event_id = pair.source_event_id
+            JOIN event_artists ea_candidate
+                ON ea_candidate.event_id = pair.candidate_event_id
+               AND ea_candidate.artist_id = ea_source.artist_id
+            JOIN artists a
+                ON a.id = ea_source.artist_id
+            WHERE ea_source.artist_id <> %(source_artist_id)s
+            ORDER BY pair.source_event_id ASC, pair.candidate_event_id ASC, a.name ASC
+            """,
+            {
+                "source_event_ids": source_event_ids,
+                "candidate_event_ids": candidate_event_ids,
+                "source_artist_id": source_artist_id,
+            },
+        )
+        rows = cursor.fetchall()
+
+    result: dict[tuple[int, int], list[dict[str, object]]] = {}
+    for row in rows:
+        source_event_id = int(row["source_event_id"] if isinstance(row, dict) else row[0])
+        candidate_event_id = int(row["candidate_event_id"] if isinstance(row, dict) else row[1])
+        artist_id = int(row["artist_id"] if isinstance(row, dict) else row[2])
+        artist_name = row["artist_name"] if isinstance(row, dict) else row[3]
+
+        pair_key = (source_event_id, candidate_event_id)
+        result.setdefault(pair_key, []).append(
+            {
+                "id": artist_id,
+                "name": artist_name,
+            }
+        )
+
+    return result
+
+# Build semantic similar-artists API payload.
 def build_artist_semantic_response(
     connection: Connection,
     *,
@@ -134,11 +305,14 @@ def build_artist_semantic_response(
     limit: int,
     debug: bool = False,
 ) -> SemanticArtistResponse:
+    """Build API response for similar artists with semantic score breakdown."""
+    min_semantic_score = artist_recommendation_min_semantic_score_from_env()
     source, scored = build_artist_semantic_candidates(
         connection,
         artist_id=artist_id,
         debug=debug,
     )
+    scored = [item for item in scored if item["score"] >= min_semantic_score]
     similar = [
         SemanticArtistItem(
             id=item["entity_id"],
@@ -162,18 +336,25 @@ def build_artist_semantic_response(
         similar=similar,
     )
 
-
+# Build hybrid artist recommendations (semantic + graph).
 def build_artist_recommendation_response(
     connection: Connection,
     *,
     artist_id: int,
     limit: int,
 ) -> ArtistRecommendationResponse:
+    """Build hybrid artist recommendations (semantic + graph) for an artist source."""
+    min_semantic_score = artist_recommendation_min_semantic_score_from_env()
     source, semantic_candidates = build_artist_semantic_candidates(
         connection,
         artist_id=artist_id,
         debug=False,
     )
+    semantic_candidates = [
+        item
+        for item in semantic_candidates
+        if item["score"] >= min_semantic_score
+    ]
     candidate_ids = [item["entity_id"] for item in semantic_candidates]
     features = recommendation_feature_sets(connection, "artist", [artist_id, *candidate_ids])
     features = apply_artist_indirect_features(
@@ -230,7 +411,7 @@ def build_artist_recommendation_response(
         )[:limit],
     )
 
-
+# Build the main Artist -> Promoter recommendation response.
 def build_artist_promoter_recommendation_response(
     connection: Connection,
     *,
@@ -239,6 +420,7 @@ def build_artist_promoter_recommendation_response(
     exclude_existing: bool,
     debug: bool,
 ) -> PromoterRecommendationResponse:
+    """Build Artist -> Promoter recommendations with all weighted internal signals."""
     scoring_config = promoter_recommendation_scoring_from_env()
     source, semantic_candidates = build_artist_semantic_candidates(
         connection,
@@ -249,18 +431,74 @@ def build_artist_promoter_recommendation_response(
     source_artist = source_metadata.get(artist_id)
     if source_artist is None:
         raise HTTPException(status_code=404, detail=f"Artist {artist_id} not found")
+    artist_interest_low_threshold, artist_interest_high_threshold = (
+        artist_interest_segment_thresholds(connection)
+    )
 
+    semantic_candidates_filtered = [
+        item
+        for item in semantic_candidates
+        if item["score"] >= scoring_config.semantic_artist_min_score
+    ]
+    semantic_artist_below_threshold_filtered = max(
+        len(semantic_candidates) - len(semantic_candidates_filtered),
+        0,
+    )
     candidate_scores = {
         item["entity_id"]: item["score"]
-        for item in semantic_candidates[:500]
-        if item["score"] > 0
+        for item in semantic_candidates_filtered[:scoring_config.semantic_artist_pool_limit]
+    }
+    semantic_score_by_artist = {
+        int(item["entity_id"]): float(item["score"])
+        for item in semantic_candidates
     }
     artist_ids = list(candidate_scores.keys())
     artist_scores = [candidate_scores[artist_id] for artist_id in artist_ids]
+    manual_known_artist_ids: set[int] = set()
+    manual_relevant_artist_ids: set[int] = set()
+    manual_relevant_by_semantic_ids: set[int] = set()
+    manual_relevant_by_profile_fallback_ids: set[int] = set()
+    manual_semantic_gate_filtered_count = 0
     with connection.cursor() as cursor:
         cursor.execute("SELECT to_regclass('public.artist_manual_connections') IS NOT NULL AS exists")
         manual_connections_table_exists = bool(cursor.fetchone()["exists"])
         if manual_connections_table_exists:
+            cursor.execute(
+                """
+                SELECT connected_artist_id
+                FROM artist_manual_connections
+                WHERE source_artist_id = %(source_artist_id)s
+                """,
+                {"source_artist_id": artist_id},
+            )
+            manual_known_artist_ids = {
+                int(row["connected_artist_id"])
+                for row in cursor.fetchall()
+                if row["connected_artist_id"] is not None
+            }
+            manual_relevant_by_semantic_ids = {
+                connected_artist_id
+                for connected_artist_id in manual_known_artist_ids
+                if semantic_score_by_artist.get(connected_artist_id, 0.0)
+                >= scoring_config.manual_warm_min_artist_semantic_score
+            }
+            manual_artist_metadata = artist_semantic_metadata(
+                connection,
+                sorted(manual_known_artist_ids),
+            )
+            manual_relevant_by_profile_fallback_ids = {
+                connected_artist_id
+                for connected_artist_id in manual_known_artist_ids
+                if not manual_artist_metadata.get(connected_artist_id, {}).get("style_tags")
+                and not manual_artist_metadata.get(connected_artist_id, {}).get("tags")
+            }
+            manual_relevant_artist_ids = (
+                manual_relevant_by_semantic_ids | manual_relevant_by_profile_fallback_ids
+            )
+            manual_semantic_gate_filtered_count = max(
+                len(manual_known_artist_ids) - len(manual_relevant_artist_ids),
+                0,
+            )
             manual_known_artists_cte = """
             manual_known_artists AS (
                 SELECT
@@ -268,6 +506,7 @@ def build_artist_promoter_recommendation_response(
                     NULL::bigint AS shared_event_id
                 FROM artist_manual_connections amc
                 WHERE amc.source_artist_id = %(source_artist_id)s
+                  AND amc.connected_artist_id = ANY(%(manual_relevant_artist_ids)s::bigint[])
             ),
             """
         else:
@@ -305,11 +544,6 @@ def build_artist_promoter_recommendation_response(
                 JOIN event_artists ea_shared
                     ON ea_shared.event_id = se.event_id
                 WHERE ea_shared.artist_id <> %(source_artist_id)s
-                UNION
-                SELECT
-                    mka.co_artist_id,
-                    mka.shared_event_id
-                FROM manual_known_artists mka
             ),
             semantic_promoters AS (
                 SELECT
@@ -370,12 +604,46 @@ def build_artist_promoter_recommendation_response(
                 WHERE cpa.shared_event_id IS NULL OR e.id <> cpa.shared_event_id
                 GROUP BY ep.promoter_id
             ),
+            manual_warm_promoters AS (
+                SELECT
+                    ep.promoter_id,
+                    count(DISTINCT mka.co_artist_id)::int AS manual_warm_connection_count,
+                    jsonb_agg(
+                        DISTINCT jsonb_build_object(
+                            'id', mka.co_artist_id,
+                            'name', co_artist.name
+                        )
+                    ) AS manual_warm_connection_artists
+                FROM manual_known_artists mka
+                JOIN event_artists ea
+                    ON ea.artist_id = mka.co_artist_id
+                JOIN artists co_artist
+                    ON co_artist.id = mka.co_artist_id
+                JOIN events e
+                    ON e.id = ea.event_id
+                JOIN event_promoters ep
+                    ON ep.event_id = e.id
+                GROUP BY ep.promoter_id
+            ),
             candidate_promoters AS (
                 SELECT promoter_id FROM semantic_promoters
                 UNION
                 SELECT promoter_id FROM direct_promoters
                 UNION
                 SELECT promoter_id FROM warm_promoters
+                UNION
+                SELECT promoter_id FROM manual_warm_promoters
+            ),
+            promoter_interest AS (
+                SELECT
+                    cp.promoter_id,
+                    COALESCE(sum(GREATEST(e.interested_count, 0)), 0)::bigint AS promoter_interested_sum
+                FROM candidate_promoters cp
+                JOIN event_promoters ep
+                    ON ep.promoter_id = cp.promoter_id
+                JOIN events e
+                    ON e.id = ep.event_id
+                GROUP BY cp.promoter_id
             )
             SELECT
                 p.id,
@@ -410,7 +678,10 @@ def build_artist_promoter_recommendation_response(
                 )::date AS latest_event_date,
                 COALESCE(dp.direct_connection_count, 0)::int AS direct_connection_count,
                 COALESCE(wp.warm_connection_count, 0)::int AS warm_connection_count,
-                COALESCE(wp.warm_connection_artists, '[]'::jsonb) AS warm_connection_artists
+                COALESCE(wp.warm_connection_artists, '[]'::jsonb) AS warm_connection_artists,
+                COALESCE(mwp.manual_warm_connection_count, 0)::int AS manual_warm_connection_count,
+                COALESCE(mwp.manual_warm_connection_artists, '[]'::jsonb) AS manual_warm_connection_artists,
+                COALESCE(pi.promoter_interested_sum, 0)::bigint AS promoter_interested_sum
             FROM candidate_promoters cp
             JOIN promoters p
                 ON p.id = cp.promoter_id
@@ -420,6 +691,10 @@ def build_artist_promoter_recommendation_response(
                 ON dp.promoter_id = p.id
             LEFT JOIN warm_promoters wp
                 ON wp.promoter_id = p.id
+            LEFT JOIN manual_warm_promoters mwp
+                ON mwp.promoter_id = p.id
+            LEFT JOIN promoter_interest pi
+                ON pi.promoter_id = p.id
             ORDER BY semantic_score DESC, direct_connection_count DESC, warm_connection_count DESC, event_count DESC, p.id ASC
             LIMIT %(sql_candidate_limit)s
             """,
@@ -427,6 +702,7 @@ def build_artist_promoter_recommendation_response(
                 "artist_ids": artist_ids,
                 "artist_scores": artist_scores,
                 "source_artist_id": artist_id,
+                "manual_relevant_artist_ids": sorted(manual_relevant_artist_ids),
                 "sql_candidate_limit": scoring_config.sql_candidate_limit,
             },
         )
@@ -443,8 +719,33 @@ def build_artist_promoter_recommendation_response(
         scoring_config=scoring_config,
         collect_debug=debug,
     )
-    event_similarity_stats_by_promoter: dict[int, dict[str, object]] = {}
+    event_similarity_below_threshold_filtered = 0
+    event_similarity_embedding_gate_filtered = int(
+        similar_event_debug_counts.get("embeddingGateFiltered", 0)
+    )
+    event_similarity_per_promoter_limit_cutoff = 0
+    event_similarity_rows_by_promoter: dict[int, list[dict]] = {}
     for similar_row in similar_event_rows:
+        promoter_id = similar_row.get("promoter_id")
+        if promoter_id is None:
+            continue
+        if float(similar_row["total_similarity_score"]) < scoring_config.event_similarity_min_total_score:
+            event_similarity_below_threshold_filtered += 1
+            continue
+        event_similarity_rows_by_promoter.setdefault(int(promoter_id), []).append(similar_row)
+
+    filtered_similar_event_rows: list[dict] = []
+    for promoter_id, promoter_rows in event_similarity_rows_by_promoter.items():
+        ranked_rows = sorted(
+            promoter_rows,
+            key=lambda item: (-item["total_similarity_score"], item["candidate_event_id"]),
+        )
+        kept_rows = ranked_rows[: scoring_config.event_similarity_per_promoter_limit]
+        event_similarity_per_promoter_limit_cutoff += max(len(ranked_rows) - len(kept_rows), 0)
+        filtered_similar_event_rows.extend(kept_rows)
+
+    event_similarity_stats_by_promoter: dict[int, dict[str, object]] = {}
+    for similar_row in filtered_similar_event_rows:
         promoter_id = similar_row.get("promoter_id")
         if promoter_id is None:
             continue
@@ -479,9 +780,17 @@ def build_artist_promoter_recommendation_response(
         with connection.cursor() as cursor:
             cursor.execute(
                 """
-                SELECT id, name
-                FROM promoters
-                WHERE id = ANY(%s)
+                SELECT
+                    p.id,
+                    p.name,
+                    COALESCE(sum(GREATEST(e.interested_count, 0)), 0)::bigint AS promoter_interested_sum
+                FROM promoters p
+                LEFT JOIN event_promoters ep
+                    ON ep.promoter_id = p.id
+                LEFT JOIN events e
+                    ON e.id = ep.event_id
+                WHERE p.id = ANY(%s)
+                GROUP BY p.id, p.name
                 """,
                 (additional_promoter_ids,),
             )
@@ -499,11 +808,24 @@ def build_artist_promoter_recommendation_response(
                         "direct_connection_count": 0,
                         "warm_connection_count": 0,
                         "warm_connection_artists": [],
+                        "manual_warm_connection_count": 0,
+                        "manual_warm_connection_artists": [],
+                        "promoter_interested_sum": int(promoter["promoter_interested_sum"] or 0),
                     }
                 )
 
+    promoter_interest_low_threshold, promoter_interest_high_threshold = interested_tertile_thresholds(
+        [int(row.get("promoter_interested_sum", 0) or 0) for row in rows]
+    )
+
     source_scale_stats = source_artist_scale_stats(connection, artist_id=artist_id)
     source_artist_event_count = max(int(source_scale_stats["event_count"]), 1)
+    source_artist_avg_interested = source_scale_stats.get("avg_interested")
+    source_artist_size_segment = interest_segment_label(
+        source_artist_avg_interested,
+        low_threshold=artist_interest_low_threshold,
+        high_threshold=artist_interest_high_threshold,
+    )
     source_artist_scale = float(source_artist_event_count)
 
     recommendations = []
@@ -528,10 +850,6 @@ def build_artist_promoter_recommendation_response(
             row["direct_connection_count"] / scoring_config.direct_connection_cap,
             1.0,
         )
-        warm_network_score = min(
-            row["warm_connection_count"] / scoring_config.warm_connection_cap,
-            1.0,
-        )
         event_similarity_symbolic_score = (
             min(
                 event_similarity_count / scoring_config.event_similarity_count_cap,
@@ -543,7 +861,10 @@ def build_artist_promoter_recommendation_response(
             scoring_config.event_similarity_symbolic_weight * event_similarity_symbolic_score
             + scoring_config.event_similarity_embedding_weight * event_similarity_embedding_score
         )
-        effective_event_count = max(row["event_count"], event_similarity_count)
+        effective_event_count = max(
+            min(int(row["event_count"]), scoring_config.strength_event_cap),
+            event_similarity_count,
+        )
         effective_latest_event_date = row["latest_event_date"]
         if event_similarity_stats is not None and event_similarity_stats["latest_event_date"] is not None:
             similarity_latest_event_date = event_similarity_stats["latest_event_date"]
@@ -563,6 +884,12 @@ def build_artist_promoter_recommendation_response(
         activity_score = min(effective_event_count / scoring_config.activity_event_cap, 1.0)
         recency_score = date_recency_score(effective_latest_event_date)
         promoter_scale = float(max(effective_event_count, 1))
+        promoter_interested_sum = int(row.get("promoter_interested_sum", 0) or 0)
+        promoter_size_segment = interest_segment_label(
+            promoter_interested_sum,
+            low_threshold=promoter_interest_low_threshold,
+            high_threshold=promoter_interest_high_threshold,
+        )
         scale_bucket_multiplier = scale_bucket_match_multiplier(
             source_artist_event_count,
             effective_event_count,
@@ -590,6 +917,42 @@ def build_artist_promoter_recommendation_response(
                     }
                 )
         warm_connection_artists.sort(key=lambda item: item["id"])
+        manual_connection_artists_raw = row.get("manual_warm_connection_artists")
+        manual_connection_artists: list[dict[str, object]] = []
+        if isinstance(manual_connection_artists_raw, list):
+            for item in manual_connection_artists_raw:
+                if not isinstance(item, dict):
+                    continue
+                artist_id_value = item.get("id")
+                artist_name_value = item.get("name")
+                if artist_id_value is None or artist_name_value is None:
+                    continue
+                manual_connection_artists.append(
+                    {
+                        "id": int(artist_id_value),
+                        "name": str(artist_name_value),
+                    }
+                )
+        manual_connection_artists.sort(key=lambda item: item["id"])
+        manual_warm_connection_count_raw = int(row.get("manual_warm_connection_count", 0) or 0)
+        manual_overlap_with_warm_count = sum(
+            1
+            for item in warm_connection_artists
+            if int(item["id"]) in manual_known_artist_ids
+        )
+        manual_warm_connection_count = max(
+            manual_warm_connection_count_raw,
+            manual_overlap_with_warm_count,
+        )
+        manual_relevant_overlap_with_warm_count = sum(
+            1
+            for item in warm_connection_artists
+            if int(item["id"]) in manual_relevant_artist_ids
+        )
+        manual_relevant_warm_connection_count = max(
+            manual_warm_connection_count_raw,
+            manual_relevant_overlap_with_warm_count,
+        )
         matched_artist_names_raw = row.get("matched_artist_names")
         matched_artist_names = (
             sorted({name.strip() for name in matched_artist_names_raw if isinstance(name, str) and name.strip()})
@@ -630,22 +993,58 @@ def build_artist_promoter_recommendation_response(
             "event_count": effective_event_count,
             "latest_event_date": effective_latest_event_date,
             "warm_connection_artists": warm_connection_artists,
+            "manual_warm_connection_count": manual_warm_connection_count,
+            "manual_warm_connection_artists": manual_connection_artists,
             "matched_artist_names": matched_artist_names,
             "event_similarity_event_titles": event_similarity_event_titles,
             "related_event_titles": related_event_titles,
         }
+        co_played_connection_score = min(
+            row["warm_connection_count"] / scoring_config.warm_connection_cap,
+            1.0,
+        )
+        manual_connection_score = min(
+            manual_relevant_warm_connection_count / scoring_config.manual_warm_connection_cap,
+            1.0,
+        )
         direct_weight = 0.0 if exclude_existing else scoring_config.direct_connection_weight
+        co_played_contribution = (
+            scoring_config.co_played_connection_weight * co_played_connection_score
+        )
+        manual_connection_contribution = (
+            scoring_config.manual_connection_weight * manual_connection_score
+        )
+        semantic_contribution = scoring_config.semantic_weight * row["semantic_score"]
+        strength_contribution = scoring_config.strength_weight * strength_score
+        direct_contribution = direct_weight * direct_connection_score
+        event_similarity_contribution = (
+            scoring_config.event_similarity_weight * event_similarity_score
+        )
+        scale_fit_contribution = scoring_config.scale_fit_weight * scale_fit
+        activity_contribution = scoring_config.activity_weight * activity_score
+        recency_contribution = scoring_config.recency_weight * recency_score
         score_breakdown = {
-            "semantic": scoring_config.semantic_weight * row["semantic_score"],
-            "strength": scoring_config.strength_weight * strength_score,
-            "directConnection": direct_weight * direct_connection_score,
-            "warmNetwork": scoring_config.warm_network_weight * warm_network_score,
-            "eventSimilarity": scoring_config.event_similarity_weight * event_similarity_score,
-            "scaleFit": scoring_config.scale_fit_weight * scale_fit,
-            "activity": scoring_config.activity_weight * activity_score,
-            "recency": scoring_config.recency_weight * recency_score,
+            "semantic": semantic_contribution,
+            "strength": strength_contribution,
+            "directConnection": direct_contribution,
+            "coPlayedConnection": co_played_contribution,
+            "manualConnection": manual_connection_contribution,
+            "eventSimilarity": event_similarity_contribution,
+            "scaleFit": scale_fit_contribution,
+            "activity": activity_contribution,
+            "recency": recency_contribution,
         }
-        total_score = sum(score_breakdown.values())
+        total_score = (
+            semantic_contribution
+            + strength_contribution
+            + direct_contribution
+            + co_played_contribution
+            + manual_connection_contribution
+            + event_similarity_contribution
+            + scale_fit_contribution
+            + activity_contribution
+            + recency_contribution
+        )
         recommendations.append(
             PromoterRecommendationItem(
                 id=row["id"],
@@ -663,30 +1062,66 @@ def build_artist_promoter_recommendation_response(
                 status=promoter_recommendation_status(row_with_similarity, scoring_config),
                 warmConnectionCount=row["warm_connection_count"],
                 warmConnectionArtists=warm_connection_artists,
+                coPlayedConnectionCount=row["warm_connection_count"],
+                coPlayedConnectionArtists=warm_connection_artists,
+                manualConnectionCount=manual_warm_connection_count,
+                manualConnectionArtists=manual_connection_artists,
+                promoterInterestedSum=promoter_interested_sum,
+                promoterSizeSegment=promoter_size_segment,
                 directConnectionCount=row["direct_connection_count"],
                 evidence=promoter_recommendation_item_evidence(row_with_similarity),
+                reasonDetails={
+                    "relatedEventTitles": related_event_titles,
+                    "similarPromoterEventTitles": event_similarity_event_titles,
+                    "similarArtistNames": matched_artist_names,
+                    "coPlayedArtistNames": [str(item.get("name", "")) for item in warm_connection_artists if item.get("name")],
+                    "manualArtistNames": [str(item.get("name", "")) for item in manual_connection_artists if item.get("name")],
+                },
                 debug={
                     "rawSignals": {
                         "semanticScore": row["semantic_score"],
                         "matchedArtistCount": row["matched_artist_count"],
                         "eventCount": effective_event_count,
+                        "eventCountRaw": int(row["event_count"]),
                         "directConnectionCount": row["direct_connection_count"],
                         "warmConnectionCount": row["warm_connection_count"],
+                        "coPlayedConnectionCount": row["warm_connection_count"],
+                        "manualWarmConnectionCount": manual_warm_connection_count,
+                        "manualWarmConnectionCountRaw": manual_warm_connection_count_raw,
+                        "manualWarmOverlapWithWarmCount": manual_overlap_with_warm_count,
+                        "manualRelevantWarmConnectionCount": manual_relevant_warm_connection_count,
+                        "manualRelevantOverlapWithWarmCount": manual_relevant_overlap_with_warm_count,
+                        "manualKnownArtistCount": len(manual_known_artist_ids),
+                        "manualRelevantArtistCount": len(manual_relevant_artist_ids),
+                        "manualRelevantBySemanticCount": len(manual_relevant_by_semantic_ids),
+                        "manualRelevantByProfileFallbackCount": len(manual_relevant_by_profile_fallback_ids),
+                        "manualSemanticGateFilteredCount": manual_semantic_gate_filtered_count,
+                        "manualWarmMinArtistSemanticScore": scoring_config.manual_warm_min_artist_semantic_score,
+                        "coPlayedConnectionWeight": scoring_config.co_played_connection_weight,
+                        "manualConnectionWeight": scoring_config.manual_connection_weight,
+                        "manualConnectionArtists": manual_connection_artists,
                         "eventSimilarityCount": event_similarity_count,
                         "eventSimilaritySymbolicScore": event_similarity_symbolic_score,
                         "eventSimilarityEmbeddingScore": event_similarity_embedding_score,
+                        "eventSimilarityEventTitles": event_similarity_event_titles,
+                        "relatedEventTitles": related_event_titles,
+                        "matchedArtistNames": matched_artist_names,
                         "artistScale": source_artist_scale,
                         "promoterScale": promoter_scale,
+                        "promoterInterestedSum": promoter_interested_sum,
+                        "promoterSizeSegment": promoter_size_segment,
                         "artistScaleEventCount": source_artist_event_count,
                         "promoterScaleEventCount": effective_event_count,
                         "scaleBucketMultiplier": scale_bucket_multiplier,
                         "scaleFit": scale_fit,
                         "warmConnectionArtists": warm_connection_artists,
+                        "coPlayedConnectionArtists": warm_connection_artists,
                     },
                     "normalizedScores": {
                         "strength": strength_score,
                         "directConnection": direct_connection_score,
-                        "warmNetwork": warm_network_score,
+                        "coPlayedConnection": co_played_connection_score,
+                        "manualConnection": manual_connection_score,
                         "eventSimilarity": event_similarity_score,
                         "scaleFit": scale_fit,
                         "activity": activity_score,
@@ -706,20 +1141,117 @@ def build_artist_promoter_recommendation_response(
         recommendations,
         key=lambda recommendation: (-recommendation.score, recommendation.id),
     )
+    segment_order = promoter_segment_sort_order(source_artist_size_segment)
+    size_sort_order = {segment: index for index, segment in enumerate(segment_order)}
+    segment_quota_ratios_by_source = promoter_segment_quota_ratios_from_env()
+    segment_quota_ratios = segment_quota_ratios_by_source[source_artist_size_segment]
+    segment_warm_share = promoter_segment_warm_share_from_env()
+    applied_segment_quotas = segment_quota_counts(
+        limit=limit,
+        segment_order=segment_order,
+        segment_ratios=segment_quota_ratios,
+    )
     warm_recommendations_all = [
         recommendation
         for recommendation in sorted_recommendations
-        if recommendation.warmConnectionCount > 0
+        if recommendation.warmConnectionCount > 0 or recommendation.manualConnectionCount > 0
     ]
     discovery_recommendations_all = [
         recommendation
         for recommendation in sorted_recommendations
-        if recommendation.warmConnectionCount == 0
+        if recommendation.warmConnectionCount == 0 and recommendation.manualConnectionCount == 0
     ]
-    warm_recommendations = warm_recommendations_all[:limit]
-    remaining_slots = max(limit - len(warm_recommendations), 0)
-    discovery_recommendations = discovery_recommendations_all[:remaining_slots]
-    recommendations = [*warm_recommendations, *discovery_recommendations]
+    segmented_ranked_pool: dict[str, list[PromoterRecommendationItem]] = {}
+    segment_quota_allocations: dict[str, dict[str, int]] = {}
+    for segment in segment_order:
+        segment_candidates = [
+            recommendation
+            for recommendation in sorted_recommendations
+            if recommendation.promoterSizeSegment == segment
+        ]
+        segment_warm = [
+            recommendation
+            for recommendation in segment_candidates
+            if recommendation.warmConnectionCount > 0 or recommendation.manualConnectionCount > 0
+        ]
+        segment_discovery = [
+            recommendation
+            for recommendation in segment_candidates
+            if recommendation.warmConnectionCount == 0 and recommendation.manualConnectionCount == 0
+        ]
+        quota = applied_segment_quotas.get(segment, 0)
+        warm_quota = min(len(segment_warm), int(math.floor(float(quota) * segment_warm_share)))
+        discovery_quota = min(len(segment_discovery), max(quota - warm_quota, 0))
+        selected_ids: set[int] = set()
+        selected_segment: list[PromoterRecommendationItem] = []
+        for recommendation in [*segment_warm[:warm_quota], *segment_discovery[:discovery_quota]]:
+            selected_segment.append(recommendation)
+            selected_ids.add(recommendation.id)
+        remaining_segment_slots = max(quota - len(selected_segment), 0)
+        if remaining_segment_slots > 0:
+            backfill_segment = [
+                recommendation
+                for recommendation in segment_candidates
+                if recommendation.id not in selected_ids
+            ][:remaining_segment_slots]
+            selected_segment.extend(backfill_segment)
+        segment_quota_allocations[segment] = {
+            "quota": quota,
+            "warmQuotaTarget": int(math.floor(float(quota) * segment_warm_share)),
+            "warmSelected": sum(
+                1
+                for recommendation in selected_segment
+                if recommendation.warmConnectionCount > 0 or recommendation.manualConnectionCount > 0
+            ),
+            "discoverySelected": sum(
+                1
+                for recommendation in selected_segment
+                if recommendation.warmConnectionCount == 0 and recommendation.manualConnectionCount == 0
+            ),
+        }
+        segmented_ranked_pool[segment] = selected_segment
+
+    recommendations = []
+    for segment in segment_order:
+        recommendations.extend(segmented_ranked_pool[segment])
+
+    remaining_slots = max(limit - len(recommendations), 0)
+    if remaining_slots > 0:
+        backfill_pool: list[PromoterRecommendationItem] = []
+        for segment in segment_order:
+            segment_candidates = [
+                recommendation
+                for recommendation in sorted_recommendations
+                if recommendation.promoterSizeSegment == segment
+            ]
+            selected_ids = {recommendation.id for recommendation in segmented_ranked_pool[segment]}
+            backfill_pool.extend(
+                recommendation
+                for recommendation in segment_candidates
+                if recommendation.id not in selected_ids
+            )
+        recommendations.extend(backfill_pool[:remaining_slots])
+
+    recommendations = recommendations[:limit]
+    warm_recommendations = [
+        recommendation
+        for recommendation in recommendations
+        if recommendation.warmConnectionCount > 0 or recommendation.manualConnectionCount > 0
+    ]
+    discovery_recommendations = [
+        recommendation
+        for recommendation in recommendations
+        if recommendation.warmConnectionCount == 0 and recommendation.manualConnectionCount == 0
+    ]
+    large_recommendations = [
+        recommendation for recommendation in recommendations if recommendation.promoterSizeSegment == "large"
+    ]
+    medium_recommendations = [
+        recommendation for recommendation in recommendations if recommendation.promoterSizeSegment == "medium"
+    ]
+    small_recommendations = [
+        recommendation for recommendation in recommendations if recommendation.promoterSizeSegment == "small"
+    ]
     recommendation_limit_cutoff = max(len(sorted_recommendations) - len(recommendations), 0)
     warm_limit_cutoff = max(len(warm_recommendations_all) - len(warm_recommendations), 0)
     discovery_limit_cutoff = max(len(discovery_recommendations_all) - len(discovery_recommendations), 0)
@@ -729,27 +1261,66 @@ def build_artist_promoter_recommendation_response(
             model=source["model"],
             dimensions=source["dimensions"],
             recommendations=[],
+            largeRecommendations=[],
+            mediumRecommendations=[],
+            smallRecommendations=[],
             warmRecommendations=[],
             discoveryRecommendations=[],
             graph=GraphResponse(nodes=[], links=[]),
             debug={
                 "candidateCounts": {
                     "sqlPromoterCandidates": len(rows),
+                    "semanticArtistsUsed": len(candidate_scores),
+                    "sourceEventsTotal": similar_event_debug_counts["sourceEventsTotal"],
+                    "sourceEventsAfterRelevanceGate": similar_event_debug_counts[
+                        "sourceEventsAfterRelevanceGate"
+                    ],
                     "eventSimilarityPromotersAdded": len(additional_promoter_ids),
                     "warmCandidates": 0,
+                    "coPlayedCandidates": 0,
+                    "manualConnectionCandidates": 0,
                     "discoveryCandidates": 0,
                     "recommendationsBeforeLimit": 0,
                     "returnedRecommendations": 0,
                     "returnedWarmRecommendations": 0,
+                    "returnedCoPlayedRecommendations": 0,
                     "returnedDiscoveryRecommendations": 0,
+                    "returnedLargeRecommendations": 0,
+                    "returnedMediumRecommendations": 0,
+                    "returnedSmallRecommendations": 0,
                 },
                 "filteredOut": {
                     "excludeExisting": exclude_existing_filtered_count,
+                    "semanticArtistBelowThreshold": semantic_artist_below_threshold_filtered,
+                    "sourceEventRelevance": similar_event_debug_counts["sourceEventsRelevanceFiltered"],
+                    "sourceEventMissingEmbedding": similar_event_debug_counts[
+                        "sourceEventsMissingEmbedding"
+                    ],
                     "eventSimilaritySamePromoter": similar_event_debug_counts["samePromoterFiltered"],
                     "eventSimilarityLimitCutoff": similar_event_debug_counts["similarityLimitCutoff"],
+                    "eventSimilarityEmbeddingGate": event_similarity_embedding_gate_filtered,
+                    "eventSimilarityBelowThreshold": event_similarity_below_threshold_filtered,
+                    "eventSimilarityPerPromoterLimitCutoff": event_similarity_per_promoter_limit_cutoff,
                     "recommendationLimitCutoff": 0,
                     "warmLimitCutoff": 0,
                     "discoveryLimitCutoff": 0,
+                },
+                "segments": {
+                    "promoterInterestedSumThresholds": {
+                        "smallMax": promoter_interest_low_threshold,
+                        "mediumMax": promoter_interest_high_threshold,
+                    },
+                    "sourceArtistAverageInterested": source_artist_avg_interested,
+                    "sourceArtistSizeSegment": source_artist_size_segment,
+                    "appliedPromoterSegmentSortOrder": [*size_sort_order.keys()],
+                    "appliedPromoterSegmentQuotaRatios": segment_quota_ratios,
+                    "appliedPromoterSegmentQuotaCounts": applied_segment_quotas,
+                    "appliedPromoterSegmentWarmShare": segment_warm_share,
+                    "appliedPromoterSegmentSelections": segment_quota_allocations,
+                    "artistAverageInterestedThresholds": {
+                        "smallMax": artist_interest_low_threshold,
+                        "mediumMax": artist_interest_high_threshold,
+                    },
                 },
             }
             if debug
@@ -776,7 +1347,17 @@ def build_artist_promoter_recommendation_response(
         source_artist_id=artist_id,
         promoter_ids=promoter_ids,
     )
+    promoter_manual_artist_ids: dict[int, list[int]] = {}
+    for recommendation in recommendations:
+        trusted_artist_ids = sorted({artist.id for artist in recommendation.manualConnectionArtists})
+        if trusted_artist_ids:
+            promoter_manual_artist_ids[recommendation.id] = trusted_artist_ids
+    manual_evidence = promoter_manual_connection_evidence(
+        connection,
+        promoter_manual_artist_ids=promoter_manual_artist_ids,
+    )
     event_similarity_evidence: list[dict] = []
+    event_similarity_pairs: list[tuple[int, int]] = []
     for promoter_id in promoter_ids:
         similarity_stats = event_similarity_stats_by_promoter.get(promoter_id)
         if similarity_stats is None:
@@ -786,13 +1367,16 @@ def build_artist_promoter_recommendation_response(
             key=lambda item: (-item["total_similarity_score"], item["candidate_event_id"]),
         )[:5]
         for item in ranked_rows:
+            source_event_id = int(item["source_event_id"])
+            candidate_event_id = int(item["candidate_event_id"])
+            event_similarity_pairs.append((source_event_id, candidate_event_id))
             event_similarity_evidence.append(
                 {
                     "promoter_id": promoter_id,
-                    "source_event_id": item["source_event_id"],
+                    "source_event_id": source_event_id,
                     "source_event_title": item["source_event_title"],
                     "source_event_date": item["source_event_date"],
-                    "promoter_event_id": item["candidate_event_id"],
+                    "promoter_event_id": candidate_event_id,
                     "promoter_event_title": item["candidate_event_title"],
                     "promoter_event_date": item["candidate_event_date"],
                     "promoter_venue_id": item["candidate_venue_id"],
@@ -801,11 +1385,23 @@ def build_artist_promoter_recommendation_response(
                 }
             )
 
+    shared_artists_by_pair = event_similarity_shared_artists_by_pair(
+        connection,
+        source_artist_id=artist_id,
+        event_pairs=event_similarity_pairs,
+    )
+    for row in event_similarity_evidence:
+        pair_key = (int(row["source_event_id"]), int(row["promoter_event_id"]))
+        row["shared_artists"] = shared_artists_by_pair.get(pair_key, [])
+
     return PromoterRecommendationResponse(
         entityId=artist_id,
         model=source["model"],
         dimensions=source["dimensions"],
         recommendations=recommendations,
+        largeRecommendations=large_recommendations,
+        mediumRecommendations=medium_recommendations,
+        smallRecommendations=small_recommendations,
         warmRecommendations=warm_recommendations,
         discoveryRecommendations=discovery_recommendations,
         graph=promoter_recommendation_graph(
@@ -815,27 +1411,70 @@ def build_artist_promoter_recommendation_response(
             semantic_evidence_rows=semantic_evidence,
             direct_evidence_rows=direct_evidence,
             warm_evidence_rows=warm_evidence,
+            manual_evidence_rows=manual_evidence,
             event_similarity_evidence_rows=event_similarity_evidence,
             scoring_config=scoring_config,
         ),
         debug={
             "candidateCounts": {
                 "sqlPromoterCandidates": len(rows),
+                "semanticArtistsUsed": len(candidate_scores),
+                "sourceEventsTotal": similar_event_debug_counts["sourceEventsTotal"],
+                "sourceEventsAfterRelevanceGate": similar_event_debug_counts[
+                    "sourceEventsAfterRelevanceGate"
+                ],
                 "eventSimilarityPromotersAdded": len(additional_promoter_ids),
                 "warmCandidates": len(warm_recommendations_all),
+                "coPlayedCandidates": sum(
+                    1 for recommendation in warm_recommendations_all if recommendation.warmConnectionCount > 0
+                ),
+                "manualConnectionCandidates": sum(
+                    1 for recommendation in warm_recommendations_all if recommendation.manualConnectionCount > 0
+                ),
                 "discoveryCandidates": len(discovery_recommendations_all),
                 "recommendationsBeforeLimit": len(recommendations) + recommendation_limit_cutoff,
                 "returnedRecommendations": len(recommendations),
                 "returnedWarmRecommendations": len(warm_recommendations),
+                "returnedCoPlayedRecommendations": sum(
+                    1 for recommendation in warm_recommendations if recommendation.warmConnectionCount > 0
+                ),
                 "returnedDiscoveryRecommendations": len(discovery_recommendations),
+                "returnedLargeRecommendations": len(large_recommendations),
+                "returnedMediumRecommendations": len(medium_recommendations),
+                "returnedSmallRecommendations": len(small_recommendations),
             },
             "filteredOut": {
                 "excludeExisting": exclude_existing_filtered_count,
+                "semanticArtistBelowThreshold": semantic_artist_below_threshold_filtered,
+                "sourceEventRelevance": similar_event_debug_counts["sourceEventsRelevanceFiltered"],
+                "sourceEventMissingEmbedding": similar_event_debug_counts[
+                    "sourceEventsMissingEmbedding"
+                ],
                 "eventSimilaritySamePromoter": similar_event_debug_counts["samePromoterFiltered"],
                 "eventSimilarityLimitCutoff": similar_event_debug_counts["similarityLimitCutoff"],
+                "eventSimilarityEmbeddingGate": event_similarity_embedding_gate_filtered,
+                "eventSimilarityBelowThreshold": event_similarity_below_threshold_filtered,
+                "eventSimilarityPerPromoterLimitCutoff": event_similarity_per_promoter_limit_cutoff,
                 "recommendationLimitCutoff": recommendation_limit_cutoff,
                 "warmLimitCutoff": warm_limit_cutoff,
                 "discoveryLimitCutoff": discovery_limit_cutoff,
+            },
+            "segments": {
+                "promoterInterestedSumThresholds": {
+                    "smallMax": promoter_interest_low_threshold,
+                    "mediumMax": promoter_interest_high_threshold,
+                },
+                "sourceArtistAverageInterested": source_artist_avg_interested,
+                "sourceArtistSizeSegment": source_artist_size_segment,
+                "appliedPromoterSegmentSortOrder": [*size_sort_order.keys()],
+                "appliedPromoterSegmentQuotaRatios": segment_quota_ratios,
+                "appliedPromoterSegmentQuotaCounts": applied_segment_quotas,
+                "appliedPromoterSegmentWarmShare": segment_warm_share,
+                "appliedPromoterSegmentSelections": segment_quota_allocations,
+                "artistAverageInterestedThresholds": {
+                    "smallMax": artist_interest_low_threshold,
+                    "mediumMax": artist_interest_high_threshold,
+                },
             },
         }
         if debug

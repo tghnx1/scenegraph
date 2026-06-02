@@ -1,7 +1,11 @@
 from fastapi.testclient import TestClient
 from app.db import get_connection
+from app.event_similarity import artist_relevant_source_event_ids
 from app.main import app, extracted_tag_score
-from app.recommendation_scoring import DEFAULT_SEMANTIC_ARTIST_TAG_SCORING
+from app.recommendation_scoring import (
+    DEFAULT_SEMANTIC_ARTIST_TAG_SCORING,
+    promoter_recommendation_scoring_from_env,
+)
 
 # docker compose exec backend sh -lc 'cd /app && pytest tests/test_graph_api.py -q'
 client = TestClient(app)
@@ -59,7 +63,12 @@ def test_graph_limit_validation():
 def test_graph_empty_result():
     response = client.get("/api/graph", params={"genre": "no-such-genre"})
     assert response.status_code == 200
-    assert response.json() == {"nodes": [], "links": []}
+    assert response.json() == {
+        "nodes": [],
+        "links": [],
+        "promoterPathNodeIds": {},
+        "promoterPathLinkKeys": {},
+    }
 
 
 def test_graph_links_reference_existing_nodes():
@@ -288,7 +297,23 @@ def test_artist_similar_events_exclude_same_promoters_by_default():
     data = response.json()
 
     with get_connection() as connection:
+        scoring_config = promoter_recommendation_scoring_from_env()
+        relevant_source_event_ids, _ = artist_relevant_source_event_ids(
+            connection,
+            source_artist_id=2178,
+            scoring_config=scoring_config,
+        )
         with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT DISTINCT ep.promoter_id
+                FROM event_promoters ep
+                WHERE ep.event_id = ANY(%s)
+                """,
+                (relevant_source_event_ids,),
+            )
+            source_promoters = {row["promoter_id"] for row in cursor.fetchall()}
+
             cursor.execute(
                 """
                 SELECT DISTINCT ep.promoter_id
@@ -299,7 +324,8 @@ def test_artist_similar_events_exclude_same_promoters_by_default():
                 """,
                 (2178,),
             )
-            source_promoters = {row["promoter_id"] for row in cursor.fetchall()}
+            full_history_promoters = {row["promoter_id"] for row in cursor.fetchall()}
+            assert source_promoters <= full_history_promoters
 
             for item in data["similarEvents"]:
                 promoter_id = item.get("promoterId")
@@ -318,7 +344,10 @@ def test_artist_similar_events_endpoint_debug_includes_component_scores():
     assert "debug" in data
     assert set(data["debug"]) == {"candidateCounts", "filteredOut"}
     assert set(data["debug"]["filteredOut"]) == {
+        "sourceEventRelevance",
+        "sourceEventMissingEmbedding",
         "samePromoter",
+        "embeddingGate",
         "similarityLimitCutoff",
         "responseLimitCutoff",
     }
@@ -333,11 +362,11 @@ def test_artist_similar_events_endpoint_debug_includes_component_scores():
         "sharedGenreCount",
         "sharedExtractedGenres",
         "sharedLineupCount",
-        "extractedStyleScore",
+        "extractedGenreScore",
         "symbolicScore",
         "embeddingScore",
     }
-    assert set(first["debug"]["weights"]) == {"symbolic", "embedding"}
+    assert set(first["debug"]["weights"]) == {"symbolic", "embedding", "semanticOnlyMode"}
     assert set(first["debug"]["weightedScores"]) == {"symbolic", "embedding", "total"}
 
 
@@ -380,7 +409,8 @@ def test_artist_promoter_recommendations_include_graph_payload():
         "semantic",
         "strength",
         "directConnection",
-        "warmNetwork",
+        "coPlayedConnection",
+        "manualConnection",
         "eventSimilarity",
         "scaleFit",
         "activity",
@@ -391,17 +421,32 @@ def test_artist_promoter_recommendations_include_graph_payload():
     assert isinstance(first["reasons"], list)
     assert first["status"] in {"new_relevant", "existing_partner", "warm_relevant"}
     assert first["warmConnectionCount"] >= 0
+    assert first["coPlayedConnectionCount"] >= 0
+    assert first["manualConnectionCount"] >= 0
+    assert first["promoterInterestedSum"] >= 0
+    assert first["promoterSizeSegment"] in {"small", "medium", "large"}
     assert first["directConnectionCount"] >= 0
     assert isinstance(first["evidence"], list)
     assert first["evidence"]
+    assert "reasonDetails" in first
+    assert set(first["reasonDetails"]) == {
+        "relatedEventTitles",
+        "similarPromoterEventTitles",
+        "similarArtistNames",
+        "coPlayedArtistNames",
+        "manualArtistNames",
+    }
     assert all(
-        item["type"] in {"semantic_bridge", "direct_connection", "warm_network", "event_similarity"}
+        item["type"]
+        in {"semantic_bridge", "direct_connection", "warm_network", "manual_connection", "event_similarity"}
         for item in first["evidence"]
     )
 
     graph = data["graph"]
     assert graph["nodes"]
     assert graph["links"]
+    assert "promoterPathNodeIds" in graph
+    assert "promoterPathLinkKeys" in graph
     assert any(node["type"] == "promoter" for node in graph["nodes"])
     semantic_link = next(
         (link for link in graph["links"] if link.get("evidenceType") == "semantic_bridge"),
@@ -411,6 +456,7 @@ def test_artist_promoter_recommendations_include_graph_payload():
     assert semantic_link["style"] in {"solid", "dashed", "dotted"}
     assert isinstance(semantic_link["strength"], (int, float))
     assert 0.0 <= semantic_link["strength"] <= 1.0
+    assert set(data) >= {"largeRecommendations", "mediumRecommendations", "smallRecommendations"}
 
 
 def test_artist_promoter_recommendations_include_debug_when_requested():
@@ -422,12 +468,25 @@ def test_artist_promoter_recommendations_include_debug_when_requested():
 
     data = response.json()
     assert "debug" in data
-    assert set(data["debug"]) == {"candidateCounts", "filteredOut"}
+    assert set(data["debug"]) == {"candidateCounts", "filteredOut", "segments"}
     assert set(data["debug"]["filteredOut"]) >= {
         "excludeExisting",
         "eventSimilaritySamePromoter",
         "eventSimilarityLimitCutoff",
         "recommendationLimitCutoff",
+    }
+    assert set(data["debug"]["segments"]) >= {
+        "promoterInterestedSumThresholds",
+        "sourceArtistAverageInterested",
+        "sourceArtistSizeSegment",
+        "appliedPromoterSegmentQuotaRatios",
+        "appliedPromoterSegmentQuotaCounts",
+        "artistAverageInterestedThresholds",
+    }
+    assert set(data["debug"]["segments"]["appliedPromoterSegmentQuotaCounts"]) == {
+        "small",
+        "medium",
+        "large",
     }
     assert data["recommendations"]
     first = data["recommendations"][0]
@@ -489,7 +548,10 @@ def test_artist_promoter_recommendations_include_warm_network_connections():
         item for item in data["recommendations"] if item["warmConnectionCount"] > 0
     ]
     for item in warm_recommendations:
-        assert item["scoreBreakdown"]["warmNetwork"] > 0
+        assert (
+            item["scoreBreakdown"]["coPlayedConnection"] > 0
+            or item["scoreBreakdown"]["manualConnection"] > 0
+        )
         assert item["warmConnectionArtists"]
         assert all("id" in artist and "name" in artist for artist in item["warmConnectionArtists"])
         assert any(evidence["type"] == "warm_network" for evidence in item["evidence"])
@@ -504,6 +566,18 @@ def test_artist_promoter_recommendations_include_warm_network_connections():
         assert all(link.get("style") == "solid" for link in warm_links)
     else:
         assert not warm_links
+
+
+def test_artist_promoter_recommendations_manual_connections_boost_warm_score():
+    response = client.get("/api/recommendations/artists/2178/promoters", params={"limit": 50})
+    assert response.status_code == 200
+    data = response.json()
+
+    manual_recommendations = [
+        item for item in data["recommendations"] if item.get("manualConnectionCount", 0) > 0
+    ]
+    if manual_recommendations:
+        assert all(item["scoreBreakdown"]["manualConnection"] > 0 for item in manual_recommendations)
 
 
 def test_artist_promoter_recommendations_include_event_similarity_connections():

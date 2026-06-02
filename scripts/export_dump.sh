@@ -64,11 +64,11 @@ fi
 echo "Exporting database '$TARGET_DB' in format '$FORMAT'..."
 if [ "$FORMAT" = "custom" ]; then
   docker compose exec -T -e TARGET_DB="$TARGET_DB" db sh -lc '
-    pg_dump -U "$POSTGRES_USER" -d "$TARGET_DB" -Fc
+    pg_dump -U "$POSTGRES_USER" -d "$TARGET_DB" -Fc --no-owner --no-privileges
   ' > "$OUT_FILE"
 else
   docker compose exec -T -e TARGET_DB="$TARGET_DB" db sh -lc '
-    pg_dump -U "$POSTGRES_USER" -d "$TARGET_DB"
+    pg_dump -U "$POSTGRES_USER" -d "$TARGET_DB" --no-owner --no-privileges
   ' > "$OUT_FILE"
 fi
 
