@@ -17,7 +17,9 @@ import { GRAPH_NODE_TYPES, GraphNodeFilter } from './GraphNodeFilter.tsx'
 const MIN_GRAPH_HEIGHT = 320
 const DEFAULT_GRAPH_FILTERS: GraphParams = { limit: 100 }
 const EMPTY_GRAPH_DATA: GraphData = { nodes: [], links: [] }
-const DEFAULT_VISIBLE_NODE_TYPES = new Set<NodeType>(GRAPH_NODE_TYPES)
+const DEFAULT_VISIBLE_NODE_TYPES = new Set<NodeType>(
+  GRAPH_NODE_TYPES.filter((nodeType) => nodeType !== 'venue'),
+)
 type LinkEndpoint = string | { id: string }
 
 // Guard URL param values before using entity-specific fetch logic.
@@ -129,6 +131,12 @@ export function ScenegraphMapPanel({
       links: filteredLinks,
       promoterPathNodeIds: rawGraphData.promoterPathNodeIds,
       promoterPathLinkKeys: rawGraphData.promoterPathLinkKeys,
+      promoterPathPromoterIdsByNodeId: rawGraphData.promoterPathPromoterIdsByNodeId,
+      promoterPathPromoterIdsByLinkKey: rawGraphData.promoterPathPromoterIdsByLinkKey,
+      promoterShortestPathNodeIds: rawGraphData.promoterShortestPathNodeIds,
+      promoterShortestPathLinkKeys: rawGraphData.promoterShortestPathLinkKeys,
+      promoterShortestPathPromoterIdsByNodeId: rawGraphData.promoterShortestPathPromoterIdsByNodeId,
+      promoterShortestPathPromoterIdsByLinkKey: rawGraphData.promoterShortestPathPromoterIdsByLinkKey,
     }
   }, [
     hasRecommendationControls,
@@ -136,7 +144,9 @@ export function ScenegraphMapPanel({
     visibleNodeTypes,
   ])
 
-  // Build minimal recommendation subgraph as a union of shortest artist->promoter paths.
+  // Build recommendation graph:
+  // - threshold browsing: shortest paths only
+  // - focused promoter: backend-precomputed preferred path
   const recommendationPathGraphData = useMemo<GraphData>(() => {
     if (!hasRecommendationControls || !highlightPathToNodeId) {
       return graphData
@@ -159,174 +169,61 @@ export function ScenegraphMapPanel({
         centerNodeId: graphData.centerNodeId,
         nodes: sourceNode ? [sourceNode] : [],
         links: [],
+        promoterPathNodeIds: graphData.promoterPathNodeIds,
+        promoterPathLinkKeys: graphData.promoterPathLinkKeys,
+        promoterPathPromoterIdsByNodeId: graphData.promoterPathPromoterIdsByNodeId,
+        promoterPathPromoterIdsByLinkKey: graphData.promoterPathPromoterIdsByLinkKey,
+        promoterShortestPathNodeIds: graphData.promoterShortestPathNodeIds,
+        promoterShortestPathLinkKeys: graphData.promoterShortestPathLinkKeys,
+        promoterShortestPathPromoterIdsByNodeId: graphData.promoterShortestPathPromoterIdsByNodeId,
+        promoterShortestPathPromoterIdsByLinkKey: graphData.promoterShortestPathPromoterIdsByLinkKey,
       }
     }
 
-    const adjacency = new Map<string, Set<string>>()
-    const adjacencyWithLinks = new Map<string, Array<{ neighborId: string; link: GraphData['links'][number] }>>()
     const nodeTypeById = new Map<string, NodeType>()
     graphData.nodes.forEach((node) => nodeTypeById.set(node.id, node.type))
-    graphData.links.forEach((link) => {
-      const source = getLinkNodeId(link.source as LinkEndpoint)
-      const target = getLinkNodeId(link.target as LinkEndpoint)
-      if (!adjacency.has(source)) adjacency.set(source, new Set<string>())
-      if (!adjacency.has(target)) adjacency.set(target, new Set<string>())
-      adjacency.get(source)?.add(target)
-      adjacency.get(target)?.add(source)
-      if (!adjacencyWithLinks.has(source)) adjacencyWithLinks.set(source, [])
-      if (!adjacencyWithLinks.has(target)) adjacencyWithLinks.set(target, [])
-      adjacencyWithLinks.get(source)?.push({ neighborId: target, link })
-      adjacencyWithLinks.get(target)?.push({ neighborId: source, link })
-    })
 
     const includedNodeIds = new Set<string>([sourceId])
     const includedLinkKeys = new Set<string>()
 
-    // Collect a single shortest source->target path for compact baseline graph rendering.
-    const collectPath = (targetId: string) => {
-      if (targetId === sourceId) return
-      if (!adjacency.has(targetId)) return
-
-      const queue: string[] = [sourceId]
-      const visited = new Set<string>([sourceId])
-      const previous = new Map<string, string>()
-
-      while (queue.length > 0 && !visited.has(targetId)) {
-        const currentId = queue.shift()!
-        const neighbors = adjacency.get(currentId)
-        if (!neighbors) continue
-
-        for (const neighborId of neighbors) {
-          if (visited.has(neighborId)) continue
-          visited.add(neighborId)
-          previous.set(neighborId, currentId)
-          queue.push(neighborId)
-        }
-      }
-
-      if (!visited.has(targetId)) return
-
-      let currentId = targetId
-      includedNodeIds.add(currentId)
-      while (currentId !== sourceId) {
-        const priorId = previous.get(currentId)
-        if (!priorId) break
-        includedNodeIds.add(priorId)
-        includedLinkKeys.add(getUndirectedLinkKey(priorId, currentId))
-        currentId = priorId
-      }
-    }
-
-    // Use backend-precomputed preferred paths for focused promoter rendering.
-    const collectBackendPreferredPath = (targetId: string): boolean => {
-      const nodeIds = graphData.promoterPathNodeIds?.[targetId] ?? []
-      const linkKeys = graphData.promoterPathLinkKeys?.[targetId] ?? []
+    const collectBackendPath = (
+      promoterNodeId: string,
+      nodeIdsByPromoter?: Record<string, string[]>,
+      linkKeysByPromoter?: Record<string, string[]>,
+    ): boolean => {
+      const nodeIds = nodeIdsByPromoter?.[promoterNodeId] ?? []
+      const linkKeys = linkKeysByPromoter?.[promoterNodeId] ?? []
       if (nodeIds.length === 0 || linkKeys.length === 0) return false
       nodeIds.forEach((nodeId) => includedNodeIds.add(nodeId))
       linkKeys.forEach((linkKey) => includedLinkKeys.add(linkKey))
       return true
     }
 
-    // Collect top-K strongest source->target paths (bounded-depth simple paths).
-    const collectStrongestPaths = (
-      targetId: string,
-      {
-        topK,
-        maxDepth,
-        maxCandidates,
-      }: {
-        topK: number
-        maxDepth: number
-        maxCandidates: number
-      },
-    ): boolean => {
-      if (targetId === sourceId) return false
-      if (!adjacencyWithLinks.has(targetId)) return false
-
-      const candidates: Array<{ nodeIds: string[]; linkKeys: string[]; totalStrength: number }> = []
-      const pathNodes = new Set<string>([sourceId])
-      const pathNodeIds = [sourceId]
-      const pathLinkKeys: string[] = []
-      const pathLinks: GraphData['links'][number][] = []
-
-      const dfs = (currentId: string, depth: number) => {
-        if (candidates.length >= maxCandidates) return
-        if (depth > maxDepth) return
-        if (currentId === targetId) {
-          const totalStrength = pathLinks.reduce((sum, link) => sum + getLinkStrengthValue(link), 0)
-          candidates.push({ nodeIds: [...pathNodeIds], linkKeys: [...pathLinkKeys], totalStrength })
-          return
-        }
-
-        const neighbors = adjacencyWithLinks.get(currentId) ?? []
-        for (const { neighborId, link } of neighbors) {
-          const neighborType = nodeTypeById.get(neighborId)
-          if (neighborType === 'venue') continue
-          if (neighborType === 'promoter' && neighborId !== targetId) continue
-          if (pathNodes.has(neighborId)) continue
-
-          pathNodes.add(neighborId)
-          pathNodeIds.push(neighborId)
-          pathLinkKeys.push(getUndirectedLinkKey(currentId, neighborId))
-          pathLinks.push(link)
-          dfs(neighborId, depth + 1)
-          pathLinks.pop()
-          pathLinkKeys.pop()
-          pathNodeIds.pop()
-          pathNodes.delete(neighborId)
-          if (candidates.length >= maxCandidates) return
-        }
-      }
-
-      dfs(sourceId, 0)
-      if (candidates.length === 0) return false
-
-      const uniqueCandidates = new Map<string, { nodeIds: string[]; linkKeys: string[]; totalStrength: number }>()
-      for (const candidate of candidates) {
-        const signature = candidate.linkKeys.slice().sort().join('|')
-        const existing = uniqueCandidates.get(signature)
-        if (!existing || candidate.totalStrength > existing.totalStrength) {
-          uniqueCandidates.set(signature, candidate)
-        }
-      }
-
-      const strongest = Array.from(uniqueCandidates.values())
-        .sort((left, right) => {
-          const strengthDelta = right.totalStrength - left.totalStrength
-          if (Math.abs(strengthDelta) > 1e-9) return strengthDelta
-          return left.linkKeys.length - right.linkKeys.length
-        })
-        .slice(0, topK)
-
-      strongest.forEach((path) => {
-        path.nodeIds.forEach((nodeId) => includedNodeIds.add(nodeId))
-        path.linkKeys.forEach((linkKey) => includedLinkKeys.add(linkKey))
-      })
-      return strongest.length > 0
-    }
-
     targetPromoterIds.forEach((targetPromoterId) => {
-      if (graphData.nodes.some((node) => node.id === targetPromoterId)) {
-        if (focusedPromoterId) {
-          const foundPreferredPath = collectBackendPreferredPath(targetPromoterId)
-          if (foundPreferredPath) return
-
-          const foundStrongestPaths = collectStrongestPaths(
+      if (!graphData.nodes.some((node) => node.id === targetPromoterId)) return
+      if (focusedPromoterId) {
+        const foundPreferredPath = collectBackendPath(
+          targetPromoterId,
+          graphData.promoterPathNodeIds,
+          graphData.promoterPathLinkKeys,
+        )
+        if (!foundPreferredPath) {
+          collectBackendPath(
             targetPromoterId,
-            {
-              topK: 3,
-              maxDepth: 6,
-              maxCandidates: 800,
-            },
+            graphData.promoterShortestPathNodeIds,
+            graphData.promoterShortestPathLinkKeys,
           )
-          if (!foundStrongestPaths) collectPath(targetPromoterId)
-        } else {
-          collectPath(targetPromoterId)
         }
+      } else {
+        collectBackendPath(
+          targetPromoterId,
+          graphData.promoterShortestPathNodeIds,
+          graphData.promoterShortestPathLinkKeys,
+        )
       }
     })
 
-    // Keep venue context for events that are already part of the selected path.
+    // Keep venue context for events in collected paths.
     const pathEventIds = new Set(
       Array.from(includedNodeIds).filter((nodeId) => nodeTypeById.get(nodeId) === 'event')
     )
@@ -355,6 +252,14 @@ export function ScenegraphMapPanel({
       centerNodeId: graphData.centerNodeId,
       nodes,
       links,
+      promoterPathNodeIds: graphData.promoterPathNodeIds,
+      promoterPathLinkKeys: graphData.promoterPathLinkKeys,
+      promoterPathPromoterIdsByNodeId: graphData.promoterPathPromoterIdsByNodeId,
+      promoterPathPromoterIdsByLinkKey: graphData.promoterPathPromoterIdsByLinkKey,
+      promoterShortestPathNodeIds: graphData.promoterShortestPathNodeIds,
+      promoterShortestPathLinkKeys: graphData.promoterShortestPathLinkKeys,
+      promoterShortestPathPromoterIdsByNodeId: graphData.promoterShortestPathPromoterIdsByNodeId,
+      promoterShortestPathPromoterIdsByLinkKey: graphData.promoterShortestPathPromoterIdsByLinkKey,
     }
   }, [
     focusedRecommendationPromoterNodeId,
@@ -364,61 +269,20 @@ export function ScenegraphMapPanel({
     visibleRecommendationPromoterNodeIds,
   ])
 
-  // Resolve a shortest path node set for source->target in the current recommendation graph.
-  const getPathNodeIds = useCallback((sourceId: string, targetId: string): Set<string> => {
-    const adjacency = new Map<string, Set<string>>()
-    recommendationPathGraphData.links.forEach((link) => {
-      const source = getLinkNodeId(link.source as LinkEndpoint)
-      const target = getLinkNodeId(link.target as LinkEndpoint)
-      if (!adjacency.has(source)) adjacency.set(source, new Set<string>())
-      if (!adjacency.has(target)) adjacency.set(target, new Set<string>())
-      adjacency.get(source)?.add(target)
-      adjacency.get(target)?.add(source)
-    })
-
-    const queue: string[] = [sourceId]
-    const visited = new Set<string>(queue)
-    const previous = new Map<string, string>()
-
-    while (queue.length > 0 && !visited.has(targetId)) {
-      const currentId = queue.shift()!
-      const neighbors = adjacency.get(currentId)
-      if (!neighbors) continue
-      for (const neighborId of neighbors) {
-        if (visited.has(neighborId)) continue
-        visited.add(neighborId)
-        previous.set(neighborId, currentId)
-        queue.push(neighborId)
-      }
-    }
-
-    if (!visited.has(targetId)) return new Set<string>()
-
-    const pathNodeIds = new Set<string>([targetId])
-    let currentId = targetId
-    while (currentId !== sourceId) {
-      const priorId = previous.get(currentId)
-      if (!priorId) return new Set<string>()
-      pathNodeIds.add(priorId)
-      currentId = priorId
-    }
-
-    return pathNodeIds
-  }, [recommendationPathGraphData.links])
-
-  // Choose which promoter path a clicked recommendation-graph node belongs to.
+  // Resolve graph node ownership with backend reverse path indexes.
   const resolvePromoterNodeForRecommendationNode = useCallback((nodeId: string): string | null => {
     if (!highlightPathToNodeId) return null
     if (nodeId.startsWith('promoter-')) return nodeId
 
-    const sourceId = highlightPathToNodeId
     const promoterCandidates = focusedRecommendationPromoterNodeId
       ? [focusedRecommendationPromoterNodeId]
       : (visibleRecommendationPromoterNodeIds ?? [])
+    const ownerPromoterIds = focusedRecommendationPromoterNodeId
+      ? (recommendationPathGraphData.promoterPathPromoterIdsByNodeId?.[nodeId] ?? [])
+      : (recommendationPathGraphData.promoterShortestPathPromoterIdsByNodeId?.[nodeId] ?? [])
 
-    for (const promoterId of promoterCandidates) {
-      const pathNodes = getPathNodeIds(sourceId, promoterId)
-      if (pathNodes.has(nodeId)) {
+    for (const promoterId of ownerPromoterIds) {
+      if (promoterCandidates.includes(promoterId)) {
         return promoterId
       }
     }
@@ -426,8 +290,9 @@ export function ScenegraphMapPanel({
     return null
   }, [
     focusedRecommendationPromoterNodeId,
-    getPathNodeIds,
     highlightPathToNodeId,
+    recommendationPathGraphData.promoterPathPromoterIdsByNodeId,
+    recommendationPathGraphData.promoterShortestPathPromoterIdsByNodeId,
     visibleRecommendationPromoterNodeIds,
   ])
 
@@ -619,9 +484,7 @@ export function ScenegraphMapPanel({
           <span>{nodeCount} nodes</span>
           <span>{linkCount} links</span>
         </div>
-        {!hasRecommendationControls && (
-          <GraphNodeFilter visibleNodeTypes={visibleNodeTypes} onToggle={handleLegendToggle} />
-        )}
+        <GraphNodeFilter visibleNodeTypes={visibleNodeTypes} onToggle={handleLegendToggle} />
         <ForceGraph2D
           ref={graphRef}
           width={graphSize.width || undefined}

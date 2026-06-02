@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections import defaultdict
+from collections import defaultdict, deque
 from datetime import date as DateValue
 from datetime import datetime
 from typing import Literal
@@ -218,6 +218,8 @@ def promoter_recommendation_graph(
     seen_links: set[tuple[str, str, str]] = set()
     preferred_path_node_ids: dict[str, set[str]] = defaultdict(set)
     preferred_path_link_keys: dict[str, set[str]] = defaultdict(set)
+    semantic_path_node_ids: dict[str, set[str]] = defaultdict(set)
+    semantic_path_link_keys: dict[str, set[str]] = defaultdict(set)
     preferred_co_played_artist_ids_by_promoter: dict[int, set[int]] = {}
     preferred_manual_artist_ids_by_promoter: dict[int, set[int]] = {}
 
@@ -247,6 +249,19 @@ def promoter_recommendation_graph(
         preferred_path_node_ids[promoter_node_id].add(source)
         preferred_path_node_ids[promoter_node_id].add(target)
         preferred_path_link_keys[promoter_node_id].add(undirected_link_key(source, target))
+
+    # Register fallback display path edges used when no direct human path exists.
+    def add_shortest_path_edge(
+        node_ids_by_promoter: dict[str, set[str]],
+        link_keys_by_promoter: dict[str, set[str]],
+        promoter_id: int,
+        source: str,
+        target: str,
+    ) -> None:
+        promoter_node_id = graph_node_id("promoter", promoter_id)
+        node_ids_by_promoter[promoter_node_id].add(source)
+        node_ids_by_promoter[promoter_node_id].add(target)
+        link_keys_by_promoter[promoter_node_id].add(undirected_link_key(source, target))
 
     # Add a graph link once and preserve deduplication by key.
     def add_link(
@@ -640,6 +655,27 @@ def promoter_recommendation_graph(
             style="solid",
             strength=max(0.5, semantic_strength),
         )
+        add_shortest_path_edge(
+            semantic_path_node_ids,
+            semantic_path_link_keys,
+            int(row["promoter_id"]),
+            source_artist_node_id,
+            artist_node_id,
+        )
+        add_shortest_path_edge(
+            semantic_path_node_ids,
+            semantic_path_link_keys,
+            int(row["promoter_id"]),
+            artist_node_id,
+            event_node_id,
+        )
+        add_shortest_path_edge(
+            semantic_path_node_ids,
+            semantic_path_link_keys,
+            int(row["promoter_id"]),
+            event_node_id,
+            promoter_node_id,
+        )
 
         if row["venue_id"] is not None:
             venue_node_id = graph_node_id("venue", row["venue_id"])
@@ -658,18 +694,83 @@ def promoter_recommendation_graph(
                 strength=max(0.3, semantic_strength * 0.8),
             )
 
+    promoter_path_node_ids = {
+        promoter_node_id: sorted(node_ids)
+        for promoter_node_id, node_ids in preferred_path_node_ids.items()
+        if node_ids
+    }
+    promoter_path_link_keys = {
+        promoter_node_id: sorted(link_keys)
+        for promoter_node_id, link_keys in preferred_path_link_keys.items()
+        if link_keys
+    }
+    shortest_path_node_ids: dict[str, set[str]] = defaultdict(set)
+    shortest_path_link_keys: dict[str, set[str]] = defaultdict(set)
+    for recommendation in recommendations:
+        promoter_node_id = graph_node_id("promoter", recommendation.id)
+        if promoter_node_id in preferred_path_node_ids:
+            shortest_path_node_ids[promoter_node_id].update(preferred_path_node_ids[promoter_node_id])
+            shortest_path_link_keys[promoter_node_id].update(preferred_path_link_keys[promoter_node_id])
+        elif promoter_node_id in semantic_path_node_ids:
+            shortest_path_node_ids[promoter_node_id].update(semantic_path_node_ids[promoter_node_id])
+            shortest_path_link_keys[promoter_node_id].update(semantic_path_link_keys[promoter_node_id])
+        else:
+            shortest_path_node_ids[promoter_node_id].update({source_artist_node_id, promoter_node_id})
+
+    promoter_shortest_path_node_ids = {
+        promoter_node_id: sorted(node_ids)
+        for promoter_node_id, node_ids in shortest_path_node_ids.items()
+        if node_ids
+    }
+    promoter_shortest_path_link_keys = {
+        promoter_node_id: sorted(link_keys)
+        for promoter_node_id, link_keys in shortest_path_link_keys.items()
+        if link_keys
+    }
+
+    promoter_ids_by_node_id: dict[str, set[str]] = defaultdict(set)
+    promoter_ids_by_link_key: dict[str, set[str]] = defaultdict(set)
+    for promoter_node_id, node_ids in promoter_path_node_ids.items():
+        for node_id in node_ids:
+            promoter_ids_by_node_id[node_id].add(promoter_node_id)
+    for promoter_node_id, link_keys in promoter_path_link_keys.items():
+        for link_key in link_keys:
+            promoter_ids_by_link_key[link_key].add(promoter_node_id)
+    shortest_promoter_ids_by_node_id: dict[str, set[str]] = defaultdict(set)
+    shortest_promoter_ids_by_link_key: dict[str, set[str]] = defaultdict(set)
+    for promoter_node_id, node_ids in promoter_shortest_path_node_ids.items():
+        for node_id in node_ids:
+            shortest_promoter_ids_by_node_id[node_id].add(promoter_node_id)
+    for promoter_node_id, link_keys in promoter_shortest_path_link_keys.items():
+        for link_key in link_keys:
+            shortest_promoter_ids_by_link_key[link_key].add(promoter_node_id)
+
     return GraphResponse(
         nodes=list(nodes.values()),
         links=links,
-        promoterPathNodeIds={
-            promoter_node_id: sorted(node_ids)
-            for promoter_node_id, node_ids in preferred_path_node_ids.items()
-            if node_ids
+        promoterPathNodeIds=promoter_path_node_ids,
+        promoterPathLinkKeys=promoter_path_link_keys,
+        promoterPathPromoterIdsByNodeId={
+            node_id: sorted(promoter_node_ids)
+            for node_id, promoter_node_ids in promoter_ids_by_node_id.items()
+            if promoter_node_ids
         },
-        promoterPathLinkKeys={
-            promoter_node_id: sorted(link_keys)
-            for promoter_node_id, link_keys in preferred_path_link_keys.items()
-            if link_keys
+        promoterPathPromoterIdsByLinkKey={
+            link_key: sorted(promoter_node_ids)
+            for link_key, promoter_node_ids in promoter_ids_by_link_key.items()
+            if promoter_node_ids
+        },
+        promoterShortestPathNodeIds=promoter_shortest_path_node_ids,
+        promoterShortestPathLinkKeys=promoter_shortest_path_link_keys,
+        promoterShortestPathPromoterIdsByNodeId={
+            node_id: sorted(promoter_node_ids)
+            for node_id, promoter_node_ids in shortest_promoter_ids_by_node_id.items()
+            if promoter_node_ids
+        },
+        promoterShortestPathPromoterIdsByLinkKey={
+            link_key: sorted(promoter_node_ids)
+            for link_key, promoter_node_ids in shortest_promoter_ids_by_link_key.items()
+            if promoter_node_ids
         },
     )
 
