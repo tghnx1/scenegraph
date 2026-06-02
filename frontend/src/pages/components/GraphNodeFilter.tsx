@@ -1,10 +1,10 @@
 import type { NodeType } from '../../types/graph.ts'
 
-export const GRAPH_NODE_TYPES: NodeType[] = ['artist', 'venue', 'promoter', 'event']
+export const GRAPH_NODE_TYPES: NodeType[] = ['venue', 'artist', 'promoter', 'event']
 
 const NODE_FILTER_ITEMS = [
-  { type: 'artist', label: 'Artist' },
   { type: 'venue', label: 'Venue' },
+  { type: 'artist', label: 'Artist' },
   { type: 'promoter', label: 'Promoter' },
   { type: 'event', label: 'Event' },
 ] satisfies Array<{ type: NodeType; label: string }>

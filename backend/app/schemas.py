@@ -47,6 +47,12 @@ class GraphResponse(BaseModel):
     links: list[GraphLink]
     promoterPathNodeIds: dict[str, list[str]] = Field(default_factory=dict)
     promoterPathLinkKeys: dict[str, list[str]] = Field(default_factory=dict)
+    promoterPathPromoterIdsByNodeId: dict[str, list[str]] = Field(default_factory=dict)
+    promoterPathPromoterIdsByLinkKey: dict[str, list[str]] = Field(default_factory=dict)
+    promoterShortestPathNodeIds: dict[str, list[str]] = Field(default_factory=dict)
+    promoterShortestPathLinkKeys: dict[str, list[str]] = Field(default_factory=dict)
+    promoterShortestPathPromoterIdsByNodeId: dict[str, list[str]] = Field(default_factory=dict)
+    promoterShortestPathPromoterIdsByLinkKey: dict[str, list[str]] = Field(default_factory=dict)
 
 
 class LoginRequest(BaseModel):

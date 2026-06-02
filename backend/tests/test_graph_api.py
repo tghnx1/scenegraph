@@ -68,6 +68,12 @@ def test_graph_empty_result():
         "links": [],
         "promoterPathNodeIds": {},
         "promoterPathLinkKeys": {},
+        "promoterPathPromoterIdsByNodeId": {},
+        "promoterPathPromoterIdsByLinkKey": {},
+        "promoterShortestPathNodeIds": {},
+        "promoterShortestPathLinkKeys": {},
+        "promoterShortestPathPromoterIdsByNodeId": {},
+        "promoterShortestPathPromoterIdsByLinkKey": {},
     }
 
 
@@ -447,6 +453,12 @@ def test_artist_promoter_recommendations_include_graph_payload():
     assert graph["links"]
     assert "promoterPathNodeIds" in graph
     assert "promoterPathLinkKeys" in graph
+    assert "promoterPathPromoterIdsByNodeId" in graph
+    assert "promoterPathPromoterIdsByLinkKey" in graph
+    assert "promoterShortestPathNodeIds" in graph
+    assert "promoterShortestPathLinkKeys" in graph
+    assert "promoterShortestPathPromoterIdsByNodeId" in graph
+    assert "promoterShortestPathPromoterIdsByLinkKey" in graph
     assert any(node["type"] == "promoter" for node in graph["nodes"])
     semantic_link = next(
         (link for link in graph["links"] if link.get("evidenceType") == "semantic_bridge"),
@@ -601,6 +613,16 @@ def test_artist_promoter_recommendations_include_event_similarity_connections():
     if event_similarity_recommendations and has_event_similarity_evidence:
         assert event_similarity_links
         assert any(link.get("style") == "dotted" for link in event_similarity_links)
+        event_similarity_link_keys = {
+            "|".join(sorted((link["source"], link["target"])))
+            for link in event_similarity_links
+        }
+        shortest_path_link_keys = {
+            link_key
+            for link_keys in data["graph"]["promoterShortestPathLinkKeys"].values()
+            for link_key in link_keys
+        }
+        assert event_similarity_link_keys.isdisjoint(shortest_path_link_keys)
     elif event_similarity_recommendations:
         # eventSimilarity can come from embedding-only signal even when no symbolic path exists
         assert not event_similarity_links

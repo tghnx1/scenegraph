@@ -36,6 +36,12 @@ export interface GraphData {
   links: GraphEdge[]
   promoterPathNodeIds?: Record<string, string[]>
   promoterPathLinkKeys?: Record<string, string[]>
+  promoterPathPromoterIdsByNodeId?: Record<string, string[]>
+  promoterPathPromoterIdsByLinkKey?: Record<string, string[]>
+  promoterShortestPathNodeIds?: Record<string, string[]>
+  promoterShortestPathLinkKeys?: Record<string, string[]>
+  promoterShortestPathPromoterIdsByNodeId?: Record<string, string[]>
+  promoterShortestPathPromoterIdsByLinkKey?: Record<string, string[]>
 }
 
 export function graphEntityId(nodeId: string, type?: NodeType): number | null {
