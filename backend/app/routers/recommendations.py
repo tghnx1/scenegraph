@@ -26,7 +26,6 @@ router = APIRouter()
 PROMOTER_REC_API_LIMIT_MAX = promoter_recommendation_api_limit_max_from_env()
 
 
-# Return semantic similar artists for a source artist.
 @router.get(
     "/semantic/artists/{artist_id}",
     response_model=SemanticArtistResponse,
@@ -46,7 +45,6 @@ async def semantic_artists(
     )
 
 
-# Return extracted artist tags for inspection and debugging.
 @router.get(
     "/artists/{artist_id}/tags",
     response_model=ArtistTagsResponse,
@@ -105,7 +103,6 @@ async def artist_tags(
     )
 
 
-# Backward-compatible alias for event similarity endpoint.
 @router.get(
     "/recommendations/events/{event_id}",
     response_model=SimilarityResponse,
@@ -129,7 +126,6 @@ async def recommend_events_alias(
     )
 
 
-# Return similar events for a given source event.
 @router.get(
     "/recommendations/events/{event_id}/similar-events",
     response_model=SimilarityResponse,
@@ -152,7 +148,6 @@ async def recommend_similar_events(
     )
 
 
-# Return similar events for an artist history (analytics/helper endpoint).
 @router.get(
     "/recommendations/artists/{artist_id}/similar-events",
     response_model=ArtistSimilarEventsResponse,
@@ -174,7 +169,6 @@ async def recommend_similar_events_for_artist(
     )
 
 
-# Return main Artist -> Recommended Promoters response.
 @router.get(
     "/recommendations/artists/{artist_id}/promoters",
     response_model=PromoterRecommendationResponse,
@@ -196,7 +190,6 @@ async def recommend_promoters_for_artist(
     )
 
 
-# Return hybrid artist recommendations (legacy artist-to-artist endpoint).
 @router.get(
     "/recommendations/artists/{artist_id}",
     response_model=ArtistRecommendationResponse,
