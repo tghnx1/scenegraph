@@ -3,7 +3,7 @@ from __future__ import annotations
 from psycopg import Connection
 
 from app.embeddings import EmbeddingConfig, EntityType, rank_similar_embeddings
-from app.event_similarity import event_style_tags_by_id
+from app.event_similarity import event_extracted_genres_by_id
 from app.recommendation_helpers import recommendation_item_metadata
 from app.recommendation_scoring import (
     DEFAULT_RECOMMENDATION_SCORING,
@@ -13,11 +13,14 @@ from app.recommendation_scoring import (
     recommendation_scoring_from_env,
 )
 from app.schemas import SimilarityItem, SimilarityResponse
+from app.style_tags import extract_style_tags
 
+# Normalize nullable id arrays from SQL into a set.
 def as_id_set(values: list[int | None] | None) -> set[int]:
+    """Normalize nullable integer lists from SQL rows into a set of ids."""
     return {int(value) for value in values or [] if value is not None}
 
-
+# Build per-feature overlap diagnostics for debug output.
 def similarity_graph_debug_components(
     *,
     entity_type: EntityType,
@@ -25,6 +28,7 @@ def similarity_graph_debug_components(
     candidate_features: dict[str, set[int]],
     scoring_config=DEFAULT_RECOMMENDATION_SCORING,
 ) -> dict[str, dict[str, object]]:
+    """Build per-feature graph overlap diagnostics for debug responses."""
     weights = (
         scoring_config.event_graph_weights
         if entity_type == "event"
@@ -33,7 +37,6 @@ def similarity_graph_debug_components(
     components: dict[str, dict[str, object]] = {}
     public_feature_names = {
         "genres": "abstract_genres",
-        "extracted_styles": "extracted_genres",
     }
     for weight in weights:
         source_values = source_features.get(weight.feature, set())
@@ -58,12 +61,13 @@ def similarity_graph_debug_components(
         }
     return components
 
-
+# Fetch core graph feature sets for artists or events.
 def recommendation_feature_sets(
     connection: Connection,
     entity_type: EntityType,
     entity_ids: list[int],
 ) -> dict[int, dict[str, set[int]]]:
+    """Fetch graph feature sets for a list of artists or events."""
     if not entity_ids:
         return {}
 
@@ -91,8 +95,7 @@ def recommendation_feature_sets(
                 a.id,
                 array_remove(array_agg(DISTINCT ea.event_id), NULL) AS events,
                 array_remove(array_agg(DISTINCT e.venue_id), NULL) AS venues,
-                array_remove(array_agg(DISTINCT ep.promoter_id), NULL) AS promoters,
-                array_remove(array_agg(DISTINCT eg.genre_id), NULL) AS genres
+                array_remove(array_agg(DISTINCT ep.promoter_id), NULL) AS promoters
             FROM artists a
             LEFT JOIN event_artists ea
                 ON ea.artist_id = a.id
@@ -100,8 +103,6 @@ def recommendation_feature_sets(
                 ON e.id = ea.event_id
             LEFT JOIN event_promoters ep
                 ON ep.event_id = ea.event_id
-            LEFT JOIN event_genres eg
-                ON eg.event_id = ea.event_id
             WHERE a.id = ANY(%s)
             GROUP BY a.id
         """
@@ -113,25 +114,65 @@ def recommendation_feature_sets(
     feature_sets = {
         row["id"]: {
             key: as_id_set(row.get(key))
-            for key in ("artists", "events", "venues", "promoters", "genres")
+            for key in ("artists", "events", "venues", "promoters")
         }
         for row in rows
     }
     if entity_type == "event":
-        style_tags = event_style_tags_by_id(connection, entity_ids)
-        for event_id, styles in style_tags.items():
+        extracted_genres_by_event = event_extracted_genres_by_id(connection, entity_ids)
+        for event_id, extracted_genres in extracted_genres_by_event.items():
             if event_id not in feature_sets:
                 continue
-            feature_sets[event_id]["extracted_styles"] = set(styles)  # type: ignore[assignment]
+            feature_sets[event_id]["extracted_genres"] = set(extracted_genres)  # type: ignore[assignment]
+    else:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id, COALESCE(biography_normalized, biography, '') AS biography
+                FROM artists
+                WHERE id = ANY(%s)
+                """,
+                (entity_ids,),
+            )
+            artist_rows = cursor.fetchall()
+            cursor.execute("SELECT to_regclass('public.artist_extracted_genres') AS table_name")
+            has_extracted_genres_view = cursor.fetchone()["table_name"] is not None
+
+            extracted_genres_by_artist: dict[int, set[str]] = {}
+            if has_extracted_genres_view:
+                cursor.execute(
+                    """
+                    SELECT artist_id, extracted_genre
+                    FROM artist_extracted_genres
+                    WHERE artist_id = ANY(%s)
+                      AND confidence >= 0.6
+                    """,
+                    (entity_ids,),
+                )
+                for row in cursor.fetchall():
+                    artist_id = int(row["artist_id"])
+                    extracted_genre = str(row["extracted_genre"]).strip().lower()
+                    if not extracted_genre:
+                        continue
+                    extracted_genres_by_artist.setdefault(artist_id, set()).add(extracted_genre)
+
+        for row in artist_rows:
+            artist_id = int(row["id"])
+            if artist_id not in feature_sets:
+                continue
+            biography_styles = set(extract_style_tags(row["biography"]))
+            extracted_genres = extracted_genres_by_artist.get(artist_id, set())
+            feature_sets[artist_id]["extracted_genres"] = biography_styles | extracted_genres  # type: ignore[assignment]
     return feature_sets
 
-
+# Fetch candidate/source artist features excluding direct shared source events.
 def artist_indirect_feature_sets(
     connection: Connection,
     *,
     source_artist_id: int,
     candidate_artist_ids: list[int],
 ) -> dict[int, dict[str, set[int]]]:
+    """Fetch artist feature sets excluding direct source events for indirect scoring."""
     if not candidate_artist_ids:
         return {}
 
@@ -159,8 +200,7 @@ def artist_indirect_feature_sets(
                 a.id,
                 array_remove(array_agg(DISTINCT ea.event_id), NULL) AS events,
                 array_remove(array_agg(DISTINCT e.venue_id), NULL) AS venues,
-                array_remove(array_agg(DISTINCT ep.promoter_id), NULL) AS promoters,
-                array_remove(array_agg(DISTINCT eg.genre_id), NULL) AS genres
+                array_remove(array_agg(DISTINCT ep.promoter_id), NULL) AS promoters
             FROM artists a
             LEFT JOIN event_artists ea
                 ON ea.artist_id = a.id
@@ -173,8 +213,6 @@ def artist_indirect_feature_sets(
                 ON e.id = ea.event_id
             LEFT JOIN event_promoters ep
                 ON ep.event_id = ea.event_id
-            LEFT JOIN event_genres eg
-                ON eg.event_id = ea.event_id
             WHERE a.id = ANY(%(candidate_artist_ids)s)
                OR a.id = %(source_artist_id)s
             GROUP BY a.id
@@ -190,12 +228,12 @@ def artist_indirect_feature_sets(
     return {
         row["id"]: {
             key: as_id_set(row.get(key))
-            for key in ("events", "venues", "promoters", "genres")
+            for key in ("events", "venues", "promoters")
         }
         for row in rows
     }
 
-
+# Apply indirect-only artist features for reranking context.
 def apply_artist_indirect_features(
     connection: Connection,
     *,
@@ -204,6 +242,7 @@ def apply_artist_indirect_features(
     candidate_ids: list[int],
     features: dict[int, dict[str, set[int]]],
 ) -> dict[int, dict[str, set[int]]]:
+    """Apply indirect feature overrides for artist similarity reranking."""
     if entity_type != "artist":
         return features
     if entity_id not in features:
@@ -215,18 +254,18 @@ def apply_artist_indirect_features(
         candidate_artist_ids=candidate_ids,
     )
     if entity_id in indirect_features:
-        for key in ("venues", "promoters", "genres"):
+        for key in ("venues", "promoters"):
             features[entity_id][key] = indirect_features[entity_id].get(key, set())
 
     for candidate_id in candidate_ids:
         if candidate_id not in features or candidate_id not in indirect_features:
             continue
-        for key in ("venues", "promoters", "genres"):
+        for key in ("venues", "promoters"):
             features[candidate_id][key] = indirect_features[candidate_id].get(key, set())
 
     return features
 
-
+# Rerank embedding candidates with graph and event-level adjustments.
 def rerank_similar_entities(
     connection: Connection,
     *,
@@ -236,6 +275,7 @@ def rerank_similar_entities(
     limit: int,
     scoring_config=DEFAULT_RECOMMENDATION_SCORING,
 ) -> tuple[list[dict], dict[str, int]]:
+    """Rerank embedding candidates with graph signals and event-specific adjustments."""
     candidate_ids = [item["entity_id"] for item in ranked]
     features = recommendation_feature_sets(connection, entity_type, [entity_id, *candidate_ids])
     features = apply_artist_indirect_features(
@@ -293,7 +333,7 @@ def rerank_similar_entities(
         )
         event_rerank_adjustments: dict[str, float] = {}
         if entity_type == "event":
-            extracted_overlap = len(source_features.get("extracted_styles", set()) & candidate_features.get("extracted_styles", set()))
+            extracted_overlap = len(source_features.get("extracted_genres", set()) & candidate_features.get("extracted_genres", set()))
             artist_overlap = len(source_features.get("artists", set()) & candidate_features.get("artists", set()))
             if graph_score < scoring_config.event_rerank_min_graph_for_neutral:
                 event_rerank_adjustments["lowGraphPenalty"] = -scoring_config.event_rerank_low_graph_penalty
@@ -351,7 +391,7 @@ def rerank_similar_entities(
     }
     return sorted_rescored[:limit], debug_counts
 
-
+# Build final similar-entities API response with optional debug details.
 def build_similarity_response(
     connection: Connection,
     *,
@@ -361,6 +401,7 @@ def build_similarity_response(
     debug: bool = False,
     exclude_same_promoter: bool = False,
 ) -> SimilarityResponse:
+    """Build API response for similar entities with optional debug diagnostics."""
     config = EmbeddingConfig.from_env()
     scoring_config = recommendation_scoring_from_env()
     overfetch_multiplier = 25 if entity_type == "event" and exclude_same_promoter else 10
@@ -438,11 +479,11 @@ def build_similarity_response(
             candidate_features=candidate_features,
             scoring_config=scoring_config,
         )
-        shared_extracted_styles: list[str] = []
+        shared_extracted_genres: list[str] = []
         if entity_type == "event":
-            source_styles = source_features.get("extracted_styles", set())
-            candidate_styles = candidate_features.get("extracted_styles", set())
-            shared_extracted_styles = sorted(source_styles & candidate_styles)[:10]
+            source_styles = source_features.get("extracted_genres", set())
+            candidate_styles = candidate_features.get("extracted_genres", set())
+            shared_extracted_genres = sorted(source_styles & candidate_styles)[:10]
         similar.append(
             SimilarityItem(
                 id=candidate_id,
@@ -465,7 +506,7 @@ def build_similarity_response(
                         "graphScore": item["graph_score"],
                     },
                     "graphComponents": graph_components,
-                    "sharedExtractedGenres": shared_extracted_styles if entity_type == "event" else None,
+                    "sharedExtractedGenres": shared_extracted_genres if entity_type == "event" else None,
                     "sourceInterestedCount": item.get("source_interested_count") if entity_type == "event" else None,
                     "candidateInterestedCount": item.get("candidate_interested_count")
                     if entity_type == "event"

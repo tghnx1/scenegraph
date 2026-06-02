@@ -44,7 +44,7 @@ def test_event_text_profile_uses_structured_and_residual_lineup():
     assert "Event title: CYBERFLEX" in profile
     assert "Description: Bass-heavy electro and breaks." in profile
     assert "Genres: Techno, Electro" in profile
-    assert "Extracted styles: bass, breakbeat, electro" in profile
+    assert "Extracted genres: bass, breakbeat, electro" in profile
     assert "Structured lineup: BabaBass3000, Structured Artist" in profile
     assert "Lineup context: Guest Artist live" in profile
     assert "Raw lineup:" not in profile

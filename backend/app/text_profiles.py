@@ -99,7 +99,7 @@ def compose_event_text_profile(
     genre_names: Iterable[Any] = (),
     venue_name: str | None = None,
 ) -> str:
-    extracted_styles = extract_style_tags(
+    extracted_genres = extract_style_tags(
         " ".join(
             part
             for part in [
@@ -120,7 +120,7 @@ def compose_event_text_profile(
                 MAX_EVENT_DESCRIPTION_CHARS,
             ),
             format_section("Genres", genre_names),
-            format_section("Extracted styles", extracted_styles),
+            format_section("Extracted genres", extracted_genres),
             format_section("Structured lineup", artist_names),
             format_section(
                 "Lineup context",

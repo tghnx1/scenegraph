@@ -1,11 +1,11 @@
-import { useCallback, useEffect, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { fetchEntityDetail } from '../api/entityDetails'
 import { fetchSearch } from '../api/search'
 import { useApi } from '../hooks/useApi'
 import { useGraphStore } from '../store/graphStore'
 import type { EntityDetail } from '../types/entityDetail'
-import { graphEntityId, type NodeType } from '../types/graph'
+import { graphEntityId, type GraphNode, type NodeType } from '../types/graph'
 import type { PromoterRecommendationResponse } from '../types/recommendation'
 import type { SearchResponse, SearchResult } from '../types/search'
 import { DetailsPanel } from './components/DetailsPanel.tsx'
@@ -14,12 +14,124 @@ import { ScenegraphMapPanel } from './components/GraphPanel.tsx'
 import { SearchQueryForm } from './components/SearchQuery.tsx'
 import { useDebouncedValue } from './hooks/useDebouncedValue'
 
-const PROMOTER_RECOMMENDATIONS_URL = 'http://localhost:8080/api/recommendations/artists/2178/promoters?limit=10'
+const PROMOTER_RECOMMENDATIONS_URL = 'http://localhost:8080/api/recommendations/artists/2178/promoters?limit=50'
 const RECOMMENDATION_LOADING_MESSAGES = [
   'Finding similar artists',
   'Comparing related events',
   'Building promoter graph',
 ]
+const DEFAULT_RECOMMENDATION_STRENGTH_THRESHOLD = 0.25
+const DEFAULT_VISIBLE_PROMOTERS_ON_LOAD = 3
+
+const PROMOTER_SIZE_LABELS: Record<'small' | 'medium' | 'large', string> = {
+  small: 'Small',
+  medium: 'Medium',
+  large: 'Large',
+}
+
+type ReasonListKind =
+  | 'relatedEvents'
+  | 'similarEvents'
+  | 'similarArtists'
+  | 'coPlayedArtists'
+  | 'manualArtists'
+
+const MORE_SUFFIX_PATTERN = /,?\s*\+\d+\s+more\.?$/i
+const REASON_PREFIX_PATTERN = /^(.+?:)\s*/
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(Math.max(value, min), max)
+}
+
+// Remove empty entries and duplicates while preserving display order.
+function uniqueNonEmpty(values: string[]): string[] {
+  const seen = new Set<string>()
+  const result: string[] = []
+  for (const value of values) {
+    const normalized = value.trim()
+    if (!normalized) continue
+    const key = normalized.toLocaleLowerCase()
+    if (seen.has(key)) continue
+    seen.add(key)
+    result.push(normalized)
+  }
+  return result
+}
+
+// Detect which reason group a line belongs to so we can map it to details arrays.
+function detectReasonListKind(reason: string): ReasonListKind | null {
+  if (reason.includes('related promoter events:')) return 'relatedEvents'
+  if (reason.includes('similar promoter events:')) return 'similarEvents'
+  if (reason.includes('similar artists connected:')) return 'similarArtists'
+  if (reason.includes('co-played artists connected:')) return 'coPlayedArtists'
+  if (reason.includes('manually added trusted artist links:')) return 'manualArtists'
+  return null
+}
+
+// Resolve the full item list for a reason using main contract data (or debug fallback).
+function reasonListItems(recommendation: PromoterRecommendationResponse['recommendations'][number], reason: string): string[] {
+  const kind = detectReasonListKind(reason)
+  if (kind === null) return []
+
+  const rawSignals = recommendation.debug?.rawSignals
+  let items: string[] = []
+
+  if (kind === 'relatedEvents') {
+    items = recommendation.reasonDetails?.relatedEventTitles ?? rawSignals?.relatedEventTitles ?? []
+  } else if (kind === 'similarEvents') {
+    items = recommendation.reasonDetails?.similarPromoterEventTitles ?? rawSignals?.eventSimilarityEventTitles ?? []
+  } else if (kind === 'similarArtists') {
+    items = recommendation.reasonDetails?.similarArtistNames ?? rawSignals?.matchedArtistNames ?? []
+  } else if (kind === 'coPlayedArtists') {
+    items = recommendation.reasonDetails?.coPlayedArtistNames
+      ?? (rawSignals?.coPlayedConnectionArtists ?? []).map((artist) => artist.name)
+  } else if (kind === 'manualArtists') {
+    items = recommendation.reasonDetails?.manualArtistNames
+      ?? (rawSignals?.manualConnectionArtists ?? []).map((artist) => artist.name)
+  }
+
+  return uniqueNonEmpty(items)
+}
+
+// Return only hidden list items represented by the trailing "+N more" suffix.
+function hiddenReasonItems(recommendation: PromoterRecommendationResponse['recommendations'][number], reason: string): string[] {
+  const moreMatch = reason.match(/\+(\d+)\s+more/i)
+  if (!moreMatch) return []
+  const hiddenCount = Number.parseInt(moreMatch[1] ?? '0', 10)
+  if (!Number.isFinite(hiddenCount) || hiddenCount <= 0) return []
+  const normalizedItems = reasonListItems(recommendation, reason)
+  const hiddenStartIndex = Math.max(normalizedItems.length - hiddenCount, 0)
+  return normalizedItems.slice(hiddenStartIndex)
+}
+
+// Read recommendation score in a tolerant way to support older/newer response shapes.
+function recommendationScore(recommendation: PromoterRecommendationResponse['recommendations'][number]): number {
+  const directScore = recommendation.score
+  if (typeof directScore === 'number' && Number.isFinite(directScore)) {
+    return Math.max(0, Math.min(1, directScore))
+  }
+
+  const debugTotal = recommendation.debug?.weightedScores?.total
+  if (typeof debugTotal === 'number' && Number.isFinite(debugTotal)) {
+    return Math.max(0, Math.min(1, debugTotal))
+  }
+
+  return 0
+}
+
+// Choose a high default threshold that keeps at least a few top promoters visible.
+function initialStrengthThreshold(recommendations: PromoterRecommendationResponse['recommendations']): number {
+  if (recommendations.length === 0) return DEFAULT_RECOMMENDATION_STRENGTH_THRESHOLD
+
+  const sortedScores = recommendations
+    .map((recommendation) => recommendationScore(recommendation))
+    .sort((left, right) => right - left)
+
+  const targetIndex = Math.min(DEFAULT_VISIBLE_PROMOTERS_ON_LOAD - 1, sortedScores.length - 1)
+  const threshold = sortedScores[targetIndex] ?? DEFAULT_RECOMMENDATION_STRENGTH_THRESHOLD
+  return Math.max(0, Math.min(1, threshold))
+}
+
 type ProfileWorkspaceTab = 'graph' | 'recommendations'
 
 export function ProfilePage() {
@@ -30,7 +142,12 @@ export function ProfilePage() {
   const [isRecommendationsLoading, setIsRecommendationsLoading] = useState(false)
   const [recommendationsError, setRecommendationsError] = useState<string | null>(null)
   const [recommendationLoadingMessageIndex, setRecommendationLoadingMessageIndex] = useState(0)
+  const [recommendationStrengthThreshold, setRecommendationStrengthThreshold] = useState(
+    DEFAULT_RECOMMENDATION_STRENGTH_THRESHOLD,
+  )
   const [expandedRecommendationId, setExpandedRecommendationId] = useState<number | null>(null)
+  const [focusedRecommendationPromoterId, setFocusedRecommendationPromoterId] = useState<number | null>(null)
+  const [expandedReasonItems, setExpandedReasonItems] = useState<Record<string, boolean>>({})
   const submittedQuery = searchParams.get('q') ?? ''
   const [searchValue, setSearchValue] = useState(submittedQuery)
   const debouncedSearchValue = useDebouncedValue(searchValue.trim(), 350)
@@ -94,6 +211,11 @@ export function ProfilePage() {
     return () => window.clearInterval(messageInterval)
   }, [isRecommendationsLoading])
 
+  useEffect(() => {
+    if (!recommendationsData) return
+    setRecommendationStrengthThreshold(initialStrengthThreshold(recommendationsData.recommendations))
+  }, [recommendationsData])
+
   const handleSearchSubmit = useCallback(
     (event: FormEvent<HTMLFormElement>) => {
       event.preventDefault()
@@ -143,6 +265,8 @@ export function ProfilePage() {
     setIsRecommendationsLoading(true)
     setRecommendationsError(null)
     setExpandedRecommendationId(null)
+    setFocusedRecommendationPromoterId(null)
+    setExpandedReasonItems({})
 
     try {
       const response = await fetch(PROMOTER_RECOMMENDATIONS_URL)
@@ -167,15 +291,51 @@ export function ProfilePage() {
 
     if (recommendationNode) {
       setSelected(recommendationNode)
+      setFocusedRecommendationPromoterId(recommendationId)
     }
   }, [recommendationsData, setSelected])
 
+  // Toggle recommendation card focus; collapsing clears selected promoter and resets graph focus.
   const handleToggleRecommendation = useCallback((recommendationId: number) => {
-    setExpandedRecommendationId((currentId) => (
-      currentId === recommendationId ? null : recommendationId
-    ))
+    const isCollapsingCurrent = expandedRecommendationId === recommendationId
+
+    if (isCollapsingCurrent) {
+      setExpandedRecommendationId(null)
+      setFocusedRecommendationPromoterId(null)
+      setSelected(null)
+      return
+    }
+
+    setExpandedRecommendationId(recommendationId)
     handleSelectRecommendation(recommendationId)
-  }, [handleSelectRecommendation])
+  }, [expandedRecommendationId, handleSelectRecommendation, setSelected])
+
+  const handleToggleReasonItems = useCallback((key: string) => {
+    setExpandedReasonItems((current) => ({ ...current, [key]: !current[key] }))
+  }, [])
+
+  // Slider change resets focused promoter so graph returns to threshold-based baseline paths.
+  const handleRecommendationStrengthChange = useCallback((nextThreshold: number) => {
+    setRecommendationStrengthThreshold(nextThreshold)
+    setExpandedRecommendationId(null)
+    setFocusedRecommendationPromoterId(null)
+    setSelected(null)
+  }, [setSelected])
+
+  // Handle recommendation graph clicks: update details + list card, but keep graph focus unchanged.
+  const handleRecommendationGraphNodeClick = useCallback((node: GraphNode, promoterNodeId: string | null) => {
+    setSelected(node)
+
+    if (!promoterNodeId) {
+      setExpandedRecommendationId(null)
+      return
+    }
+
+    const promoterId = graphEntityId(promoterNodeId, 'promoter')
+    if (promoterId === null) return
+
+    setExpandedRecommendationId(promoterId)
+  }, [setSelected])
 
   const searchResults = searchData?.results ?? []
   const trimmedSearchValue = searchValue.trim()
@@ -190,6 +350,62 @@ export function ProfilePage() {
   const isDetailsSearchLoading = isSearchLoading || isSelectedEntityDetailLoading
   const hasActiveSearchState = Boolean(searchValue || submittedQuery || selectedNode)
   const detailsSelectedNode = selectedEntityDetail ? null : selectedNode
+  const sortedRecommendations = useMemo(() => {
+    if (!recommendationsData) return []
+
+    return [...recommendationsData.recommendations].sort((left, right) => {
+      const scoreDelta = recommendationScore(right) - recommendationScore(left)
+      if (Math.abs(scoreDelta) > 1e-9) return scoreDelta
+      return left.name.localeCompare(right.name)
+    })
+  }, [recommendationsData])
+  const recommendationScoreBounds = useMemo(() => {
+    if (sortedRecommendations.length === 0) {
+      return { min: 0, max: 1 }
+    }
+
+    const scores = sortedRecommendations.map((recommendation) => recommendationScore(recommendation))
+    const min = Math.min(...scores)
+    const max = Math.max(...scores)
+    return {
+      min,
+      max,
+    }
+  }, [sortedRecommendations])
+
+  useEffect(() => {
+    setRecommendationStrengthThreshold((current) => {
+      const bounded = clamp(current, recommendationScoreBounds.min, recommendationScoreBounds.max)
+      return Math.abs(current - bounded) < 1e-9 ? current : bounded
+    })
+  }, [recommendationScoreBounds.max, recommendationScoreBounds.min])
+
+  const recommendationStrengthStep = useMemo(() => {
+    const range = recommendationScoreBounds.max - recommendationScoreBounds.min
+    if (range <= 0) return 0.001
+    return Math.max(range / 500, 0.0005)
+  }, [recommendationScoreBounds.max, recommendationScoreBounds.min])
+
+  const filteredRecommendations = useMemo(
+    () => sortedRecommendations.filter((recommendation) => (
+      recommendationScore(recommendation) >= recommendationStrengthThreshold
+    )),
+    [recommendationStrengthThreshold, sortedRecommendations],
+  )
+  const filteredRecommendationPromoterNodeIds = useMemo(
+    () => filteredRecommendations.map((recommendation) => `promoter-${recommendation.id}`),
+    [filteredRecommendations],
+  )
+  useEffect(() => {
+    if (expandedRecommendationId === null) return
+    const isStillVisible = filteredRecommendations.some((recommendation) => (
+      recommendation.id === expandedRecommendationId
+    ))
+    if (!isStillVisible) {
+      setExpandedRecommendationId(null)
+      setFocusedRecommendationPromoterId(null)
+    }
+  }, [expandedRecommendationId, filteredRecommendations])
 
   return (
     <div className="profile-page">
@@ -290,27 +506,110 @@ export function ProfilePage() {
                 )}
                 {recommendationsData !== null && (
                   <div className="recommendations-content">
+                    <div className="recommendation-threshold-control" aria-label="Recommendation strength control">
+                      <label htmlFor="recommendation-strength-threshold">
+                        Strength: {Math.round(recommendationStrengthThreshold * 100)}%
+                      </label>
+                      <input
+                        id="recommendation-strength-threshold"
+                        type="range"
+                        min={recommendationScoreBounds.min}
+                        max={recommendationScoreBounds.max}
+                        step={recommendationStrengthStep}
+                        value={recommendationStrengthThreshold}
+                        onChange={(event) => handleRecommendationStrengthChange(Number(event.target.value))}
+                      />
+                      <p>{filteredRecommendations.length} / {sortedRecommendations.length} promoters shown</p>
+                    </div>
                     <section className="recommendation-list" aria-label="Recommended promoters">
-                      {recommendationsData.recommendations.map((recommendation) => (
+                      {filteredRecommendations.length === 0 && (
+                        <p className="recommendation-list-empty">
+                          No promoters at this threshold. Lower the slider to include more matches.
+                        </p>
+                      )}
+                      {filteredRecommendations.map((recommendation) => (
                         <article className="recommendation-item" key={recommendation.id}>
                           <button
                             type="button"
                             className="recommendation-name"
-                            aria-pressed={selectedNode?.id === `promoter-${recommendation.id}`}
+                            aria-pressed={focusedRecommendationPromoterId === recommendation.id}
                             aria-expanded={expandedRecommendationId === recommendation.id}
                             aria-controls={`recommendation-reasons-${recommendation.id}`}
                             onClick={() => handleToggleRecommendation(recommendation.id)}
                           >
-                            {recommendation.name}
+                            <span className="recommendation-name-label">{recommendation.name}</span>
+                            <span
+                              className={`recommendation-size-badge recommendation-size-${recommendation.promoterSizeSegment}`}
+                            >
+                              {PROMOTER_SIZE_LABELS[recommendation.promoterSizeSegment]}
+                            </span>
                           </button>
                           {expandedRecommendationId === recommendation.id && (
                             <ul
                               id={`recommendation-reasons-${recommendation.id}`}
                               className="recommendation-reasons"
                             >
-                              {recommendation.reasons.map((reason) => (
-                                <li key={reason}>{reason}</li>
-                              ))}
+                              {recommendation.reasons.map((reason, index) => {
+                                const reasonKey = `${recommendation.id}-${index}`
+                                const hiddenItems = hiddenReasonItems(recommendation, reason)
+                                const canExpand = hiddenItems.length > 0
+                                const isExpanded = Boolean(expandedReasonItems[reasonKey])
+                                const cleanReason = reason.replace(MORE_SUFFIX_PATTERN, '')
+                                const prefixMatch = cleanReason.match(REASON_PREFIX_PATTERN)
+                                const reasonPrefix = prefixMatch ? prefixMatch[1] : cleanReason
+                                const allItems = reasonListItems(recommendation, reason)
+                                const visibleItems = canExpand
+                                  ? allItems.slice(0, Math.max(allItems.length - hiddenItems.length, 0))
+                                  : allItems
+
+                                return (
+                                  <li key={reasonKey}>
+                                    {(allItems.length > 0 && prefixMatch) ? (
+                                      <>
+                                        <span>{reasonPrefix}</span>
+                                        <ul className="recommendation-reasons-inline-list">
+                                          {visibleItems.map((item) => (
+                                            <li key={`${reasonKey}-visible-${item}`}>{item}</li>
+                                          ))}
+                                        </ul>
+                                      </>
+                                    ) : (
+                                      <span>{cleanReason}</span>
+                                    )}
+                                    {canExpand && (
+                                      <>
+                                        {!isExpanded && (
+                                          <button
+                                            type="button"
+                                            className="recommendation-reasons-more-button"
+                                            aria-expanded={false}
+                                            onClick={() => handleToggleReasonItems(reasonKey)}
+                                          >
+                                            {`+${hiddenItems.length} more`}
+                                          </button>
+                                        )}
+                                        {isExpanded && (
+                                          <>
+                                            <ul className="recommendation-reasons-more-list">
+                                              {hiddenItems.map((item) => (
+                                                <li key={`${reasonKey}-${item}`}>{item}</li>
+                                              ))}
+                                            </ul>
+                                            <button
+                                              type="button"
+                                              className="recommendation-reasons-more-button"
+                                              aria-expanded
+                                              onClick={() => handleToggleReasonItems(reasonKey)}
+                                            >
+                                              Hide
+                                            </button>
+                                          </>
+                                        )}
+                                      </>
+                                    )}
+                                  </li>
+                                )
+                              })}
                             </ul>
                           )}
                         </article>
@@ -321,6 +620,9 @@ export function ProfilePage() {
                         providedData={recommendationsData.graph}
                         showFilters={false}
                         highlightPathToNodeId={`artist-${recommendationsData.entityId}`}
+                        visibleRecommendationPromoterNodeIds={filteredRecommendationPromoterNodeIds}
+                        focusedRecommendationPromoterNodeId={focusedRecommendationPromoterId === null ? null : `promoter-${focusedRecommendationPromoterId}`}
+                        onRecommendationGraphNodeClick={handleRecommendationGraphNodeClick}
                       />
                     </section>
                   </div>

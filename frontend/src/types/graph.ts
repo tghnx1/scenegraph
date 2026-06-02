@@ -1,4 +1,10 @@
 export type NodeType = 'artist' | 'event' | 'venue' | 'promoter'
+export type GraphEvidenceType =
+  | 'semantic_bridge'
+  | 'direct_connection'
+  | 'warm_network'
+  | 'manual_connection'
+  | 'event_similarity'
 
 export interface GraphNode {
   id: string
@@ -19,8 +25,8 @@ export interface GraphEdge {
   target: string
   relationship: string
   weight: number
-  evidenceType?: string | null
-  style?: 'solid' | 'dashed' | 'dotted' | null
+  evidenceType?: GraphEvidenceType | string
+  style?: 'solid' | 'dashed' | 'dotted' | string
   strength?: number | null
 }
 
@@ -28,6 +34,8 @@ export interface GraphData {
   centerNodeId?: string
   nodes: GraphNode[]
   links: GraphEdge[]
+  promoterPathNodeIds?: Record<string, string[]>
+  promoterPathLinkKeys?: Record<string, string[]>
 }
 
 export function graphEntityId(nodeId: string, type?: NodeType): number | null {

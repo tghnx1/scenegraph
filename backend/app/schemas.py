@@ -45,6 +45,8 @@ class GraphLink(BaseModel):
 class GraphResponse(BaseModel):
     nodes: list[GraphNode]
     links: list[GraphLink]
+    promoterPathNodeIds: dict[str, list[str]] = Field(default_factory=dict)
+    promoterPathLinkKeys: dict[str, list[str]] = Field(default_factory=dict)
 
 
 class LoginRequest(BaseModel):
@@ -133,13 +135,21 @@ class ArtistRecommendationResponse(BaseModel):
 
 
 class RecommendationEvidenceItem(BaseModel):
-    type: Literal["semantic_bridge", "direct_connection", "warm_network", "event_similarity"]
+    type: Literal["semantic_bridge", "direct_connection", "warm_network", "manual_connection", "event_similarity"]
     path: str
 
 
 class WarmConnectionArtistItem(BaseModel):
     id: int
     name: str
+
+
+class PromoterRecommendationReasonDetails(BaseModel):
+    relatedEventTitles: list[str] = Field(default_factory=list)
+    similarPromoterEventTitles: list[str] = Field(default_factory=list)
+    similarArtistNames: list[str] = Field(default_factory=list)
+    coPlayedArtistNames: list[str] = Field(default_factory=list)
+    manualArtistNames: list[str] = Field(default_factory=list)
 
 
 class PromoterRecommendationItem(BaseModel):
@@ -159,8 +169,17 @@ class PromoterRecommendationItem(BaseModel):
     status: str | None = None
     warmConnectionCount: int = 0
     warmConnectionArtists: list[WarmConnectionArtistItem] = Field(default_factory=list)
+    coPlayedConnectionCount: int = 0
+    coPlayedConnectionArtists: list[WarmConnectionArtistItem] = Field(default_factory=list)
+    manualConnectionCount: int = 0
+    manualConnectionArtists: list[WarmConnectionArtistItem] = Field(default_factory=list)
+    promoterInterestedSum: int = 0
+    promoterSizeSegment: Literal["small", "medium", "large"] = "small"
     directConnectionCount: int = 0
     evidence: list[RecommendationEvidenceItem] = Field(default_factory=list)
+    reasonDetails: PromoterRecommendationReasonDetails = Field(
+        default_factory=PromoterRecommendationReasonDetails
+    )
     debug: dict[str, object] | None = None
 
 
@@ -170,6 +189,9 @@ class PromoterRecommendationResponse(BaseModel):
     model: str
     dimensions: int
     recommendations: list[PromoterRecommendationItem]
+    largeRecommendations: list[PromoterRecommendationItem] = Field(default_factory=list)
+    mediumRecommendations: list[PromoterRecommendationItem] = Field(default_factory=list)
+    smallRecommendations: list[PromoterRecommendationItem] = Field(default_factory=list)
     warmRecommendations: list[PromoterRecommendationItem] = Field(default_factory=list)
     discoveryRecommendations: list[PromoterRecommendationItem] = Field(default_factory=list)
     graph: GraphResponse

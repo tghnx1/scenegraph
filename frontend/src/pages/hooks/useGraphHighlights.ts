@@ -78,5 +78,20 @@ export function useGraphHighlights(selectedNode: GraphNode | null, data: GraphDa
     return highlighted
   }, [data, selectedNode, targetNodeId])
 
-  return { connectedNodes, pathLinks }
+  const pathNodeIds = useMemo(() => {
+    const highlightedNodes = new Set<string>()
+    if (!selectedNode || !targetNodeId || selectedNode.id === targetNodeId) return highlightedNodes
+    if (pathLinks.size === 0) return highlightedNodes
+
+    highlightedNodes.add(selectedNode.id)
+    highlightedNodes.add(targetNodeId)
+    pathLinks.forEach((key) => {
+      const [source, target] = key.split('|')
+      if (source) highlightedNodes.add(source)
+      if (target) highlightedNodes.add(target)
+    })
+    return highlightedNodes
+  }, [pathLinks, selectedNode, targetNodeId])
+
+  return { connectedNodes, pathLinks, pathNodeIds }
 }

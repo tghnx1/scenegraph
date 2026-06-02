@@ -17,7 +17,7 @@ REFRESH_CDP_URL ?= http://localhost:9222
 REFRESH_PIPELINE_ARGS ?=
 CHECK_ARTIST_ID ?= 2178
 
-.PHONY: help env build up upd down stop restart logs ps health prisma-migrate prisma-studio db-shell import-events backfill-normalized-texts backfill-lineup-residual backfill-artist-biographies extract-artist-tags generate-embeddings validate-import refresh-data-check refresh-data-check-bio refresh-data-check-bio-embeddings import-dump export-dump clean reset-db list fclean
+.PHONY: help env build up upd down stop restart logs ps health prisma-migrate prisma-studio db-shell import-events backfill-normalized-texts backfill-lineup-residual backfill-artist-biographies extract-artist-tags generate-embeddings backfill-embedding-vectors validate-import refresh-data-check refresh-data-check-bio refresh-data-check-bio-embeddings import-dump export-dump clean reset-db list fclean
 
 help:
 	@printf "\n"
@@ -25,8 +25,8 @@ help:
 	@printf "\n"
 	@printf "  make env      Create .env from .env.example if missing\n"
 	@printf "  make build    Build containers\n"
-	@printf "  make up       Start stack in foreground\n"
-	@printf "  make upd      Start stack in background\n"
+	@printf "  make up       Start stack in foreground (runs migrations first)\n"
+	@printf "  make upd      Start stack in background (runs migrations first)\n"
 	@printf "  make down     Stop and remove containers\n"
 	@printf "  make stop     Stop running containers\n"
 	@printf "  make restart  Restart the stack in background\n"
@@ -41,7 +41,8 @@ help:
 	@printf "  make backfill-lineup-residual Fill events.lineup_residual_text from lineup_raw\n"
 	@printf "  make backfill-artist-biographies Fill artists.biography_normalized from biography\n"
 	@printf "  make extract-artist-tags Extract structured artist tags from biographies with an LLM\n"
-	@printf "  make generate-embeddings Generate OpenAI embeddings for recommendations\n"
+	@printf "  make generate-embeddings Generate recommendation embeddings (provider from .env)\n"
+	@printf "  make backfill-embedding-vectors Backfill pgvector column and build ANN indexes\n"
 	@printf "  make validate-import Run post-import integrity checks against the current DATABASE_URL\n"
 	@printf "  make refresh-data-check Run pipeline + import + validate on a check DB (default: scenegraph_check)\n"
 	@printf "  make refresh-data-check-bio Same as refresh-data-check, but includes artists biographies scraping\n"
@@ -65,10 +66,10 @@ env:
 build: env
 	$(COMPOSE) build
 
-up: env
+up: env prisma-migrate
 	$(COMPOSE) up --build
 
-upd: env
+upd: env prisma-migrate
 	$(COMPOSE) up --build -d
 
 down:
@@ -118,6 +119,9 @@ extract-artist-tags: env
 generate-embeddings: env
 	$(COMPOSE) exec backend python scripts/generate_embeddings.py
 
+backfill-embedding-vectors: env
+	$(COMPOSE) exec backend python scripts/backfill_embedding_vectors.py
+
 validate-import: env
 	$(COMPOSE) exec backend python scripts/validate_import.py
 
@@ -163,6 +167,7 @@ list:
 
 clean:
 	$(COMPOSE) down --remove-orphans
+	rm .env
 
 reset-db:
 	@if [ "$$RESET_DB" != "yes" ]; then \
@@ -175,3 +180,4 @@ reset-db:
 fclean:
 	$(COMPOSE) down --rmi all -v --remove-orphans
 	docker builder prune -f
+	rm .env
