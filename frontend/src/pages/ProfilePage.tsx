@@ -252,7 +252,7 @@ export function ProfilePage() {
       const nextParams = new URLSearchParams(searchParams)
       nextParams.set('q', result.name)
       nextParams.set('selectedType', result.type)
-      nextParams.set('selectedId', result.id)
+      nextParams.set('selectedId', String(result.id))
       nextParams.delete('artist')
       setSearchValue(result.name)
       setSelected(null)
