@@ -57,9 +57,9 @@ ORDER BY e.event_date DESC;
 """
 
 
-@router.get("/{id}", response_model=PromoterResponse)
+@router.get("", response_model=PromoterResponse)
 def get_promoter(
-    id: int,
+    id: int = Query(...),
     db: Connection = Depends(get_db),
 ):
     with db.cursor() as cur:
