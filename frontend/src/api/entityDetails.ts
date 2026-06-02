@@ -3,10 +3,10 @@ import { graphEntityId, type NodeType } from '../types/graph'
 import type { EntityDetail } from '../types/entityDetail'
 
 const detailPathByType: Record<NodeType, string> = {
-  artist: 'artists',
-  event: 'events',
-  venue: 'venues',
-  promoter: 'promoters',
+  artist: 'artist',
+  event: 'event',
+  venue: 'venue',
+  promoter: 'promoter',
 }
 
 // export const fetchEntityDetail = (type: NodeType, id: string): Promise<EntityDetail> =>

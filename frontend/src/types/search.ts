@@ -2,7 +2,7 @@ export type SearchEntityType = 'artist' | 'venue' | 'promoter' | 'event'
 
 export interface SearchResultItem {
   type: SearchEntityType
-  id: string
+  id: number
   name: string
 }
 
