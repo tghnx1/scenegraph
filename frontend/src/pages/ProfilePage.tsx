@@ -148,7 +148,7 @@ export function ProfilePage() {
     DEFAULT_RECOMMENDATION_STRENGTH_THRESHOLD,
   )
   const [expandedRecommendationId, setExpandedRecommendationId] = useState<number | null>(null)
-  const [focusedRecommendationPromoterId, setFocusedRecommendationPromoterId] = useState<number | null>(null)
+  const [focusedRecommendationPromoterIds, setFocusedRecommendationPromoterIds] = useState<number[] | null>(null)
   const [expandedReasonItems, setExpandedReasonItems] = useState<Record<string, boolean>>({})
   const recommendationThresholdInitializedRef = useRef(false)
   const submittedQuery = searchParams.get('q') ?? ''
@@ -274,7 +274,7 @@ export function ProfilePage() {
     setIsRecommendationsLoading(true)
     setRecommendationsError(null)
     setExpandedRecommendationId(null)
-    setFocusedRecommendationPromoterId(null)
+    setFocusedRecommendationPromoterIds(null)
     setExpandedReasonItems({})
     setRecommendationGraphMode('compact')
 
@@ -303,7 +303,7 @@ export function ProfilePage() {
 
     if (recommendationNode) {
       setSelected(recommendationNode)
-      setFocusedRecommendationPromoterId(recommendationId)
+      setFocusedRecommendationPromoterIds([recommendationId])
     }
   }, [recommendationsData, setSelected])
 
@@ -313,7 +313,7 @@ export function ProfilePage() {
 
     if (isCollapsingCurrent) {
       setExpandedRecommendationId(null)
-      setFocusedRecommendationPromoterId(null)
+      setFocusedRecommendationPromoterIds(null)
       setSelected(null)
       return
     }
@@ -334,24 +334,39 @@ export function ProfilePage() {
   const handleRecommendationStrengthChange = useCallback((nextThreshold: number) => {
     setRecommendationStrengthThreshold(nextThreshold)
     setExpandedRecommendationId(null)
-    setFocusedRecommendationPromoterId(null)
+    setFocusedRecommendationPromoterIds(null)
     setSelected(null)
   }, [setSelected])
 
-  // Handle recommendation graph clicks: update details + list card, but keep graph focus unchanged.
-  const handleRecommendationGraphNodeClick = useCallback((node: GraphNode, promoterNodeId: string | null) => {
+  // Handle recommendation graph clicks: update details + list card, and focus the clicked promoter path(s).
+  const handleRecommendationGraphNodeClick = useCallback((node: GraphNode, promoterNodeIds: string[] | null) => {
     setSelected(node)
 
-    if (!promoterNodeId) {
+    if (!promoterNodeIds || promoterNodeIds.length === 0) {
       setExpandedRecommendationId(null)
+      setFocusedRecommendationPromoterIds(null)
       return
     }
 
-    const promoterId = graphEntityId(promoterNodeId, 'promoter')
-    if (promoterId === null) return
+    const promoterIds = promoterNodeIds
+      .map((promoterNodeId) => graphEntityId(promoterNodeId, 'promoter'))
+      .filter((promoterId): promoterId is number => promoterId !== null)
 
-    setExpandedRecommendationId(promoterId)
+    if (promoterIds.length === 1) {
+      setExpandedRecommendationId(promoterIds[0])
+      setFocusedRecommendationPromoterIds(promoterIds)
+      return
+    }
+
+    setExpandedRecommendationId(null)
+    setFocusedRecommendationPromoterIds(promoterIds)
   }, [setSelected])
+
+  useEffect(() => {
+    if (expandedRecommendationId === null) return
+    const card = document.getElementById(`recommendation-card-${expandedRecommendationId}`)
+    card?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  }, [expandedRecommendationId])
 
   const searchResults = searchData?.results ?? []
   const trimmedSearchValue = searchValue.trim()
@@ -428,7 +443,7 @@ export function ProfilePage() {
     ))
     if (!isStillVisible) {
       setExpandedRecommendationId(null)
-      setFocusedRecommendationPromoterId(null)
+      setFocusedRecommendationPromoterIds(null)
     }
   }, [expandedRecommendationId, filteredRecommendations])
 
@@ -553,11 +568,15 @@ export function ProfilePage() {
                         </p>
                       )}
                       {filteredRecommendations.map((recommendation) => (
-                        <article className="recommendation-item" key={recommendation.id}>
+                        <article
+                          className="recommendation-item"
+                          key={recommendation.id}
+                          id={`recommendation-card-${recommendation.id}`}
+                        >
                           <button
                             type="button"
                             className="recommendation-name"
-                            aria-pressed={focusedRecommendationPromoterId === recommendation.id}
+                            aria-pressed={focusedRecommendationPromoterIds?.includes(recommendation.id) ?? false}
                             aria-expanded={expandedRecommendationId === recommendation.id}
                             aria-controls={`recommendation-reasons-${recommendation.id}`}
                             onClick={() => handleToggleRecommendation(recommendation.id)}
@@ -663,7 +682,7 @@ export function ProfilePage() {
                           showNodeTypeFilter={false}
                           highlightPathToNodeId={`artist-${recommendationsData.entityId}`}
                           visibleRecommendationPromoterNodeIds={filteredRecommendationPromoterNodeIds}
-                          focusedRecommendationPromoterNodeId={focusedRecommendationPromoterId === null ? null : `promoter-${focusedRecommendationPromoterId}`}
+                          focusedRecommendationPromoterNodeIds={focusedRecommendationPromoterIds?.map((promoterId) => `promoter-${promoterId}`) ?? null}
                           onRecommendationGraphNodeClick={handleRecommendationGraphNodeClick}
                         />
                       )}
