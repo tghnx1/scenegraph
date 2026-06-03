@@ -32,6 +32,7 @@ export interface GraphEdge {
 
 export interface GraphData {
   centerNodeId?: string
+  graphMode?: 'compact' | 'full' | null
   nodes: GraphNode[]
   links: GraphEdge[]
   preferredPathNodeIds?: Record<string, string[]>

@@ -35,4 +35,5 @@ export interface PromoterRecommendationResponse {
   entityType: 'artist'
   recommendations: PromoterRecommendation[]
   graph: GraphData
+  analyticsGraph?: GraphData | null
 }

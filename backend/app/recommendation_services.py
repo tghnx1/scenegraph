@@ -16,6 +16,7 @@ from app.promoter_graph import (
     promoter_recommendation_item_evidence,
     promoter_recommendation_reasons,
     promoter_recommendation_status,
+    project_compact_recommendation_graph,
     promoter_warm_network_evidence,
 )
 from app.recommendation_engine import (
@@ -1266,7 +1267,8 @@ def build_artist_promoter_recommendation_response(
             smallRecommendations=[],
             warmRecommendations=[],
             discoveryRecommendations=[],
-            graph=GraphResponse(nodes=[], links=[]),
+            graph=GraphResponse(nodes=[], links=[], graphMode="compact"),
+            analyticsGraph=GraphResponse(nodes=[], links=[], graphMode="full"),
             debug={
                 "candidateCounts": {
                     "sqlPromoterCandidates": len(rows),
@@ -1394,6 +1396,22 @@ def build_artist_promoter_recommendation_response(
         pair_key = (int(row["source_event_id"]), int(row["promoter_event_id"]))
         row["shared_artists"] = shared_artists_by_pair.get(pair_key, [])
 
+    analytics_graph = promoter_recommendation_graph(
+        source_artist_id=artist_id,
+        source_artist_name=source_artist["name"],
+        recommendations=recommendations,
+        semantic_evidence_rows=semantic_evidence,
+        direct_evidence_rows=direct_evidence,
+        warm_evidence_rows=warm_evidence,
+        manual_evidence_rows=manual_evidence,
+        event_similarity_evidence_rows=event_similarity_evidence,
+        scoring_config=scoring_config,
+    )
+    compact_graph = project_compact_recommendation_graph(
+        analytics_graph,
+        recommendations=recommendations,
+    )
+
     return PromoterRecommendationResponse(
         entityId=artist_id,
         model=source["model"],
@@ -1404,17 +1422,8 @@ def build_artist_promoter_recommendation_response(
         smallRecommendations=small_recommendations,
         warmRecommendations=warm_recommendations,
         discoveryRecommendations=discovery_recommendations,
-        graph=promoter_recommendation_graph(
-            source_artist_id=artist_id,
-            source_artist_name=source_artist["name"],
-            recommendations=recommendations,
-            semantic_evidence_rows=semantic_evidence,
-            direct_evidence_rows=direct_evidence,
-            warm_evidence_rows=warm_evidence,
-            manual_evidence_rows=manual_evidence,
-            event_similarity_evidence_rows=event_similarity_evidence,
-            scoring_config=scoring_config,
-        ),
+        graph=compact_graph,
+        analyticsGraph=analytics_graph,
         debug={
             "candidateCounts": {
                 "sqlPromoterCandidates": len(rows),

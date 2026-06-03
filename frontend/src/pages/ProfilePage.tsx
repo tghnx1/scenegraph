@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { fetchEntityDetail } from '../api/entityDetails'
 import { fetchSearch } from '../api/search'
@@ -14,7 +14,7 @@ import { ScenegraphMapPanel } from './components/GraphPanel.tsx'
 import { SearchQueryForm } from './components/SearchQuery.tsx'
 import { useDebouncedValue } from './hooks/useDebouncedValue'
 
-const PROMOTER_RECOMMENDATIONS_URL = 'http://localhost:8080/api/recommendations/artists/2178/promoters?limit=50'
+const PROMOTER_RECOMMENDATIONS_API_BASE_URL = 'http://localhost:8080/api/recommendations/artists/2178/promoters'
 const RECOMMENDATION_LOADING_MESSAGES = [
   'Finding similar artists',
   'Comparing related events',
@@ -22,6 +22,7 @@ const RECOMMENDATION_LOADING_MESSAGES = [
 ]
 const DEFAULT_RECOMMENDATION_STRENGTH_THRESHOLD = 0.25
 const DEFAULT_VISIBLE_PROMOTERS_ON_LOAD = 3
+type RecommendationGraphMode = 'compact' | 'full'
 
 const PROMOTER_SIZE_LABELS: Record<'small' | 'medium' | 'large', string> = {
   small: 'Small',
@@ -142,12 +143,14 @@ export function ProfilePage() {
   const [isRecommendationsLoading, setIsRecommendationsLoading] = useState(false)
   const [recommendationsError, setRecommendationsError] = useState<string | null>(null)
   const [recommendationLoadingMessageIndex, setRecommendationLoadingMessageIndex] = useState(0)
+  const [recommendationGraphMode, setRecommendationGraphMode] = useState<RecommendationGraphMode>('compact')
   const [recommendationStrengthThreshold, setRecommendationStrengthThreshold] = useState(
     DEFAULT_RECOMMENDATION_STRENGTH_THRESHOLD,
   )
   const [expandedRecommendationId, setExpandedRecommendationId] = useState<number | null>(null)
   const [focusedRecommendationPromoterId, setFocusedRecommendationPromoterId] = useState<number | null>(null)
   const [expandedReasonItems, setExpandedReasonItems] = useState<Record<string, boolean>>({})
+  const recommendationThresholdInitializedRef = useRef(false)
   const submittedQuery = searchParams.get('q') ?? ''
   const [searchValue, setSearchValue] = useState(submittedQuery)
   const debouncedSearchValue = useDebouncedValue(searchValue.trim(), 350)
@@ -212,8 +215,13 @@ export function ProfilePage() {
   }, [isRecommendationsLoading])
 
   useEffect(() => {
-    if (!recommendationsData) return
+    if (!recommendationsData) {
+      recommendationThresholdInitializedRef.current = false
+      return
+    }
+    if (recommendationThresholdInitializedRef.current) return
     setRecommendationStrengthThreshold(initialStrengthThreshold(recommendationsData.recommendations))
+    recommendationThresholdInitializedRef.current = true
   }, [recommendationsData])
 
   const handleSearchSubmit = useCallback(
@@ -262,14 +270,18 @@ export function ProfilePage() {
   )
 
   const handleLoadRecommendations = useCallback(async () => {
+    recommendationThresholdInitializedRef.current = false
     setIsRecommendationsLoading(true)
     setRecommendationsError(null)
     setExpandedRecommendationId(null)
     setFocusedRecommendationPromoterId(null)
     setExpandedReasonItems({})
+    setRecommendationGraphMode('compact')
 
     try {
-      const response = await fetch(PROMOTER_RECOMMENDATIONS_URL)
+      const requestUrl = new URL(PROMOTER_RECOMMENDATIONS_API_BASE_URL)
+      requestUrl.searchParams.set('limit', '50')
+      const response = await fetch(requestUrl.toString())
 
       if (!response.ok) {
         throw new Error(`${response.status} ${response.statusText}`)
@@ -312,6 +324,10 @@ export function ProfilePage() {
 
   const handleToggleReasonItems = useCallback((key: string) => {
     setExpandedReasonItems((current) => ({ ...current, [key]: !current[key] }))
+  }, [])
+
+  const handleToggleRecommendationGraphMode = useCallback(() => {
+    setRecommendationGraphMode((current) => (current === 'compact' ? 'full' : 'compact'))
   }, [])
 
   // Slider change resets focused promoter so graph returns to threshold-based baseline paths.
@@ -395,6 +411,15 @@ export function ProfilePage() {
   const filteredRecommendationPromoterNodeIds = useMemo(
     () => filteredRecommendations.map((recommendation) => `promoter-${recommendation.id}`),
     [filteredRecommendations],
+  )
+  const currentRecommendationGraph = useMemo(
+    () => {
+      if (!recommendationsData) return null
+      return recommendationGraphMode === 'full'
+        ? (recommendationsData.analyticsGraph ?? recommendationsData.graph)
+        : recommendationsData.graph
+    },
+    [recommendationGraphMode, recommendationsData],
   )
   useEffect(() => {
     if (expandedRecommendationId === null) return
@@ -616,14 +641,32 @@ export function ProfilePage() {
                       ))}
                     </section>
                     <section className="recommendation-graph-map" aria-label="Recommendation evidence graph">
-                      <ScenegraphMapPanel
-                        providedData={recommendationsData.graph}
-                        showFilters={false}
-                        highlightPathToNodeId={`artist-${recommendationsData.entityId}`}
-                        visibleRecommendationPromoterNodeIds={filteredRecommendationPromoterNodeIds}
-                        focusedRecommendationPromoterNodeId={focusedRecommendationPromoterId === null ? null : `promoter-${focusedRecommendationPromoterId}`}
-                        onRecommendationGraphNodeClick={handleRecommendationGraphNodeClick}
-                      />
+                      <div className="panel-heading">
+                        <span className="search-query-label">
+                          {recommendationGraphMode === 'compact' ? 'Artist-only path' : 'Full analytics graph'}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={handleToggleRecommendationGraphMode}
+                          disabled={isRecommendationsLoading}
+                        >
+                          {recommendationGraphMode === 'compact'
+                            ? 'Show analytics graph'
+                            : 'Show compact path'}
+                        </button>
+                      </div>
+                      {currentRecommendationGraph && (
+                        <ScenegraphMapPanel
+                          key={recommendationGraphMode}
+                          providedData={currentRecommendationGraph}
+                          showFilters={false}
+                          showNodeTypeFilter={false}
+                          highlightPathToNodeId={`artist-${recommendationsData.entityId}`}
+                          visibleRecommendationPromoterNodeIds={filteredRecommendationPromoterNodeIds}
+                          focusedRecommendationPromoterNodeId={focusedRecommendationPromoterId === null ? null : `promoter-${focusedRecommendationPromoterId}`}
+                          onRecommendationGraphNodeClick={handleRecommendationGraphNodeClick}
+                        />
+                      )}
                     </section>
                   </div>
                 )}
