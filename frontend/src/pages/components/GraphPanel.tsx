@@ -320,8 +320,45 @@ export function ScenegraphMapPanel({
       nextHighlightedNodeIds.add(target)
     })
 
+    recommendationPathGraphData.links.forEach((link) => {
+      const source = getLinkNodeId(link.source as LinkEndpoint)
+      const target = getLinkNodeId(link.target as LinkEndpoint)
+      const sourceType = nodeTypeById.get(source)
+      const targetType = nodeTypeById.get(target)
+      if (nextHighlightedNodeIds.has(source) && targetType === 'venue') {
+        nextHighlightedNodeIds.add(target)
+      }
+      if (nextHighlightedNodeIds.has(target) && sourceType === 'venue') {
+        nextHighlightedNodeIds.add(source)
+      }
+    })
+
     return nextHighlightedNodeIds
   }, [isPathFocusActive, pathNodeIds, recommendationPathGraphData.links, recommendationPathGraphData.nodes])
+  const highlightedPathLinkKeys = useMemo(() => {
+    if (!isPathFocusActive) return pathLinks
+
+    const nextHighlightedLinkKeys = new Set(pathLinks)
+    const nodeTypeById = new Map<string, NodeType>()
+    recommendationPathGraphData.nodes.forEach((node) => {
+      nodeTypeById.set(node.id, node.type)
+    })
+
+    recommendationPathGraphData.links.forEach((link) => {
+      const source = getLinkNodeId(link.source as LinkEndpoint)
+      const target = getLinkNodeId(link.target as LinkEndpoint)
+      const sourceType = nodeTypeById.get(source)
+      const targetType = nodeTypeById.get(target)
+      if (highlightedPathNodeIds.has(source) && targetType === 'venue') {
+        nextHighlightedLinkKeys.add(getUndirectedLinkKey(source, target))
+      }
+      if (highlightedPathNodeIds.has(target) && sourceType === 'venue') {
+        nextHighlightedLinkKeys.add(getUndirectedLinkKey(source, target))
+      }
+    })
+
+    return nextHighlightedLinkKeys
+  }, [highlightedPathNodeIds, isPathFocusActive, pathLinks, recommendationPathGraphData.links, recommendationPathGraphData.nodes])
   useGraphPhysics(graphRef, recommendationPathGraphData)
 
   useEffect(() => {
@@ -449,7 +486,7 @@ export function ScenegraphMapPanel({
       : null
   const isHighlightedLink = (source: string, target: string) => (
     isPathFocusActive
-      ? pathLinks.has(getUndirectedLinkKey(source, target))
+      ? highlightedPathLinkKeys.has(getUndirectedLinkKey(source, target))
       : false
   )
 
