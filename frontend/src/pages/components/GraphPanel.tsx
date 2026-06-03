@@ -18,6 +18,10 @@ const MIN_GRAPH_HEIGHT = 320
 const DEFAULT_GRAPH_FILTERS: GraphParams = { limit: 100 }
 const EMPTY_GRAPH_DATA: GraphData = { nodes: [], links: [] }
 const DEFAULT_VISIBLE_NODE_TYPES = new Set<NodeType>(GRAPH_NODE_TYPES)
+const EGO_GRAPH_CENTER_RETRIES = 24
+const EGO_GRAPH_CENTER_RETRY_MS = 80
+const EGO_GRAPH_CENTER_DURATION_MS = 520
+const EGO_GRAPH_ZOOM = 1.35
 type LinkEndpoint = string | { id: string }
 
 // Guard URL param values before using entity-specific fetch logic.
@@ -44,6 +48,12 @@ function getLinkStrengthValue(link: { strength?: unknown; weight?: unknown; valu
     }
   }
   return 0
+}
+
+function hasGraphPosition(node: GraphNode): node is GraphNode & { x: number; y: number } {
+  const positionedNode = node as GraphNode & { x?: unknown; y?: unknown }
+  return typeof positionedNode.x === 'number' && Number.isFinite(positionedNode.x)
+    && typeof positionedNode.y === 'number' && Number.isFinite(positionedNode.y)
 }
 
 interface ScenegraphMapPanelProps {
@@ -440,6 +450,50 @@ export function ScenegraphMapPanel({
     highlightPathToNodeId,
   )
   useGraphPhysics(graphRef, recommendationPathGraphData)
+
+  useEffect(() => {
+    if (providedData || !selectedType || !selectedId || graphSize.width === 0 || graphSize.height === 0) return
+
+    const centerNodeId = recommendationPathGraphData.centerNodeId
+    if (!centerNodeId) return
+
+    let timeoutId: number | undefined
+    let isCancelled = false
+
+    const centerWhenReady = (attempt: number) => {
+      if (isCancelled) return
+
+      const graph = graphRef.current
+      const centerNode = recommendationPathGraphData.nodes.find((node) => node.id === centerNodeId)
+
+      if (graph && centerNode && hasGraphPosition(centerNode)) {
+        graph.centerAt(centerNode.x, centerNode.y, EGO_GRAPH_CENTER_DURATION_MS)
+        graph.zoom(EGO_GRAPH_ZOOM, EGO_GRAPH_CENTER_DURATION_MS)
+        return
+      }
+
+      if (attempt < EGO_GRAPH_CENTER_RETRIES) {
+        timeoutId = window.setTimeout(
+          () => centerWhenReady(attempt + 1),
+          EGO_GRAPH_CENTER_RETRY_MS,
+        )
+      }
+    }
+
+    centerWhenReady(0)
+
+    return () => {
+      isCancelled = true
+      if (timeoutId !== undefined) window.clearTimeout(timeoutId)
+    }
+  }, [
+    graphSize.height,
+    graphSize.width,
+    providedData,
+    recommendationPathGraphData,
+    selectedId,
+    selectedType,
+  ])
 
   useEffect(() => {
     if (providedData) return
