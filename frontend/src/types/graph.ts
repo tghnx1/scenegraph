@@ -34,14 +34,14 @@ export interface GraphData {
   centerNodeId?: string
   nodes: GraphNode[]
   links: GraphEdge[]
-  promoterPathNodeIds?: Record<string, string[]>
-  promoterPathLinkKeys?: Record<string, string[]>
-  promoterPathPromoterIdsByNodeId?: Record<string, string[]>
-  promoterPathPromoterIdsByLinkKey?: Record<string, string[]>
-  promoterShortestPathNodeIds?: Record<string, string[]>
-  promoterShortestPathLinkKeys?: Record<string, string[]>
-  promoterShortestPathPromoterIdsByNodeId?: Record<string, string[]>
-  promoterShortestPathPromoterIdsByLinkKey?: Record<string, string[]>
+  preferredPathNodeIds?: Record<string, string[]>
+  preferredPathLinkKeys?: Record<string, string[]>
+  preferredPathPromoterIdsByNodeId?: Record<string, string[]>
+  preferredPathPromoterIdsByLinkKey?: Record<string, string[]>
+  fallbackPathNodeIds?: Record<string, string[]>
+  fallbackPathLinkKeys?: Record<string, string[]>
+  fallbackPathPromoterIdsByNodeId?: Record<string, string[]>
+  fallbackPathPromoterIdsByLinkKey?: Record<string, string[]>
 }
 
 export function graphEntityId(nodeId: string, type?: NodeType): number | null {
