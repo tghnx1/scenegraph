@@ -368,13 +368,6 @@ export function ProfilePage() {
     setSelected(null)
   }, [setSelected])
 
-  useEffect(() => {
-    if (expandedRecommendationId === null) return
-    const card = document.getElementById(`recommendation-card-${expandedRecommendationId}`)
-    const header = card?.querySelector<HTMLElement>('.recommendation-name') ?? card
-    header?.scrollIntoView({ behavior: 'smooth', block: 'start', inline: 'nearest' })
-  }, [expandedRecommendationId])
-
   const searchResults = searchData?.results ?? []
   const trimmedSearchValue = searchValue.trim()
   const trimmedSubmittedQuery = submittedQuery.trim()
