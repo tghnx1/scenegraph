@@ -49,6 +49,14 @@ from app.schemas import (
 
 logger = logging.getLogger(__name__)
 
+# Keep warm/manual recommendations in the top score band so score-only sorting
+# naturally places them above discovery recommendations.
+def promoter_recommendation_adjusted_score(base_score: float, *, has_warm_path: bool) -> float:
+    bounded_base_score = max(0.0, min(float(base_score), 1.0))
+    if has_warm_path:
+        return 0.5 + 0.5 * bounded_base_score
+    return 0.5 * bounded_base_score
+
 # Build short explanation strings for semantic artist matches.
 def semantic_artist_reasons(item: dict) -> list[str]:
     """Build short human-readable reasons for artist-to-artist semantic similarity."""
@@ -1046,11 +1054,16 @@ def build_artist_promoter_recommendation_response(
             + activity_contribution
             + recency_contribution
         )
+        has_warm_path = row["warm_connection_count"] > 0 or manual_warm_connection_count > 0
+        adjusted_score = promoter_recommendation_adjusted_score(
+            total_score,
+            has_warm_path=has_warm_path,
+        )
         recommendations.append(
             PromoterRecommendationItem(
                 id=row["id"],
                 name=row["name"],
-                score=total_score,
+                score=adjusted_score,
                 semanticScore=row["semantic_score"],
                 strengthScore=strength_score,
                 activityScore=activity_score,
@@ -1130,7 +1143,7 @@ def build_artist_promoter_recommendation_response(
                     },
                     "weightedScores": {
                         **score_breakdown,
-                        "total": total_score,
+                        "total": adjusted_score,
                     },
                 }
                 if debug

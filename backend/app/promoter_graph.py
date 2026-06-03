@@ -34,9 +34,25 @@ def undirected_link_key(source: str, target: str) -> str:
     return "|".join(sorted((source, target)))
 
 
+def link_style_rank(style: str | None) -> int:
+    if style == "solid":
+        return 2
+    if style == "dashed":
+        return 1
+    if style == "dotted":
+        return 0
+    return -1
+
+
 def merge_projected_link(existing: GraphLink | None, candidate: GraphLink) -> GraphLink:
     if existing is None:
         return candidate
+    existing_style_rank = link_style_rank(existing.style)
+    candidate_style_rank = link_style_rank(candidate.style)
+    if candidate_style_rank > existing_style_rank:
+        return candidate
+    if candidate_style_rank < existing_style_rank:
+        return existing
     existing_strength = existing.strength if isinstance(existing.strength, (int, float)) else 0.0
     candidate_strength = candidate.strength if isinstance(candidate.strength, (int, float)) else 0.0
     if candidate_strength > existing_strength:
@@ -132,6 +148,10 @@ def project_path_subgraph(
         )
         if len(kept_neighbors) < 2:
             continue
+        is_warm_or_manual_projection = any(
+            link.evidenceType in {"warm_network", "manual_connection"}
+            for link in incident_links.get(node_id, [])
+        )
         incident_strengths = [
             link.strength if isinstance(link.strength, (int, float)) else 0.0
             for link in incident_links.get(node_id, [])
@@ -143,7 +163,7 @@ def project_path_subgraph(
                 target,
                 relationship="projected_path",
                 evidence_type="projected_path",
-                style="solid",
+                style="solid" if is_warm_or_manual_projection else "dashed",
                 strength=projected_strength,
             )
 
