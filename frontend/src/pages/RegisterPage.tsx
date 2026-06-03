@@ -1,36 +1,10 @@
-import { useState, type CSSProperties, type FormEvent } from 'react'
+import { useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { register } from '../api/auth'
-import { PasswordInput } from './components/PasswordToggle'
+import { authButtonStyle, authInputStyle, PasswordInput } from './components/PasswordToggle'
 
 const colorVar = (name: string) => `var(${name})`
 const colorAlpha = (name: string, percent: number) => `color-mix(in srgb, var(${name}) ${percent}%, transparent)`
-
-const buttonStyle: CSSProperties = {
-  textDecoration: 'none',
-  color: colorVar('--text-muted'),
-  padding: '6px 10px',
-  borderRadius: 8,
-  fontSize: 14,
-  fontWeight: 600,
-  transition: 'all 120ms ease',
-  cursor: 'pointer',
-  border: `1px solid ${colorAlpha('--text', 18)}`,
-  background: colorAlpha('--text', 6),
-  font: 'inherit',
-}
-
-const inputStyle: CSSProperties = {
-  width: '100%',
-  minWidth: 0,
-  border: `1px solid ${colorAlpha('--text', 18)}`,
-  borderRadius: 8,
-  background: colorAlpha('--background', 64),
-  color: colorVar('--text'),
-  font: 'inherit',
-  padding: '10px 12px',
-  outline: 'none',
-}
 
 export function RegisterPage() {
   const navigate = useNavigate()
@@ -89,7 +63,7 @@ export function RegisterPage() {
           <label style={{ display: 'grid', gap: 6, color: colorVar('--text-muted'), fontSize: 14 }}>
             Username
             <input
-              style={inputStyle}
+              style={authInputStyle}
               value={username}
               onChange={(event) => setUsername(event.target.value)}
               autoComplete="username"
@@ -99,7 +73,7 @@ export function RegisterPage() {
           <label style={{ display: 'grid', gap: 6, color: colorVar('--text-muted'), fontSize: 14 }}>
             Email
             <input
-              style={inputStyle}
+              style={authInputStyle}
               type="email"
               value={email}
               onChange={(event) => setEmail(event.target.value)}
@@ -113,7 +87,6 @@ export function RegisterPage() {
               value={password}
               onChange={setPassword}
               autoComplete="new-password"
-              inputStyle={inputStyle}
               required
             />
           </label>
@@ -123,7 +96,6 @@ export function RegisterPage() {
               value={passwordConfirm}
               onChange={setPasswordConfirm}
               autoComplete="new-password"
-              inputStyle={inputStyle}
               ariaShowLabel="Show password confirmation"
               ariaHideLabel="Hide password confirmation"
               required
@@ -131,7 +103,7 @@ export function RegisterPage() {
           </label>
           {error && <p style={{ margin: 0, color: 'var(--danger, #d94848)', fontSize: 14 }}>{error}</p>}
           {success && <p style={{ margin: 0, color: 'var(--success, #2f8f5b)', fontSize: 14 }}>{success}</p>}
-          <button type="submit" style={buttonStyle} disabled={isSubmitting}>
+          <button type="submit" style={authButtonStyle} disabled={isSubmitting}>
             {isSubmitting ? 'Creating account...' : 'Create account'}
           </button>
         </form>
