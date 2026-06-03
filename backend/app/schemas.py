@@ -43,6 +43,7 @@ class GraphLink(BaseModel):
 
 
 class GraphResponse(BaseModel):
+    centerNodeId: str | None = None
     nodes: list[GraphNode]
     links: list[GraphLink]
     graphMode: Literal["compact", "full"] | None = None
