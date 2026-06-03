@@ -151,6 +151,7 @@ export function ProfilePage() {
   const [focusedRecommendationPromoterIds, setFocusedRecommendationPromoterIds] = useState<number[] | null>(null)
   const [expandedReasonItems, setExpandedReasonItems] = useState<Record<string, boolean>>({})
   const recommendationThresholdInitializedRef = useRef(false)
+  const recommendationListRef = useRef<HTMLElement | null>(null)
   const submittedQuery = searchParams.get('q') ?? ''
   const [searchValue, setSearchValue] = useState(submittedQuery)
   const debouncedSearchValue = useDebouncedValue(searchValue.trim(), 350)
@@ -368,6 +369,23 @@ export function ProfilePage() {
     setSelected(null)
   }, [setSelected])
 
+  useEffect(() => {
+    if (expandedRecommendationId === null) return
+    const list = recommendationListRef.current
+    const card = document.getElementById(`recommendation-card-${expandedRecommendationId}`)
+    const header = card?.querySelector<HTMLElement>('.recommendation-name')
+    if (!list || !card || !header) return
+
+    const animationFrame = window.requestAnimationFrame(() => {
+      const listRect = list.getBoundingClientRect()
+      const headerRect = header.getBoundingClientRect()
+      const nextScrollTop = Math.max(list.scrollTop + (headerRect.top - listRect.top) - 12, 0)
+      list.scrollTo({ top: nextScrollTop, behavior: 'smooth' })
+    })
+
+    return () => window.cancelAnimationFrame(animationFrame)
+  }, [expandedRecommendationId])
+
   const searchResults = searchData?.results ?? []
   const trimmedSearchValue = searchValue.trim()
   const trimmedSubmittedQuery = submittedQuery.trim()
@@ -561,7 +579,11 @@ export function ProfilePage() {
                       />
                       <p>{filteredRecommendations.length} / {sortedRecommendations.length} promoters shown</p>
                     </div>
-                    <section className="recommendation-list" aria-label="Recommended promoters">
+                    <section
+                      ref={recommendationListRef}
+                      className="recommendation-list"
+                      aria-label="Recommended promoters"
+                    >
                       {filteredRecommendations.length === 0 && (
                         <p className="recommendation-list-empty">
                           No promoters at this threshold. Lower the slider to include more matches.
