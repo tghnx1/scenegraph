@@ -1,6 +1,7 @@
 import { useState, type CSSProperties, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { getFallbackRole, login, type AuthRole } from '../api/auth'
+import { PasswordInput } from './components/PasswordToggle'
 
 interface LoginPageProps {
   onLogin: (role: AuthRole) => void
@@ -99,12 +100,11 @@ export function LoginPage({ onLogin }: LoginPageProps) {
           </label>
           <label style={{ display: 'grid', gap: 6, color: colorVar('--text-muted'), fontSize: 14 }}>
             Password
-            <input
-              style={inputStyle}
-              type="password"
+            <PasswordInput
               value={password}
-              onChange={(event) => setPassword(event.target.value)}
+              onChange={setPassword}
               autoComplete="current-password"
+              inputStyle={inputStyle}
               required
             />
           </label>
