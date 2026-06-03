@@ -52,6 +52,7 @@ interface ScenegraphMapPanelProps {
   title?: string
   providedData?: GraphData
   showFilters?: boolean
+  showNodeTypeFilter?: boolean
   highlightLinks?: boolean
   highlightPathToNodeId?: string
   visibleRecommendationPromoterNodeIds?: string[]
@@ -63,6 +64,7 @@ export function ScenegraphMapPanel({
   title,
   providedData,
   showFilters = true,
+  showNodeTypeFilter = true,
   highlightLinks = true,
   highlightPathToNodeId,
   visibleRecommendationPromoterNodeIds,
@@ -110,23 +112,28 @@ export function ScenegraphMapPanel({
   const hasRecommendationControls = Boolean(providedData && !showFilters)
 
   const graphData = useMemo<GraphData>(() => {
-    const visibleNodes = rawGraphData.nodes.filter((node) => visibleNodeTypes.has(node.type))
+    const visibleNodes = showNodeTypeFilter
+      ? rawGraphData.nodes.filter((node) => visibleNodeTypes.has(node.type))
+      : rawGraphData.nodes
     const visibleNodeIds = new Set(visibleNodes.map((node) => node.id))
-    const visibleLinks = rawGraphData.links.filter((link) => (
-      visibleNodeIds.has(getLinkNodeId(link.source as LinkEndpoint))
-      && visibleNodeIds.has(getLinkNodeId(link.target as LinkEndpoint))
-    ))
+    const visibleLinks = showNodeTypeFilter
+      ? rawGraphData.links.filter((link) => (
+        visibleNodeIds.has(getLinkNodeId(link.source as LinkEndpoint))
+        && visibleNodeIds.has(getLinkNodeId(link.target as LinkEndpoint))
+      ))
+      : rawGraphData.links
     const filteredLinks = visibleLinks
     const filteredNodeIds = new Set<string>()
     filteredLinks.forEach((link) => {
       filteredNodeIds.add(getLinkNodeId(link.source as LinkEndpoint))
       filteredNodeIds.add(getLinkNodeId(link.target as LinkEndpoint))
     })
-    const filteredNodes = hasRecommendationControls
+    const filteredNodes = hasRecommendationControls && showNodeTypeFilter
       ? visibleNodes.filter((node) => filteredNodeIds.has(node.id))
       : visibleNodes
     return {
       centerNodeId: rawGraphData.centerNodeId,
+      graphMode: rawGraphData.graphMode,
       nodes: filteredNodes,
       links: filteredLinks,
       preferredPathNodeIds: rawGraphData.preferredPathNodeIds,
@@ -141,6 +148,7 @@ export function ScenegraphMapPanel({
   }, [
     hasRecommendationControls,
     rawGraphData,
+    showNodeTypeFilter,
     visibleNodeTypes,
   ])
 
@@ -484,7 +492,9 @@ export function ScenegraphMapPanel({
           <span>{nodeCount} nodes</span>
           <span>{linkCount} links</span>
         </div>
-        <GraphNodeFilter visibleNodeTypes={visibleNodeTypes} onToggle={handleLegendToggle} />
+        {showNodeTypeFilter && (
+          <GraphNodeFilter visibleNodeTypes={visibleNodeTypes} onToggle={handleLegendToggle} />
+        )}
         <ForceGraph2D
           ref={graphRef}
           width={graphSize.width || undefined}

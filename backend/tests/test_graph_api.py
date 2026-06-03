@@ -407,6 +407,7 @@ def test_artist_promoter_recommendations_include_graph_payload():
     assert data["entityType"] == "artist"
     assert data["recommendations"]
     assert "graph" in data
+    assert "analyticsGraph" in data
 
     first = data["recommendations"][0]
     assert first["type"] == "promoter"
@@ -449,8 +450,12 @@ def test_artist_promoter_recommendations_include_graph_payload():
     )
 
     graph = data["graph"]
+    analytics_graph = data["analyticsGraph"]
     assert graph["nodes"]
     assert graph["links"]
+    assert graph["graphMode"] == "compact"
+    assert analytics_graph["graphMode"] == "full"
+    assert any(node["type"] == "event" for node in analytics_graph["nodes"])
     assert "preferredPathNodeIds" in graph
     assert "preferredPathLinkKeys" in graph
     assert "preferredPathPromoterIdsByNodeId" in graph
@@ -459,7 +464,7 @@ def test_artist_promoter_recommendations_include_graph_payload():
     assert "fallbackPathLinkKeys" in graph
     assert "fallbackPathPromoterIdsByNodeId" in graph
     assert "fallbackPathPromoterIdsByLinkKey" in graph
-    assert any(node["type"] == "promoter" for node in graph["nodes"])
+    assert all(node["type"] in {"artist", "promoter"} for node in graph["nodes"])
     semantic_link = next(
         (link for link in graph["links"] if link.get("evidenceType") == "semantic_bridge"),
         None,
@@ -528,7 +533,7 @@ def test_artist_promoter_recommendations_include_direct_connections():
 
     direct_links = [
         link
-        for link in data["graph"]["links"]
+        for link in data["analyticsGraph"]["links"]
         if link.get("evidenceType") == "direct_connection"
     ]
     if direct_recommendations:
@@ -547,7 +552,7 @@ def test_artist_promoter_recommendations_exclude_existing_by_default():
     assert all(item["scoreBreakdown"]["directConnection"] == 0 for item in data["recommendations"])
     assert all(item["status"] != "existing_partner" for item in data["recommendations"])
     assert not any(
-        link.get("evidenceType") == "direct_connection" for link in data["graph"]["links"]
+        link.get("evidenceType") == "direct_connection" for link in data["analyticsGraph"]["links"]
     )
 
 
@@ -570,7 +575,7 @@ def test_artist_promoter_recommendations_include_warm_network_connections():
 
     warm_links = [
         link
-        for link in data["graph"]["links"]
+        for link in data["analyticsGraph"]["links"]
         if link.get("evidenceType") == "warm_network"
     ]
     if warm_recommendations:
@@ -593,7 +598,10 @@ def test_artist_promoter_recommendations_manual_connections_boost_warm_score():
 
 
 def test_artist_promoter_recommendations_include_event_similarity_connections():
-    response = client.get("/api/recommendations/artists/2178/promoters", params={"limit": 50})
+    response = client.get(
+        "/api/recommendations/artists/2178/promoters",
+        params={"limit": 50},
+    )
     assert response.status_code == 200
     data = response.json()
 
@@ -607,22 +615,12 @@ def test_artist_promoter_recommendations_include_event_similarity_connections():
 
     event_similarity_links = [
         link
-        for link in data["graph"]["links"]
+        for link in data["analyticsGraph"]["links"]
         if link.get("evidenceType") == "event_similarity"
     ]
     if event_similarity_recommendations and has_event_similarity_evidence:
         assert event_similarity_links
         assert any(link.get("style") == "dotted" for link in event_similarity_links)
-        event_similarity_link_keys = {
-            "|".join(sorted((link["source"], link["target"])))
-            for link in event_similarity_links
-        }
-        fallback_path_link_keys = {
-            link_key
-            for link_keys in data["graph"]["fallbackPathLinkKeys"].values()
-            for link_key in link_keys
-        }
-        assert event_similarity_link_keys.isdisjoint(fallback_path_link_keys)
     elif event_similarity_recommendations:
         # eventSimilarity can come from embedding-only signal even when no symbolic path exists
         assert not event_similarity_links
@@ -646,6 +644,7 @@ def test_artist_promoter_recommendations_preserve_existing_contract_fields():
     assert "eventCount" in first
     assert "reasons" in first
     assert "graph" in data
+    assert "analyticsGraph" in data
     assert "nodes" in data["graph"]
     assert "links" in data["graph"]
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import defaultdict, deque
+from itertools import combinations
 from datetime import date as DateValue
 from datetime import datetime
 from typing import Literal
@@ -27,6 +28,280 @@ def date_recency_score(value: DateValue | datetime | None) -> float:
     event_date = value.date() if isinstance(value, datetime) else value
     age_days = max((DateValue.today() - event_date).days, 0)
     return max(0.0, 1.0 - age_days / 365)
+
+
+def undirected_link_key(source: str, target: str) -> str:
+    return "|".join(sorted((source, target)))
+
+
+def merge_projected_link(existing: GraphLink | None, candidate: GraphLink) -> GraphLink:
+    if existing is None:
+        return candidate
+    existing_strength = existing.strength if isinstance(existing.strength, (int, float)) else 0.0
+    candidate_strength = candidate.strength if isinstance(candidate.strength, (int, float)) else 0.0
+    if candidate_strength > existing_strength:
+        return candidate
+    if candidate_strength < existing_strength:
+        return existing
+    if existing.evidenceType == "projected_path" and candidate.evidenceType != "projected_path":
+        return candidate
+    return existing
+
+
+def project_path_subgraph(
+    *,
+    nodes_by_id: dict[str, GraphNode],
+    links: list[GraphLink],
+    path_node_ids: set[str],
+    path_link_keys: set[str],
+) -> tuple[list[GraphNode], list[GraphLink], set[str], set[str]]:
+    path_nodes = {
+        node_id: nodes_by_id[node_id]
+        for node_id in path_node_ids
+        if node_id in nodes_by_id
+    }
+    path_node_types = {node_id: node.type for node_id, node in path_nodes.items()}
+    path_links = [
+        link
+        for link in links
+        if undirected_link_key(link.source, link.target) in path_link_keys
+        and link.source in path_nodes
+        and link.target in path_nodes
+    ]
+
+    adjacency: dict[str, set[str]] = defaultdict(set)
+    incident_links: dict[str, list[GraphLink]] = defaultdict(list)
+    for link in path_links:
+        adjacency[link.source].add(link.target)
+        adjacency[link.target].add(link.source)
+        incident_links[link.source].append(link)
+        incident_links[link.target].append(link)
+
+    kept_types = {"artist", "promoter"}
+    projected_nodes: dict[str, GraphNode] = {
+        node_id: node
+        for node_id, node in path_nodes.items()
+        if node.type in kept_types
+    }
+    projected_links: dict[str, GraphLink] = {}
+
+    def add_projected_link(
+        source: str,
+        target: str,
+        *,
+        relationship: str,
+        evidence_type: str,
+        style: str = "solid",
+        strength: float | None = None,
+        weight: int = 1,
+    ) -> None:
+        key = undirected_link_key(source, target)
+        existing = projected_links.get(key)
+        candidate = GraphLink(
+            source=source,
+            target=target,
+            relationship=relationship,
+            weight=weight,
+            evidenceType=evidence_type,
+            style=style,
+            strength=strength,
+        )
+        projected_links[key] = merge_projected_link(existing, candidate)
+
+    for link in path_links:
+        source_type = path_node_types.get(link.source)
+        target_type = path_node_types.get(link.target)
+        if source_type in kept_types and target_type in kept_types:
+            add_projected_link(
+                link.source,
+                link.target,
+                relationship=link.relationship,
+                evidence_type=link.evidenceType or "projected_path",
+                style=link.style or "solid",
+                strength=link.strength,
+                weight=link.weight,
+            )
+
+    for node_id, node in path_nodes.items():
+        if node.type != "event":
+            continue
+        kept_neighbors = sorted(
+            neighbor
+            for neighbor in adjacency.get(node_id, set())
+            if path_node_types.get(neighbor) in kept_types
+        )
+        if len(kept_neighbors) < 2:
+            continue
+        incident_strengths = [
+            link.strength if isinstance(link.strength, (int, float)) else 0.0
+            for link in incident_links.get(node_id, [])
+        ]
+        projected_strength = max(incident_strengths) if incident_strengths else None
+        for source, target in combinations(kept_neighbors, 2):
+            add_projected_link(
+                source,
+                target,
+                relationship="projected_path",
+                evidence_type="projected_path",
+                style="solid",
+                strength=projected_strength,
+            )
+
+    projected_node_ids = set(projected_nodes)
+    projected_link_keys = set(projected_links)
+    return (
+        sorted(projected_nodes.values(), key=lambda node: (node.type, node.name.lower(), node.entityId)),
+        sorted(
+            projected_links.values(),
+            key=lambda link: (undirected_link_key(link.source, link.target), link.relationship),
+        ),
+        projected_node_ids,
+        projected_link_keys,
+    )
+
+
+def project_compact_recommendation_graph(
+    full_graph: GraphResponse,
+    *,
+    recommendations: list[PromoterRecommendationItem],
+) -> GraphResponse:
+    nodes_by_id = {node.id: node for node in full_graph.nodes}
+    compact_nodes_by_id: dict[str, GraphNode] = {}
+    compact_links_by_key: dict[str, GraphLink] = {}
+
+    compact_preferred_path_node_ids_by_promoter: dict[str, set[str]] = defaultdict(set)
+    compact_preferred_path_link_keys_by_promoter: dict[str, set[str]] = defaultdict(set)
+    compact_fallback_path_node_ids_by_promoter: dict[str, set[str]] = defaultdict(set)
+    compact_fallback_path_link_keys_by_promoter: dict[str, set[str]] = defaultdict(set)
+
+    def merge_projected_graph(
+        *,
+        promoter_node_id: str,
+        path_node_ids: list[str] | set[str] | None,
+        path_link_keys: list[str] | set[str] | None,
+        node_ids_by_promoter: dict[str, set[str]],
+        link_keys_by_promoter: dict[str, set[str]],
+    ) -> None:
+        if not path_node_ids and not path_link_keys:
+            return
+
+        projected_nodes, projected_links, projected_node_ids, projected_link_keys = project_path_subgraph(
+            nodes_by_id=nodes_by_id,
+            links=full_graph.links,
+            path_node_ids=set(path_node_ids or []),
+            path_link_keys=set(path_link_keys or []),
+        )
+
+        node_ids_by_promoter[promoter_node_id].update(projected_node_ids)
+        link_keys_by_promoter[promoter_node_id].update(projected_link_keys)
+
+        for projected_node in projected_nodes:
+            compact_nodes_by_id[projected_node.id] = projected_node
+        for projected_link in projected_links:
+            link_key = undirected_link_key(projected_link.source, projected_link.target)
+            compact_links_by_key[link_key] = merge_projected_link(
+                compact_links_by_key.get(link_key),
+                projected_link,
+            )
+
+    for recommendation in recommendations:
+        promoter_node_id = graph_node_id("promoter", recommendation.id)
+        preferred_nodes = full_graph.preferredPathNodeIds.get(promoter_node_id)
+        preferred_links = full_graph.preferredPathLinkKeys.get(promoter_node_id)
+        fallback_nodes = full_graph.fallbackPathNodeIds.get(promoter_node_id)
+        fallback_links = full_graph.fallbackPathLinkKeys.get(promoter_node_id)
+
+        if preferred_nodes or preferred_links:
+            merge_projected_graph(
+                promoter_node_id=promoter_node_id,
+                path_node_ids=preferred_nodes,
+                path_link_keys=preferred_links,
+                node_ids_by_promoter=compact_preferred_path_node_ids_by_promoter,
+                link_keys_by_promoter=compact_preferred_path_link_keys_by_promoter,
+            )
+        if fallback_nodes or fallback_links:
+            merge_projected_graph(
+                promoter_node_id=promoter_node_id,
+                path_node_ids=fallback_nodes,
+                path_link_keys=fallback_links,
+                node_ids_by_promoter=compact_fallback_path_node_ids_by_promoter,
+                link_keys_by_promoter=compact_fallback_path_link_keys_by_promoter,
+            )
+
+    compact_preferred_path_node_ids_output = {
+        promoter_node_id: sorted(node_ids)
+        for promoter_node_id, node_ids in compact_preferred_path_node_ids_by_promoter.items()
+        if node_ids
+    }
+    compact_preferred_path_link_keys_output = {
+        promoter_node_id: sorted(link_keys)
+        for promoter_node_id, link_keys in compact_preferred_path_link_keys_by_promoter.items()
+        if link_keys
+    }
+    compact_fallback_path_node_ids_output = {
+        promoter_node_id: sorted(node_ids)
+        for promoter_node_id, node_ids in compact_fallback_path_node_ids_by_promoter.items()
+        if node_ids
+    }
+    compact_fallback_path_link_keys_output = {
+        promoter_node_id: sorted(link_keys)
+        for promoter_node_id, link_keys in compact_fallback_path_link_keys_by_promoter.items()
+        if link_keys
+    }
+
+    compact_preferred_promoter_ids_by_node_id: dict[str, set[str]] = defaultdict(set)
+    compact_preferred_promoter_ids_by_link_key: dict[str, set[str]] = defaultdict(set)
+    for promoter_node_id, node_ids in compact_preferred_path_node_ids_output.items():
+        for node_id in node_ids:
+            compact_preferred_promoter_ids_by_node_id[node_id].add(promoter_node_id)
+    for promoter_node_id, link_keys in compact_preferred_path_link_keys_output.items():
+        for link_key in link_keys:
+            compact_preferred_promoter_ids_by_link_key[link_key].add(promoter_node_id)
+
+    compact_fallback_promoter_ids_by_node_id: dict[str, set[str]] = defaultdict(set)
+    compact_fallback_promoter_ids_by_link_key: dict[str, set[str]] = defaultdict(set)
+    for promoter_node_id, node_ids in compact_fallback_path_node_ids_output.items():
+        for node_id in node_ids:
+            compact_fallback_promoter_ids_by_node_id[node_id].add(promoter_node_id)
+    for promoter_node_id, link_keys in compact_fallback_path_link_keys_output.items():
+        for link_key in link_keys:
+            compact_fallback_promoter_ids_by_link_key[link_key].add(promoter_node_id)
+
+    return GraphResponse(
+        nodes=sorted(
+            compact_nodes_by_id.values(),
+            key=lambda node: ({"artist": 0, "promoter": 1}[node.type], node.name.lower(), node.entityId),
+        ),
+        links=sorted(
+            compact_links_by_key.values(),
+            key=lambda link: (undirected_link_key(link.source, link.target), link.relationship),
+        ),
+        graphMode="compact",
+        preferredPathNodeIds=compact_preferred_path_node_ids_output,
+        preferredPathLinkKeys=compact_preferred_path_link_keys_output,
+        preferredPathPromoterIdsByNodeId={
+            node_id: sorted(promoter_node_ids)
+            for node_id, promoter_node_ids in compact_preferred_promoter_ids_by_node_id.items()
+            if promoter_node_ids
+        },
+        preferredPathPromoterIdsByLinkKey={
+            link_key: sorted(promoter_node_ids)
+            for link_key, promoter_node_ids in compact_preferred_promoter_ids_by_link_key.items()
+            if promoter_node_ids
+        },
+        fallbackPathNodeIds=compact_fallback_path_node_ids_output,
+        fallbackPathLinkKeys=compact_fallback_path_link_keys_output,
+        fallbackPathPromoterIdsByNodeId={
+            node_id: sorted(promoter_node_ids)
+            for node_id, promoter_node_ids in compact_fallback_promoter_ids_by_node_id.items()
+            if promoter_node_ids
+        },
+        fallbackPathPromoterIdsByLinkKey={
+            link_key: sorted(promoter_node_ids)
+            for link_key, promoter_node_ids in compact_fallback_promoter_ids_by_link_key.items()
+            if promoter_node_ids
+        },
+    )
 
 # Build user-facing reason strings for a promoter recommendation row.
 def promoter_recommendation_reasons(row: dict) -> list[str]:
@@ -238,10 +513,6 @@ def promoter_recommendation_graph(
         preferred_manual_artist_ids_by_promoter[recommendation.id] = {
             artist.id for artist in recommendation.manualConnectionArtists
         }
-
-    # Build a deterministic undirected link key used by frontend path focus.
-    def undirected_link_key(source: str, target: str) -> str:
-        return "|".join(sorted((source, target)))
 
     # Register a path edge into per-promoter focused path payload.
     def add_preferred_path_edge(promoter_id: int, source: str, target: str) -> None:
@@ -754,6 +1025,7 @@ def promoter_recommendation_graph(
     return GraphResponse(
         nodes=list(nodes.values()),
         links=links,
+        graphMode="full",
         preferredPathNodeIds=preferred_path_node_ids_output,
         preferredPathLinkKeys=preferred_path_link_keys_output,
         preferredPathPromoterIdsByNodeId={

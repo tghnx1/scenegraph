@@ -45,6 +45,7 @@ class GraphLink(BaseModel):
 class GraphResponse(BaseModel):
     nodes: list[GraphNode]
     links: list[GraphLink]
+    graphMode: Literal["compact", "full"] | None = None
     preferredPathNodeIds: dict[str, list[str]] = Field(default_factory=dict)
     preferredPathLinkKeys: dict[str, list[str]] = Field(default_factory=dict)
     preferredPathPromoterIdsByNodeId: dict[str, list[str]] = Field(default_factory=dict)
@@ -201,6 +202,7 @@ class PromoterRecommendationResponse(BaseModel):
     warmRecommendations: list[PromoterRecommendationItem] = Field(default_factory=list)
     discoveryRecommendations: list[PromoterRecommendationItem] = Field(default_factory=list)
     graph: GraphResponse
+    analyticsGraph: GraphResponse | None = None
     debug: dict[str, object] | None = None
 
 
