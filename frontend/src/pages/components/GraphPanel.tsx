@@ -272,15 +272,12 @@ export function ScenegraphMapPanel({
     if (nodeId === highlightPathToNodeId) return null
     if (nodeId.startsWith('promoter-')) return [nodeId]
 
-    const promoterCandidates = focusedRecommendationPromoterNodeIds?.length
-      ? focusedRecommendationPromoterNodeIds
-      : (visibleRecommendationPromoterNodeIds ?? [])
+    const promoterCandidates = visibleRecommendationPromoterNodeIds ?? []
     const ownerPromoterIds = recommendationPathGraphData.fallbackPathPromoterIdsByNodeId?.[nodeId] ?? []
     return ownerPromoterIds.filter((promoterId) => promoterCandidates.includes(promoterId))
   }, [
     highlightPathToNodeId,
     recommendationPathGraphData.fallbackPathPromoterIdsByNodeId,
-    focusedRecommendationPromoterNodeIds,
     visibleRecommendationPromoterNodeIds,
   ])
 
