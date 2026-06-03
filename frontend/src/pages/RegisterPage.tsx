@@ -1,6 +1,7 @@
 import { useState, type CSSProperties, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { register } from '../api/auth'
+import { PasswordInput } from './components/PasswordToggle'
 
 const colorVar = (name: string) => `var(${name})`
 const colorAlpha = (name: string, percent: number) => `color-mix(in srgb, var(${name}) ${percent}%, transparent)`
@@ -108,23 +109,23 @@ export function RegisterPage() {
           </label>
           <label style={{ display: 'grid', gap: 6, color: colorVar('--text-muted'), fontSize: 14 }}>
             Password
-            <input
-              style={inputStyle}
-              type="password"
+            <PasswordInput
               value={password}
-              onChange={(event) => setPassword(event.target.value)}
+              onChange={setPassword}
               autoComplete="new-password"
+              inputStyle={inputStyle}
               required
             />
           </label>
           <label style={{ display: 'grid', gap: 6, color: colorVar('--text-muted'), fontSize: 14 }}>
             Confirm password
-            <input
-              style={inputStyle}
-              type="password"
+            <PasswordInput
               value={passwordConfirm}
-              onChange={(event) => setPasswordConfirm(event.target.value)}
+              onChange={setPasswordConfirm}
               autoComplete="new-password"
+              inputStyle={inputStyle}
+              ariaShowLabel="Show password confirmation"
+              ariaHideLabel="Hide password confirmation"
               required
             />
           </label>
