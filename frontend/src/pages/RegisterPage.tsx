@@ -1,15 +1,11 @@
 import { useState, type CSSProperties, type FormEvent } from 'react'
-import { Link } from 'react-router-dom'
-import { getFallbackRole, login, type AuthRole } from '../api/auth'
-
-interface LoginPageProps {
-  onLogin: (role: AuthRole) => void
-}
+import { Link, useNavigate } from 'react-router-dom'
+import { register } from '../api/auth'
 
 const colorVar = (name: string) => `var(${name})`
 const colorAlpha = (name: string, percent: number) => `color-mix(in srgb, var(${name}) ${percent}%, transparent)`
 
-const loginButtonStyle: CSSProperties = {
+const buttonStyle: CSSProperties = {
   textDecoration: 'none',
   color: colorVar('--text-muted'),
   padding: '6px 10px',
@@ -35,38 +31,40 @@ const inputStyle: CSSProperties = {
   outline: 'none',
 }
 
-export function LoginPage({ onLogin }: LoginPageProps) {
+export function RegisterPage() {
+  const navigate = useNavigate()
   const [username, setUsername] = useState('')
+  const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [passwordConfirm, setPasswordConfirm] = useState('')
   const [error, setError] = useState('')
+  const [success, setSuccess] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     setError('')
+    setSuccess('')
+
+    if (password !== passwordConfirm) {
+      setError('Passwords do not match')
+      return
+    }
+
     setIsSubmitting(true)
 
     try {
-      const response = await login(username, password)
+      const response = await register(username, email, password, passwordConfirm)
 
-      if (!response.success || !response.access_token) {
-        setError(response.message || 'Invalid username or password')
+      if (!response.success) {
+        setError(response.message || 'Registration failed')
         return
       }
 
-      const authenticatedUsername = response.username ?? username
-      const role = getFallbackRole(authenticatedUsername)
-
-      localStorage.setItem('token', response.access_token)
-      localStorage.setItem('role', role)
-      localStorage.setItem('username', authenticatedUsername)
-      if (response.user_id !== undefined) {
-        localStorage.setItem('user_id', String(response.user_id))
-      }
-
-      onLogin(role)
+      setSuccess(response.message || 'Registration successful')
+      setTimeout(() => navigate('/login'), 600)
     } catch {
-      setError('Login failed. Please try again.')
+      setError('Registration failed. Please try again.')
     } finally {
       setIsSubmitting(false)
     }
@@ -84,8 +82,8 @@ export function LoginPage({ onLogin }: LoginPageProps) {
           boxShadow: 'var(--surface-shadow)',
         }}
       >
-        <span className="search-query-label">Login page</span>
-        <h1 style={{ marginTop: 8, fontSize: 32 }}>Sign in</h1>
+        <span className="search-query-label">Register page</span>
+        <h1 style={{ marginTop: 8, fontSize: 32 }}>Create account</h1>
         <form onSubmit={handleSubmit} style={{ display: 'grid', gap: 14, marginTop: 24 }}>
           <label style={{ display: 'grid', gap: 6, color: colorVar('--text-muted'), fontSize: 14 }}>
             Username
@@ -98,25 +96,48 @@ export function LoginPage({ onLogin }: LoginPageProps) {
             />
           </label>
           <label style={{ display: 'grid', gap: 6, color: colorVar('--text-muted'), fontSize: 14 }}>
+            Email
+            <input
+              style={inputStyle}
+              type="email"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              autoComplete="email"
+              required
+            />
+          </label>
+          <label style={{ display: 'grid', gap: 6, color: colorVar('--text-muted'), fontSize: 14 }}>
             Password
             <input
               style={inputStyle}
               type="password"
               value={password}
               onChange={(event) => setPassword(event.target.value)}
-              autoComplete="current-password"
+              autoComplete="new-password"
+              required
+            />
+          </label>
+          <label style={{ display: 'grid', gap: 6, color: colorVar('--text-muted'), fontSize: 14 }}>
+            Confirm password
+            <input
+              style={inputStyle}
+              type="password"
+              value={passwordConfirm}
+              onChange={(event) => setPasswordConfirm(event.target.value)}
+              autoComplete="new-password"
               required
             />
           </label>
           {error && <p style={{ margin: 0, color: 'var(--danger, #d94848)', fontSize: 14 }}>{error}</p>}
-          <button type="submit" style={loginButtonStyle} disabled={isSubmitting}>
-            {isSubmitting ? 'Signing in...' : 'Sign in'}
+          {success && <p style={{ margin: 0, color: 'var(--success, #2f8f5b)', fontSize: 14 }}>{success}</p>}
+          <button type="submit" style={buttonStyle} disabled={isSubmitting}>
+            {isSubmitting ? 'Creating account...' : 'Create account'}
           </button>
         </form>
         <p style={{ margin: '18px 0 0', color: colorVar('--text-muted'), fontSize: 14 }}>
-          No account yet?{' '}
-          <Link to="/register" style={{ color: colorVar('--text'), fontWeight: 700 }}>
-            Create one
+          Already have an account?{' '}
+          <Link to="/login" style={{ color: colorVar('--text'), fontWeight: 700 }}>
+            Sign in
           </Link>
         </p>
       </section>
