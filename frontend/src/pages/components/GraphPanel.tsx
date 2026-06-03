@@ -129,14 +129,14 @@ export function ScenegraphMapPanel({
       centerNodeId: rawGraphData.centerNodeId,
       nodes: filteredNodes,
       links: filteredLinks,
-      promoterPathNodeIds: rawGraphData.promoterPathNodeIds,
-      promoterPathLinkKeys: rawGraphData.promoterPathLinkKeys,
-      promoterPathPromoterIdsByNodeId: rawGraphData.promoterPathPromoterIdsByNodeId,
-      promoterPathPromoterIdsByLinkKey: rawGraphData.promoterPathPromoterIdsByLinkKey,
-      promoterShortestPathNodeIds: rawGraphData.promoterShortestPathNodeIds,
-      promoterShortestPathLinkKeys: rawGraphData.promoterShortestPathLinkKeys,
-      promoterShortestPathPromoterIdsByNodeId: rawGraphData.promoterShortestPathPromoterIdsByNodeId,
-      promoterShortestPathPromoterIdsByLinkKey: rawGraphData.promoterShortestPathPromoterIdsByLinkKey,
+      preferredPathNodeIds: rawGraphData.preferredPathNodeIds,
+      preferredPathLinkKeys: rawGraphData.preferredPathLinkKeys,
+      preferredPathPromoterIdsByNodeId: rawGraphData.preferredPathPromoterIdsByNodeId,
+      preferredPathPromoterIdsByLinkKey: rawGraphData.preferredPathPromoterIdsByLinkKey,
+      fallbackPathNodeIds: rawGraphData.fallbackPathNodeIds,
+      fallbackPathLinkKeys: rawGraphData.fallbackPathLinkKeys,
+      fallbackPathPromoterIdsByNodeId: rawGraphData.fallbackPathPromoterIdsByNodeId,
+      fallbackPathPromoterIdsByLinkKey: rawGraphData.fallbackPathPromoterIdsByLinkKey,
     }
   }, [
     hasRecommendationControls,
@@ -169,14 +169,14 @@ export function ScenegraphMapPanel({
         centerNodeId: graphData.centerNodeId,
         nodes: sourceNode ? [sourceNode] : [],
         links: [],
-        promoterPathNodeIds: graphData.promoterPathNodeIds,
-        promoterPathLinkKeys: graphData.promoterPathLinkKeys,
-        promoterPathPromoterIdsByNodeId: graphData.promoterPathPromoterIdsByNodeId,
-        promoterPathPromoterIdsByLinkKey: graphData.promoterPathPromoterIdsByLinkKey,
-        promoterShortestPathNodeIds: graphData.promoterShortestPathNodeIds,
-        promoterShortestPathLinkKeys: graphData.promoterShortestPathLinkKeys,
-        promoterShortestPathPromoterIdsByNodeId: graphData.promoterShortestPathPromoterIdsByNodeId,
-        promoterShortestPathPromoterIdsByLinkKey: graphData.promoterShortestPathPromoterIdsByLinkKey,
+        preferredPathNodeIds: graphData.preferredPathNodeIds,
+        preferredPathLinkKeys: graphData.preferredPathLinkKeys,
+        preferredPathPromoterIdsByNodeId: graphData.preferredPathPromoterIdsByNodeId,
+        preferredPathPromoterIdsByLinkKey: graphData.preferredPathPromoterIdsByLinkKey,
+        fallbackPathNodeIds: graphData.fallbackPathNodeIds,
+        fallbackPathLinkKeys: graphData.fallbackPathLinkKeys,
+        fallbackPathPromoterIdsByNodeId: graphData.fallbackPathPromoterIdsByNodeId,
+        fallbackPathPromoterIdsByLinkKey: graphData.fallbackPathPromoterIdsByLinkKey,
       }
     }
 
@@ -204,21 +204,21 @@ export function ScenegraphMapPanel({
       if (focusedPromoterId) {
         const foundPreferredPath = collectBackendPath(
           targetPromoterId,
-          graphData.promoterPathNodeIds,
-          graphData.promoterPathLinkKeys,
+          graphData.preferredPathNodeIds,
+          graphData.preferredPathLinkKeys,
         )
         if (!foundPreferredPath) {
           collectBackendPath(
             targetPromoterId,
-            graphData.promoterShortestPathNodeIds,
-            graphData.promoterShortestPathLinkKeys,
+            graphData.fallbackPathNodeIds,
+            graphData.fallbackPathLinkKeys,
           )
         }
       } else {
         collectBackendPath(
           targetPromoterId,
-          graphData.promoterShortestPathNodeIds,
-          graphData.promoterShortestPathLinkKeys,
+          graphData.fallbackPathNodeIds,
+          graphData.fallbackPathLinkKeys,
         )
       }
     })
@@ -252,14 +252,14 @@ export function ScenegraphMapPanel({
       centerNodeId: graphData.centerNodeId,
       nodes,
       links,
-      promoterPathNodeIds: graphData.promoterPathNodeIds,
-      promoterPathLinkKeys: graphData.promoterPathLinkKeys,
-      promoterPathPromoterIdsByNodeId: graphData.promoterPathPromoterIdsByNodeId,
-      promoterPathPromoterIdsByLinkKey: graphData.promoterPathPromoterIdsByLinkKey,
-      promoterShortestPathNodeIds: graphData.promoterShortestPathNodeIds,
-      promoterShortestPathLinkKeys: graphData.promoterShortestPathLinkKeys,
-      promoterShortestPathPromoterIdsByNodeId: graphData.promoterShortestPathPromoterIdsByNodeId,
-      promoterShortestPathPromoterIdsByLinkKey: graphData.promoterShortestPathPromoterIdsByLinkKey,
+      preferredPathNodeIds: graphData.preferredPathNodeIds,
+      preferredPathLinkKeys: graphData.preferredPathLinkKeys,
+      preferredPathPromoterIdsByNodeId: graphData.preferredPathPromoterIdsByNodeId,
+      preferredPathPromoterIdsByLinkKey: graphData.preferredPathPromoterIdsByLinkKey,
+      fallbackPathNodeIds: graphData.fallbackPathNodeIds,
+      fallbackPathLinkKeys: graphData.fallbackPathLinkKeys,
+      fallbackPathPromoterIdsByNodeId: graphData.fallbackPathPromoterIdsByNodeId,
+      fallbackPathPromoterIdsByLinkKey: graphData.fallbackPathPromoterIdsByLinkKey,
     }
   }, [
     focusedRecommendationPromoterNodeId,
@@ -278,8 +278,8 @@ export function ScenegraphMapPanel({
       ? [focusedRecommendationPromoterNodeId]
       : (visibleRecommendationPromoterNodeIds ?? [])
     const ownerPromoterIds = focusedRecommendationPromoterNodeId
-      ? (recommendationPathGraphData.promoterPathPromoterIdsByNodeId?.[nodeId] ?? [])
-      : (recommendationPathGraphData.promoterShortestPathPromoterIdsByNodeId?.[nodeId] ?? [])
+      ? (recommendationPathGraphData.preferredPathPromoterIdsByNodeId?.[nodeId] ?? [])
+      : (recommendationPathGraphData.fallbackPathPromoterIdsByNodeId?.[nodeId] ?? [])
 
     for (const promoterId of ownerPromoterIds) {
       if (promoterCandidates.includes(promoterId)) {
@@ -291,8 +291,8 @@ export function ScenegraphMapPanel({
   }, [
     focusedRecommendationPromoterNodeId,
     highlightPathToNodeId,
-    recommendationPathGraphData.promoterPathPromoterIdsByNodeId,
-    recommendationPathGraphData.promoterShortestPathPromoterIdsByNodeId,
+    recommendationPathGraphData.preferredPathPromoterIdsByNodeId,
+    recommendationPathGraphData.fallbackPathPromoterIdsByNodeId,
     visibleRecommendationPromoterNodeIds,
   ])
 

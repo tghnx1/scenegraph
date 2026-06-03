@@ -45,14 +45,14 @@ class GraphLink(BaseModel):
 class GraphResponse(BaseModel):
     nodes: list[GraphNode]
     links: list[GraphLink]
-    promoterPathNodeIds: dict[str, list[str]] = Field(default_factory=dict)
-    promoterPathLinkKeys: dict[str, list[str]] = Field(default_factory=dict)
-    promoterPathPromoterIdsByNodeId: dict[str, list[str]] = Field(default_factory=dict)
-    promoterPathPromoterIdsByLinkKey: dict[str, list[str]] = Field(default_factory=dict)
-    promoterShortestPathNodeIds: dict[str, list[str]] = Field(default_factory=dict)
-    promoterShortestPathLinkKeys: dict[str, list[str]] = Field(default_factory=dict)
-    promoterShortestPathPromoterIdsByNodeId: dict[str, list[str]] = Field(default_factory=dict)
-    promoterShortestPathPromoterIdsByLinkKey: dict[str, list[str]] = Field(default_factory=dict)
+    preferredPathNodeIds: dict[str, list[str]] = Field(default_factory=dict)
+    preferredPathLinkKeys: dict[str, list[str]] = Field(default_factory=dict)
+    preferredPathPromoterIdsByNodeId: dict[str, list[str]] = Field(default_factory=dict)
+    preferredPathPromoterIdsByLinkKey: dict[str, list[str]] = Field(default_factory=dict)
+    fallbackPathNodeIds: dict[str, list[str]] = Field(default_factory=dict)
+    fallbackPathLinkKeys: dict[str, list[str]] = Field(default_factory=dict)
+    fallbackPathPromoterIdsByNodeId: dict[str, list[str]] = Field(default_factory=dict)
+    fallbackPathPromoterIdsByLinkKey: dict[str, list[str]] = Field(default_factory=dict)
 
 
 class LoginRequest(BaseModel):

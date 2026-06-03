@@ -216,8 +216,8 @@ def promoter_recommendation_graph(
     }
     links: list[GraphLink] = []
     seen_links: set[tuple[str, str, str]] = set()
-    preferred_path_node_ids: dict[str, set[str]] = defaultdict(set)
-    preferred_path_link_keys: dict[str, set[str]] = defaultdict(set)
+    preferred_path_node_ids_by_promoter: dict[str, set[str]] = defaultdict(set)
+    preferred_path_link_keys_by_promoter: dict[str, set[str]] = defaultdict(set)
     semantic_path_node_ids: dict[str, set[str]] = defaultdict(set)
     semantic_path_link_keys: dict[str, set[str]] = defaultdict(set)
     preferred_co_played_artist_ids_by_promoter: dict[int, set[int]] = {}
@@ -246,9 +246,9 @@ def promoter_recommendation_graph(
     # Register a path edge into per-promoter focused path payload.
     def add_preferred_path_edge(promoter_id: int, source: str, target: str) -> None:
         promoter_node_id = graph_node_id("promoter", promoter_id)
-        preferred_path_node_ids[promoter_node_id].add(source)
-        preferred_path_node_ids[promoter_node_id].add(target)
-        preferred_path_link_keys[promoter_node_id].add(undirected_link_key(source, target))
+        preferred_path_node_ids_by_promoter[promoter_node_id].add(source)
+        preferred_path_node_ids_by_promoter[promoter_node_id].add(target)
+        preferred_path_link_keys_by_promoter[promoter_node_id].add(undirected_link_key(source, target))
 
     # Register fallback display path edges used when no direct human path exists.
     def add_shortest_path_edge(
@@ -694,82 +694,88 @@ def promoter_recommendation_graph(
                 strength=max(0.3, semantic_strength * 0.8),
             )
 
-    promoter_path_node_ids = {
+    preferred_path_node_ids_output = {
         promoter_node_id: sorted(node_ids)
-        for promoter_node_id, node_ids in preferred_path_node_ids.items()
+        for promoter_node_id, node_ids in preferred_path_node_ids_by_promoter.items()
         if node_ids
     }
-    promoter_path_link_keys = {
+    preferred_path_link_keys_output = {
         promoter_node_id: sorted(link_keys)
-        for promoter_node_id, link_keys in preferred_path_link_keys.items()
+        for promoter_node_id, link_keys in preferred_path_link_keys_by_promoter.items()
         if link_keys
     }
-    shortest_path_node_ids: dict[str, set[str]] = defaultdict(set)
-    shortest_path_link_keys: dict[str, set[str]] = defaultdict(set)
+    fallback_path_node_ids_by_promoter: dict[str, set[str]] = defaultdict(set)
+    fallback_path_link_keys_by_promoter: dict[str, set[str]] = defaultdict(set)
     for recommendation in recommendations:
         promoter_node_id = graph_node_id("promoter", recommendation.id)
-        if promoter_node_id in preferred_path_node_ids:
-            shortest_path_node_ids[promoter_node_id].update(preferred_path_node_ids[promoter_node_id])
-            shortest_path_link_keys[promoter_node_id].update(preferred_path_link_keys[promoter_node_id])
+        if promoter_node_id in preferred_path_node_ids_by_promoter:
+            fallback_path_node_ids_by_promoter[promoter_node_id].update(
+                preferred_path_node_ids_by_promoter[promoter_node_id]
+            )
+            fallback_path_link_keys_by_promoter[promoter_node_id].update(
+                preferred_path_link_keys_by_promoter[promoter_node_id]
+            )
         elif promoter_node_id in semantic_path_node_ids:
-            shortest_path_node_ids[promoter_node_id].update(semantic_path_node_ids[promoter_node_id])
-            shortest_path_link_keys[promoter_node_id].update(semantic_path_link_keys[promoter_node_id])
+            fallback_path_node_ids_by_promoter[promoter_node_id].update(semantic_path_node_ids[promoter_node_id])
+            fallback_path_link_keys_by_promoter[promoter_node_id].update(
+                semantic_path_link_keys[promoter_node_id]
+            )
         else:
-            shortest_path_node_ids[promoter_node_id].update({source_artist_node_id, promoter_node_id})
+            fallback_path_node_ids_by_promoter[promoter_node_id].update({source_artist_node_id, promoter_node_id})
 
-    promoter_shortest_path_node_ids = {
+    fallback_path_node_ids_output = {
         promoter_node_id: sorted(node_ids)
-        for promoter_node_id, node_ids in shortest_path_node_ids.items()
+        for promoter_node_id, node_ids in fallback_path_node_ids_by_promoter.items()
         if node_ids
     }
-    promoter_shortest_path_link_keys = {
+    fallback_path_link_keys_output = {
         promoter_node_id: sorted(link_keys)
-        for promoter_node_id, link_keys in shortest_path_link_keys.items()
+        for promoter_node_id, link_keys in fallback_path_link_keys_by_promoter.items()
         if link_keys
     }
 
-    promoter_ids_by_node_id: dict[str, set[str]] = defaultdict(set)
-    promoter_ids_by_link_key: dict[str, set[str]] = defaultdict(set)
-    for promoter_node_id, node_ids in promoter_path_node_ids.items():
+    preferred_promoter_ids_by_node_id: dict[str, set[str]] = defaultdict(set)
+    preferred_promoter_ids_by_link_key: dict[str, set[str]] = defaultdict(set)
+    for promoter_node_id, node_ids in preferred_path_node_ids_output.items():
         for node_id in node_ids:
-            promoter_ids_by_node_id[node_id].add(promoter_node_id)
-    for promoter_node_id, link_keys in promoter_path_link_keys.items():
+            preferred_promoter_ids_by_node_id[node_id].add(promoter_node_id)
+    for promoter_node_id, link_keys in preferred_path_link_keys_output.items():
         for link_key in link_keys:
-            promoter_ids_by_link_key[link_key].add(promoter_node_id)
-    shortest_promoter_ids_by_node_id: dict[str, set[str]] = defaultdict(set)
-    shortest_promoter_ids_by_link_key: dict[str, set[str]] = defaultdict(set)
-    for promoter_node_id, node_ids in promoter_shortest_path_node_ids.items():
+            preferred_promoter_ids_by_link_key[link_key].add(promoter_node_id)
+    fallback_promoter_ids_by_node_id: dict[str, set[str]] = defaultdict(set)
+    fallback_promoter_ids_by_link_key: dict[str, set[str]] = defaultdict(set)
+    for promoter_node_id, node_ids in fallback_path_node_ids_output.items():
         for node_id in node_ids:
-            shortest_promoter_ids_by_node_id[node_id].add(promoter_node_id)
-    for promoter_node_id, link_keys in promoter_shortest_path_link_keys.items():
+            fallback_promoter_ids_by_node_id[node_id].add(promoter_node_id)
+    for promoter_node_id, link_keys in fallback_path_link_keys_output.items():
         for link_key in link_keys:
-            shortest_promoter_ids_by_link_key[link_key].add(promoter_node_id)
+            fallback_promoter_ids_by_link_key[link_key].add(promoter_node_id)
 
     return GraphResponse(
         nodes=list(nodes.values()),
         links=links,
-        promoterPathNodeIds=promoter_path_node_ids,
-        promoterPathLinkKeys=promoter_path_link_keys,
-        promoterPathPromoterIdsByNodeId={
+        preferredPathNodeIds=preferred_path_node_ids_output,
+        preferredPathLinkKeys=preferred_path_link_keys_output,
+        preferredPathPromoterIdsByNodeId={
             node_id: sorted(promoter_node_ids)
-            for node_id, promoter_node_ids in promoter_ids_by_node_id.items()
+            for node_id, promoter_node_ids in preferred_promoter_ids_by_node_id.items()
             if promoter_node_ids
         },
-        promoterPathPromoterIdsByLinkKey={
+        preferredPathPromoterIdsByLinkKey={
             link_key: sorted(promoter_node_ids)
-            for link_key, promoter_node_ids in promoter_ids_by_link_key.items()
+            for link_key, promoter_node_ids in preferred_promoter_ids_by_link_key.items()
             if promoter_node_ids
         },
-        promoterShortestPathNodeIds=promoter_shortest_path_node_ids,
-        promoterShortestPathLinkKeys=promoter_shortest_path_link_keys,
-        promoterShortestPathPromoterIdsByNodeId={
+        fallbackPathNodeIds=fallback_path_node_ids_output,
+        fallbackPathLinkKeys=fallback_path_link_keys_output,
+        fallbackPathPromoterIdsByNodeId={
             node_id: sorted(promoter_node_ids)
-            for node_id, promoter_node_ids in shortest_promoter_ids_by_node_id.items()
+            for node_id, promoter_node_ids in fallback_promoter_ids_by_node_id.items()
             if promoter_node_ids
         },
-        promoterShortestPathPromoterIdsByLinkKey={
+        fallbackPathPromoterIdsByLinkKey={
             link_key: sorted(promoter_node_ids)
-            for link_key, promoter_node_ids in shortest_promoter_ids_by_link_key.items()
+            for link_key, promoter_node_ids in fallback_promoter_ids_by_link_key.items()
             if promoter_node_ids
         },
     )
