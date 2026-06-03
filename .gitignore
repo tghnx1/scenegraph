@@ -36,6 +36,7 @@ backend/data/*.json
 backend/data/*.jsonl
 backend/data/*.csv
 backend/data/*.sql
+backend/data/backups/
 backend/data/existing_ra_event_ids.txt
 backend/data/existing_ra_artist_ids.txt
 *.dump
