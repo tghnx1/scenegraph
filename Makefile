@@ -47,8 +47,8 @@ help:
 	@printf "  make refresh-data-check Run pipeline + import + validate on a check DB (default: scenegraph_check)\n"
 	@printf "  make refresh-data-check-bio Same as refresh-data-check, but includes artists biographies scraping\n"
 	@printf "  make refresh-data-check-bio-embeddings Same as refresh-data-check-bio + incremental embeddings for check DB\n"
-	@printf "  make import-dump   Import a local SQL dump; supports DB_NAME=... and prompts before overwrite\n"
-	@printf "  make export-dump   Export database dump; supports DB_NAME=... OUT=... FORMAT=sql|custom\n"
+	@printf "  make import-dump   Import local/remote dump with interactive safety prompts\n"
+	@printf "  make export-dump   Export DB_NAME or .env/explicit DATABASE_URL dump; supports OUT=... FORMAT=sql|custom\n"
 	@printf "  make clean    Stop stack and remove containers (keeps DB volumes)\n"
 	@printf "  make reset-db DANGEROUS: remove containers and DB volumes (requires RESET_DB=yes)\n"
 	@printf "  make list     List Docker resources\n"
@@ -149,10 +149,10 @@ refresh-data-check-bio-embeddings: refresh-data-check-bio
 	$(COMPOSE) exec -e DATABASE_URL="$(CHECK_DATABASE_URL)" backend python scripts/generate_embeddings.py
 
 import-dump: env
-	DUMP="$(DUMP)" RESET_DB="$(RESET_DB)" ./scripts/import_dump.sh
+	@DUMP="$(DUMP)" DB_NAME="$(DB_NAME)" DATABASE_URL="$(DATABASE_URL)" RESET_DB="$(RESET_DB)" DUMP_FORMAT="$(DUMP_FORMAT)" PG_CLIENT_IMAGE="$(PG_CLIENT_IMAGE)" REMOTE_RESTORE_MODE="$(REMOTE_RESTORE_MODE)" CONFIRM_IMPORT="$(CONFIRM_IMPORT)" IMPORT_DUMP_NONINTERACTIVE="$(IMPORT_DUMP_NONINTERACTIVE)" sh ./scripts/import_dump.sh
 
 export-dump: env
-	DB_NAME="$(DB_NAME)" OUT="$(OUT)" FORMAT="$(FORMAT)" sh ./scripts/export_dump.sh
+	@DB_NAME="$(DB_NAME)" OUT="$(OUT)" FORMAT="$(FORMAT)" PG_DUMP_IMAGE="$(PG_DUMP_IMAGE)" EXCLUDE_TABLES="$(EXCLUDE_TABLES)" sh ./scripts/export_dump.sh
 
 list:
 	@printf "%b\n" "${BLU}== Images ==${RES}" && docker images
