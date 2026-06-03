@@ -2,10 +2,10 @@ import type { GraphParams } from '../../api/graph'
 import type { GenreOption } from '../../api/genres'
 
 const FALLBACK_GENRE_OPTIONS = [
-  { label: 'Disco', value: 'disco' },
-  { label: 'House', value: 'house' },
-  { label: 'Techno', value: 'techno' },
-  { label: 'Trance', value: 'trance' },
+  { name: 'Disco', value: 'disco' },
+  { name: 'House', value: 'house' },
+  { name: 'Techno', value: 'techno' },
+  { name: 'Trance', value: 'trance' },
 ]
 
 const LIMIT_OPTIONS = [100, 250, 500]
