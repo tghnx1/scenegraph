@@ -48,6 +48,12 @@ function getLinkStrengthValue(link: { strength?: unknown; weight?: unknown; valu
   return 0
 }
 
+function getLinkDashPattern(link: { style?: unknown }) {
+  if (link.style === 'dashed') return [6, 4]
+  if (link.style === 'dotted') return [2, 4]
+  return null
+}
+
 interface ScenegraphMapPanelProps {
   title?: string
   providedData?: GraphData
@@ -58,6 +64,7 @@ interface ScenegraphMapPanelProps {
   visibleRecommendationPromoterNodeIds?: string[]
   focusedRecommendationPromoterNodeIds?: string[] | null
   onRecommendationGraphNodeClick?: (node: GraphNode, promoterNodeIds: string[] | null) => void
+  onRecommendationGraphPaneClick?: () => void
 }
 
 export function ScenegraphMapPanel({
@@ -70,8 +77,10 @@ export function ScenegraphMapPanel({
   visibleRecommendationPromoterNodeIds,
   focusedRecommendationPromoterNodeIds,
   onRecommendationGraphNodeClick,
+  onRecommendationGraphPaneClick,
 }: ScenegraphMapPanelProps) {
   const graphRef = useRef<any>(null)
+  const suppressNextBackgroundClickRef = useRef(false)
   const containerRef = useRef<HTMLDivElement | null>(null)
   const [graphSize, setGraphSize] = useState({ width: 0, height: 0 })
   const [graphFilters, setGraphFilters] = useState<GraphParams>(DEFAULT_GRAPH_FILTERS)
@@ -281,11 +290,41 @@ export function ScenegraphMapPanel({
   const pathTargetPromoterIds = focusedRecommendationPromoterNodeIds?.length
     ? focusedRecommendationPromoterNodeIds
     : []
-  const { connectedNodes, pathLinks, pathNodeIds } = useGraphHighlights(
+  const { pathLinks, pathNodeIds } = useGraphHighlights(
     pathSourceNode,
     recommendationPathGraphData,
     highlightPathToNodeId ? pathTargetPromoterIds : undefined,
   )
+  const isPathFocusActive = Boolean(highlightPathToNodeId && pathTargetPromoterIds.length > 0 && pathLinks.size > 0)
+  const recommendationSourceNodeId = highlightPathToNodeId ?? null
+  const highlightedPathNodeIds = useMemo(() => {
+    if (!isPathFocusActive) return pathNodeIds
+
+    const nextHighlightedNodeIds = new Set(pathNodeIds)
+    const nodeTypeById = new Map<string, NodeType>()
+    recommendationPathGraphData.nodes.forEach((node) => {
+      nodeTypeById.set(node.id, node.type)
+    })
+
+    const pathEventIds = new Set(
+      Array.from(nextHighlightedNodeIds).filter((nodeId) => nodeTypeById.get(nodeId) === 'event')
+    )
+
+    recommendationPathGraphData.links.forEach((link) => {
+      const source = getLinkNodeId(link.source as LinkEndpoint)
+      const target = getLinkNodeId(link.target as LinkEndpoint)
+      const sourceType = nodeTypeById.get(source)
+      const targetType = nodeTypeById.get(target)
+      const eventId = sourceType === 'event' && targetType === 'venue'
+        ? source
+        : (targetType === 'event' && sourceType === 'venue' ? target : null)
+      if (!eventId || !pathEventIds.has(eventId)) return
+      nextHighlightedNodeIds.add(source)
+      nextHighlightedNodeIds.add(target)
+    })
+
+    return nextHighlightedNodeIds
+  }, [isPathFocusActive, pathNodeIds, recommendationPathGraphData.links, recommendationPathGraphData.nodes])
   useGraphPhysics(graphRef, recommendationPathGraphData)
 
   useEffect(() => {
@@ -324,6 +363,10 @@ export function ScenegraphMapPanel({
     (node: object) => {
       const nextNode = node as GraphNode
       if (providedData) {
+        suppressNextBackgroundClickRef.current = true
+        window.setTimeout(() => {
+          suppressNextBackgroundClickRef.current = false
+        }, 0)
         if (highlightPathToNodeId && onRecommendationGraphNodeClick) {
           const resolvedPromoterNodeIds = resolvePromoterNodesForRecommendationNode(nextNode.id)
           onRecommendationGraphNodeClick(nextNode, resolvedPromoterNodeIds)
@@ -407,12 +450,10 @@ export function ScenegraphMapPanel({
           to: displayedEventDates[displayedEventDates.length - 1],
         }
       : null
-  const isPathFocusActive = Boolean(highlightPathToNodeId && pathTargetPromoterIds.length > 0 && pathLinks.size > 0)
-  const recommendationSourceNodeId = highlightPathToNodeId ?? null
   const isHighlightedLink = (source: string, target: string) => (
     isPathFocusActive
       ? pathLinks.has(getUndirectedLinkKey(source, target))
-      : connectedNodes.has(source) && connectedNodes.has(target)
+      : false
   )
 
   return (
@@ -458,7 +499,7 @@ export function ScenegraphMapPanel({
           graphData={recommendationPathGraphData}
           nodeCanvasObject={(node: any, ctx: CanvasRenderingContext2D) => {
             const isHighlightedNode = isPathFocusActive
-              ? (node.id === recommendationSourceNodeId || pathNodeIds.has(node.id))
+              ? (node.id === recommendationSourceNodeId || highlightedPathNodeIds.has(node.id))
               : true
             drawNodeShape(
               ctx,
@@ -467,7 +508,7 @@ export function ScenegraphMapPanel({
               5,
               node.type,
               selectedNode?.id === node.id || node.id === recommendationSourceNodeId,
-              isHighlightedNode ? 1 : 0.085,
+              isHighlightedNode ? 1 : 0.16,
             )
           }}
           nodeColor={() => 'transparent'}
@@ -482,19 +523,14 @@ export function ScenegraphMapPanel({
             if (highlightLinks && isHighlightedLink(source, target)) {
               return baseWidth * 1.85
             }
-            if (isPathFocusActive) {
-              return Math.max(baseWidth * 0.2, 0.14)
-            }
             return baseWidth
           }}
+          linkLineDash={(l: any) => getLinkDashPattern(l)}
           linkColor={(l: any) => {
             const source = typeof l.source === 'object' ? l.source.id : l.source
             const target = typeof l.target === 'object' ? l.target.id : l.target
             if (highlightLinks && isHighlightedLink(source, target)) {
               return hexToRgba(linkHighlight, 0.86)
-            }
-            if (isPathFocusActive) {
-              return hexToRgba(linkDim, 0.056)
             }
             return hexToRgba(linkDim, 0.52)
           }}
@@ -508,6 +544,12 @@ export function ScenegraphMapPanel({
             node.fy = null
           }}
           onNodeClick={handleNodeClick}
+          onBackgroundClick={() => {
+            if (suppressNextBackgroundClickRef.current) return
+            if (providedData && onRecommendationGraphPaneClick) {
+              onRecommendationGraphPaneClick()
+            }
+          }}
           backgroundColor={graphBackground}
           warmupTicks={120}
           cooldownTicks={180}

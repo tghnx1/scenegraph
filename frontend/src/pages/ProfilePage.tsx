@@ -362,10 +362,17 @@ export function ProfilePage() {
     setFocusedRecommendationPromoterIds(promoterIds)
   }, [setSelected])
 
+  const handleRecommendationGraphPaneClick = useCallback(() => {
+    setExpandedRecommendationId(null)
+    setFocusedRecommendationPromoterIds(null)
+    setSelected(null)
+  }, [setSelected])
+
   useEffect(() => {
     if (expandedRecommendationId === null) return
     const card = document.getElementById(`recommendation-card-${expandedRecommendationId}`)
-    card?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    const header = card?.querySelector<HTMLElement>('.recommendation-name') ?? card
+    header?.scrollIntoView({ behavior: 'smooth', block: 'start', inline: 'nearest' })
   }, [expandedRecommendationId])
 
   const searchResults = searchData?.results ?? []
@@ -684,6 +691,7 @@ export function ProfilePage() {
                           visibleRecommendationPromoterNodeIds={filteredRecommendationPromoterNodeIds}
                           focusedRecommendationPromoterNodeIds={focusedRecommendationPromoterIds?.map((promoterId) => `promoter-${promoterId}`) ?? null}
                           onRecommendationGraphNodeClick={handleRecommendationGraphNodeClick}
+                          onRecommendationGraphPaneClick={handleRecommendationGraphPaneClick}
                         />
                       )}
                     </section>

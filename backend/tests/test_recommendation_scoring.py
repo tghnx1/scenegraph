@@ -1,3 +1,6 @@
+import pytest
+
+from app.recommendation_services import promoter_recommendation_adjusted_score
 from app.recommendation_scoring import (
     DEFAULT_RECOMMENDATION_SCORING,
     PromoterRecommendationScoringConfig,
@@ -442,9 +445,15 @@ def test_promoter_segment_quota_ratios_read_from_env(monkeypatch):
 
     ratios = promoter_segment_quota_ratios_from_env()
 
-    assert ratios["small"] == {"small": 0.7, "medium": 0.2, "large": 0.1}
-    assert ratios["medium"] == {"small": 0.2, "medium": 0.5, "large": 0.3}
-    assert ratios["large"] == {"small": 0.1, "medium": 0.2, "large": 0.7}
+    assert ratios["small"]["small"] == pytest.approx(0.7)
+    assert ratios["small"]["medium"] == pytest.approx(0.2)
+    assert ratios["small"]["large"] == pytest.approx(0.1)
+    assert ratios["medium"]["small"] == pytest.approx(0.2)
+    assert ratios["medium"]["medium"] == pytest.approx(0.5)
+    assert ratios["medium"]["large"] == pytest.approx(0.3)
+    assert ratios["large"]["small"] == pytest.approx(0.1)
+    assert ratios["large"]["medium"] == pytest.approx(0.2)
+    assert ratios["large"]["large"] == pytest.approx(0.7)
 
 
 def test_promoter_segment_quota_ratios_reject_negative_values(monkeypatch):
@@ -506,3 +515,12 @@ def test_event_similarity_allows_semantic_only_candidates():
     assert not is_similarity_candidate_eligible("event", 0.60, 0.0)
     assert is_similarity_candidate_eligible("event", 0.75, 0.0)
     assert is_similarity_candidate_eligible("event", 0.60, 0.08)
+
+
+def test_promoter_recommendation_adjusted_score_keeps_warm_connections_above_discovery():
+    warm_score = promoter_recommendation_adjusted_score(0.35, has_warm_path=True)
+    discovery_score = promoter_recommendation_adjusted_score(0.90, has_warm_path=False)
+
+    assert 0.0 <= discovery_score <= 1.0
+    assert 0.0 <= warm_score <= 1.0
+    assert warm_score > discovery_score
