@@ -1,7 +1,7 @@
-import { useState, type CSSProperties, type FormEvent } from 'react'
+import { useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { getFallbackRole, login, type AuthRole } from '../api/auth'
-import { PasswordInput } from './components/PasswordToggle'
+import { authButtonStyle, authInputStyle, PasswordInput } from './components/PasswordToggle'
 
 interface LoginPageProps {
   onLogin: (role: AuthRole) => void
@@ -9,32 +9,6 @@ interface LoginPageProps {
 
 const colorVar = (name: string) => `var(${name})`
 const colorAlpha = (name: string, percent: number) => `color-mix(in srgb, var(${name}) ${percent}%, transparent)`
-
-const loginButtonStyle: CSSProperties = {
-  textDecoration: 'none',
-  color: colorVar('--text-muted'),
-  padding: '6px 10px',
-  borderRadius: 8,
-  fontSize: 14,
-  fontWeight: 600,
-  transition: 'all 120ms ease',
-  cursor: 'pointer',
-  border: `1px solid ${colorAlpha('--text', 18)}`,
-  background: colorAlpha('--text', 6),
-  font: 'inherit',
-}
-
-const inputStyle: CSSProperties = {
-  width: '100%',
-  minWidth: 0,
-  border: `1px solid ${colorAlpha('--text', 18)}`,
-  borderRadius: 8,
-  background: colorAlpha('--background', 64),
-  color: colorVar('--text'),
-  font: 'inherit',
-  padding: '10px 12px',
-  outline: 'none',
-}
 
 export function LoginPage({ onLogin }: LoginPageProps) {
   const [username, setUsername] = useState('')
@@ -91,7 +65,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
           <label style={{ display: 'grid', gap: 6, color: colorVar('--text-muted'), fontSize: 14 }}>
             Username
             <input
-              style={inputStyle}
+              style={authInputStyle}
               value={username}
               onChange={(event) => setUsername(event.target.value)}
               autoComplete="username"
@@ -104,12 +78,11 @@ export function LoginPage({ onLogin }: LoginPageProps) {
               value={password}
               onChange={setPassword}
               autoComplete="current-password"
-              inputStyle={inputStyle}
               required
             />
           </label>
           {error && <p style={{ margin: 0, color: 'var(--danger, #d94848)', fontSize: 14 }}>{error}</p>}
-          <button type="submit" style={loginButtonStyle} disabled={isSubmitting}>
+          <button type="submit" style={authButtonStyle} disabled={isSubmitting}>
             {isSubmitting ? 'Signing in...' : 'Sign in'}
           </button>
         </form>
