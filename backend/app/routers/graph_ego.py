@@ -33,10 +33,10 @@ class EventNode(BaseModel):
     entityId: int
     type: str
     name: str
+    name: str
     genres: List[str] = []
     tags: List[ExtractedTag] = []
     date: Optional[str] = None
-
 
 class PromoterNode(BaseModel):
     id: str
@@ -44,29 +44,26 @@ class PromoterNode(BaseModel):
     type: str
     name: str
 
-
 class GraphLink(BaseModel):
     source: str
     target: str
     weight: int = 1
     relationship: str
 
-
 class GraphResponse(BaseModel):
     centerNodeId: str
     nodes: list
     links: List[GraphLink]
 
-
-# ─── Queries ──────────────────────────────────────────────────────────────────
-
 ARTIST_INFO_SQL = """
 SELECT a.id, a.name,
     COALESCE(
         array_agg(DISTINCT ag.extracted_genre) FILTER (WHERE ag.extracted_genre IS NOT NULL),
+        array_agg(DISTINCT ag.extracted_genre) FILTER (WHERE ag.extracted_genre IS NOT NULL),
         ARRAY[]::text[]
     ) AS genres
 FROM artists a
+LEFT JOIN artist_extracted_genres ag ON ag.artist_id = a.id
 LEFT JOIN artist_extracted_genres ag ON ag.artist_id = a.id
 WHERE a.id = %s
 GROUP BY a.id, a.name;
@@ -94,17 +91,22 @@ WHERE amc.connected_artist_id = %s;
 ARTIST_EVENTS_SQL = """
 SELECT
     e.id                     AS event_id,
+    e.id                     AS event_id,
     e.title,
     e.event_date::date::text AS date,
     v.id                     AS venue_id,
     v.name                   AS venue_name,
+    v.id                     AS venue_id,
+    v.name                   AS venue_name,
     COALESCE(
+        array_agg(DISTINCT eg.extracted_genre) FILTER (WHERE eg.extracted_genre IS NOT NULL),
         array_agg(DISTINCT eg.extracted_genre) FILTER (WHERE eg.extracted_genre IS NOT NULL),
         ARRAY[]::text[]
     ) AS genres
 FROM event_artists ea
 JOIN events e      ON e.id = ea.event_id
 LEFT JOIN venues v ON v.id = e.venue_id
+LEFT JOIN event_extracted_genres eg ON eg.event_id = e.id
 LEFT JOIN event_extracted_genres eg ON eg.event_id = e.id
 WHERE ea.artist_id = %s
 GROUP BY e.id, e.title, e.event_date, v.id, v.name
@@ -126,13 +128,16 @@ SELECT id, name FROM venues WHERE id = %s;
 VENUE_EVENTS_SQL = """
 SELECT
     e.id                     AS event_id,
+    e.id                     AS event_id,
     e.title,
     e.event_date::date::text AS date,
     COALESCE(
         array_agg(DISTINCT eg.extracted_genre) FILTER (WHERE eg.extracted_genre IS NOT NULL),
+        array_agg(DISTINCT eg.extracted_genre) FILTER (WHERE eg.extracted_genre IS NOT NULL),
         ARRAY[]::text[]
     ) AS genres
 FROM events e
+LEFT JOIN event_extracted_genres eg ON eg.event_id = e.id
 LEFT JOIN event_extracted_genres eg ON eg.event_id = e.id
 WHERE e.venue_id = %s
 GROUP BY e.id, e.title, e.event_date
@@ -147,9 +152,12 @@ SELECT
     v.name AS venue_name,
     COALESCE(
         array_agg(DISTINCT eg.extracted_genre) FILTER (WHERE eg.extracted_genre IS NOT NULL),
+        array_agg(DISTINCT eg.extracted_genre) FILTER (WHERE eg.extracted_genre IS NOT NULL),
         ARRAY[]::text[]
     ) AS genres
 FROM events e
+LEFT JOIN venues v               ON v.id = e.venue_id
+LEFT JOIN event_extracted_genres eg ON eg.event_id = e.id
 LEFT JOIN venues v               ON v.id = e.venue_id
 LEFT JOIN event_extracted_genres eg ON eg.event_id = e.id
 WHERE e.id = %s
@@ -171,11 +179,15 @@ SELECT id, name FROM promoters WHERE id = %s;
 PROMOTER_EVENTS_SQL = """
 SELECT
     e.id                     AS event_id,
+    e.id                     AS event_id,
     e.title,
     e.event_date::date::text AS date,
     v.id                     AS venue_id,
     v.name                   AS venue_name,
+    v.id                     AS venue_id,
+    v.name                   AS venue_name,
     COALESCE(
+        array_agg(DISTINCT eg.extracted_genre) FILTER (WHERE eg.extracted_genre IS NOT NULL),
         array_agg(DISTINCT eg.extracted_genre) FILTER (WHERE eg.extracted_genre IS NOT NULL),
         ARRAY[]::text[]
     ) AS genres
@@ -183,14 +195,12 @@ FROM event_promoters ep
 JOIN events e      ON e.id = ep.event_id
 LEFT JOIN venues v ON v.id = e.venue_id
 LEFT JOIN event_extracted_genres eg ON eg.event_id = e.id
+LEFT JOIN event_extracted_genres eg ON eg.event_id = e.id
 WHERE ep.promoter_id = %s
 GROUP BY e.id, e.title, e.event_date, v.id, v.name
 ORDER BY e.event_date DESC
 LIMIT %s;
 """
-
-
-# ─── Helpers ──────────────────────────────────────────────────────────────────
 
 def fetch_artist_tags(artist_id: int, db: Connection) -> List[ExtractedTag]:
     with db.cursor() as cur:
@@ -219,7 +229,10 @@ def fetch_event_tags(event_id: int, db: Connection) -> List[ExtractedTag]:
 
 def build_artist_graph(id: int, limit: int, db: Connection) -> GraphResponse:
     center_id = f"artist-{id}"
+def build_artist_graph(id: int, limit: int, db: Connection) -> GraphResponse:
+    center_id = f"artist-{id}"
     nodes = {}
+    links: List[GraphLink] = []
     links: List[GraphLink] = []
 
     with db.cursor() as cur:
@@ -244,6 +257,7 @@ def build_artist_graph(id: int, limit: int, db: Connection) -> GraphResponse:
         cur.execute(ARTIST_MANUAL_CONNECTIONS_SQL, (id, id))
         for row in cur.fetchall():
             connected_id = f"artist-{row['artist_id']}"
+            connected_id = f"artist-{row['artist_id']}"
             if connected_id not in nodes:
                 connected_tags = fetch_artist_tags(row["artist_id"], db)
                 nodes[connected_id] = ArtistNode(
@@ -253,6 +267,7 @@ def build_artist_graph(id: int, limit: int, db: Connection) -> GraphResponse:
                     name=row["name"],
                     tags=connected_tags,
                 )
+            links.append(GraphLink(
             links.append(GraphLink(
                 source=center_id,
                 target=connected_id,
@@ -267,6 +282,8 @@ def build_artist_graph(id: int, limit: int, db: Connection) -> GraphResponse:
     for row in rows:
         event_id = f"event-{row['event_id']}"
         venue_id = f"venue-{row['venue_id']}" if row["venue_id"] else None
+        event_id = f"event-{row['event_id']}"
+        venue_id = f"venue-{row['venue_id']}" if row["venue_id"] else None
 
         if event_id not in nodes:
             event_tags = fetch_event_tags(row["event_id"], db)
@@ -275,11 +292,13 @@ def build_artist_graph(id: int, limit: int, db: Connection) -> GraphResponse:
                 entityId=row["event_id"],
                 type="event",
                 name=row["title"],
+                name=row["title"],
                 genres=row["genres"],
                 tags=event_tags,
                 date=row["date"],
             )
 
+        links.append(GraphLink(
         links.append(GraphLink(
             source=center_id,
             target=event_id,
@@ -297,12 +316,14 @@ def build_artist_graph(id: int, limit: int, db: Connection) -> GraphResponse:
 
         if venue_id:
             links.append(GraphLink(
+            links.append(GraphLink(
                 source=event_id,
                 target=venue_id,
                 weight=1,
                 relationship="held_at",
             ))
 
+    return GraphResponse(
     return GraphResponse(
         centerNodeId=center_id,
         nodes=list(nodes.values()),
@@ -311,6 +332,7 @@ def build_artist_graph(id: int, limit: int, db: Connection) -> GraphResponse:
 
 
 def build_venue_graph(id: int, limit: int, db: Connection) -> GraphResponse:
+    center_id = f"venue-{id}"
     center_id = f"venue-{id}"
     nodes = {}
     links: List[GraphLink] = []
@@ -335,6 +357,7 @@ def build_venue_graph(id: int, limit: int, db: Connection) -> GraphResponse:
 
     for row in rows:
         event_id = f"event-{row['event_id']}"
+        event_id = f"event-{row['event_id']}"
 
         if event_id not in nodes:
             event_tags = fetch_event_tags(row["event_id"], db)
@@ -342,6 +365,7 @@ def build_venue_graph(id: int, limit: int, db: Connection) -> GraphResponse:
                 id=event_id,
                 entityId=row["event_id"],
                 type="event",
+                name=row["title"],
                 name=row["title"],
                 genres=row["genres"],
                 tags=event_tags,
@@ -352,6 +376,7 @@ def build_venue_graph(id: int, limit: int, db: Connection) -> GraphResponse:
             source=center_id,
             target=event_id,
             weight=1,
+            weight=1,
             relationship="held_at",
         ))
 
@@ -361,8 +386,8 @@ def build_venue_graph(id: int, limit: int, db: Connection) -> GraphResponse:
         links=links,
     )
 
-
 def build_event_graph(id: int, limit: int, db: Connection) -> GraphResponse:
+    center_id = f"event-{id}"
     center_id = f"event-{id}"
     nodes = {}
     links: List[GraphLink] = []
@@ -381,12 +406,14 @@ def build_event_graph(id: int, limit: int, db: Connection) -> GraphResponse:
         entityId=id,
         type="event",
         name=event["title"],
+        name=event["title"],
         genres=event["genres"],
         tags=event_tags,
         date=event["date"],
     )
 
     if event["venue_id"]:
+        venue_id = f"venue-{event['venue_id']}"
         venue_id = f"venue-{event['venue_id']}"
         nodes[venue_id] = VenueNode(
             id=venue_id,
@@ -398,6 +425,7 @@ def build_event_graph(id: int, limit: int, db: Connection) -> GraphResponse:
             source=venue_id,
             target=center_id,
             weight=1,
+            weight=1,
             relationship="held_at",
         ))
 
@@ -406,6 +434,7 @@ def build_event_graph(id: int, limit: int, db: Connection) -> GraphResponse:
         artists = cur.fetchall()
 
     for row in artists:
+        artist_id = f"artist-{row['id']}"
         artist_id = f"artist-{row['id']}"
         if artist_id not in nodes:
             artist_tags = fetch_artist_tags(row["id"], db)
@@ -420,6 +449,7 @@ def build_event_graph(id: int, limit: int, db: Connection) -> GraphResponse:
             source=artist_id,
             target=center_id,
             weight=1,
+            weight=1,
             relationship="performed_at",
         ))
 
@@ -429,8 +459,8 @@ def build_event_graph(id: int, limit: int, db: Connection) -> GraphResponse:
         links=links,
     )
 
-
 def build_promoter_graph(id: int, limit: int, db: Connection) -> GraphResponse:
+    center_id = f"promoter-{id}"
     center_id = f"promoter-{id}"
     nodes = {}
     links: List[GraphLink] = []
@@ -456,6 +486,8 @@ def build_promoter_graph(id: int, limit: int, db: Connection) -> GraphResponse:
     for row in rows:
         event_id = f"event-{row['event_id']}"
         venue_id = f"venue-{row['venue_id']}" if row["venue_id"] else None
+        event_id = f"event-{row['event_id']}"
+        venue_id = f"venue-{row['venue_id']}" if row["venue_id"] else None
 
         if event_id not in nodes:
             event_tags = fetch_event_tags(row["event_id"], db)
@@ -463,6 +495,7 @@ def build_promoter_graph(id: int, limit: int, db: Connection) -> GraphResponse:
                 id=event_id,
                 entityId=row["event_id"],
                 type="event",
+                name=row["title"],
                 name=row["title"],
                 genres=row["genres"],
                 tags=event_tags,
@@ -472,6 +505,7 @@ def build_promoter_graph(id: int, limit: int, db: Connection) -> GraphResponse:
         links.append(GraphLink(
             source=center_id,
             target=event_id,
+            weight=1,
             weight=1,
             relationship="promoted",
         ))
@@ -489,6 +523,7 @@ def build_promoter_graph(id: int, limit: int, db: Connection) -> GraphResponse:
                 source=event_id,
                 target=venue_id,
                 weight=1,
+                weight=1,
                 relationship="held_at",
             ))
 
@@ -497,9 +532,6 @@ def build_promoter_graph(id: int, limit: int, db: Connection) -> GraphResponse:
         nodes=list(nodes.values()),
         links=links,
     )
-
-
-# ─── Endpoint ─────────────────────────────────────────────────────────────────
 
 @router.get("/ego")
 def get_ego_graph(
