@@ -167,6 +167,7 @@ list:
 
 clean:
 	$(COMPOSE) down --remove-orphans
+	rm .env
 
 reset-db:
 	@if [ "$$RESET_DB" != "yes" ]; then \
@@ -179,3 +180,4 @@ reset-db:
 fclean:
 	$(COMPOSE) down --rmi all -v --remove-orphans
 	docker builder prune -f
+	rm .env

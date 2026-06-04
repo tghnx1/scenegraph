@@ -1,7 +1,7 @@
 import { api } from './client'
 
 export interface GenreOption {
-  label: string
+  name: string
   value: string
 }
 

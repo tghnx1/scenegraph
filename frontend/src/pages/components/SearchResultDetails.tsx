@@ -29,6 +29,11 @@ function isEventDetail(result: DisplayResult): result is EventDetail {
   return result.type === 'event' && 'artists' in result
 }
 
+function dateOnly(date: string | null) {
+  if (!date) return 'Date unavailable'
+  return date.split(/[T ]/)[0]
+}
+
 export function SearchResultCard({ result, variant = 'card' }: SearchResultCardProps) {
   const articleClassName = variant === 'inline' ? 'search-result-card search-result-card--inline' : 'search-result-card'
 
@@ -84,7 +89,7 @@ export function SearchResultCard({ result, variant = 'card' }: SearchResultCardP
                       to={`/graph?selectedType=event&selectedId=${encodeURIComponent(event.id)}`}
                       className="result-pill"
                     >
-                      {event.title} <span>{event.event_date}</span>
+                      {event.title} <span>{dateOnly(event.event_date)}</span>
                     </Link>
                   ))
                 ) : (
@@ -169,7 +174,7 @@ export function SearchResultCard({ result, variant = 'card' }: SearchResultCardP
           <div>
             <span className="result-type">Event</span>
             <h2>{result.title}</h2>
-            <p className="result-meta">{result.date || 'Date unavailable'}</p>
+            <p className="result-meta">{dateOnly(result.date)}</p>
           </div>
         </div>
 

@@ -1,18 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
-import { useSearchParams } from 'react-router-dom'
-import { fetchEntityDetail } from '../api/entityDetails'
-import { fetchSearch } from '../api/search'
-import { useApi } from '../hooks/useApi'
-import { useGraphStore } from '../store/graphStore'
-import type { EntityDetail } from '../types/entityDetail'
-import { graphEntityId, type GraphNode, type NodeType } from '../types/graph'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { graphEntityId, type GraphNode } from '../types/graph'
 import type { PromoterRecommendationResponse } from '../types/recommendation'
-import type { SearchResponse, SearchResult } from '../types/search'
 import { DetailsPanel } from './components/DetailsPanel.tsx'
 import { RecommendationLoading } from './components/LoadingScreen.tsx'
 import { ScenegraphMapPanel } from './components/GraphPanel.tsx'
 import { SearchQueryForm } from './components/SearchQuery.tsx'
-import { useDebouncedValue } from './hooks/useDebouncedValue'
+import { useGraphSearchDetails } from './hooks/useGraphSearchDetails.ts'
 
 const PROMOTER_RECOMMENDATIONS_API_BASE_URL = 'http://localhost:8080/api/recommendations/artists/2178/promoters'
 const RECOMMENDATION_LOADING_MESSAGES = [
@@ -136,8 +129,7 @@ function initialStrengthThreshold(recommendations: PromoterRecommendationRespons
 type ProfileWorkspaceTab = 'graph' | 'recommendations'
 
 export function ProfilePage() {
-  const [searchParams, setSearchParams] = useSearchParams()
-  const { setSelected, selectedNode } = useGraphStore()
+  const { detailsPanelProps, searchFormProps, setSelected } = useGraphSearchDetails()
   const [activeWorkspaceTab, setActiveWorkspaceTab] = useState<ProfileWorkspaceTab>('graph')
   const [recommendationsData, setRecommendationsData] = useState<PromoterRecommendationResponse | null>(null)
   const [isRecommendationsLoading, setIsRecommendationsLoading] = useState(false)
@@ -152,53 +144,6 @@ export function ProfilePage() {
   const [expandedReasonItems, setExpandedReasonItems] = useState<Record<string, boolean>>({})
   const recommendationThresholdInitializedRef = useRef(false)
   const recommendationListRef = useRef<HTMLElement | null>(null)
-  const submittedQuery = searchParams.get('q') ?? ''
-  const [searchValue, setSearchValue] = useState(submittedQuery)
-  const debouncedSearchValue = useDebouncedValue(searchValue.trim(), 350)
-  const selectedTypeParam = searchParams.get('selectedType')
-  const selectedIdParam = searchParams.get('selectedId')
-  const selectedDetailType = selectedNode
-    ? selectedNode.type
-    : selectedTypeParam
-      ? selectedTypeParam
-      : null
-  const selectedDetailNodeId = selectedNode ? selectedNode.id : selectedIdParam
-  const selectedDetailId = selectedDetailType && selectedDetailNodeId
-    ? String(graphEntityId(selectedDetailNodeId, selectedDetailType as NodeType) ?? selectedDetailNodeId)
-    : null
-
-  const {
-    data: searchData,
-    isLoading: isSearchLoading,
-    error: searchError,
-  } = useApi<SearchResponse>(
-    () => (submittedQuery ? fetchSearch(submittedQuery) : Promise.resolve({ query: '', results: [] })),
-    [submittedQuery]
-  )
-
-  const { data: dropdownSearchData, isLoading: isDropdownSearchLoading } = useApi<SearchResponse>(
-    () => (
-      debouncedSearchValue.length >= 2 &&
-        debouncedSearchValue === searchValue.trim() &&
-        debouncedSearchValue !== submittedQuery.trim()
-        ? fetchSearch(debouncedSearchValue)
-        : Promise.resolve({ query: '', results: [] })
-    ),
-    [debouncedSearchValue, searchValue, submittedQuery]
-  )
-
-  const { data: selectedEntityDetail, isLoading: isSelectedEntityDetailLoading } = useApi<EntityDetail | null>(
-    () => (
-      selectedDetailType && selectedDetailId
-        ? fetchEntityDetail(selectedDetailType as NodeType, selectedDetailId)
-        : Promise.resolve(null)
-    ),
-    [selectedDetailType, selectedDetailId]
-  )
-
-  useEffect(() => {
-    setSearchValue(submittedQuery)
-  }, [submittedQuery])
 
   useEffect(() => {
     if (!isRecommendationsLoading) {
@@ -224,51 +169,6 @@ export function ProfilePage() {
     setRecommendationStrengthThreshold(initialStrengthThreshold(recommendationsData.recommendations))
     recommendationThresholdInitializedRef.current = true
   }, [recommendationsData])
-
-  const handleSearchSubmit = useCallback(
-    (event: FormEvent<HTMLFormElement>) => {
-      event.preventDefault()
-      const nextQuery = searchValue.trim()
-      if (!nextQuery) return
-      const nextParams = new URLSearchParams(searchParams)
-      nextParams.set('q', nextQuery)
-      nextParams.delete('artist')
-      nextParams.delete('selectedType')
-      nextParams.delete('selectedId')
-      setSelected(null)
-      setSearchParams(nextParams, { replace: true })
-    },
-    [searchParams, searchValue, setSearchParams, setSelected]
-  )
-
-  const handleClearSearch = useCallback(() => {
-    setSearchValue('')
-    const nextParams = new URLSearchParams(searchParams)
-    nextParams.delete('q')
-    nextParams.delete('artist')
-    nextParams.delete('selectedType')
-    nextParams.delete('selectedId')
-    setSearchParams(nextParams, { replace: true })
-    setSelected(null)
-  }, [searchParams, setSearchParams, setSelected])
-
-  const handleSearchValueChange = useCallback((nextValue: string) => {
-    setSearchValue(nextValue)
-  }, [])
-
-  const handleSelectSearchResult = useCallback(
-    (result: SearchResult) => {
-      const nextParams = new URLSearchParams(searchParams)
-      nextParams.set('q', result.name)
-      nextParams.set('selectedType', result.type)
-      nextParams.set('selectedId', result.id)
-      nextParams.delete('artist')
-      setSearchValue(result.name)
-      setSelected(null)
-      setSearchParams(nextParams, { replace: false })
-    },
-    [searchParams, setSearchParams, setSelected]
-  )
 
   const handleLoadRecommendations = useCallback(async () => {
     recommendationThresholdInitializedRef.current = false
@@ -385,20 +285,6 @@ export function ProfilePage() {
 
     return () => window.cancelAnimationFrame(animationFrame)
   }, [expandedRecommendationId])
-
-  const searchResults = searchData?.results ?? []
-  const trimmedSearchValue = searchValue.trim()
-  const trimmedSubmittedQuery = submittedQuery.trim()
-  const isDropdownWaiting = trimmedSearchValue.length >= 2 && debouncedSearchValue !== trimmedSearchValue
-  const shouldFetchDropdownSearch =
-    debouncedSearchValue.length >= 2 &&
-    debouncedSearchValue === trimmedSearchValue &&
-    debouncedSearchValue !== trimmedSubmittedQuery
-  const dropdownSearchResults = shouldFetchDropdownSearch ? dropdownSearchData?.results ?? [] : []
-  const detailsSearchError = searchError
-  const isDetailsSearchLoading = isSearchLoading || isSelectedEntityDetailLoading
-  const hasActiveSearchState = Boolean(searchValue || submittedQuery || selectedNode)
-  const detailsSelectedNode = selectedEntityDetail ? null : selectedNode
   const sortedRecommendations = useMemo(() => {
     if (!recommendationsData) return []
 
@@ -476,26 +362,14 @@ export function ProfilePage() {
           <SearchQueryForm
             inputId="profile-details-search-query-input"
             label="Search database"
-            value={searchValue}
-            onChange={handleSearchValueChange}
-            onSubmit={handleSearchSubmit}
-            onClear={handleClearSearch}
-            showClear={hasActiveSearchState}
-            results={dropdownSearchResults}
-            isLoading={isDropdownWaiting || isDropdownSearchLoading}
-            onSelectResult={handleSelectSearchResult}
+            {...searchFormProps}
           />
 
           {/* <div className="panel-heading">
             <span className="search-query-label">Node details</span>
           </div> */}
           <DetailsPanel
-            searchQuery={submittedQuery}
-            searchResults={searchResults}
-            isSearchLoading={isDetailsSearchLoading}
-            searchError={detailsSearchError}
-            selectedNode={detailsSelectedNode}
-            selectedEntityDetail={selectedEntityDetail}
+            {...detailsPanelProps}
           />
         </article>
 
