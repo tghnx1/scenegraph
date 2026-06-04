@@ -104,6 +104,11 @@ export default function App() {
             Pending users
           </NavLink>
         )}
+        {authRole === 'admin' && (
+          <NavLink to="/admin/users" className="app-nav-link">
+            Pending users
+          </NavLink>
+        )}
         <span className="app-nav-spacer" />
         <button type="button" className="app-nav-button" onClick={handleThemeToggle}>
           {themeName === 'light' ? 'Dark' : 'Light'}
