@@ -39,8 +39,6 @@ def link_style_rank(style: str | None) -> int:
         return 2
     if style == "dashed":
         return 1
-    if style == "dotted":
-        return 0
     return -1
 
 
@@ -148,10 +146,17 @@ def project_path_subgraph(
         )
         if len(kept_neighbors) < 2:
             continue
-        is_warm_or_manual_projection = any(
-            link.evidenceType in {"warm_network", "manual_connection"}
-            for link in incident_links.get(node_id, [])
-        )
+
+        def projected_style_for_neighbors(left: str, right: str) -> str:
+            incident_styles: list[str] = []
+            for link in incident_links.get(node_id, []):
+                other = link.target if link.source == node_id else link.source if link.target == node_id else None
+                if other not in {left, right}:
+                    continue
+                if link.style in {"solid", "dashed"}:
+                    incident_styles.append(link.style)
+            return "solid" if incident_styles and all(style == "solid" for style in incident_styles) else "dashed"
+
         incident_strengths = [
             link.strength if isinstance(link.strength, (int, float)) else 0.0
             for link in incident_links.get(node_id, [])
@@ -163,7 +168,7 @@ def project_path_subgraph(
                 target,
                 relationship="projected_path",
                 evidence_type="projected_path",
-                style="solid" if is_warm_or_manual_projection else "dashed",
+                style=projected_style_for_neighbors(source, target),
                 strength=projected_strength,
             )
 
@@ -562,7 +567,7 @@ def promoter_recommendation_graph(
         weight: int = 1,
         *,
         evidence_type: str | None = None,
-        style: Literal["solid", "dashed", "dotted"] | None = None,
+        style: Literal["solid", "dashed"] | None = None,
         strength: float | None = None,
     ) -> None:
         key = (source, target, relationship)
@@ -844,7 +849,7 @@ def promoter_recommendation_graph(
             promoter_event_node_id,
             "event similarity",
             evidence_type="event_similarity",
-            style="dotted",
+            style="dashed",
             strength=event_similarity_strength,
         )
 

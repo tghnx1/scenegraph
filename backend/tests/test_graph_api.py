@@ -470,7 +470,7 @@ def test_artist_promoter_recommendations_include_graph_payload():
         None,
     )
     assert semantic_link is not None
-    assert semantic_link["style"] in {"solid", "dashed", "dotted"}
+    assert semantic_link["style"] in {"solid", "dashed"}
     assert isinstance(semantic_link["strength"], (int, float))
     assert 0.0 <= semantic_link["strength"] <= 1.0
     assert set(data) >= {"largeRecommendations", "mediumRecommendations", "smallRecommendations"}
@@ -620,7 +620,7 @@ def test_artist_promoter_recommendations_include_event_similarity_connections():
     ]
     if event_similarity_recommendations and has_event_similarity_evidence:
         assert event_similarity_links
-        assert any(link.get("style") == "dotted" for link in event_similarity_links)
+        assert all(link.get("style") == "dashed" for link in event_similarity_links)
     elif event_similarity_recommendations:
         # eventSimilarity can come from embedding-only signal even when no symbolic path exists
         assert not event_similarity_links

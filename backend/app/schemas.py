@@ -38,7 +38,7 @@ class GraphLink(BaseModel):
     relationship: str
     weight: int = 1
     evidenceType: str | None = None
-    style: Literal["solid", "dashed", "dotted"] | None = None
+    style: Literal["solid", "dashed"] | None = None
     strength: float | None = None
 
 
