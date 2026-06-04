@@ -55,9 +55,9 @@ ORDER BY e.event_date DESC;
 """
 
 
-@router.get("", response_model=VenueResponse)
+@router.get("/{id}", response_model=VenueResponse)
 def get_venue(
-    id: int = Query(...),
+    id: int,
     db: Connection = Depends(get_db),
 ):
     with db.cursor() as cur:
