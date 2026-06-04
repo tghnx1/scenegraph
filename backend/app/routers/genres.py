@@ -17,8 +17,11 @@ class GenresResponse(BaseModel):
 
 
 GENRES_SQL = """
-SELECT name, slug
-FROM genres
+SELECT DISTINCT
+    extracted_genre AS name,
+    lower(extracted_genre) AS value
+FROM artist_extracted_genres
+WHERE extracted_genre IS NOT NULL
 ORDER BY name ASC;
 """
 
@@ -30,5 +33,5 @@ def get_genres(db: Connection = Depends(get_db)):
         rows = cur.fetchall()
 
     return GenresResponse(
-        genres=[Genre(name=row["name"], value=row["slug"]) for row in rows]
+        genres=[Genre(name=row["name"], value=row["value"]) for row in rows]
     )
