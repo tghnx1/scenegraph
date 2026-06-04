@@ -1,7 +1,5 @@
-import { useState, type FormEvent } from 'react'
-import { Link } from 'react-router-dom'
-import { getFallbackRole, login, type AuthRole } from '../api/auth'
-import { authButtonStyle, authInputStyle, PasswordInput } from './components/PasswordToggle'
+import { useState, type CSSProperties, type FormEvent } from 'react'
+import { changePassword, login, register, type AuthRole } from '../api/auth'
 
 interface LoginPageProps {
   onLogin: (role: AuthRole) => void
@@ -11,15 +9,67 @@ const colorVar = (name: string) => `var(${name})`
 const colorAlpha = (name: string, percent: number) => `color-mix(in srgb, var(${name}) ${percent}%, transparent)`
 
 export function LoginPage({ onLogin }: LoginPageProps) {
-  const [username, setUsername] = useState('')
+  const [username, setUsername] = useState(localStorage.getItem('last_username') ?? '')   // for keeping the username in the login mask
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [mustChangePassword, setMustChangePassword] = useState(false)
+  const [newPassword, setNewPassword] = useState('')
+  const [newPasswordConfirm, setNewPasswordConfirm] = useState('')
+  const [isRegistering, setIsRegistering] = useState(false)
+  const [email, setEmail] = useState('')
+  const [passwordConfirm, setPasswordConfirm] = useState('')
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     setError('')
     setIsSubmitting(true)
+
+    if (mustChangePassword) {
+      const response = await changePassword(
+        username,
+        password,
+        newPassword,
+        newPasswordConfirm,
+      )
+
+      if (!response.success) {
+        setError(response.message)
+        setIsSubmitting(false)
+        return
+      }
+
+      setError('Password changed. Please sign in with your new password.')
+      setPassword('')
+      setNewPassword('')
+      setNewPasswordConfirm('')
+      setMustChangePassword(false)
+      setIsSubmitting(false)
+      return
+    }
+
+    if (isRegistering) {
+      const response = await register(
+        username,
+        email,
+        password,
+        passwordConfirm,
+      )
+
+      if (!response.success) {
+        setError(response.message)
+        setIsSubmitting(false)
+        return
+      }
+
+      setError('Registration successful. Please wait for admin approval.')
+      setIsRegistering(false)
+      setPassword('')
+      setPasswordConfirm('')
+      setEmail('')
+      setIsSubmitting(false)
+      return
+    }
 
     try {
       const response = await login(username, password)
@@ -30,15 +80,24 @@ export function LoginPage({ onLogin }: LoginPageProps) {
       }
 
       const authenticatedUsername = response.username ?? username
-      const role = getFallbackRole(authenticatedUsername)
+      const role: AuthRole =
+        response.role === 'admin' ? 'admin' : 'user'
 
       localStorage.setItem('token', response.access_token)
       localStorage.setItem('role', role)
       localStorage.setItem('username', authenticatedUsername)
+      localStorage.setItem('last_username', authenticatedUsername)
+
       if (response.user_id !== undefined) {
         localStorage.setItem('user_id', String(response.user_id))
       }
 
+      if (response.must_change_password)
+      {
+        setMustChangePassword(true)
+        setError('You must change your password before continuing.')
+        return
+      }
       onLogin(role)
     } catch {
       setError('Login failed. Please try again.')
@@ -72,6 +131,18 @@ export function LoginPage({ onLogin }: LoginPageProps) {
               required
             />
           </label>
+          {isRegistering && (
+            <label style={{ display: 'grid', gap: 6, color: colorVar('--text-muted'), fontSize: 14 }}>
+              Email
+              <input
+                style={inputStyle}
+                type="email"
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                required
+              />
+            </label>
+          )}
           <label style={{ display: 'grid', gap: 6, color: colorVar('--text-muted'), fontSize: 14 }}>
             Password
             <PasswordInput
@@ -81,9 +152,64 @@ export function LoginPage({ onLogin }: LoginPageProps) {
               required
             />
           </label>
+          {isRegistering && (
+            <label style={{ display: 'grid', gap: 6, color: colorVar('--text-muted'), fontSize: 14 }}>
+              Confirm password
+              <input
+                style={inputStyle}
+                type="password"
+                value={passwordConfirm}
+                onChange={(event) => setPasswordConfirm(event.target.value)}
+                required
+              />
+            </label>
+          )}
+          {mustChangePassword && (
+            <>
+              <label style={{ display: 'grid', gap: 6, color: colorVar('--text-muted'), fontSize: 14 }}>
+                New password
+                <input
+                  style={inputStyle}
+                  type="password"
+                  value={newPassword}
+                  onChange={(event) => setNewPassword(event.target.value)}
+                />
+              </label>
+
+              <label style={{ display: 'grid', gap: 6, color: colorVar('--text-muted'), fontSize: 14 }}>
+                Confirm new password
+                <input
+                  style={inputStyle}
+                  type="password"
+                  value={newPasswordConfirm}
+                  onChange={(event) => setNewPasswordConfirm(event.target.value)}
+                />
+              </label>
+            </>
+          )}
           {error && <p style={{ margin: 0, color: 'var(--danger, #d94848)', fontSize: 14 }}>{error}</p>}
-          <button type="submit" style={authButtonStyle} disabled={isSubmitting}>
-            {isSubmitting ? 'Signing in...' : 'Sign in'}
+          <button type="submit" style={loginButtonStyle} disabled={isSubmitting}>
+            {isSubmitting
+              ? isRegistering
+                ? 'Registering...'
+                : mustChangePassword
+                  ? 'Changing password...'
+                  : 'Signing in...'
+              : isRegistering
+                ? 'Register'
+                : mustChangePassword
+                  ? 'Change password'
+                  : 'Sign in'}
+          </button>
+          <button
+            type="button"
+            style={loginButtonStyle}
+            onClick={() => {
+              setIsRegistering(!isRegistering)
+              setError('')
+            }}
+          >
+            {isRegistering ? 'Back to sign in' : 'Create account'}
           </button>
         </form>
         <p style={{ margin: '18px 0 0', color: colorVar('--text-muted'), fontSize: 14 }}>

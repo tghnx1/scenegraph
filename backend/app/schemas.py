@@ -66,7 +66,9 @@ class LoginResponse(BaseModel):
     message: str
     user_id: int | None = None
     username: str | None = None
+    role: str | None = None
     access_token: str | None = None
+    must_change_password: bool | None = None
 
 class RegisterRequest(BaseModel):
     username: str
@@ -79,6 +81,15 @@ class RegisterResponse(BaseModel):
     message: str
     user_id: int | None = None
 
+class ChangePasswordRequest(BaseModel):
+    username: str
+    current_password: str
+    new_password: str
+    new_password_confirm: str
+
+class ChangePasswordResponse(BaseModel):
+    success: bool
+    message: str
 
 class SimilarityItem(BaseModel):
     id: int

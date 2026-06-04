@@ -261,11 +261,14 @@ model RecommendationFeedback {
 }
 
 model User {
-  id            BigInt    @id @default(autoincrement())
-  username      String    @unique
-  email         String    @unique
-  passwordHash  String    @map("password_hash")
-  createdAt     DateTime  @default(now()) @map("created at") @db.Timestamptz(6)
+  id                  BigInt    @id @default(autoincrement())
+  username            String    @unique
+  email               String    @unique
+  passwordHash        String    @map("password_hash")
+  createdAt           DateTime  @default(now()) @map("created at") @db.Timestamptz(6)
+  role                String    @default("user")
+  status              String    @default("pending")
+  mustChangePassword  Boolean   @default("false") @map("must_change_password")
 
   @@map("users")
 }
