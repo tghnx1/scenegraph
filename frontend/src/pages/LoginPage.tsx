@@ -1,4 +1,6 @@
 import { useState, type CSSProperties, type FormEvent } from 'react'
+import { changePassword, login, register, type AuthRole } from '../api/auth'
+import { useState, type CSSProperties, type FormEvent } from 'react'
 import { changePassword, isAuthRole, login, register, type AuthRole } from '../api/auth'
 
 interface LoginPageProps {
@@ -97,6 +99,12 @@ export function LoginPage({ onLogin }: LoginPageProps) {
         localStorage.removeItem('artist_id')
       }
 
+      if (response.must_change_password)
+      {
+        setMustChangePassword(true)
+        setError('You must change your password before continuing.')
+        return
+      }
       if (response.must_change_password)
       {
         setMustChangePassword(true)
