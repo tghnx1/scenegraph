@@ -26,7 +26,7 @@ export interface GraphEdge {
   relationship: string
   weight: number
   evidenceType?: GraphEvidenceType | string | null
-  style?: 'solid' | 'dashed' | 'dotted' | string | null
+  style?: 'solid' | 'dashed' | string | null
   strength?: number | null
 }
 

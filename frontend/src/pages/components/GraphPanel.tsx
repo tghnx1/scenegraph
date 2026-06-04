@@ -50,7 +50,6 @@ function getLinkStrengthValue(link: { strength?: unknown; weight?: unknown; valu
 
 function getLinkDashPattern(link: { style?: unknown }) {
   if (link.style === 'dashed') return [6, 4]
-  if (link.style === 'dotted') return [2, 4]
   return null
 }
 

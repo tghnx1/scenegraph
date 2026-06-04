@@ -133,7 +133,7 @@ def test_project_path_subgraph_keeps_warm_manual_collapses_solid():
     assert projected_links[0].style == "solid"
 
 
-def test_project_path_subgraph_marks_non_warm_collapses_dashed():
+def test_project_path_subgraph_marks_mixed_collapses_dashed():
     nodes_by_id = {
         "artist-1": GraphNode(id="artist-1", entityId=1, type="artist", name="A"),
         "artist-2": GraphNode(id="artist-2", entityId=2, type="artist", name="B"),
@@ -153,7 +153,7 @@ def test_project_path_subgraph_marks_non_warm_collapses_dashed():
             target="event-1",
             relationship="played",
             evidenceType="semantic_bridge",
-            style="solid",
+            style="dashed",
             strength=0.7,
         ),
     ]
