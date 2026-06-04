@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 
-from fastapi import Depends, FastAPI
+from fastapi import Depends, FastAPI, Header, HTTPException         #Header and HTTPException for the admin operations
 from fastapi.middleware.cors import CORSMiddleware
 from psycopg import Connection
 
@@ -14,13 +14,76 @@ from app.schemas import (
     LoginResponse,
     RegisterRequest,
     RegisterResponse,
+    ChangePasswordRequest,
+    ChangePasswordResponse,
     Venue,
     VenuesResponse,
 )
 
+import os
+
 from passlib.context import CryptContext    # for password hashing
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+BOOTSTRAP_ADMIN_USERNAME = os.getenv("BOOTSTRAP_ADMIN_USERNAME")
+BOOTSTRAP_ADMIN_EMAIL = os.getenv("BOOTSTRAP_ADMIN_EMAIL")
+BOOTSTRAP_ADMIN_PASSWORD = os.getenv("BOOTSTRAP_ADMIN_PASSWORD")
+
+def create_bootstrap_admin(connection: Connection) -> None:         #like void
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT id
+            FROM users
+            WHERE role = 'admin'
+            LIMIT 1     
+            """                 #limit 1 is for finding at most one admin
+        )
+
+        admin = cursor.fetchone()
+
+        if admin is not None:
+            return
+        if (
+            not BOOTSTRAP_ADMIN_USERNAME
+            or not BOOTSTRAP_ADMIN_EMAIL
+            or not BOOTSTRAP_ADMIN_PASSWORD
+        ):
+            print("Bootstrap admin variables missing")
+            return
+        
+        hashed_password = pwd_context.hash(BOOTSTRAP_ADMIN_PASSWORD)
+
+        cursor.execute(
+            """
+            INSERT INTO users
+            (
+                username,
+                email,
+                password_hash,
+                role,
+                status,
+                must_change_password
+            )
+            VALUES
+            (
+                %s,
+                %s,
+                %s,
+                'admin',
+                'approved',
+                TRUE
+            )
+            """,
+            (
+                BOOTSTRAP_ADMIN_USERNAME,
+                BOOTSTRAP_ADMIN_EMAIL,
+                hashed_password,              
+            )
+        )
+
+        connection.commit()
 
 @asynccontextmanager
 async def lifespan(app_instance: FastAPI):
@@ -34,6 +97,7 @@ async def lifespan(app_instance: FastAPI):
     }
     with get_connection() as connection:
         schema_report = check_schema_tables(connection)
+        create_bootstrap_admin(connection)
     app_instance.state.schema_preflight = schema_report
 
     if schema_preflight_strict_mode() and schema_report["missingRequiredTables"]:
@@ -58,6 +122,33 @@ app.add_middleware(
 
 from app.routers.index import router
 app.include_router(router, prefix="/api")
+
+#admin helper for admin operations (accept, reject, check pending), before the endpoints
+def require_admin(
+    admin_username: str = Header(alias="X-Admin-Username"),      # when a request arrives, read the HTTP header called X-Admin-Username and put it in admin_username
+    connection: Connection = Depends(get_db),
+) -> dict:
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT id, username, role, status
+            FROM users
+            WHERE username = %s
+            """,
+            (admin_username,),
+        )
+        admin = cursor.fetchone()
+
+    if(
+        admin is None
+        or admin["role"] != "admin"
+        or admin["status"] != "approved"
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail="Admin access required",
+        )
+    return admin
 
 
 @app.get("/health")
@@ -124,7 +215,7 @@ async def login(
     with connection.cursor() as cursor:
         cursor.execute(
             """
-            SELECT id, username, password_hash
+            SELECT id, username, password_hash, role, status, must_change_password
             FROM users
             WHERE username = %s
             """,
@@ -143,13 +234,21 @@ async def login(
             success=False,
             message="Invalid username or password",
         )
+
+    if user["status"] != "approved":
+        return LoginResponse(
+            success=False,
+            message="Account is not approved"
+        )
     
     return LoginResponse(
         success=True,
         message="Login successful",
         user_id=user["id"],
         username=user["username"],
+        role=user["role"],
         access_token="dummy-token",
+        must_change_password=user["must_change_password"],
     )
 
 @app.post("/api/register", response_model=RegisterResponse, response_model_exclude_none=True)
@@ -207,6 +306,151 @@ async def register(
         message="Registration successful",
         user_id=created_user["id"],
     )
+
+@app.post("/api/change-password", response_model=ChangePasswordResponse)
+async def change_password(
+    password_data: ChangePasswordRequest,           # read json request body into a ChangePasswordRequest object
+    connection: Connection = Depends(get_db),
+) -> ChangePasswordResponse:                        # return type... this function should return a ChangePasswordResponse
+    if password_data.new_password != password_data.new_password_confirm:
+        return ChangePasswordResponse(
+            success=False,
+            message="New passwords do not match",
+        )
+    
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT id, username, password_hash, status
+            FROM users
+            WHERE username = %s
+            """,
+            (password_data.username,),
+        )
+        user = cursor.fetchone()
+
+        if user is None:
+            return ChangePasswordResponse(
+                success=False,
+                message="Invalid username or password",
+            )
+        
+        if user["status"] != "approved":
+            return ChangePasswordResponse(
+                success=False,
+                message="Account is not approved"
+            )
+        
+        if not pwd_context.verify(password_data.current_password, user["password_hash"]):
+            return ChangePasswordResponse(
+                success=False,
+                message="Invalid username or password",
+            )
+        
+        if pwd_context.verify(password_data.new_password, user["password_hash"]):
+            return ChangePasswordResponse(
+                success=False,
+                message="New password must be different from current password",
+            )
+        
+        new_hashed_password = pwd_context.hash(password_data.new_password)
+
+        cursor.execute(
+            """
+            UPDATE users
+            SET password_hash = %s,
+                must_change_password = FALSE
+            WHERE id = %s
+            """,
+            (
+                new_hashed_password,
+                user["id"],
+            ),
+        )
+
+        connection.commit()
+
+    return ChangePasswordResponse(
+        success=True,
+        message="Password changed successfully",
+    )
+
+@app.get("/api/admin/users/pending")
+async def list_pending_users(
+    admin: dict = Depends(require_admin),
+    connection: Connection = Depends(get_db),
+) -> dict:
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT id, username, email, role, status, created_at
+            FROM users
+            WHERE status = 'pending'
+            ORDER BY created_at ASC
+            """
+        )
+        users = cursor.fetchall()
+    
+    return {
+        "success": True,
+        "users": users,
+    }
+
+@app.post("/api/admin/users/{user_id}/approve")
+async def approve_user(
+    user_id: int,
+    admin: dict = Depends(require_admin),
+    connection: Connection = Depends(get_db),
+) -> dict:
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            UPDATE users
+            SET status = 'approved'
+            WHERE id = %s
+            RETURNING id, username, email, role, status
+            """,
+            (user_id,)
+        )
+        updated_user = cursor.fetchone()
+        connection.commit()
+    
+    if updated_user is None:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    return {
+        "success": True,
+        "message": "User approved",
+        "user": updated_user,
+    }
+
+@app.post("/api/admin/users/{user_id}/reject")
+async def reject_user(
+    user_id: int,
+    admin: dict = Depends(require_admin),
+    connection: Connection = Depends(get_db),
+) -> dict:
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            UPDATE users
+            SET status = 'rejected'
+            WHERE id = %s
+            RETURNING id, username, email, role, status
+            """,
+            (user_id,),
+        )
+        updated_user = cursor.fetchone()
+        connection.commit()
+    
+    if updated_user is None:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    return {
+        "success": True,
+        "message": "User rejected",
+        "user": updated_user,
+    }
 
 @app.get("/api/venues", response_model=VenuesResponse)
 async def list_venues(connection: Connection = Depends(get_db)) -> VenuesResponse:

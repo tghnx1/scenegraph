@@ -8,6 +8,7 @@ import { LoginPage } from './pages/LoginPage'
 import { RegisterPage } from './pages/RegisterPage'
 import { getFallbackRole, isAuthRole, type AuthRole } from './api/auth'
 import { applyTheme, getStoredTheme, type ThemeName } from './styles/colors'
+import { AdminUsersPage } from './pages/AdminUsersPage'
 
 const colorVar = (name: string) => `var(${name})`
 
@@ -98,6 +99,11 @@ export default function App() {
             Dashboard
           </NavLink>
         )}
+        {authRole === 'admin' && (
+          <NavLink to="/admin/users" className="app-nav-link">
+            Pending users
+          </NavLink>
+        )}
         <span className="app-nav-spacer" />
         <button type="button" className="app-nav-button" onClick={handleThemeToggle}>
           {themeName === 'light' ? 'Dark' : 'Light'}
@@ -126,6 +132,14 @@ export default function App() {
           <Route path="/impressum" element={<LegalPage section="impressum" />} />
           <Route path="/cookie-settings" element={<LegalPage section="cookies" />} />
           <Route path="/contact" element={<LegalPage section="contact" />} />
+          <Route
+            path="/admin/users"
+            element={
+              isAuthenticated && authRole === 'admin'
+                ? <AdminUsersPage />
+                : <Navigate to="/login" replace />
+            }
+          />
         </Routes>
       </main>
 
