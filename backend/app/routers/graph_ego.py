@@ -38,11 +38,13 @@ class EventNode(BaseModel):
     tags: List[ExtractedTag] = []
     date: Optional[str] = None
 
+
 class PromoterNode(BaseModel):
     id: str
     entityId: int
     type: str
     name: str
+
 
 class GraphLink(BaseModel):
     source: str
@@ -50,10 +52,14 @@ class GraphLink(BaseModel):
     weight: int = 1
     relationship: str
 
+
 class GraphResponse(BaseModel):
     centerNodeId: str
     nodes: list
     links: List[GraphLink]
+
+
+# ─── Queries ──────────────────────────────────────────────────────────────────
 
 ARTIST_INFO_SQL = """
 SELECT a.id, a.name,
@@ -201,6 +207,9 @@ GROUP BY e.id, e.title, e.event_date, v.id, v.name
 ORDER BY e.event_date DESC
 LIMIT %s;
 """
+
+
+# ─── Helpers ──────────────────────────────────────────────────────────────────
 
 def fetch_artist_tags(artist_id: int, db: Connection) -> List[ExtractedTag]:
     with db.cursor() as cur:
@@ -386,6 +395,7 @@ def build_venue_graph(id: int, limit: int, db: Connection) -> GraphResponse:
         links=links,
     )
 
+
 def build_event_graph(id: int, limit: int, db: Connection) -> GraphResponse:
     center_id = f"event-{id}"
     center_id = f"event-{id}"
@@ -458,6 +468,7 @@ def build_event_graph(id: int, limit: int, db: Connection) -> GraphResponse:
         nodes=list(nodes.values()),
         links=links,
     )
+
 
 def build_promoter_graph(id: int, limit: int, db: Connection) -> GraphResponse:
     center_id = f"promoter-{id}"
@@ -532,6 +543,9 @@ def build_promoter_graph(id: int, limit: int, db: Connection) -> GraphResponse:
         nodes=list(nodes.values()),
         links=links,
     )
+
+
+# ─── Endpoint ─────────────────────────────────────────────────────────────────
 
 @router.get("/ego")
 def get_ego_graph(
