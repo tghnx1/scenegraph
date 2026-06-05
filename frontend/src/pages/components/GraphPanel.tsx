@@ -424,7 +424,7 @@ export function ScenegraphMapPanel({
     if (nextSelectedNode && selectedNode?.id !== nextSelectedNode.id) {
       setSelected(nextSelectedNode)
     }
-  }, [data, providedData, selectedEntityId, selectedNode?.id, selectedType, setSelected])
+  }, [data, providedData, selectedEntityId, selectedType, setSelected])
 
   useEffect(() => {
     const container = containerRef.current
@@ -472,9 +472,6 @@ export function ScenegraphMapPanel({
       if (isSameSelectedNode && !isCurrentEgoGraph) {
         nextParams.set('selectedType', nextNode.type)
         nextParams.set('selectedId', String(nextNode.entityId))
-      } else {
-        nextParams.delete('selectedType')
-        nextParams.delete('selectedId')
       }
 
       setSearchParams(nextParams, { replace: false })
