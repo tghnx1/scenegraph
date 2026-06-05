@@ -25,7 +25,9 @@ export function GraphPage() {
       </aside>
 
       <section className="graph-main">
-        <ScenegraphMapPanel />
+        <article className="profile-card graph-panel">
+          <ScenegraphMapPanel />
+        </article>
       </section>
     </div>
   )

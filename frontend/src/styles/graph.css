@@ -44,6 +44,30 @@
   display: grid;
 }
 
+.graph-panel {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 12px;
+  height: 100%;
+  padding: 20px;
+  background: var(--surface-panel);
+  border-color: var(--surface-border);
+}
+
+.graph-panel .scenegraph-map-panel {
+  height: 100%;
+}
+
+.graph-panel .graph-filter-card {
+  padding: 16px;
+  border-radius: 18px;
+  box-shadow: var(--surface-shadow);
+}
+
+.graph-panel .graph-canvas--large {
+  border-radius: 24px;
+}
+
 .scenegraph-map-panel {
   min-width: 0;
   min-height: 0;
@@ -63,37 +87,6 @@
 
 .scenegraph-map-panel.has-heading.without-filters {
   grid-template-rows: auto auto minmax(0, 1fr);
-}
-
-.graph-view-controls {
-  display: grid;
-  gap: 10px;
-  padding: 12px;
-  border-radius: 14px;
-  background: var(--surface-panel-soft);
-  border: 1px solid var(--surface-border-soft);
-}
-
-.graph-view-control-group {
-  display: grid;
-  gap: 6px;
-}
-
-.graph-view-control-label {
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
-  color: var(--accent);
-  font-size: 0.7rem;
-}
-
-.graph-view-control-buttons {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.graph-view-threshold-input {
-  width: 100%;
 }
 
 .scenegraph-map-heading {

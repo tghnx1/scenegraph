@@ -5,7 +5,8 @@ import App from './App.tsx'
 import './styles/base.css' //tokens, global reset, typography
 import './styles/app.css' //app shell, navigation, footer
 import './styles/graph.css' //graph page layout, graph canvas, filter controls
-import './styles/dashboard.css' //dashboard and profile page shells and panels
+import './styles/dashboard.css' //dashboard shell, panels, and recommendation UI
+import './styles/profile.css' //profile page layout and profile-only panels
 import './styles/search.css' //search input, result cards, detail panel pieces
 import './styles/mobile.css' //mobile overrides
 import { applyStoredTheme } from './styles/colors'
