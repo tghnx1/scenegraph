@@ -87,8 +87,7 @@
     padding: 12px;
   }
 
-  .dashboard-actions,
-  .profile-actions {
+  .dashboard-actions {
     justify-content: start;
   }
 
@@ -100,7 +99,6 @@
     grid-template-columns: 1fr;
   }
 
-  .dashboard-panel-wide,
   .dashboard-panel-full {
     grid-column: auto;
   }
@@ -118,7 +116,6 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .dashboard-panel-wide,
   .dashboard-panel-full {
     grid-column: span 2;
   }

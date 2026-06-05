@@ -356,12 +356,13 @@ export function ProfilePage() {
   return (
     <div className="profile-page">
       <section className="profile-grid" aria-label="Profile overview">
-        <article className="profile-card context-panel">
-          <SearchQueryForm
-            inputId="profile-details-search-query-input"
-            label="Search database"
-            {...searchFormProps}
-          />
+        <article className="graph-sidebar-card context-panel">
+          <div className="graph-sidebar-search">
+            <SearchQueryForm
+              inputId="profile-details-search-query-input"
+              {...searchFormProps}
+            />
+          </div>
 
           {/* <div className="panel-heading">
             <span className="search-query-label">Node details</span>
