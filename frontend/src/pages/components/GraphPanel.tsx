@@ -17,9 +17,7 @@ import { GRAPH_NODE_TYPES, GraphNodeFilter } from './GraphNodeFilter.tsx'
 const MIN_GRAPH_HEIGHT = 320
 const DEFAULT_GRAPH_FILTERS: GraphParams = { limit: 100 }
 const EMPTY_GRAPH_DATA: GraphData = { nodes: [], links: [] }
-const DEFAULT_VISIBLE_NODE_TYPES = new Set<NodeType>(
-  GRAPH_NODE_TYPES.filter((nodeType) => nodeType !== 'venue'),
-)
+const DEFAULT_VISIBLE_NODE_TYPES = new Set<NodeType>(GRAPH_NODE_TYPES)
 const EGO_GRAPH_CENTER_RETRIES = 24
 const EGO_GRAPH_CENTER_RETRY_MS = 80
 const EGO_GRAPH_CENTER_DURATION_MS = 520
