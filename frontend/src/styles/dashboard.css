@@ -29,21 +29,21 @@
 .profile-grid {
   min-height: 100%;
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: minmax(380px, 440px) repeat(2, minmax(0, 1fr));
   grid-template-rows:
     minmax(570px, var(--profile-tall-panel-height))
     minmax(570px, var(--profile-tall-panel-height));
   grid-template-areas:
     "context graph graph"
     "profile communications communications";
-  gap: 12px;
+  gap: 20px;
 }
 
 .profile-card,
 .dashboard-stat-card,
 .dashboard-panel {
   min-width: 0;
-  border-radius: 8px;
+  border-radius: 24px;
   background: var(--surface-panel);
   border: 1px solid var(--surface-border);
   box-shadow: var(--surface-shadow);
@@ -51,7 +51,7 @@
 
 .profile-card {
   min-height: 0;
-  padding: 16px;
+  padding: 20px;
   overflow: hidden;
 }
 
@@ -72,7 +72,7 @@
 .context-panel {
   grid-area: context;
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
   gap: 14px;
 }
 
@@ -100,7 +100,7 @@
   display: grid;
   gap: 8px;
   padding: 10px 12px;
-  border-radius: 8px;
+  border-radius: 14px;
   background: var(--surface-panel-soft);
   border: 1px solid var(--surface-border-soft);
 }
@@ -138,7 +138,7 @@
   min-height: 0;
   height: 100%;
   place-items: center;
-  border-radius: 8px;
+  border-radius: 24px;
   background: var(--surface-panel-soft);
   border: 1px solid var(--surface-border-soft);
   text-align: center;
@@ -162,7 +162,7 @@
   padding: 8px;
   overflow-y: auto;
   scroll-padding-top: 12px;
-  border-radius: 8px;
+  border-radius: 18px;
   background: var(--surface-panel-soft);
   border: 1px solid var(--surface-border-soft);
 }
@@ -177,7 +177,7 @@
 .recommendation-item {
   min-height: max-content;
   scroll-margin-top: 12px;
-  border-radius: 8px;
+  border-radius: 14px;
   background: var(--surface-panel);
   border: 1px solid var(--surface-border-soft);
   overflow: hidden;
@@ -320,7 +320,7 @@
   min-height: 0;
   height: 100%;
   padding: 24px;
-  border-radius: 8px;
+  border-radius: 18px;
   background: var(--surface-panel-soft);
   border: 1px solid var(--surface-border-soft);
   text-align: center;
@@ -355,7 +355,7 @@
   min-height: 0;
   height: 100%;
   padding: 24px;
-  border-radius: 8px;
+  border-radius: 18px;
   background: var(--surface-panel-soft);
   border: 1px solid var(--surface-border-soft);
   text-align: center;
@@ -538,9 +538,9 @@
 .graph-panel {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
-  gap: 10px;
+  gap: 12px;
   height: 100%;
-  padding: 12px;
+  padding: 20px;
   background: var(--surface-panel);
   border-color: var(--surface-border);
 }
@@ -592,13 +592,13 @@
 }
 
 .graph-panel .graph-filter-card {
-  padding: 12px;
-  border-radius: 8px;
-  box-shadow: none;
+  padding: 16px;
+  border-radius: 18px;
+  box-shadow: var(--surface-shadow);
 }
 
 .graph-panel .graph-canvas--large {
-  border-radius: 8px;
+  border-radius: 24px;
 }
 
 .graph-panel .search-query-form {
