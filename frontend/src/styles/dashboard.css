@@ -505,6 +505,14 @@
   gap: 12px;
 }
 
+.panel-heading-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-left: auto;
+}
+
 .panel-status {
   color: var(--text-muted);
   font-size: 0.86rem;
@@ -609,6 +617,31 @@
 
 .profile-actions {
   margin-bottom: 12px;
+}
+
+.export-menu {
+  position: relative;
+}
+
+.export-menu-list {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 20;
+  display: grid;
+  min-width: 120px;
+  padding: 6px;
+  border: 1px solid var(--control-border);
+  border-radius: 8px;
+  background: var(--background);
+  box-shadow: 0 14px 30px rgba(31, 39, 36, 0.16);
+}
+
+.export-menu-list button {
+  justify-content: flex-start;
+  border-color: transparent;
+  background: transparent;
+  text-align: left;
 }
 
 .dashboard-actions button,
