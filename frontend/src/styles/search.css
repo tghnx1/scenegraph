@@ -282,10 +282,6 @@
   font-size: 0.85rem;
 }
 
-.result-pill.muted {
-  color: var(--text-muted);
-}
-
 .empty-state {
   padding: 18px;
   border-radius: 18px;

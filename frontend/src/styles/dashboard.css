@@ -1,13 +1,8 @@
-.profile-page,
 .dashboard-page {
   width: min(1480px, 100%);
   min-height: 100%;
   margin: 0 auto;
   padding: 16px;
-}
-
-.profile-page {
-  --profile-tall-panel-height: calc((100dvh - 56px) * 0.75);
 }
 
 .panel-heading button {
@@ -26,20 +21,6 @@
   border-color: var(--selection-border-strong);
 }
 
-.profile-grid {
-  min-height: 100%;
-  display: grid;
-  grid-template-columns: minmax(380px, 440px) repeat(2, minmax(0, 1fr));
-  grid-template-rows:
-    minmax(570px, var(--profile-tall-panel-height))
-    minmax(570px, var(--profile-tall-panel-height));
-  grid-template-areas:
-    "context graph graph"
-    "profile communications communications";
-  gap: 20px;
-}
-
-.profile-card,
 .dashboard-stat-card,
 .dashboard-panel {
   min-width: 0;
@@ -47,39 +28,6 @@
   background: var(--surface-panel);
   border: 1px solid var(--surface-border);
   box-shadow: var(--surface-shadow);
-}
-
-.profile-card {
-  min-height: 0;
-  padding: 20px;
-  overflow: hidden;
-}
-
-.profile-card h2 {
-  margin-top: 12px;
-  font-size: 1.15rem;
-}
-
-.profile-card p {
-  margin: 10px 0 0;
-  color: var(--text-muted);
-}
-
-.profile-summary-panel {
-  grid-area: profile;
-}
-
-.context-panel {
-  grid-area: context;
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
-  gap: 14px;
-}
-
-.context-panel .graph-sidebar-content {
-  min-height: 0;
-  overflow-y: auto;
-  padding-right: 4px;
 }
 
 .recommendations-panel {
@@ -483,21 +431,6 @@
   white-space: pre-wrap;
 }
 
-.graph-workspace {
-  grid-area: graph;
-  min-width: 0;
-  min-height: 0;
-}
-
-.communications-panel {
-  grid-area: communications;
-}
-
-.side-panel {
-  background: var(--event-soft);
-  border-color: var(--event-border);
-}
-
 .panel-heading {
   display: flex;
   align-items: center;
@@ -519,104 +452,11 @@
   font-weight: 700;
 }
 
-.profile-fields,
-.placeholder-list {
-  display: grid;
-  gap: 8px;
-  margin-top: 18px;
-  color: var(--text-muted);
-}
-
-.profile-fields span,
-.placeholder-list span {
-  padding: 10px 12px;
-  border-radius: 8px;
-  background: var(--surface-panel-soft);
-  border: 1px solid var(--surface-border-soft);
-}
-
-.graph-panel {
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
-  gap: 12px;
-  height: 100%;
-  padding: 20px;
-  background: var(--surface-panel);
-  border-color: var(--surface-border);
-}
-
-.profile-workspace-tabs {
-  display: flex;
-  align-items: end;
-  gap: 4px;
-  padding: 0 4px;
-  border-bottom: 1px solid var(--surface-border);
-}
-
-.profile-workspace-tab {
-  margin-bottom: -1px;
-  padding: 9px 16px;
-  border: 1px solid transparent;
-  border-radius: 8px 8px 0 0;
-  background: var(--surface-panel-soft);
-  color: var(--text-muted);
-  cursor: pointer;
-  font: inherit;
-  font-weight: 700;
-}
-
-.profile-workspace-tab:hover {
-  color: var(--text);
-  background: var(--selection-soft);
-}
-
-.profile-workspace-tab.active {
-  border-color: var(--surface-border);
-  border-bottom-color: var(--surface-panel);
-  background: var(--surface-panel);
-  color: var(--text);
-}
-
-.profile-workspace-content {
-  min-width: 0;
-  min-height: 0;
-  height: 100%;
-}
-
-.profile-workspace-content[hidden] {
-  display: none;
-}
-
-.graph-panel .scenegraph-map-panel {
-  height: 100%;
-}
-
-.graph-panel .graph-filter-card {
-  padding: 16px;
-  border-radius: 18px;
-  box-shadow: var(--surface-shadow);
-}
-
-.graph-panel .graph-canvas--large {
-  border-radius: 24px;
-}
-
-.graph-panel .search-query-form {
-  width: 100%;
-  padding-bottom: 12px;
-  border-bottom: 1px solid var(--control-border);
-}
-
-.dashboard-actions,
-.profile-actions {
+.dashboard-actions {
   display: flex;
   flex-wrap: wrap;
   justify-content: end;
   gap: 8px;
-}
-
-.profile-actions {
-  margin-bottom: 12px;
 }
 
 .export-menu {
@@ -645,7 +485,6 @@
 }
 
 .dashboard-actions button,
-.profile-actions button,
 .dashboard-panel button {
   border: 1px solid var(--promoter-border);
   background: var(--promoter-soft);
@@ -658,7 +497,6 @@
 }
 
 .dashboard-actions button:hover,
-.profile-actions button:hover,
 .dashboard-panel button:hover {
   border-color: var(--selection-border-strong);
   background: var(--selection-panel);
@@ -703,10 +541,6 @@
 
 .dashboard-panel {
   padding: 16px;
-}
-
-.dashboard-panel-wide {
-  grid-column: span 2;
 }
 
 .dashboard-panel-full {
@@ -777,10 +611,6 @@
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
-.quality-item.good {
-  border-color: var(--venue-border-soft);
-}
-
 .quality-item.warning {
   border-color: var(--selection-border);
 }
@@ -809,19 +639,4 @@
 .graph-health-grid small {
   color: var(--text-muted);
   font-size: 0.78rem;
-}
-
-.admin-graph-preview {
-  min-height: 160px;
-  margin-top: 14px;
-  border-radius: 8px;
-  background:
-    radial-gradient(circle at 18% 35%, var(--artist) 0 5px, transparent 6px),
-    radial-gradient(circle at 39% 24%, var(--event) 0 5px, transparent 6px),
-    radial-gradient(circle at 60% 48%, var(--venue) 0 5px, transparent 6px),
-    radial-gradient(circle at 78% 32%, var(--promoter) 0 5px, transparent 6px),
-    linear-gradient(22deg, transparent 0 34%, var(--graph-line-mid) 34% 35%, transparent 35%),
-    linear-gradient(135deg, transparent 0 47%, var(--selection-soft) 47% 48%, transparent 48%),
-    var(--surface-input);
-  border: 1px solid var(--surface-border-soft);
 }

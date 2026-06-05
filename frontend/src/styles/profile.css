@@ -1,0 +1,122 @@
+.profile-page {
+  width: min(1480px, 100%);
+  min-height: 100%;
+  margin: 0 auto;
+  padding: 16px;
+  --profile-tall-panel-height: calc((100dvh - 56px) * 0.75);
+}
+
+.profile-grid {
+  min-height: 100%;
+  display: grid;
+  grid-template-columns: minmax(380px, 440px) repeat(2, minmax(0, 1fr));
+  grid-template-rows:
+    minmax(570px, var(--profile-tall-panel-height))
+    minmax(570px, var(--profile-tall-panel-height));
+  grid-template-areas:
+    "context graph graph"
+    "profile communications communications";
+  gap: 20px;
+}
+
+.profile-card {
+  min-width: 0;
+  min-height: 0;
+  padding: 20px;
+  overflow: hidden;
+  border-radius: 24px;
+  background: var(--surface-panel);
+  border: 1px solid var(--surface-border);
+  box-shadow: var(--surface-shadow);
+}
+
+.profile-card h2 {
+  margin-top: 12px;
+  font-size: 1.15rem;
+}
+
+.profile-card p {
+  margin: 10px 0 0;
+  color: var(--text-muted);
+}
+
+.profile-summary-panel {
+  grid-area: profile;
+}
+
+.context-panel {
+  grid-area: context;
+}
+
+.graph-workspace {
+  grid-area: graph;
+  min-width: 0;
+  min-height: 0;
+}
+
+.communications-panel {
+  grid-area: communications;
+}
+
+.side-panel {
+  background: var(--event-soft);
+  border-color: var(--event-border);
+}
+
+.profile-fields,
+.placeholder-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 18px;
+  color: var(--text-muted);
+}
+
+.profile-fields span,
+.placeholder-list span {
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--surface-panel-soft);
+  border: 1px solid var(--surface-border-soft);
+}
+
+.profile-workspace-tabs {
+  display: flex;
+  align-items: end;
+  gap: 4px;
+  padding: 0 4px;
+  border-bottom: 1px solid var(--surface-border);
+}
+
+.profile-workspace-tab {
+  margin-bottom: -1px;
+  padding: 9px 16px;
+  border: 1px solid transparent;
+  border-radius: 8px 8px 0 0;
+  background: var(--surface-panel-soft);
+  color: var(--text-muted);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 700;
+}
+
+.profile-workspace-tab:hover {
+  color: var(--text);
+  background: var(--selection-soft);
+}
+
+.profile-workspace-tab.active {
+  border-color: var(--surface-border);
+  border-bottom-color: var(--surface-panel);
+  background: var(--surface-panel);
+  color: var(--text);
+}
+
+.profile-workspace-content {
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+}
+
+.profile-workspace-content[hidden] {
+  display: none;
+}
