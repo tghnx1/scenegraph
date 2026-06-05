@@ -4,6 +4,7 @@ import type { PromoterRecommendationResponse } from '../types/recommendation'
 import { DetailsPanel } from './components/DetailsPanel.tsx'
 import { RecommendationLoading } from './components/LoadingScreen.tsx'
 import { ScenegraphMapPanel } from './components/GraphPanel.tsx'
+import { RecommendationExportMenu } from './components/RecommendationExport.tsx'
 import { SearchQueryForm } from './components/SearchQuery.tsx'
 import { useGraphSearchDetails } from './hooks/useGraphSearchDetails.ts'
 
@@ -331,6 +332,7 @@ export function ProfilePage() {
     () => filteredRecommendations.map((recommendation) => `promoter-${recommendation.id}`),
     [filteredRecommendations],
   )
+
   const currentRecommendationGraph = useMemo(
     () => {
       if (!recommendationsData) return null
@@ -353,10 +355,6 @@ export function ProfilePage() {
 
   return (
     <div className="profile-page">
-      <div className="profile-actions" aria-label="Profile actions">
-        <button type="button">Export to PDF</button>
-      </div>
-
       <section className="profile-grid" aria-label="Profile overview">
         <article className="profile-card context-panel">
           <SearchQueryForm
@@ -560,15 +558,23 @@ export function ProfilePage() {
                         <span className="search-query-label">
                           {recommendationGraphMode === 'compact' ? 'Artist-only path' : 'Full analytics graph'}
                         </span>
-                        <button
-                          type="button"
-                          onClick={handleToggleRecommendationGraphMode}
-                          disabled={isRecommendationsLoading}
-                        >
-                          {recommendationGraphMode === 'compact'
-                            ? 'Show analytics graph'
-                            : 'Show compact path'}
-                        </button>
+                        <div className="panel-heading-actions">
+                          <RecommendationExportMenu
+                            recommendationsData={recommendationsData}
+                            filteredRecommendations={filteredRecommendations}
+                            recommendationStrengthThreshold={recommendationStrengthThreshold}
+                            recommendationGraphMode={recommendationGraphMode}
+                          />
+                          <button
+                            type="button"
+                            onClick={handleToggleRecommendationGraphMode}
+                            disabled={isRecommendationsLoading}
+                          >
+                            {recommendationGraphMode === 'compact'
+                              ? 'Show analytics graph'
+                              : 'Show compact path'}
+                          </button>
+                        </div>
                       </div>
                       {currentRecommendationGraph && (
                         <ScenegraphMapPanel
