@@ -161,6 +161,7 @@
   min-height: 0;
   padding: 8px;
   overflow-y: auto;
+  scroll-padding-top: 12px;
   border-radius: 8px;
   background: var(--surface-panel-soft);
   border: 1px solid var(--surface-border-soft);
@@ -175,6 +176,7 @@
 
 .recommendation-item {
   min-height: max-content;
+  scroll-margin-top: 12px;
   border-radius: 8px;
   background: var(--surface-panel);
   border: 1px solid var(--surface-border-soft);
@@ -195,6 +197,7 @@
   font-weight: 700;
   text-align: left;
   cursor: pointer;
+  scroll-margin-top: 12px;
 }
 
 .recommendation-name-label {
@@ -248,6 +251,10 @@
 .recommendation-name:hover,
 .recommendation-name[aria-pressed="true"] {
   background: var(--selection-soft);
+}
+
+.recommendation-name[aria-expanded="true"] {
+  background: color-mix(in srgb, var(--selection-soft) 72%, transparent);
 }
 
 .recommendation-reasons {

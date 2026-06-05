@@ -39,6 +39,7 @@ services:
       context: ./backend
     container_name: scenegraph-backend
     restart: unless-stopped
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "3000", "--reload"]
     env_file:
       - .env
     environment:
@@ -60,8 +61,10 @@ services:
       timeout: 5s
       retries: 5
     volumes:
+      - ./backend/app:/app/app
       - ./backend/data:/app/data
       - ./backend/scripts:/app/scripts
+      - ./backend/tests:/app/tests
 
   frontend:
     build:

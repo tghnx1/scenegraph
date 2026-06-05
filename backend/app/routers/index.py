@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from app.routers import artist_connections, artists, feedback, graph, recommendations, search, venues, events, promoters, genres, graph_ego 
+from app.routers import artist_connections, artists, feedback, graph, recommendations, search, venues, events, promoters, genres, graph_ego
 
 router = APIRouter()
 

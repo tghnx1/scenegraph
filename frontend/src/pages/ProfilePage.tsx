@@ -1,13 +1,13 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { graphEntityId, type GraphNode } from '../types/graph'
 import type { PromoterRecommendationResponse } from '../types/recommendation'
-import { useCallback, useEffect, useMemo, useState } from 'react'
 import { DetailsPanel } from './components/DetailsPanel.tsx'
 import { RecommendationLoading } from './components/LoadingScreen.tsx'
 import { ScenegraphMapPanel } from './components/GraphPanel.tsx'
 import { SearchQueryForm } from './components/SearchQuery.tsx'
 import { useGraphSearchDetails } from './hooks/useGraphSearchDetails.ts'
 
-const PROMOTER_RECOMMENDATIONS_URL = 'http://localhost:8080/api/recommendations/artists/2178/promoters?limit=50'
+const PROMOTER_RECOMMENDATIONS_API_BASE_URL = 'http://localhost:8080/api/recommendations/artists/2178/promoters'
 const RECOMMENDATION_LOADING_MESSAGES = [
   'Finding similar artists',
   'Comparing related events',
@@ -15,6 +15,7 @@ const RECOMMENDATION_LOADING_MESSAGES = [
 ]
 const DEFAULT_RECOMMENDATION_STRENGTH_THRESHOLD = 0.25
 const DEFAULT_VISIBLE_PROMOTERS_ON_LOAD = 3
+type RecommendationGraphMode = 'compact' | 'full'
 
 const PROMOTER_SIZE_LABELS: Record<'small' | 'medium' | 'large', string> = {
   small: 'Small',
@@ -134,12 +135,15 @@ export function ProfilePage() {
   const [isRecommendationsLoading, setIsRecommendationsLoading] = useState(false)
   const [recommendationsError, setRecommendationsError] = useState<string | null>(null)
   const [recommendationLoadingMessageIndex, setRecommendationLoadingMessageIndex] = useState(0)
+  const [recommendationGraphMode, setRecommendationGraphMode] = useState<RecommendationGraphMode>('compact')
   const [recommendationStrengthThreshold, setRecommendationStrengthThreshold] = useState(
     DEFAULT_RECOMMENDATION_STRENGTH_THRESHOLD,
   )
   const [expandedRecommendationId, setExpandedRecommendationId] = useState<number | null>(null)
-  const [focusedRecommendationPromoterId, setFocusedRecommendationPromoterId] = useState<number | null>(null)
+  const [focusedRecommendationPromoterIds, setFocusedRecommendationPromoterIds] = useState<number[] | null>(null)
   const [expandedReasonItems, setExpandedReasonItems] = useState<Record<string, boolean>>({})
+  const recommendationThresholdInitializedRef = useRef(false)
+  const recommendationListRef = useRef<HTMLElement | null>(null)
 
   useEffect(() => {
     if (!isRecommendationsLoading) {
@@ -157,19 +161,28 @@ export function ProfilePage() {
   }, [isRecommendationsLoading])
 
   useEffect(() => {
-    if (!recommendationsData) return
+    if (!recommendationsData) {
+      recommendationThresholdInitializedRef.current = false
+      return
+    }
+    if (recommendationThresholdInitializedRef.current) return
     setRecommendationStrengthThreshold(initialStrengthThreshold(recommendationsData.recommendations))
+    recommendationThresholdInitializedRef.current = true
   }, [recommendationsData])
 
   const handleLoadRecommendations = useCallback(async () => {
+    recommendationThresholdInitializedRef.current = false
     setIsRecommendationsLoading(true)
     setRecommendationsError(null)
     setExpandedRecommendationId(null)
-    setFocusedRecommendationPromoterId(null)
+    setFocusedRecommendationPromoterIds(null)
     setExpandedReasonItems({})
+    setRecommendationGraphMode('compact')
 
     try {
-      const response = await fetch(PROMOTER_RECOMMENDATIONS_URL)
+      const requestUrl = new URL(PROMOTER_RECOMMENDATIONS_API_BASE_URL)
+      requestUrl.searchParams.set('limit', '50')
+      const response = await fetch(requestUrl.toString())
 
       if (!response.ok) {
         throw new Error(`${response.status} ${response.statusText}`)
@@ -191,7 +204,7 @@ export function ProfilePage() {
 
     if (recommendationNode) {
       setSelected(recommendationNode)
-      setFocusedRecommendationPromoterId(recommendationId)
+      setFocusedRecommendationPromoterIds([recommendationId])
     }
   }, [recommendationsData, setSelected])
 
@@ -201,7 +214,7 @@ export function ProfilePage() {
 
     if (isCollapsingCurrent) {
       setExpandedRecommendationId(null)
-      setFocusedRecommendationPromoterId(null)
+      setFocusedRecommendationPromoterIds(null)
       setSelected(null)
       return
     }
@@ -214,29 +227,64 @@ export function ProfilePage() {
     setExpandedReasonItems((current) => ({ ...current, [key]: !current[key] }))
   }, [])
 
+  const handleToggleRecommendationGraphMode = useCallback(() => {
+    setRecommendationGraphMode((current) => (current === 'compact' ? 'full' : 'compact'))
+  }, [])
+
   // Slider change resets focused promoter so graph returns to threshold-based baseline paths.
   const handleRecommendationStrengthChange = useCallback((nextThreshold: number) => {
     setRecommendationStrengthThreshold(nextThreshold)
     setExpandedRecommendationId(null)
-    setFocusedRecommendationPromoterId(null)
+    setFocusedRecommendationPromoterIds(null)
     setSelected(null)
   }, [setSelected])
 
-  // Handle recommendation graph clicks: update details + list card, but keep graph focus unchanged.
-  const handleRecommendationGraphNodeClick = useCallback((node: GraphNode, promoterNodeId: string | null) => {
+  // Handle recommendation graph clicks: update details + list card, and focus the clicked promoter path(s).
+  const handleRecommendationGraphNodeClick = useCallback((node: GraphNode, promoterNodeIds: string[] | null) => {
     setSelected(node)
 
-    if (!promoterNodeId) {
+    if (!promoterNodeIds || promoterNodeIds.length === 0) {
       setExpandedRecommendationId(null)
+      setFocusedRecommendationPromoterIds(null)
       return
     }
 
-    const promoterId = graphEntityId(promoterNodeId, 'promoter')
-    if (promoterId === null) return
+    const promoterIds = promoterNodeIds
+      .map((promoterNodeId) => graphEntityId(promoterNodeId, 'promoter'))
+      .filter((promoterId): promoterId is number => promoterId !== null)
 
-    setExpandedRecommendationId(promoterId)
+    if (promoterIds.length === 1) {
+      setExpandedRecommendationId(promoterIds[0])
+      setFocusedRecommendationPromoterIds(promoterIds)
+      return
+    }
+
+    setExpandedRecommendationId(null)
+    setFocusedRecommendationPromoterIds(promoterIds)
   }, [setSelected])
 
+  const handleRecommendationGraphPaneClick = useCallback(() => {
+    setExpandedRecommendationId(null)
+    setFocusedRecommendationPromoterIds(null)
+    setSelected(null)
+  }, [setSelected])
+
+  useEffect(() => {
+    if (expandedRecommendationId === null) return
+    const list = recommendationListRef.current
+    const card = document.getElementById(`recommendation-card-${expandedRecommendationId}`)
+    const header = card?.querySelector<HTMLElement>('.recommendation-name')
+    if (!list || !card || !header) return
+
+    const animationFrame = window.requestAnimationFrame(() => {
+      const listRect = list.getBoundingClientRect()
+      const headerRect = header.getBoundingClientRect()
+      const nextScrollTop = Math.max(list.scrollTop + (headerRect.top - listRect.top) - 12, 0)
+      list.scrollTo({ top: nextScrollTop, behavior: 'smooth' })
+    })
+
+    return () => window.cancelAnimationFrame(animationFrame)
+  }, [expandedRecommendationId])
   const sortedRecommendations = useMemo(() => {
     if (!recommendationsData) return []
 
@@ -283,6 +331,15 @@ export function ProfilePage() {
     () => filteredRecommendations.map((recommendation) => `promoter-${recommendation.id}`),
     [filteredRecommendations],
   )
+  const currentRecommendationGraph = useMemo(
+    () => {
+      if (!recommendationsData) return null
+      return recommendationGraphMode === 'full'
+        ? (recommendationsData.analyticsGraph ?? recommendationsData.graph)
+        : recommendationsData.graph
+    },
+    [recommendationGraphMode, recommendationsData],
+  )
   useEffect(() => {
     if (expandedRecommendationId === null) return
     const isStillVisible = filteredRecommendations.some((recommendation) => (
@@ -290,7 +347,7 @@ export function ProfilePage() {
     ))
     if (!isStillVisible) {
       setExpandedRecommendationId(null)
-      setFocusedRecommendationPromoterId(null)
+      setFocusedRecommendationPromoterIds(null)
     }
   }, [expandedRecommendationId, filteredRecommendations])
 
@@ -396,18 +453,26 @@ export function ProfilePage() {
                       />
                       <p>{filteredRecommendations.length} / {sortedRecommendations.length} promoters shown</p>
                     </div>
-                    <section className="recommendation-list" aria-label="Recommended promoters">
+                    <section
+                      ref={recommendationListRef}
+                      className="recommendation-list"
+                      aria-label="Recommended promoters"
+                    >
                       {filteredRecommendations.length === 0 && (
                         <p className="recommendation-list-empty">
                           No promoters at this threshold. Lower the slider to include more matches.
                         </p>
                       )}
                       {filteredRecommendations.map((recommendation) => (
-                        <article className="recommendation-item" key={recommendation.id}>
+                        <article
+                          className="recommendation-item"
+                          key={recommendation.id}
+                          id={`recommendation-card-${recommendation.id}`}
+                        >
                           <button
                             type="button"
                             className="recommendation-name"
-                            aria-pressed={focusedRecommendationPromoterId === recommendation.id}
+                            aria-pressed={focusedRecommendationPromoterIds?.includes(recommendation.id) ?? false}
                             aria-expanded={expandedRecommendationId === recommendation.id}
                             aria-controls={`recommendation-reasons-${recommendation.id}`}
                             onClick={() => handleToggleRecommendation(recommendation.id)}
@@ -491,14 +556,33 @@ export function ProfilePage() {
                       ))}
                     </section>
                     <section className="recommendation-graph-map" aria-label="Recommendation evidence graph">
-                      <ScenegraphMapPanel
-                        providedData={recommendationsData.graph}
-                        showFilters={false}
-                        highlightPathToNodeId={`artist-${recommendationsData.entityId}`}
-                        visibleRecommendationPromoterNodeIds={filteredRecommendationPromoterNodeIds}
-                        focusedRecommendationPromoterNodeId={focusedRecommendationPromoterId === null ? null : `promoter-${focusedRecommendationPromoterId}`}
-                        onRecommendationGraphNodeClick={handleRecommendationGraphNodeClick}
-                      />
+                      <div className="panel-heading">
+                        <span className="search-query-label">
+                          {recommendationGraphMode === 'compact' ? 'Artist-only path' : 'Full analytics graph'}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={handleToggleRecommendationGraphMode}
+                          disabled={isRecommendationsLoading}
+                        >
+                          {recommendationGraphMode === 'compact'
+                            ? 'Show analytics graph'
+                            : 'Show compact path'}
+                        </button>
+                      </div>
+                      {currentRecommendationGraph && (
+                        <ScenegraphMapPanel
+                          key={recommendationGraphMode}
+                          providedData={currentRecommendationGraph}
+                          showFilters={false}
+                          showNodeTypeFilter={false}
+                          highlightPathToNodeId={`artist-${recommendationsData.entityId}`}
+                          visibleRecommendationPromoterNodeIds={filteredRecommendationPromoterNodeIds}
+                          focusedRecommendationPromoterNodeIds={focusedRecommendationPromoterIds?.map((promoterId) => `promoter-${promoterId}`) ?? null}
+                          onRecommendationGraphNodeClick={handleRecommendationGraphNodeClick}
+                          onRecommendationGraphPaneClick={handleRecommendationGraphPaneClick}
+                        />
+                      )}
                     </section>
                   </div>
                 )}

@@ -16,6 +16,7 @@ from app.promoter_graph import (
     promoter_recommendation_item_evidence,
     promoter_recommendation_reasons,
     promoter_recommendation_status,
+    project_compact_recommendation_graph,
     promoter_warm_network_evidence,
 )
 from app.recommendation_engine import (
@@ -47,6 +48,14 @@ from app.schemas import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Keep warm/manual recommendations in the top score band so score-only sorting
+# naturally places them above discovery recommendations.
+def promoter_recommendation_adjusted_score(base_score: float, *, has_warm_path: bool) -> float:
+    bounded_base_score = max(0.0, min(float(base_score), 1.0))
+    if has_warm_path:
+        return 0.5 + 0.5 * bounded_base_score
+    return 0.5 * bounded_base_score
 
 # Build short explanation strings for semantic artist matches.
 def semantic_artist_reasons(item: dict) -> list[str]:
@@ -1045,11 +1054,16 @@ def build_artist_promoter_recommendation_response(
             + activity_contribution
             + recency_contribution
         )
+        has_warm_path = row["warm_connection_count"] > 0 or manual_warm_connection_count > 0
+        adjusted_score = promoter_recommendation_adjusted_score(
+            total_score,
+            has_warm_path=has_warm_path,
+        )
         recommendations.append(
             PromoterRecommendationItem(
                 id=row["id"],
                 name=row["name"],
-                score=total_score,
+                score=adjusted_score,
                 semanticScore=row["semantic_score"],
                 strengthScore=strength_score,
                 activityScore=activity_score,
@@ -1129,7 +1143,7 @@ def build_artist_promoter_recommendation_response(
                     },
                     "weightedScores": {
                         **score_breakdown,
-                        "total": total_score,
+                        "total": adjusted_score,
                     },
                 }
                 if debug
@@ -1266,7 +1280,8 @@ def build_artist_promoter_recommendation_response(
             smallRecommendations=[],
             warmRecommendations=[],
             discoveryRecommendations=[],
-            graph=GraphResponse(nodes=[], links=[]),
+            graph=GraphResponse(nodes=[], links=[], graphMode="compact"),
+            analyticsGraph=GraphResponse(nodes=[], links=[], graphMode="full"),
             debug={
                 "candidateCounts": {
                     "sqlPromoterCandidates": len(rows),
@@ -1394,6 +1409,22 @@ def build_artist_promoter_recommendation_response(
         pair_key = (int(row["source_event_id"]), int(row["promoter_event_id"]))
         row["shared_artists"] = shared_artists_by_pair.get(pair_key, [])
 
+    analytics_graph = promoter_recommendation_graph(
+        source_artist_id=artist_id,
+        source_artist_name=source_artist["name"],
+        recommendations=recommendations,
+        semantic_evidence_rows=semantic_evidence,
+        direct_evidence_rows=direct_evidence,
+        warm_evidence_rows=warm_evidence,
+        manual_evidence_rows=manual_evidence,
+        event_similarity_evidence_rows=event_similarity_evidence,
+        scoring_config=scoring_config,
+    )
+    compact_graph = project_compact_recommendation_graph(
+        analytics_graph,
+        recommendations=recommendations,
+    )
+
     return PromoterRecommendationResponse(
         entityId=artist_id,
         model=source["model"],
@@ -1404,17 +1435,8 @@ def build_artist_promoter_recommendation_response(
         smallRecommendations=small_recommendations,
         warmRecommendations=warm_recommendations,
         discoveryRecommendations=discovery_recommendations,
-        graph=promoter_recommendation_graph(
-            source_artist_id=artist_id,
-            source_artist_name=source_artist["name"],
-            recommendations=recommendations,
-            semantic_evidence_rows=semantic_evidence,
-            direct_evidence_rows=direct_evidence,
-            warm_evidence_rows=warm_evidence,
-            manual_evidence_rows=manual_evidence,
-            event_similarity_evidence_rows=event_similarity_evidence,
-            scoring_config=scoring_config,
-        ),
+        graph=compact_graph,
+        analyticsGraph=analytics_graph,
         debug={
             "candidateCounts": {
                 "sqlPromoterCandidates": len(rows),

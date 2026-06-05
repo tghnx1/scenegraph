@@ -11,7 +11,24 @@ function linkKey(source: string, target: string): string {
   return [source, target].sort().join('|')
 }
 
-export function useGraphHighlights(selectedNode: GraphNode | null, data: GraphData, targetNodeId?: string) {
+export function useGraphHighlights(
+  selectedNode: GraphNode | null,
+  data: GraphData,
+  targetNodeId?: string | string[],
+) {
+  const adjacency = useMemo(() => {
+    const next = new Map<string, Set<string>>()
+    data.links.forEach((link) => {
+      const source = endpointId(link.source as LinkEndpoint)
+      const target = endpointId(link.target as LinkEndpoint)
+      if (!next.has(source)) next.set(source, new Set())
+      if (!next.has(target)) next.set(target, new Set())
+      next.get(source)?.add(target)
+      next.get(target)?.add(source)
+    })
+    return next
+  }, [data.links])
+
   //compute (all) connected node IDs using breadth-first search
   const getConnectedNodeIds = useCallback(() => {
     if (!selectedNode || !data) return new Set<string>()
@@ -22,69 +39,86 @@ export function useGraphHighlights(selectedNode: GraphNode | null, data: GraphDa
       const currentId = queue.shift()!
 
       //find (all) neighbors of the current node
-      data.links.forEach((link) => {
-        const source = endpointId(link.source as LinkEndpoint)
-        const target = endpointId(link.target as LinkEndpoint)
-        
-        if (source === currentId && !visited.has(target)) {
-          visited.add(target)
-          queue.push(target)
-        }
-        if (target === currentId && !visited.has(source)) {
-          visited.add(source)
-          queue.push(source)
-        }
+      adjacency.get(currentId)?.forEach((neighbor) => {
+        if (visited.has(neighbor)) return
+        visited.add(neighbor)
+        queue.push(neighbor)
       })
     }
 
     return visited
-  }, [selectedNode, data])
+  }, [adjacency, selectedNode, data])
 
   const connectedNodes = useMemo(() => getConnectedNodeIds(), [getConnectedNodeIds])
 
   const pathLinks = useMemo(() => {
     const highlighted = new Set<string>()
-    if (!selectedNode || !targetNodeId || selectedNode.id === targetNodeId) return highlighted
+    const targetNodeIds = Array.isArray(targetNodeId)
+      ? targetNodeId
+      : (targetNodeId ? [targetNodeId] : [])
+    if (!selectedNode || targetNodeIds.length === 0) return highlighted
 
-    const queue: string[] = [selectedNode.id]
-    const visited = new Set<string>(queue)
-    const previous = new Map<string, string>()
+    const computeDistances = (startId: string) => {
+      const distances = new Map<string, number>([[startId, 0]])
+      const queue: string[] = [startId]
 
-    while (queue.length > 0 && !visited.has(targetNodeId)) {
-      const currentId = queue.shift()!
+      while (queue.length > 0) {
+        const currentId = queue.shift()!
+        const currentDistance = distances.get(currentId) ?? 0
+        adjacency.get(currentId)?.forEach((neighbor) => {
+          if (distances.has(neighbor)) return
+          distances.set(neighbor, currentDistance + 1)
+          queue.push(neighbor)
+        })
+      }
+
+      return distances
+    }
+
+    const sourceDistances = computeDistances(selectedNode.id)
+    targetNodeIds.forEach((targetNode) => {
+      if (selectedNode.id === targetNode) return
+
+      const targetDistances = computeDistances(targetNode)
+      const shortestDistance = sourceDistances.get(targetNode)
+      if (shortestDistance === undefined) return
 
       data.links.forEach((link) => {
         const source = endpointId(link.source as LinkEndpoint)
         const target = endpointId(link.target as LinkEndpoint)
-        const neighbor = source === currentId ? target : target === currentId ? source : null
+        const sourceFromStart = sourceDistances.get(source)
+        const targetFromStart = sourceDistances.get(target)
+        const sourceToTarget = targetDistances.get(source)
+        const targetToTarget = targetDistances.get(target)
 
-        if (!neighbor || visited.has(neighbor)) return
-        visited.add(neighbor)
-        previous.set(neighbor, currentId)
-        queue.push(neighbor)
+        const isForwardShortest =
+          sourceFromStart !== undefined
+          && targetToTarget !== undefined
+          && sourceFromStart + 1 + targetToTarget === shortestDistance
+        const isBackwardShortest =
+          targetFromStart !== undefined
+          && sourceToTarget !== undefined
+          && targetFromStart + 1 + sourceToTarget === shortestDistance
+
+        if (isForwardShortest || isBackwardShortest) {
+          highlighted.add(linkKey(source, target))
+        }
       })
-    }
-
-    if (!visited.has(targetNodeId)) return highlighted
-
-    let currentId = targetNodeId
-    while (currentId !== selectedNode.id) {
-      const priorId = previous.get(currentId)
-      if (!priorId) return new Set<string>()
-      highlighted.add(linkKey(priorId, currentId))
-      currentId = priorId
-    }
+    })
 
     return highlighted
-  }, [data, selectedNode, targetNodeId])
+  }, [adjacency, data, selectedNode, targetNodeId])
 
   const pathNodeIds = useMemo(() => {
     const highlightedNodes = new Set<string>()
-    if (!selectedNode || !targetNodeId || selectedNode.id === targetNodeId) return highlightedNodes
+    const targetNodeIds = Array.isArray(targetNodeId)
+      ? targetNodeId
+      : (targetNodeId ? [targetNodeId] : [])
+    if (!selectedNode || targetNodeIds.length === 0) return highlightedNodes
     if (pathLinks.size === 0) return highlightedNodes
 
     highlightedNodes.add(selectedNode.id)
-    highlightedNodes.add(targetNodeId)
+    targetNodeIds.forEach((targetId) => highlightedNodes.add(targetId))
     pathLinks.forEach((key) => {
       const [source, target] = key.split('|')
       if (source) highlightedNodes.add(source)

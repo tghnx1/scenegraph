@@ -25,17 +25,24 @@ export interface GraphEdge {
   target: string
   relationship: string
   weight: number
-  evidenceType?: GraphEvidenceType | string
-  style?: 'solid' | 'dashed' | 'dotted' | string
+  evidenceType?: GraphEvidenceType | string | null
+  style?: 'solid' | 'dashed' | string | null
   strength?: number | null
 }
 
 export interface GraphData {
   centerNodeId?: string
+  graphMode?: 'compact' | 'full' | null
   nodes: GraphNode[]
   links: GraphEdge[]
-  promoterPathNodeIds?: Record<string, string[]>
-  promoterPathLinkKeys?: Record<string, string[]>
+  preferredPathNodeIds?: Record<string, string[]>
+  preferredPathLinkKeys?: Record<string, string[]>
+  preferredPathPromoterIdsByNodeId?: Record<string, string[]>
+  preferredPathPromoterIdsByLinkKey?: Record<string, string[]>
+  fallbackPathNodeIds?: Record<string, string[]>
+  fallbackPathLinkKeys?: Record<string, string[]>
+  fallbackPathPromoterIdsByNodeId?: Record<string, string[]>
+  fallbackPathPromoterIdsByLinkKey?: Record<string, string[]>
 }
 
 export function graphEntityId(nodeId: string, type?: NodeType): number | null {

@@ -17,7 +17,9 @@ import { GRAPH_NODE_TYPES, GraphNodeFilter } from './GraphNodeFilter.tsx'
 const MIN_GRAPH_HEIGHT = 320
 const DEFAULT_GRAPH_FILTERS: GraphParams = { limit: 100 }
 const EMPTY_GRAPH_DATA: GraphData = { nodes: [], links: [] }
-const DEFAULT_VISIBLE_NODE_TYPES = new Set<NodeType>(GRAPH_NODE_TYPES)
+const DEFAULT_VISIBLE_NODE_TYPES = new Set<NodeType>(
+  GRAPH_NODE_TYPES.filter((nodeType) => nodeType !== 'venue'),
+)
 const EGO_GRAPH_CENTER_RETRIES = 24
 const EGO_GRAPH_CENTER_RETRY_MS = 80
 const EGO_GRAPH_CENTER_DURATION_MS = 520
@@ -50,6 +52,11 @@ function getLinkStrengthValue(link: { strength?: unknown; weight?: unknown; valu
   return 0
 }
 
+function getLinkDashPattern(link: { style?: unknown }) {
+  if (link.style === 'dashed') return [6, 4]
+  return null
+}
+
 function hasGraphPosition(node: GraphNode): node is GraphNode & { x: number; y: number } {
   const positionedNode = node as GraphNode & { x?: unknown; y?: unknown }
   return typeof positionedNode.x === 'number' && Number.isFinite(positionedNode.x)
@@ -60,24 +67,29 @@ interface ScenegraphMapPanelProps {
   title?: string
   providedData?: GraphData
   showFilters?: boolean
+  showNodeTypeFilter?: boolean
   highlightLinks?: boolean
   highlightPathToNodeId?: string
   visibleRecommendationPromoterNodeIds?: string[]
-  focusedRecommendationPromoterNodeId?: string | null
-  onRecommendationGraphNodeClick?: (node: GraphNode, promoterNodeId: string | null) => void
+  focusedRecommendationPromoterNodeIds?: string[] | null
+  onRecommendationGraphNodeClick?: (node: GraphNode, promoterNodeIds: string[] | null) => void
+  onRecommendationGraphPaneClick?: () => void
 }
 
 export function ScenegraphMapPanel({
   title,
   providedData,
   showFilters = true,
+  showNodeTypeFilter = true,
   highlightLinks = true,
   highlightPathToNodeId,
   visibleRecommendationPromoterNodeIds,
-  focusedRecommendationPromoterNodeId,
+  focusedRecommendationPromoterNodeIds,
   onRecommendationGraphNodeClick,
+  onRecommendationGraphPaneClick,
 }: ScenegraphMapPanelProps) {
   const graphRef = useRef<any>(null)
+  const suppressNextBackgroundClickRef = useRef(false)
   const containerRef = useRef<HTMLDivElement | null>(null)
   const [graphSize, setGraphSize] = useState({ width: 0, height: 0 })
   const [graphFilters, setGraphFilters] = useState<GraphParams>(DEFAULT_GRAPH_FILTERS)
@@ -118,35 +130,48 @@ export function ScenegraphMapPanel({
   const hasRecommendationControls = Boolean(providedData && !showFilters)
 
   const graphData = useMemo<GraphData>(() => {
-    const visibleNodes = rawGraphData.nodes.filter((node) => visibleNodeTypes.has(node.type))
+    const visibleNodes = showNodeTypeFilter
+      ? rawGraphData.nodes.filter((node) => visibleNodeTypes.has(node.type))
+      : rawGraphData.nodes
     const visibleNodeIds = new Set(visibleNodes.map((node) => node.id))
-    const visibleLinks = rawGraphData.links.filter((link) => (
-      visibleNodeIds.has(getLinkNodeId(link.source as LinkEndpoint))
-      && visibleNodeIds.has(getLinkNodeId(link.target as LinkEndpoint))
-    ))
+    const visibleLinks = showNodeTypeFilter
+      ? rawGraphData.links.filter((link) => (
+        visibleNodeIds.has(getLinkNodeId(link.source as LinkEndpoint))
+        && visibleNodeIds.has(getLinkNodeId(link.target as LinkEndpoint))
+      ))
+      : rawGraphData.links
     const filteredLinks = visibleLinks
     const filteredNodeIds = new Set<string>()
     filteredLinks.forEach((link) => {
       filteredNodeIds.add(getLinkNodeId(link.source as LinkEndpoint))
       filteredNodeIds.add(getLinkNodeId(link.target as LinkEndpoint))
     })
-    const filteredNodes = hasRecommendationControls
+    const filteredNodes = hasRecommendationControls && showNodeTypeFilter
       ? visibleNodes.filter((node) => filteredNodeIds.has(node.id))
       : visibleNodes
     return {
       centerNodeId: rawGraphData.centerNodeId,
+      graphMode: rawGraphData.graphMode,
       nodes: filteredNodes,
       links: filteredLinks,
-      promoterPathNodeIds: rawGraphData.promoterPathNodeIds,
-      promoterPathLinkKeys: rawGraphData.promoterPathLinkKeys,
+      preferredPathNodeIds: rawGraphData.preferredPathNodeIds,
+      preferredPathLinkKeys: rawGraphData.preferredPathLinkKeys,
+      preferredPathPromoterIdsByNodeId: rawGraphData.preferredPathPromoterIdsByNodeId,
+      preferredPathPromoterIdsByLinkKey: rawGraphData.preferredPathPromoterIdsByLinkKey,
+      fallbackPathNodeIds: rawGraphData.fallbackPathNodeIds,
+      fallbackPathLinkKeys: rawGraphData.fallbackPathLinkKeys,
+      fallbackPathPromoterIdsByNodeId: rawGraphData.fallbackPathPromoterIdsByNodeId,
+      fallbackPathPromoterIdsByLinkKey: rawGraphData.fallbackPathPromoterIdsByLinkKey,
     }
   }, [
     hasRecommendationControls,
     rawGraphData,
+    showNodeTypeFilter,
     visibleNodeTypes,
   ])
 
-  // Build minimal recommendation subgraph as a union of shortest artist->promoter paths.
+  // Build recommendation graph from the currently visible promoters.
+  // Slider changes still reshape the graph; clicks only affect highlighting.
   const recommendationPathGraphData = useMemo<GraphData>(() => {
     if (!hasRecommendationControls || !highlightPathToNodeId) {
       return graphData
@@ -158,185 +183,53 @@ export function ScenegraphMapPanel({
       return graphData
     }
 
-    const focusedPromoterId = focusedRecommendationPromoterNodeId
-    const targetPromoterIds = focusedPromoterId
-      ? [focusedPromoterId]
-      : (visibleRecommendationPromoterNodeIds ?? [])
-
+    const targetPromoterIds = visibleRecommendationPromoterNodeIds ?? []
     if (targetPromoterIds.length === 0) {
       const sourceNode = graphData.nodes.find((node) => node.id === sourceId)
       return {
         centerNodeId: graphData.centerNodeId,
         nodes: sourceNode ? [sourceNode] : [],
         links: [],
+        graphMode: graphData.graphMode,
+        preferredPathNodeIds: graphData.preferredPathNodeIds,
+        preferredPathLinkKeys: graphData.preferredPathLinkKeys,
+        preferredPathPromoterIdsByNodeId: graphData.preferredPathPromoterIdsByNodeId,
+        preferredPathPromoterIdsByLinkKey: graphData.preferredPathPromoterIdsByLinkKey,
+        fallbackPathNodeIds: graphData.fallbackPathNodeIds,
+        fallbackPathLinkKeys: graphData.fallbackPathLinkKeys,
+        fallbackPathPromoterIdsByNodeId: graphData.fallbackPathPromoterIdsByNodeId,
+        fallbackPathPromoterIdsByLinkKey: graphData.fallbackPathPromoterIdsByLinkKey,
       }
     }
 
-    const adjacency = new Map<string, Set<string>>()
-    const adjacencyWithLinks = new Map<string, Array<{ neighborId: string; link: GraphData['links'][number] }>>()
     const nodeTypeById = new Map<string, NodeType>()
     graphData.nodes.forEach((node) => nodeTypeById.set(node.id, node.type))
-    graphData.links.forEach((link) => {
-      const source = getLinkNodeId(link.source as LinkEndpoint)
-      const target = getLinkNodeId(link.target as LinkEndpoint)
-      if (!adjacency.has(source)) adjacency.set(source, new Set<string>())
-      if (!adjacency.has(target)) adjacency.set(target, new Set<string>())
-      adjacency.get(source)?.add(target)
-      adjacency.get(target)?.add(source)
-      if (!adjacencyWithLinks.has(source)) adjacencyWithLinks.set(source, [])
-      if (!adjacencyWithLinks.has(target)) adjacencyWithLinks.set(target, [])
-      adjacencyWithLinks.get(source)?.push({ neighborId: target, link })
-      adjacencyWithLinks.get(target)?.push({ neighborId: source, link })
-    })
 
     const includedNodeIds = new Set<string>([sourceId])
     const includedLinkKeys = new Set<string>()
 
-    // Collect a single shortest source->target path for compact baseline graph rendering.
-    const collectPath = (targetId: string) => {
-      if (targetId === sourceId) return
-      if (!adjacency.has(targetId)) return
-
-      const queue: string[] = [sourceId]
-      const visited = new Set<string>([sourceId])
-      const previous = new Map<string, string>()
-
-      while (queue.length > 0 && !visited.has(targetId)) {
-        const currentId = queue.shift()!
-        const neighbors = adjacency.get(currentId)
-        if (!neighbors) continue
-
-        for (const neighborId of neighbors) {
-          if (visited.has(neighborId)) continue
-          visited.add(neighborId)
-          previous.set(neighborId, currentId)
-          queue.push(neighborId)
-        }
-      }
-
-      if (!visited.has(targetId)) return
-
-      let currentId = targetId
-      includedNodeIds.add(currentId)
-      while (currentId !== sourceId) {
-        const priorId = previous.get(currentId)
-        if (!priorId) break
-        includedNodeIds.add(priorId)
-        includedLinkKeys.add(getUndirectedLinkKey(priorId, currentId))
-        currentId = priorId
-      }
-    }
-
-    // Use backend-precomputed preferred paths for focused promoter rendering.
-    const collectBackendPreferredPath = (targetId: string): boolean => {
-      const nodeIds = graphData.promoterPathNodeIds?.[targetId] ?? []
-      const linkKeys = graphData.promoterPathLinkKeys?.[targetId] ?? []
+    const collectBackendPath = (
+      promoterNodeId: string,
+      nodeIdsByPromoter?: Record<string, string[]>,
+      linkKeysByPromoter?: Record<string, string[]>,
+    ): boolean => {
+      const nodeIds = nodeIdsByPromoter?.[promoterNodeId] ?? []
+      const linkKeys = linkKeysByPromoter?.[promoterNodeId] ?? []
       if (nodeIds.length === 0 || linkKeys.length === 0) return false
       nodeIds.forEach((nodeId) => includedNodeIds.add(nodeId))
       linkKeys.forEach((linkKey) => includedLinkKeys.add(linkKey))
       return true
     }
 
-    // Collect top-K strongest source->target paths (bounded-depth simple paths).
-    const collectStrongestPaths = (
-      targetId: string,
-      {
-        topK,
-        maxDepth,
-        maxCandidates,
-      }: {
-        topK: number
-        maxDepth: number
-        maxCandidates: number
-      },
-    ): boolean => {
-      if (targetId === sourceId) return false
-      if (!adjacencyWithLinks.has(targetId)) return false
-
-      const candidates: Array<{ nodeIds: string[]; linkKeys: string[]; totalStrength: number }> = []
-      const pathNodes = new Set<string>([sourceId])
-      const pathNodeIds = [sourceId]
-      const pathLinkKeys: string[] = []
-      const pathLinks: GraphData['links'][number][] = []
-
-      const dfs = (currentId: string, depth: number) => {
-        if (candidates.length >= maxCandidates) return
-        if (depth > maxDepth) return
-        if (currentId === targetId) {
-          const totalStrength = pathLinks.reduce((sum, link) => sum + getLinkStrengthValue(link), 0)
-          candidates.push({ nodeIds: [...pathNodeIds], linkKeys: [...pathLinkKeys], totalStrength })
-          return
-        }
-
-        const neighbors = adjacencyWithLinks.get(currentId) ?? []
-        for (const { neighborId, link } of neighbors) {
-          const neighborType = nodeTypeById.get(neighborId)
-          if (neighborType === 'venue') continue
-          if (neighborType === 'promoter' && neighborId !== targetId) continue
-          if (pathNodes.has(neighborId)) continue
-
-          pathNodes.add(neighborId)
-          pathNodeIds.push(neighborId)
-          pathLinkKeys.push(getUndirectedLinkKey(currentId, neighborId))
-          pathLinks.push(link)
-          dfs(neighborId, depth + 1)
-          pathLinks.pop()
-          pathLinkKeys.pop()
-          pathNodeIds.pop()
-          pathNodes.delete(neighborId)
-          if (candidates.length >= maxCandidates) return
-        }
-      }
-
-      dfs(sourceId, 0)
-      if (candidates.length === 0) return false
-
-      const uniqueCandidates = new Map<string, { nodeIds: string[]; linkKeys: string[]; totalStrength: number }>()
-      for (const candidate of candidates) {
-        const signature = candidate.linkKeys.slice().sort().join('|')
-        const existing = uniqueCandidates.get(signature)
-        if (!existing || candidate.totalStrength > existing.totalStrength) {
-          uniqueCandidates.set(signature, candidate)
-        }
-      }
-
-      const strongest = Array.from(uniqueCandidates.values())
-        .sort((left, right) => {
-          const strengthDelta = right.totalStrength - left.totalStrength
-          if (Math.abs(strengthDelta) > 1e-9) return strengthDelta
-          return left.linkKeys.length - right.linkKeys.length
-        })
-        .slice(0, topK)
-
-      strongest.forEach((path) => {
-        path.nodeIds.forEach((nodeId) => includedNodeIds.add(nodeId))
-        path.linkKeys.forEach((linkKey) => includedLinkKeys.add(linkKey))
-      })
-      return strongest.length > 0
-    }
-
     targetPromoterIds.forEach((targetPromoterId) => {
-      if (graphData.nodes.some((node) => node.id === targetPromoterId)) {
-        if (focusedPromoterId) {
-          const foundPreferredPath = collectBackendPreferredPath(targetPromoterId)
-          if (foundPreferredPath) return
-
-          const foundStrongestPaths = collectStrongestPaths(
-            targetPromoterId,
-            {
-              topK: 3,
-              maxDepth: 6,
-              maxCandidates: 800,
-            },
-          )
-          if (!foundStrongestPaths) collectPath(targetPromoterId)
-        } else {
-          collectPath(targetPromoterId)
-        }
-      }
+      if (!graphData.nodes.some((node) => node.id === targetPromoterId)) return
+      collectBackendPath(
+        targetPromoterId,
+        graphData.fallbackPathNodeIds,
+        graphData.fallbackPathLinkKeys,
+      )
     })
 
-    // Keep venue context for events that are already part of the selected path.
     const pathEventIds = new Set(
       Array.from(includedNodeIds).filter((nodeId) => nodeTypeById.get(nodeId) === 'event')
     )
@@ -365,90 +258,116 @@ export function ScenegraphMapPanel({
       centerNodeId: graphData.centerNodeId,
       nodes,
       links,
+      graphMode: graphData.graphMode,
+      preferredPathNodeIds: graphData.preferredPathNodeIds,
+      preferredPathLinkKeys: graphData.preferredPathLinkKeys,
+      preferredPathPromoterIdsByNodeId: graphData.preferredPathPromoterIdsByNodeId,
+      preferredPathPromoterIdsByLinkKey: graphData.preferredPathPromoterIdsByLinkKey,
+      fallbackPathNodeIds: graphData.fallbackPathNodeIds,
+      fallbackPathLinkKeys: graphData.fallbackPathLinkKeys,
+      fallbackPathPromoterIdsByNodeId: graphData.fallbackPathPromoterIdsByNodeId,
+      fallbackPathPromoterIdsByLinkKey: graphData.fallbackPathPromoterIdsByLinkKey,
     }
   }, [
-    focusedRecommendationPromoterNodeId,
     graphData,
     hasRecommendationControls,
     highlightPathToNodeId,
     visibleRecommendationPromoterNodeIds,
   ])
 
-  // Resolve a shortest path node set for source->target in the current recommendation graph.
-  const getPathNodeIds = useCallback((sourceId: string, targetId: string): Set<string> => {
-    const adjacency = new Map<string, Set<string>>()
-    recommendationPathGraphData.links.forEach((link) => {
-      const source = getLinkNodeId(link.source as LinkEndpoint)
-      const target = getLinkNodeId(link.target as LinkEndpoint)
-      if (!adjacency.has(source)) adjacency.set(source, new Set<string>())
-      if (!adjacency.has(target)) adjacency.set(target, new Set<string>())
-      adjacency.get(source)?.add(target)
-      adjacency.get(target)?.add(source)
-    })
-
-    const queue: string[] = [sourceId]
-    const visited = new Set<string>(queue)
-    const previous = new Map<string, string>()
-
-    while (queue.length > 0 && !visited.has(targetId)) {
-      const currentId = queue.shift()!
-      const neighbors = adjacency.get(currentId)
-      if (!neighbors) continue
-      for (const neighborId of neighbors) {
-        if (visited.has(neighborId)) continue
-        visited.add(neighborId)
-        previous.set(neighborId, currentId)
-        queue.push(neighborId)
-      }
-    }
-
-    if (!visited.has(targetId)) return new Set<string>()
-
-    const pathNodeIds = new Set<string>([targetId])
-    let currentId = targetId
-    while (currentId !== sourceId) {
-      const priorId = previous.get(currentId)
-      if (!priorId) return new Set<string>()
-      pathNodeIds.add(priorId)
-      currentId = priorId
-    }
-
-    return pathNodeIds
-  }, [recommendationPathGraphData.links])
-
-  // Choose which promoter path a clicked recommendation-graph node belongs to.
-  const resolvePromoterNodeForRecommendationNode = useCallback((nodeId: string): string | null => {
+  // Resolve graph node ownership with backend reverse path indexes.
+  const resolvePromoterNodesForRecommendationNode = useCallback((nodeId: string): string[] | null => {
     if (!highlightPathToNodeId) return null
-    if (nodeId.startsWith('promoter-')) return nodeId
+    if (nodeId === highlightPathToNodeId) return null
+    if (nodeId.startsWith('promoter-')) return [nodeId]
 
-    const sourceId = highlightPathToNodeId
-    const promoterCandidates = focusedRecommendationPromoterNodeId
-      ? [focusedRecommendationPromoterNodeId]
-      : (visibleRecommendationPromoterNodeIds ?? [])
-
-    for (const promoterId of promoterCandidates) {
-      const pathNodes = getPathNodeIds(sourceId, promoterId)
-      if (pathNodes.has(nodeId)) {
-        return promoterId
-      }
-    }
-
-    return null
+    const promoterCandidates = visibleRecommendationPromoterNodeIds ?? []
+    const ownerPromoterIds = recommendationPathGraphData.fallbackPathPromoterIdsByNodeId?.[nodeId] ?? []
+    return ownerPromoterIds.filter((promoterId) => promoterCandidates.includes(promoterId))
   }, [
-    focusedRecommendationPromoterNodeId,
-    getPathNodeIds,
     highlightPathToNodeId,
+    recommendationPathGraphData.fallbackPathPromoterIdsByNodeId,
     visibleRecommendationPromoterNodeIds,
   ])
 
-  const pathSelectedPromoter = focusedRecommendationPromoterNodeId
-    ? recommendationPathGraphData.nodes.find((node) => node.id === focusedRecommendationPromoterNodeId) ?? null
+  const pathSourceNode = highlightPathToNodeId
+    ? (recommendationPathGraphData.nodes.find((node) => node.id === highlightPathToNodeId) ?? null)
     : null
-  const { connectedNodes, pathLinks, pathNodeIds } = useGraphHighlights(
-    pathSelectedPromoter,
+  const pathTargetPromoterIds = focusedRecommendationPromoterNodeIds?.length
+    ? focusedRecommendationPromoterNodeIds
+    : []
+  const { pathLinks, pathNodeIds } = useGraphHighlights(
+    pathSourceNode,
     recommendationPathGraphData,
-    highlightPathToNodeId,
+    highlightPathToNodeId ? pathTargetPromoterIds : undefined,
   )
+  const isPathFocusActive = Boolean(highlightPathToNodeId && pathTargetPromoterIds.length > 0 && pathLinks.size > 0)
+  const recommendationSourceNodeId = highlightPathToNodeId ?? null
+  const highlightedPathNodeIds = useMemo(() => {
+    if (!isPathFocusActive) return pathNodeIds
+
+    const nextHighlightedNodeIds = new Set(pathNodeIds)
+    const nodeTypeById = new Map<string, NodeType>()
+    recommendationPathGraphData.nodes.forEach((node) => {
+      nodeTypeById.set(node.id, node.type)
+    })
+
+    const pathEventIds = new Set(
+      Array.from(nextHighlightedNodeIds).filter((nodeId) => nodeTypeById.get(nodeId) === 'event')
+    )
+
+    recommendationPathGraphData.links.forEach((link) => {
+      const source = getLinkNodeId(link.source as LinkEndpoint)
+      const target = getLinkNodeId(link.target as LinkEndpoint)
+      const sourceType = nodeTypeById.get(source)
+      const targetType = nodeTypeById.get(target)
+      const eventId = sourceType === 'event' && targetType === 'venue'
+        ? source
+        : (targetType === 'event' && sourceType === 'venue' ? target : null)
+      if (!eventId || !pathEventIds.has(eventId)) return
+      nextHighlightedNodeIds.add(source)
+      nextHighlightedNodeIds.add(target)
+    })
+
+    recommendationPathGraphData.links.forEach((link) => {
+      const source = getLinkNodeId(link.source as LinkEndpoint)
+      const target = getLinkNodeId(link.target as LinkEndpoint)
+      const sourceType = nodeTypeById.get(source)
+      const targetType = nodeTypeById.get(target)
+      if (nextHighlightedNodeIds.has(source) && targetType === 'venue') {
+        nextHighlightedNodeIds.add(target)
+      }
+      if (nextHighlightedNodeIds.has(target) && sourceType === 'venue') {
+        nextHighlightedNodeIds.add(source)
+      }
+    })
+
+    return nextHighlightedNodeIds
+  }, [isPathFocusActive, pathNodeIds, recommendationPathGraphData.links, recommendationPathGraphData.nodes])
+  const highlightedPathLinkKeys = useMemo(() => {
+    if (!isPathFocusActive) return pathLinks
+
+    const nextHighlightedLinkKeys = new Set(pathLinks)
+    const nodeTypeById = new Map<string, NodeType>()
+    recommendationPathGraphData.nodes.forEach((node) => {
+      nodeTypeById.set(node.id, node.type)
+    })
+
+    recommendationPathGraphData.links.forEach((link) => {
+      const source = getLinkNodeId(link.source as LinkEndpoint)
+      const target = getLinkNodeId(link.target as LinkEndpoint)
+      const sourceType = nodeTypeById.get(source)
+      const targetType = nodeTypeById.get(target)
+      if (highlightedPathNodeIds.has(source) && targetType === 'venue') {
+        nextHighlightedLinkKeys.add(getUndirectedLinkKey(source, target))
+      }
+      if (highlightedPathNodeIds.has(target) && sourceType === 'venue') {
+        nextHighlightedLinkKeys.add(getUndirectedLinkKey(source, target))
+      }
+    })
+
+    return nextHighlightedLinkKeys
+  }, [highlightedPathNodeIds, isPathFocusActive, pathLinks, recommendationPathGraphData.links, recommendationPathGraphData.nodes])
   useGraphPhysics(graphRef, recommendationPathGraphData)
 
   useEffect(() => {
@@ -531,9 +450,13 @@ export function ScenegraphMapPanel({
     (node: object) => {
       const nextNode = node as GraphNode
       if (providedData) {
+        suppressNextBackgroundClickRef.current = true
+        window.setTimeout(() => {
+          suppressNextBackgroundClickRef.current = false
+        }, 0)
         if (highlightPathToNodeId && onRecommendationGraphNodeClick) {
-          const resolvedPromoterNodeId = resolvePromoterNodeForRecommendationNode(nextNode.id)
-          onRecommendationGraphNodeClick(nextNode, resolvedPromoterNodeId)
+          const resolvedPromoterNodeIds = resolvePromoterNodesForRecommendationNode(nextNode.id)
+          onRecommendationGraphNodeClick(nextNode, resolvedPromoterNodeIds)
         } else {
           setSelected(nextNode)
         }
@@ -561,7 +484,7 @@ export function ScenegraphMapPanel({
       highlightPathToNodeId,
       onRecommendationGraphNodeClick,
       providedData,
-      resolvePromoterNodeForRecommendationNode,
+      resolvePromoterNodesForRecommendationNode,
       searchParams,
       selectedEntityId,
       selectedNode?.id,
@@ -614,30 +537,10 @@ export function ScenegraphMapPanel({
           to: displayedEventDates[displayedEventDates.length - 1],
         }
       : null
-  const isPathFocusActive = Boolean(pathSelectedPromoter && highlightPathToNodeId && pathLinks.size > 0)
-  const focusedSubgraphNodeIds = useMemo(() => {
-    if (!isPathFocusActive) return null
-    return new Set(recommendationPathGraphData.nodes.map((node) => node.id))
-  }, [isPathFocusActive, recommendationPathGraphData.nodes])
-  const focusedSubgraphLinkKeys = useMemo(() => {
-    if (!isPathFocusActive) return null
-    const keys = new Set<string>()
-    recommendationPathGraphData.links.forEach((link) => {
-      const source = getLinkNodeId(link.source as LinkEndpoint)
-      const target = getLinkNodeId(link.target as LinkEndpoint)
-      keys.add(getUndirectedLinkKey(source, target))
-    })
-    return keys
-  }, [isPathFocusActive, recommendationPathGraphData.links])
   const isHighlightedLink = (source: string, target: string) => (
-    highlightPathToNodeId
-      ? (pathSelectedPromoter
-          ? (
-            focusedSubgraphLinkKeys?.has(getUndirectedLinkKey(source, target))
-            ?? pathLinks.has(getUndirectedLinkKey(source, target))
-          )
-          : true)
-      : connectedNodes.has(source) && connectedNodes.has(target)
+    isPathFocusActive
+      ? highlightedPathLinkKeys.has(getUndirectedLinkKey(source, target))
+      : false
   )
 
   return (
@@ -673,7 +576,7 @@ export function ScenegraphMapPanel({
           <span>{nodeCount} nodes</span>
           <span>{linkCount} links</span>
         </div>
-        {!hasRecommendationControls && (
+        {showNodeTypeFilter && (
           <GraphNodeFilter visibleNodeTypes={visibleNodeTypes} onToggle={handleLegendToggle} />
         )}
         <ForceGraph2D
@@ -683,7 +586,7 @@ export function ScenegraphMapPanel({
           graphData={recommendationPathGraphData}
           nodeCanvasObject={(node: any, ctx: CanvasRenderingContext2D) => {
             const isHighlightedNode = isPathFocusActive
-              ? (focusedSubgraphNodeIds?.has(node.id) ?? pathNodeIds.has(node.id))
+              ? (node.id === recommendationSourceNodeId || highlightedPathNodeIds.has(node.id))
               : true
             drawNodeShape(
               ctx,
@@ -691,8 +594,8 @@ export function ScenegraphMapPanel({
               node.y,
               5,
               node.type,
-              selectedNode?.id === node.id,
-              isHighlightedNode ? 1 : 0.048,
+              selectedNode?.id === node.id || node.id === recommendationSourceNodeId,
+              isHighlightedNode ? 1 : 0.16,
             )
           }}
           nodeColor={() => 'transparent'}
@@ -707,19 +610,14 @@ export function ScenegraphMapPanel({
             if (highlightLinks && isHighlightedLink(source, target)) {
               return baseWidth * 1.85
             }
-            if (isPathFocusActive) {
-              return Math.max(baseWidth * 0.2, 0.14)
-            }
             return baseWidth
           }}
+          linkLineDash={(l: any) => getLinkDashPattern(l)}
           linkColor={(l: any) => {
             const source = typeof l.source === 'object' ? l.source.id : l.source
             const target = typeof l.target === 'object' ? l.target.id : l.target
             if (highlightLinks && isHighlightedLink(source, target)) {
               return hexToRgba(linkHighlight, 0.86)
-            }
-            if (isPathFocusActive) {
-              return hexToRgba(linkDim, 0.056)
             }
             return hexToRgba(linkDim, 0.52)
           }}
@@ -733,6 +631,12 @@ export function ScenegraphMapPanel({
             node.fy = null
           }}
           onNodeClick={handleNodeClick}
+          onBackgroundClick={() => {
+            if (suppressNextBackgroundClickRef.current) return
+            if (providedData && onRecommendationGraphPaneClick) {
+              onRecommendationGraphPaneClick()
+            }
+          }}
           backgroundColor={graphBackground}
           warmupTicks={120}
           cooldownTicks={180}
