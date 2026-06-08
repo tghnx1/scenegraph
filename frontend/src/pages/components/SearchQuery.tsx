@@ -5,6 +5,7 @@ import type { SearchResult } from '../../types/search'
 interface SearchQueryFormProps {
   inputId: string
   label?: string
+  placeholder?: string
   value: string
   onChange: (value: string) => void
   onSubmit: (event: FormEvent<HTMLFormElement>) => void
@@ -22,6 +23,7 @@ function getResultMeta(result: SearchResult) {
 export function SearchQueryForm({
   inputId,
   label = 'Search Database',
+  placeholder = 'Search artists, venues, promoters, events...',
   value,
   onChange,
   onSubmit,
@@ -113,7 +115,7 @@ export function SearchQueryForm({
           onBlur={() => {
             window.setTimeout(() => setIsDropdownOpen(false), 120)
           }}
-          placeholder="Search artists, venues, promoters, events..."
+          placeholder={placeholder}
           aria-label="Search"
           aria-autocomplete="list"
           aria-expanded={shouldShowDropdown}
