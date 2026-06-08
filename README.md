@@ -1,102 +1,79 @@
 # Berlin Scene Graph
 
-Berlin Scene Graph is a music-scene graph project for exploring relationships between artists, events, promoters, venues, genres, and recommendation signals.
+A backend and data-workflow prototype for exploring relationships between artists, events, promoters, venues, and genres, then using those relationships to produce explainable recommendations.
 
-This branch, `codex/recommendation-engine`, focuses on building the data and backend foundation for semantic similarity, artist tag extraction, embeddings, recommendation scoring, and explainable recommendation outputs.
+The repository is a work in progress. Its strongest current area is the backend foundation: FastAPI endpoints, PostgreSQL data modeling, import and enrichment scripts, graph and semantic scoring, Docker Compose, and pytest coverage.
 
-## Current status
+## Problem
 
-The project is not yet a complete end-user recommendation product. The current branch contains a working backend-oriented foundation for the future recommendation engine.
+Music-scene data is spread across event listings, lineups, biographies, venues, and promoter histories. Berlin Scene Graph brings those sources into a normalized relational model so the backend can answer questions such as:
 
-Implemented in this branch:
+- Which artists are semantically or stylistically related?
+- Which promoters are relevant to an artist?
+- Which events share artists, promoters, venues, genres, or extracted tags?
+- What evidence contributed to a recommendation?
 
-- FastAPI backend
-- PostgreSQL database
+## Current capabilities
+
+- FastAPI REST API with generated OpenAPI documentation
+- PostgreSQL and pgvector-backed data model
 - Prisma schema and migrations
-- Docker Compose local stack
-- Nginx reverse proxy for local access
-- RA event import pipeline improvements
-- normalized lineup and biography text backfills
-- artist biography tag extraction
-- OpenAI / Azure OpenAI integration for extraction and embeddings
-- entity embeddings for artists and events
-- semantic artist similarity
-- artist-to-artist recommendations
-- artist-to-promoter recommendations
-- recommendation feedback storage
-- graph response structure for recommendation evidence
-- backend tests for extraction, embeddings, text profiles, scoring, and graph API behavior
+- Event and artist import workflows
+- Text normalization and entity-tag extraction
+- Embedding generation and semantic similarity
+- Graph-aware artist, event, and promoter recommendations
+- Recommendation feedback storage
+- Docker Compose local development stack
+- pytest coverage for API behavior, extraction, normalization, embeddings, graph logic, and recommendation scoring
 
-Still planned:
+## Architecture
 
-- full user-facing recommendation engine
-- user-based recommendation personalization
-- venue recommendations
-- event recommendations as a first-class public endpoint
-- stronger path explanations
-- reachability scoring
-- frontend recommendation pages
-- frontend explanation panel
-- public API authentication and rate limits
-- production-ready security hardening
+```mermaid
+flowchart LR
+    Sources["Event and artist sources"] --> Parsers["Python parsers and import scripts"]
+    Parsers --> Enrichment["Normalization, tag extraction, embeddings"]
+    Enrichment --> Postgres["PostgreSQL + pgvector"]
+    Postgres --> API["FastAPI backend"]
+    API --> NGINX["NGINX local gateway"]
+    API --> Frontend["React / TypeScript frontend"]
+    Tests["pytest suite"] --> API
+    Tests --> Enrichment
+```
+
+See [docs/architecture.md](docs/architecture.md) for the component and data-flow details.
 
 ## Tech stack
 
-Current backend stack:
+**Backend and data:** Python, FastAPI, psycopg, PostgreSQL, pgvector, Prisma migrations, pytest
 
-- Python
-- FastAPI
-- PostgreSQL
-- Prisma schema / migrations
-- psycopg
-- OpenAI Python SDK
-- httpx
-- pytest
+**Local infrastructure:** Docker, Docker Compose, NGINX
 
-Current local infrastructure:
+**Frontend:** React, TypeScript, Vite
 
-- Docker Compose
-- PostgreSQL 16 Alpine
-- Nginx
-- backend container
-- frontend container
-- Prisma tools container
-
-Frontend stack is expected to be React / TypeScript / Vite, but this branch is mainly focused on backend recommendation-engine work.
+**Optional enrichment providers:** OpenAI or Azure OpenAI, configured through environment variables
 
 ## Repository structure
 
 ```text
-backend/
-  app/
-    main.py                     FastAPI app and API endpoints
-    embeddings.py               Embedding generation and similarity ranking
-    artist_tag_extraction.py    LLM-based artist biography tag extraction
-    recommendation_scoring.py   Scoring helpers for semantic + graph ranking
-    style_tags.py               Style tag extraction and overlap scoring
-    text_profiles.py            Normalized text profiles for artists/events
-  prisma/
-    schema.prisma               Database schema
-    migrations/                 Database migrations
-  scripts/
-    import_events.py            Event import pipeline
-    backfill_normalized_texts.py Text normalization backfills
-    extract_artist_tags.py      Artist tag extraction script
-    generate_embeddings.py      Embedding generation script
-  tests/                        Backend tests
-
-docs/
-  task-tree.html                Planning artifact / interactive roadmap
-
-documentation/
-  scene_graph_full_development_plan.md  Original full roadmap
-
-docker-compose.yml
-Makefile
-.env.example
+backend/app/        FastAPI application and recommendation logic
+backend/app/routers/ REST endpoint modules
+backend/scripts/    import, validation, normalization, and enrichment scripts
+backend/tests/      pytest suite
+backend/prisma/     schema and migrations
+parsers/            event and artist data collection workflows
+frontend/           React / TypeScript client
+docs/               current API and architecture documentation
+docker-compose.yml  local development stack
+Makefile            common development commands
 ```
 
 ## Local setup
+
+Requirements:
+
+- Docker with Docker Compose v2
+- GNU Make
+- Optional provider API key for extraction or embedding workflows
 
 Create a local environment file:
 
@@ -104,148 +81,105 @@ Create a local environment file:
 make env
 ```
 
-Edit `.env` and set at least database values. For OpenAI or Azure-powered extraction and embeddings, also configure the relevant API variables.
+Use local placeholder values and do not commit `.env`:
 
-Start the stack:
+```env
+POSTGRES_DB=scenegraph
+POSTGRES_USER=scenegraph
+POSTGRES_PASSWORD=replace-with-a-local-password
+POSTGRES_PORT=5432
+DATABASE_URL=postgresql://scenegraph:replace-with-a-local-password@db:5432/scenegraph
+
+EMBEDDING_PROVIDER=openai
+OPENAI_API_KEY=replace-only-if-using-openai
+EXTRACTION_PROVIDER=openai
+VITE_API_URL=http://localhost:8080/api
+```
+
+The backend can also use an externally managed PostgreSQL database through `DATABASE_URL`, but the documented default is the local Docker Compose database.
+
+Build and start the local stack:
 
 ```bash
 make upd
 ```
 
-Run migrations:
+This applies Prisma migrations and starts PostgreSQL, the FastAPI backend, frontend, and NGINX gateway.
+
+Useful commands:
 
 ```bash
+make ps
+make logs
+make health
+make db-shell
 make prisma-migrate
+make down
 ```
 
-Import events:
+Local entry points:
+
+- Gateway: `http://localhost:8080`
+- OpenAPI UI: `http://localhost:8080/docs`
+- Health check: `http://localhost:8080/health`
+
+## Data workflow
+
+The typical local workflow is:
 
 ```bash
 make import-events
-```
-
-Run text normalization backfills:
-
-```bash
 make backfill-normalized-texts
-make backfill-lineup-residual
-make backfill-artist-biographies
-```
-
-Extract artist tags:
-
-```bash
 make extract-artist-tags
-```
-
-Generate embeddings:
-
-```bash
 make generate-embeddings
+make validate-import
 ```
 
-Check health:
+Extraction and embedding commands require the corresponding provider configuration. Import validation and most backend tests can be used independently of those external calls.
+
+## API examples
 
 ```bash
-make health
+curl -s http://localhost:8080/health
+curl -s "http://localhost:8080/api/search?q=artist"
+curl -s "http://localhost:8080/api/recommendations/artists/2178?limit=5"
+curl -s "http://localhost:8080/api/recommendations/artists/2178/promoters?limit=5"
+curl -s "http://localhost:8080/api/graph/ego?type=artist&id=2178"
 ```
 
-The local Nginx entrypoint is expected to be available at:
+See [docs/api.md](docs/api.md) for endpoint groups, request bodies, and abbreviated response examples.
 
-```text
-http://localhost:8080
+## Testing
+
+Run the backend suite inside the development container:
+
+```bash
+docker compose exec backend pytest -q
 ```
 
-## Environment variables
+Run a focused module:
 
-See `.env.example` for the complete list.
-
-Important variables:
-
-```env
-DATABASE_URL=postgresql://scenegraph:change-me@db:5432/scenegraph
-
-EMBEDDING_PROVIDER=openai
-OPENAI_API_KEY=
-OPENAI_EMBEDDING_MODEL=text-embedding-3-small
-OPENAI_EMBEDDING_DIMENSIONS=
-
-EXTRACTION_PROVIDER=openai
-OPENAI_EXTRACTION_MODEL=gpt-4.1-mini
-EXTRACTION_API=
-
-AZURE_OPENAI_API_KEY=
-AZURE_OPENAI_ENDPOINT=
-AZURE_OPENAI_API_VERSION=2024-02-01
-AZURE_OPENAI_CHAT_API_VERSION=2025-01-01-preview
-AZURE_OPENAI_RESPONSES_URL=
-AZURE_OPENAI_RESPONSES_MODEL=
-AZURE_OPENAI_EMBEDDING_DEPLOYMENT=
-AZURE_OPENAI_EXTRACTION_DEPLOYMENT=
+```bash
+docker compose exec backend pytest tests/test_recommendation_scoring.py -q
+docker compose exec backend pytest tests/test_graph_api.py -q
 ```
 
-For local development, do not commit `.env` or API keys.
+The repository currently includes tests for recommendation scoring, graph responses, semantic similarity, embeddings, text profiles, tag extraction, and lineup normalization.
 
-## API overview
+## Documentation
 
-Current important endpoints include:
+- [API guide](docs/api.md)
+- [Architecture and data flow](docs/architecture.md)
+- [Recommendation engine notes](docs/recommendation-engine.md)
+- [Frontend recommendation contract](docs/frontend-recommendations-contract.md)
 
-```text
-GET  /health
-GET  /api
-GET  /api/venues
-GET  /api/graph
-GET  /api/semantic/artists/{artist_id}
-GET  /api/artists/{artist_id}/tags
-GET  /api/recommendations/artists/{artist_id}
-GET  /api/recommendations/artists/{artist_id}/promoters
-POST /api/recommendation-feedback
-GET  /api/recommendation-feedback
-```
+Older files under `documentation/` are planning artifacts and may not match the current implementation.
 
-More detailed API documentation should live in `docs/api.md`.
+## Current status and limitations
 
-## Recommendation engine status
-
-The current branch implements the foundation of the recommendation engine, not the final product version.
-
-Current recommendation logic combines:
-
-- embeddings
-- normalized artist/event text profiles
-- extracted artist tags
-- style overlap
-- graph overlap signals
-- promoter/event evidence
-- feedback storage
-
-Planned next work:
-
-- explicit user profile and user preference model
-- reachability score
-- venue recommendations
-- event recommendations
-- stronger path explanations
-- recommendation cards in the frontend
-- explanation UI for why a recommendation was produced
-
-See `docs/recommendation-engine.md` for details.
-
-## Documentation status
-
-The older documents in `documentation/` and `docs/task-tree.html` are planning artifacts. They are useful for understanding the original roadmap, but they are not fully aligned with the current implementation.
-
-The current source of truth should be:
-
-- `README.md`
-- `docs/api.md`
-- `docs/recommendation-engine.md`
-- `.env.example`
-- `backend/prisma/schema.prisma`
-- `backend/app/main.py`
-
-## Development notes
-
-The project currently mixes direct SQL via `psycopg` with a Prisma schema/migration workflow. This is acceptable for the current backend prototype, but should be documented clearly before evaluation or production hardening.
-
-The recommendation-engine branch should be treated as an active feature branch, not as final stable product documentation.
+- Prototype and backend foundation, not a production-ready service
+- Recommendation quality depends on imported data coverage and enrichment quality
+- Some extraction and embedding workflows depend on external providers
+- Authentication is currently a placeholder and should not be treated as secure
+- Public API authentication, rate limiting, monitoring, and production security hardening are not implemented
+- The frontend does not yet expose every backend recommendation workflow
