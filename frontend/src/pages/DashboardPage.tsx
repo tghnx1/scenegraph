@@ -68,7 +68,7 @@ export function DashboardPage() {
       {error && <p className="error">Failed to load dashboard status.</p>}
       <section className="dashboard-overview" aria-label="SceneGraph overview">
         {overviewStats.map((item) => (
-          <article key={item.label} className="dashboard-stat-card dashboard-mock-element">
+          <article key={item.label} className="dashboard-stat-card dashboard-status-element">
             <span>{item.label}</span>
             <strong>{isLoading ? '...' : error ? '-' : item.value?.toLocaleString() ?? '-'}</strong>
             <small>{item.note}</small>
@@ -77,7 +77,7 @@ export function DashboardPage() {
       </section>
 
       <section className="dashboard-admin-grid" aria-label="Admin dashboard sections">
-        <article className="dashboard-panel dashboard-mock-element">
+        <article className="dashboard-panel dashboard-status-element">
           <PanelHeading label="Data quality" status="Missing entries" />
           <div className="quality-list">
             {qualityItems.map((item) => (
@@ -89,7 +89,7 @@ export function DashboardPage() {
           </div>
         </article>
 
-        <article className="dashboard-panel dashboard-mock-element">
+        <article className="dashboard-panel dashboard-status-element">
           <PanelHeading label="Data statistics" status="Connectivity" />
           <div className="graph-health-grid">
             {dataStatistics.map((metric) => (
@@ -102,7 +102,7 @@ export function DashboardPage() {
           </div>
         </article>
 
-        <article className="dashboard-panel dashboard-panel-full dashboard-mock-element">
+        <article className="dashboard-panel dashboard-panel-full dashboard-status-element">
           <div className="panel-heading">
             <span className="search-query-label">Management</span>
             <button type="button">Invite user</button>

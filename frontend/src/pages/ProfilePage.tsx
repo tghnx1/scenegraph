@@ -474,7 +474,7 @@ export function ProfilePage({ recommendationTargetControls }: ProfilePageProps =
                     <p className={recommendationsError ? 'error' : 'recommendations-help'}>
                       {recommendationsError
                         ?? (recommendationTargetControls?.emptyMessage
-                          ?? 'Click "Get Rec" to load recommendations. Load time may be quite long. Let the wizard does its magic.')}
+                          ?? 'Click "Get Rec" to load recommendations. Loading time may be quite long. Let the wizard does its magic.')}
                     </p>
                     {!recommendationTargetControls && (
                       <button
