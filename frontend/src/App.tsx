@@ -85,11 +85,9 @@ export default function App() {
             Profile
           </NavLink>
         )}
-        {isAuthenticated && (
           <NavLink to="/agency" className="app-nav-link">
             Agency
           </NavLink>
-        )}
         {authRole === 'admin' && (
           <NavLink to="/dashboard" className="app-nav-link">
             Dashboard
