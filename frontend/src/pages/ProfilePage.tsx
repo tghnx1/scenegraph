@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { graphEntityId, type GraphNode } from '../types/graph'
 import type { PromoterRecommendationResponse } from '../types/recommendation'
 import { DetailsPanel } from './components/DetailsPanel.tsx'
@@ -8,7 +8,8 @@ import { RecommendationExportMenu } from './components/RecommendationExport.tsx'
 import { SearchQueryForm } from './components/SearchQuery.tsx'
 import { useGraphSearchDetails } from './hooks/useGraphSearchDetails.ts'
 
-const PROMOTER_RECOMMENDATIONS_API_BASE_URL = 'http://localhost:8080/api/recommendations/artists/2178/promoters'
+const DEFAULT_PROFILE_RECOMMENDATION_ARTIST_ID = 2178
+const PROMOTER_RECOMMENDATIONS_API_BASE_URL = 'http://localhost:8080/api/recommendations/artists'
 const RECOMMENDATION_LOADING_MESSAGES = [
   'Finding similar artists',
   'Comparing related events',
@@ -129,7 +130,18 @@ function initialStrengthThreshold(recommendations: PromoterRecommendationRespons
 
 type ProfileWorkspaceTab = 'graph' | 'recommendations'
 
-export function ProfilePage() {
+interface RecommendationTargetControls {
+  artistId: number | null
+  controls: ReactNode
+  emptyMessage: string
+  getButtonLabel?: string
+}
+
+interface ProfilePageProps {
+  recommendationTargetControls?: RecommendationTargetControls
+}
+
+export function ProfilePage({ recommendationTargetControls }: ProfilePageProps = {}) {
   const { detailsPanelProps, searchFormProps, setSelected } = useGraphSearchDetails()
   const [activeWorkspaceTab, setActiveWorkspaceTab] = useState<ProfileWorkspaceTab>('graph')
   const [recommendationsData, setRecommendationsData] = useState<PromoterRecommendationResponse | null>(null)
@@ -145,6 +157,22 @@ export function ProfilePage() {
   const [expandedReasonItems, setExpandedReasonItems] = useState<Record<string, boolean>>({})
   const recommendationThresholdInitializedRef = useRef(false)
   const recommendationListRef = useRef<HTMLElement | null>(null)
+  const recommendationRequestIdRef = useRef(0)
+  const recommendationArtistId = recommendationTargetControls
+    ? recommendationTargetControls.artistId
+    : DEFAULT_PROFILE_RECOMMENDATION_ARTIST_ID
+
+  useEffect(() => {
+    recommendationRequestIdRef.current += 1
+    setRecommendationsData(null)
+    setRecommendationsError(null)
+    setIsRecommendationsLoading(false)
+    setExpandedRecommendationId(null)
+    setFocusedRecommendationPromoterIds(null)
+    setExpandedReasonItems({})
+    setRecommendationGraphMode('compact')
+    recommendationThresholdInitializedRef.current = false
+  }, [recommendationArtistId])
 
   useEffect(() => {
     if (!isRecommendationsLoading) {
@@ -172,7 +200,14 @@ export function ProfilePage() {
   }, [recommendationsData])
 
   const handleLoadRecommendations = useCallback(async () => {
+    if (recommendationArtistId === null) {
+      setRecommendationsError(recommendationTargetControls?.emptyMessage ?? 'Select an artist to load recommendations.')
+      return
+    }
+
     recommendationThresholdInitializedRef.current = false
+    const requestId = recommendationRequestIdRef.current + 1
+    recommendationRequestIdRef.current = requestId
     setIsRecommendationsLoading(true)
     setRecommendationsError(null)
     setExpandedRecommendationId(null)
@@ -181,7 +216,7 @@ export function ProfilePage() {
     setRecommendationGraphMode('compact')
 
     try {
-      const requestUrl = new URL(PROMOTER_RECOMMENDATIONS_API_BASE_URL)
+      const requestUrl = new URL(`${PROMOTER_RECOMMENDATIONS_API_BASE_URL}/${recommendationArtistId}/promoters`)
       requestUrl.searchParams.set('limit', '50')
       const response = await fetch(requestUrl.toString())
 
@@ -189,14 +224,19 @@ export function ProfilePage() {
         throw new Error(`${response.status} ${response.statusText}`)
       }
 
-      setRecommendationsData(await response.json() as PromoterRecommendationResponse)
+      const recommendationResponse = await response.json() as PromoterRecommendationResponse
+      if (recommendationRequestIdRef.current !== requestId) return
+      setRecommendationsData(recommendationResponse)
     } catch (error) {
+      if (recommendationRequestIdRef.current !== requestId) return
       setRecommendationsData(null)
       setRecommendationsError(error instanceof Error ? error.message : 'Failed to load recommendations')
     } finally {
-      setIsRecommendationsLoading(false)
+      if (recommendationRequestIdRef.current === requestId) {
+        setIsRecommendationsLoading(false)
+      }
     }
-  }, [])
+  }, [recommendationArtistId, recommendationTargetControls?.emptyMessage])
 
   const handleSelectRecommendation = useCallback((recommendationId: number) => {
     const recommendationNode = recommendationsData?.graph.nodes.find((node) => (
@@ -414,22 +454,37 @@ export function ProfilePage() {
               aria-labelledby="profile-workspace-tab-recommendations"
               hidden={activeWorkspaceTab !== 'recommendations'}
             >
-                <div className="panel-heading">
+                <div className="panel-heading recommendations-panel-heading">
                   <span className="search-query-label">Promoter Recommendations</span>
+                  {recommendationTargetControls && (
+                    <div className="recommendation-target-actions">
+                      {recommendationTargetControls.controls}
+                      <button
+                        type="button"
+                        onClick={() => void handleLoadRecommendations()}
+                        disabled={isRecommendationsLoading || recommendationArtistId === null}
+                      >
+                        {recommendationTargetControls.getButtonLabel ?? 'Get rec'}
+                      </button>
+                    </div>
+                  )}
                 </div>
                 {recommendationsData === null && !isRecommendationsLoading && (
                   <div className="recommendations-start">
                     <p className={recommendationsError ? 'error' : 'recommendations-help'}>
                       {recommendationsError
-                        ?? 'Click the button to load recommendations. Load time may be quite long. Let the wizard does its magic.'}
+                        ?? (recommendationTargetControls?.emptyMessage
+                          ?? 'Click "Get Rec" to load recommendations. Load time may be quite long. Let the wizard does its magic.')}
                     </p>
-                    <button
-                      type="button"
-                      className="recommendations-load-button"
-                      onClick={() => void handleLoadRecommendations()}
-                    >
-                      {recommendationsError ? 'Retry' : 'The button'}
-                    </button>
+                    {!recommendationTargetControls && (
+                      <button
+                        type="button"
+                        className="recommendations-load-button"
+                        onClick={() => void handleLoadRecommendations()}
+                      >
+                        {recommendationsError ? 'Retry' : 'Get Rec'}
+                      </button>
+                    )}
                   </div>
                 )}
                 {isRecommendationsLoading && (

@@ -120,3 +120,68 @@
 .profile-workspace-content[hidden] {
   display: none;
 }
+
+.profile-summary-panel > .panel-heading > button,
+.panel-heading-actions > button,
+.panel-heading-actions > .export-menu > button,
+.recommendation-target-actions > button {
+  border: 1px solid var(--artist-border);
+  background: var(--artist-soft);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 8px 12px;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.profile-summary-panel > .panel-heading > button:hover,
+.panel-heading-actions > button:hover,
+.panel-heading-actions > .export-menu > button:hover,
+.recommendation-target-actions > button:hover {
+  background: var(--selection-panel);
+  border-color: var(--selection-border-strong);
+}
+
+.recommendations-panel-heading {
+  align-items: start;
+}
+
+.recommendation-target-actions {
+  display: flex;
+  align-items: end;
+  justify-content: flex-end;
+  gap: 8px;
+  min-width: min(420px, 100%);
+  margin-left: auto;
+}
+
+.agency-artist-recommendation-search {
+  width: min(320px, 100%);
+}
+
+.agency-artist-recommendation-search .search-query-form {
+  gap: 4px;
+}
+
+.agency-artist-recommendation-search .search-query-dropdown {
+  text-align: left;
+}
+
+@media (max-width: 760px) {
+  .recommendation-target-actions {
+    width: 100%;
+    min-width: 0;
+    flex-wrap: wrap;
+    justify-content: stretch;
+    margin-left: 0;
+  }
+
+  .agency-artist-recommendation-search {
+    width: 100%;
+  }
+
+  .recommendation-target-actions > button {
+    width: 100%;
+  }
+}

@@ -3,6 +3,7 @@ import { Routes, Route, Navigate, NavLink, useNavigate, useParams, useSearchPara
 import { GraphPage } from './pages/GraphPage'
 import { DashboardPage } from './pages/DashboardPage'
 import { ProfilePage } from './pages/ProfilePage'
+import { AgencyPage } from './pages/AgencyPage'
 import { LoginPage } from './pages/LoginPage'
 import { RegisterPage } from './pages/RegisterPage'
 import type { AuthRole } from './api/auth'
@@ -34,10 +35,10 @@ function SearchRedirect() {
   return <Navigate to={`/graph?${searchParams.toString()}`} replace />
 }
 
-function ArtistRedirect() {
+function EntityRedirect({ type }: { type: 'artist' | 'promoter' | 'event' | 'venue' }) {
   const { id } = useParams<{ id: string }>()
-  const artistId = id?.startsWith('artist-') ? id : `artist-${id ?? ''}`
-  return <Navigate to={`/graph?selectedType=artist&selectedId=${encodeURIComponent(artistId)}`} replace />
+  const selectedId = id?.startsWith(`${type}-`) ? id : `${type}-${id ?? ''}`
+  return <Navigate to={`/graph?selectedType=${type}&selectedId=${encodeURIComponent(selectedId)}`} replace />
 }
 
 export default function App() {
@@ -84,6 +85,11 @@ export default function App() {
             Profile
           </NavLink>
         )}
+        {isAuthenticated && (
+          <NavLink to="/agency" className="app-nav-link">
+            Agency
+          </NavLink>
+        )}
         {authRole === 'admin' && (
           <NavLink to="/dashboard" className="app-nav-link">
             Dashboard
@@ -106,8 +112,12 @@ export default function App() {
           <Route path="/register" element={isAuthenticated ? <Navigate to="/graph" replace /> : <RegisterPage />} />
           <Route path="/dashboard" element={authRole === 'admin' ? <DashboardPage /> : <Navigate to={isAuthenticated ? '/graph' : '/login'} replace />} />
           <Route path="/profile" element={authRole === 'user' ? <ProfilePage /> : <Navigate to={isAuthenticated ? '/graph' : '/login'} replace />} />
+          <Route path="/agency" element={isAuthenticated ? <AgencyPage /> : <Navigate to="/login" replace />} />
           <Route path="/search" element={<SearchRedirect />} />
-          <Route path="/artist/:id" element={<ArtistRedirect />} />
+          <Route path="/artist/:id" element={<EntityRedirect type="artist" />} />
+          <Route path="/promoter/:id" element={<EntityRedirect type="promoter" />} />
+          <Route path="/event/:id" element={<EntityRedirect type="event" />} />
+          <Route path="/venue/:id" element={<EntityRedirect type="venue" />} />
           <Route path="/privacy-policy" element={<LegalPage section="privacy" />} />
           <Route path="/terms-of-service" element={<LegalPage section="terms" />} />
           <Route path="/impressum" element={<LegalPage section="impressum" />} />
