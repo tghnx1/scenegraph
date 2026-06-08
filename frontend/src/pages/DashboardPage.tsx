@@ -1,11 +1,5 @@
-const overviewStats = [
-  { label: 'Events', value: '2,486', note: '+184 this import' },
-  { label: 'Artists', value: '5,621', note: '438 newly linked' },
-  { label: 'Venues', value: '312', note: '18 recently updated' },
-  { label: 'Promoters', value: '1,048', note: '76 active this month' },
-  { label: 'Genres', value: '18', note: 'Imported taxonomy' },
-  { label: 'Last import', value: '14:32', note: 'Resident Advisor' },
-]
+import {fetchDashboardStatus} from '../api/status'
+import {useApi} from '../hooks/useApi'
 
 const qualityItems = [
   { label: 'Artists missing bio', value: '400', tone: 'warning' },
@@ -49,6 +43,21 @@ function PanelHeading({ label, status }: { label: string; status: string }) {
 }
 
 export function DashboardPage() {
+
+  const {data: dashboardStatus, isLoading, error} = useApi(
+  fetchDashboardStatus,
+  []
+)
+
+  const overviewStats = [
+  { label: 'Events', value: dashboardStatus?.events ?? '-', note: 'Total events' },
+  { label: 'Artists', value: dashboardStatus?.artists ?? '-', note: 'Total artists' },
+  { label: 'Venues', value: dashboardStatus?.venues ?? '-', note: 'Total venues' },
+  { label: 'Promoters', value: dashboardStatus?.promoters ?? '-', note: 'Total promoters' },
+  { label: 'Genres', value: dashboardStatus?.genres ?? '-', note: 'Total genres' },
+  //{ label: 'Last import', value: '14:32', note: 'Resident Advisor' },
+  ]
+
   return (
     <div className="dashboard-page">
       <div className="dashboard-actions" aria-label="Dashboard actions">
@@ -56,11 +65,12 @@ export function DashboardPage() {
         <button type="button">View logs</button>
       </div>
 
+      {error && <p className="error">Failed to load dashboard status.</p>}
       <section className="dashboard-overview" aria-label="SceneGraph overview">
         {overviewStats.map((item) => (
           <article key={item.label} className="dashboard-stat-card dashboard-mock-element">
             <span>{item.label}</span>
-            <strong>{item.value}</strong>
+            <strong>{isLoading ? '...' : error ? '-' : item.value?.toLocaleString() ?? '-'}</strong>
             <small>{item.note}</small>
           </article>
         ))}

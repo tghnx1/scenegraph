@@ -9,9 +9,6 @@ const detailPathByType: Record<NodeType, string> = {
   promoter: 'promoter',
 }
 
-// export const fetchEntityDetail = (type: NodeType, id: string): Promise<EntityDetail> =>
-//   api.get<EntityDetail>(`/${type}?id=${encodeURIComponent(String(graphEntityId(id, type) ?? id))}`)
-
 export const fetchEntityDetail = (type: NodeType, id: string): Promise<EntityDetail> => {
   const entityId = graphEntityId(id, type) ?? id
 
