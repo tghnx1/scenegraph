@@ -50,9 +50,9 @@
   .profile-grid {
     grid-template-columns: 1fr;
     grid-template-rows:
-      minmax(540px, var(--profile-tall-panel-height))
+      minmax(540px, var(--profile-secondary-panel-height))
       minmax(720px, 120dvh)
-      repeat(2, minmax(540px, var(--profile-tall-panel-height)));
+      repeat(2, minmax(540px, var(--profile-secondary-panel-height)));
     grid-template-areas:
       "context"
       "graph"
