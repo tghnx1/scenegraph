@@ -1,9 +1,11 @@
 .profile-page {
   width: min(1480px, 100%);
+  height: auto;
   min-height: 100%;
   margin: 0 auto;
   padding: 16px;
-  --profile-tall-panel-height: calc((100dvh - 56px) * 0.75);
+  --profile-main-panel-height: calc(100dvh - 154px);
+  --profile-secondary-panel-height: calc((100dvh - 56px) * 0.75);
 }
 
 .profile-grid {
@@ -11,8 +13,8 @@
   display: grid;
   grid-template-columns: minmax(380px, 440px) repeat(2, minmax(0, 1fr));
   grid-template-rows:
-    minmax(570px, var(--profile-tall-panel-height))
-    minmax(570px, var(--profile-tall-panel-height));
+    minmax(570px, var(--profile-main-panel-height))
+    minmax(570px, var(--profile-secondary-panel-height));
   grid-template-areas:
     "context graph graph"
     "profile communications communications";
@@ -50,6 +52,7 @@
 
 .graph-workspace {
   grid-area: graph;
+  display: grid;
   min-width: 0;
   min-height: 0;
 }
@@ -154,6 +157,14 @@
   gap: 8px;
   min-width: min(420px, 100%);
   margin-left: auto;
+}
+
+.recommendation-target-actions > button {
+  height: 43px;
+  align-self: end;
+  padding-block: 0;
+  font-size: 14px;
+  line-height: 1;
 }
 
 .agency-artist-recommendation-search {
