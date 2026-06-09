@@ -4,5 +4,6 @@ export interface DashboardStatus {
   venues: number
   promoters: number
   genres: number
+  artists_no_bio: number
 }
 

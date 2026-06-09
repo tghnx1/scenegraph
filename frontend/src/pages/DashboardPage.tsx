@@ -55,6 +55,7 @@ export function DashboardPage() {
   { label: 'Venues', value: dashboardStatus?.venues ?? '-', note: 'Total venues' },
   { label: 'Promoters', value: dashboardStatus?.promoters ?? '-', note: 'Total promoters' },
   { label: 'Genres', value: dashboardStatus?.genres ?? '-', note: 'Total genres' },
+	{ label: 'Artists without bio', value: dashboardStatus?.artists_no_bio ?? '-', note: 'Total artists without bio' },
   //{ label: 'Last import', value: '14:32', note: 'Resident Advisor' },
   ]
 
@@ -68,7 +69,7 @@ export function DashboardPage() {
       {error && <p className="error">Failed to load dashboard status.</p>}
       <section className="dashboard-overview" aria-label="SceneGraph overview">
         {overviewStats.map((item) => (
-          <article key={item.label} className="dashboard-stat-card dashboard-status-element">
+          <article key={item.label} className="dashboard-stat-card">
             <span>{item.label}</span>
             <strong>{isLoading ? '...' : error ? '-' : item.value?.toLocaleString() ?? '-'}</strong>
             <small>{item.note}</small>
