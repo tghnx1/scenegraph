@@ -1,4 +1,4 @@
-import { SearchResultCard } from './SearchResultDetails.tsx'
+import { RenderDetails } from './RenderDetails.tsx'
 import type { EntityDetail } from '../../types/entityDetail'
 import type { GraphNode } from '../../types/graph'
 import type { SearchResult } from '../../types/search'
@@ -25,7 +25,7 @@ export function DetailsPanel({
   if (selectedEntityDetail) {
     return (
       <div className="graph-sidebar-content">
-        <SearchResultCard variant="inline" result={selectedEntityDetail} />
+        <RenderDetails variant="inline" result={selectedEntityDetail} />
       </div>
     )
   }
@@ -84,7 +84,7 @@ export function DetailsPanel({
           </div>
         )}
 
-        {activeSearchResult && <SearchResultCard variant="inline" result={activeSearchResult} />}
+        {activeSearchResult && <RenderDetails variant="inline" result={activeSearchResult} />}
       </div>
     )
   }

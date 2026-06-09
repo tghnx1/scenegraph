@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { DetailsPanel } from './components/DetailsPanel.tsx'
 import { ScenegraphMapPanel } from './components/GraphPanel.tsx'
 import { PromoterRecommendationsPanel, type RecommendationTargetControls } from './components/RecommendationPanel.tsx'
-import { SearchQueryForm } from './components/SearchQuery.tsx'
+import { SearchInputField } from './components/SearchInputField.tsx'
 import { useGraphSearchDetails } from './hooks/useGraphSearchDetails.ts'
 
 type ProfileWorkspaceTab = 'graph' | 'recommendations'
@@ -20,7 +20,7 @@ export function ProfilePage({ recommendationTargetControls }: ProfilePageProps =
       <section className="profile-grid" aria-label="Profile overview">
         <article className="graph-sidebar-card context-panel">
           <div className="graph-sidebar-search">
-            <SearchQueryForm
+            <SearchInputField
               inputId="profile-details-search-query-input"
               {...searchFormProps}
             />

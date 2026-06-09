@@ -2,7 +2,7 @@ import { useEffect, useState, type FormEvent, type KeyboardEvent } from 'react'
 import { SEARCH_RESULT_LIMIT } from '../../api/search'
 import type { SearchResult } from '../../types/search'
 
-interface SearchQueryFormProps {
+interface SearchInputFieldProps {
   inputId: string
   label?: string
   placeholder?: string
@@ -20,7 +20,7 @@ function getResultMeta(result: SearchResult) {
   return result.id
 }
 
-export function SearchQueryForm({
+export function SearchInputField({
   inputId,
   label = 'Search Database',
   placeholder = 'Search artists, venues, promoters, events...',
@@ -32,7 +32,7 @@ export function SearchQueryForm({
   results = [],
   isLoading = false,
   onSelectResult,
-}: SearchQueryFormProps) {
+}: SearchInputFieldProps) {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false)
   const [activeResultIndex, setActiveResultIndex] = useState(-1)
   const visibleResults = results.slice(0, SEARCH_RESULT_LIMIT)
