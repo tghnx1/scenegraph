@@ -6,7 +6,7 @@ import type { PromoterDetail } from '../../types/promoter'
 import type { SearchResult } from '../../types/search'
 import type { VenueDetail } from '../../types/venue'
 
-type SearchResultCardProps = {
+type RenderDetailsProps = {
   result: SearchResult | EntityDetail
   variant?: 'card' | 'inline'
 }
@@ -34,7 +34,7 @@ function dateOnly(date: string | null) {
   return date.split(/[T ]/)[0]
 }
 
-export function SearchResultCard({ result, variant = 'card' }: SearchResultCardProps) {
+export function RenderDetails({ result, variant = 'card' }: RenderDetailsProps) {
   const articleClassName = variant === 'inline' ? 'search-result-card search-result-card--inline' : 'search-result-card'
 
   if (isArtistDetail(result)) {

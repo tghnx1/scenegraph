@@ -2,7 +2,7 @@ import { useCallback, useState, type FormEvent } from 'react'
 import { fetchSearch } from '../api/search'
 import { useApi } from '../hooks/useApi'
 import type { SearchResponse, SearchResult } from '../types/search'
-import { SearchQueryForm } from './components/SearchQuery'
+import { SearchInputField } from './components/SearchInputField'
 import { useDebouncedValue } from './hooks/useDebouncedValue'
 import { ProfilePage } from './ProfilePage'
 
@@ -64,7 +64,7 @@ export function AgencyPage() {
         getButtonLabel: 'Get Rec',
         controls: (
           <div className="agency-artist-recommendation-search">
-            <SearchQueryForm
+            <SearchInputField
               inputId="agency-recommendation-artist-search"
               label=""
               placeholder="Search artists..."
