@@ -101,6 +101,62 @@
   font-size: 0.9rem;
 }
 
+.search-query-tabs {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 5px;
+  padding: 4px;
+  border-radius: 12px;
+  background: var(--surface-input);
+}
+
+.search-query-tab {
+  min-width: 0;
+  display: grid;
+  justify-items: center;
+  gap: 3px;
+  padding: 8px 5px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.76rem;
+  line-height: 1.1;
+}
+
+.search-query-tab:hover,
+.search-query-tab:focus-visible,
+.search-query-tab--active {
+  background: var(--control-bg);
+  color: var(--text);
+  outline: none;
+}
+
+.search-query-tab span {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.search-query-tab strong {
+  color: var(--accent);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.search-query-tab-panel {
+  display: grid;
+  gap: 4px;
+}
+
+.search-query-tab-panel [role='listbox'] {
+  display: grid;
+  gap: 4px;
+}
+
 .search-query-option {
   width: 100%;
   display: flex;
