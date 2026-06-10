@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import type { GraphParams } from '../../api/graph'
 import type { GenreOption } from '../../api/genres'
 
@@ -9,6 +10,10 @@ const FALLBACK_GENRE_OPTIONS = [
 ]
 
 const LIMIT_OPTIONS = [100, 250, 500]
+const FILTER_DESCRIPTIONS = {
+  genre: 'Filter the by event genres. Choose All genres to undo the filter.',
+  limit: 'Limit the number of events. Higher limits make the rendering heavier.',
+}
 
 interface GraphFiltersProps {
   filters: GraphParams
@@ -27,6 +32,7 @@ export function GraphFilters({
   displayedDateRange,
   onChange,
 }: GraphFiltersProps) {
+  const [activeInfo, setActiveInfo] = useState<keyof typeof FILTER_DESCRIPTIONS | null>(null)
   const updateFilter = (next: Partial<GraphParams>) => {
     onChange({ ...filters, ...next })
   }
@@ -34,10 +40,37 @@ export function GraphFilters({
   const dateFromValue = filters.dateFrom ?? displayedDateRange?.from ?? ''
   const dateToValue = filters.dateTo ?? displayedDateRange?.to ?? ''
 
+  const renderInfoButton = (key: keyof typeof FILTER_DESCRIPTIONS, label: string) => {
+    const isActive = activeInfo === key
+
+    return (
+      <span className="graph-filter-info">
+        <button
+          type="button"
+          className="graph-filter-info-button"
+          aria-label={`Explain ${label}`}
+          aria-expanded={isActive}
+          onClick={() => setActiveInfo(isActive ? null : key)}
+          onBlur={() => setActiveInfo(null)}
+        >
+          <span aria-hidden="true">i</span>
+        </button>
+        {isActive && (
+          <span className="graph-filter-info-popover" role="tooltip">
+            {FILTER_DESCRIPTIONS[key]}
+          </span>
+        )}
+      </span>
+    )
+  }
+
   return (
     <section className="graph-filter-panel" aria-label="Graph filters">
       <div className="graph-filter-group">
-        <span className="graph-filter-label">Filter by Genre</span>
+        <span className="graph-filter-label">
+          Filter by Genre
+          {renderInfoButton('genre', 'Filter by Genre')}
+        </span>
         <select
           className="graph-filter-select"
           value={filters.genre ?? ''}
@@ -82,7 +115,10 @@ export function GraphFilters({
       </div>
 
       <div className="graph-filter-group">
-        <span className="graph-filter-label">Event Limit</span>
+        <span className="graph-filter-label">
+          Event Limit
+          {renderInfoButton('limit', 'Event Limit')}
+        </span>
         <div className="graph-filter-buttons">
           {LIMIT_OPTIONS.map((limit) => (
             <button
