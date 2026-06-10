@@ -174,7 +174,7 @@
   right: 16px;
   z-index: 2;
   display: grid;
-  grid-template-columns: repeat(2, max-content);
+  grid-template-columns: repeat(3, max-content);
   gap: 8px 14px;
   padding: 10px 12px;
   border-radius: 14px;
