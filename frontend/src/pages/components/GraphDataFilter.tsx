@@ -44,7 +44,7 @@ export function GraphFilters({
     const isActive = activeInfo === key
 
     return (
-      <span className="graph-filter-info">
+      <span className={`graph-filter-info graph-filter-info--${key}`}>
         <button
           type="button"
           className="graph-filter-info-button"
