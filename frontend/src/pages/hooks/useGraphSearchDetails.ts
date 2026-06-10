@@ -6,7 +6,7 @@ import { useApi } from '../../hooks/useApi'
 import { useGraphStore } from '../../store/graphStore'
 import type { EntityDetail } from '../../types/entityDetail'
 import { graphEntityId, type NodeType } from '../../types/graph'
-import type { SearchEntityType, SearchResponse, SearchResult } from '../../types/search'
+import type { SearchEntityType, SearchResponse, SearchResult, SearchSort } from '../../types/search'
 import { useDebouncedValue } from './useDebouncedValue'
 
 const EMPTY_SEARCH_RESPONSE: SearchResponse = { query: '', results: [] }
@@ -36,6 +36,7 @@ export function useGraphSearchDetails() {
   const submittedQuery = searchParams.get('q') ?? ''
   const [searchValue, setSearchValue] = useState(submittedQuery)
   const [dropdownSearchType, setDropdownSearchType] = useState<SearchEntityType>('artist')
+  const [dropdownSearchSort, setDropdownSearchSort] = useState<SearchSort>('relevance')
   const [dropdownSearchLimitsByType, setDropdownSearchLimitsByType] = useState(createDefaultLimitsByType)
   const [dropdownSearchResultsByType, setDropdownSearchResultsByType] = useState(createEmptyResultsByType)
   const debouncedSearchValue = useDebouncedValue(searchValue.trim(), 350)
@@ -80,10 +81,10 @@ export function useGraphSearchDetails() {
   const { data: dropdownSearchData, isLoading: isDropdownSearchLoading } = useApi<SearchResponse>(
     () => (
       shouldFetchDropdownSearch
-        ? fetchSearch(debouncedSearchValue, dropdownSearchLimit, dropdownSearchType)
+        ? fetchSearch(debouncedSearchValue, dropdownSearchLimit, dropdownSearchType, dropdownSearchSort)
         : Promise.resolve(EMPTY_SEARCH_RESPONSE)
     ),
-    [debouncedSearchValue, dropdownSearchLimit, dropdownSearchType, shouldFetchDropdownSearch]
+    [debouncedSearchValue, dropdownSearchLimit, dropdownSearchSort, dropdownSearchType, shouldFetchDropdownSearch]
   )
 
   useEffect(() => {
@@ -93,7 +94,7 @@ export function useGraphSearchDetails() {
   useEffect(() => {
     setDropdownSearchLimitsByType(createDefaultLimitsByType())
     setDropdownSearchResultsByType(createEmptyResultsByType())
-  }, [debouncedSearchValue])
+  }, [debouncedSearchValue, dropdownSearchSort])
 
   useEffect(() => {
     if (!shouldFetchDropdownSearch || !dropdownSearchData) return
@@ -190,6 +191,8 @@ export function useGraphSearchDetails() {
       isLoading: isDropdownWaiting || isDropdownSearchLoading,
       activeResultType: dropdownSearchType,
       onActiveResultTypeChange: setDropdownSearchType,
+      activeSort: dropdownSearchSort,
+      onActiveSortChange: setDropdownSearchSort,
       showResultsWhenEmpty: shouldFetchDropdownSearch,
       canLoadMore: canLoadMoreDropdownResults,
       onLoadMore: handleLoadMoreDropdownResults,

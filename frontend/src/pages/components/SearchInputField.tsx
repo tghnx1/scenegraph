@@ -1,11 +1,19 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
-import type { SearchEntityType, SearchResult } from '../../types/search'
+import type { SearchEntityType, SearchResult, SearchSort } from '../../types/search'
 
 const SEARCH_RESULT_TABS: { type: SearchEntityType; label: string }[] = [
   { type: 'artist', label: 'Artists' },
   { type: 'venue', label: 'Venues' },
   { type: 'promoter', label: 'Promoters' },
   { type: 'event', label: 'Events' },
+]
+
+const SEARCH_SORT_OPTIONS: { value: SearchSort; label: string }[] = [
+  { value: 'relevance', label: 'Relevance' },
+  { value: 'name_asc', label: 'Name A-Z' },
+  { value: 'name_desc', label: 'Name Z-A' },
+  { value: 'id_asc', label: 'ID ascending' },
+  { value: 'id_desc', label: 'ID descending' },
 ]
 
 interface SearchInputFieldProps {
@@ -21,6 +29,8 @@ interface SearchInputFieldProps {
   isLoading?: boolean
   activeResultType?: SearchEntityType
   onActiveResultTypeChange?: (type: SearchEntityType) => void
+  activeSort?: SearchSort
+  onActiveSortChange?: (sort: SearchSort) => void
   showResultTabs?: boolean
   showResultsWhenEmpty?: boolean
   canLoadMore?: boolean
@@ -45,12 +55,15 @@ export function SearchInputField({
   isLoading = false,
   activeResultType: controlledActiveResultType,
   onActiveResultTypeChange,
+  activeSort = 'relevance',
+  onActiveSortChange,
   showResultTabs = true,
   showResultsWhenEmpty = false,
   canLoadMore = false,
   onLoadMore,
   onSelectResult,
 }: SearchInputFieldProps) {
+  const formRef = useRef<HTMLFormElement | null>(null)
   const dropdownRef = useRef<HTMLDivElement | null>(null)
   const pendingScrollTopRef = useRef<number | null>(null)
   const pendingResultCountRef = useRef<number | null>(null)
@@ -137,6 +150,14 @@ export function SearchInputField({
     setActiveResultIndex(-1)
   }
 
+  const handleSortChange = (sort: SearchSort) => {
+    dropdownRef.current?.scrollTo({ top: 0 })
+    pendingScrollTopRef.current = null
+    pendingResultCountRef.current = null
+    setActiveResultIndex(-1)
+    onActiveSortChange?.(sort)
+  }
+
   const handleLoadMore = () => {
     pendingScrollTopRef.current = dropdownRef.current?.scrollTop ?? null
     pendingResultCountRef.current = visibleResults.length
@@ -176,7 +197,7 @@ export function SearchInputField({
   }
 
   return (
-    <form className="search-query-form" onSubmit={handleSubmit}>
+    <form className="search-query-form" ref={formRef} onSubmit={handleSubmit}>
       <label className="search-query-label" htmlFor={inputId}>
         {label}
       </label>
@@ -196,7 +217,10 @@ export function SearchInputField({
           onFocus={() => setIsDropdownOpen(true)}
           onKeyDown={handleKeyDown}
           onBlur={() => {
-            window.setTimeout(() => setIsDropdownOpen(false), 120)
+            window.setTimeout(() => {
+              if (formRef.current?.contains(document.activeElement)) return
+              setIsDropdownOpen(false)
+            }, 120)
           }}
           placeholder={placeholder}
           aria-label="Search"
@@ -218,28 +242,42 @@ export function SearchInputField({
           {!isLoading && (
             <>
               {showResultTabs && (
-                <div className="search-query-tabs" role="tablist" aria-label="Search result types">
-                  {SEARCH_RESULT_TABS.map(({ type, label }) => {
-                    const isActive = activeResultType === type
-                    const resultCount = groupedResults[type].length
+                <div className="search-query-controls">
+                  <div className="search-query-tabs" role="tablist" aria-label="Search result types">
+                    {SEARCH_RESULT_TABS.map(({ type, label }) => {
+                      const isActive = activeResultType === type
 
-                    return (
-                      <button
-                        key={type}
-                        id={`${inputId}-tab-${type}`}
-                        type="button"
-                        className={`search-query-tab${isActive ? ' search-query-tab--active' : ''}`}
-                        role="tab"
-                        aria-selected={isActive}
-                        aria-controls={`${inputId}-results-panel-${type}`}
-                        onMouseDown={(event) => event.preventDefault()}
-                        onClick={() => selectTab(type)}
-                      >
-                        <span>{label}</span>
-                        <strong>{resultCount}</strong>
-                      </button>
-                    )
-                  })}
+                      return (
+                        <button
+                          key={type}
+                          id={`${inputId}-tab-${type}`}
+                          type="button"
+                          className={`search-query-tab${isActive ? ' search-query-tab--active' : ''}`}
+                          role="tab"
+                          aria-selected={isActive}
+                          aria-controls={`${inputId}-results-panel-${type}`}
+                          onMouseDown={(event) => event.preventDefault()}
+                          onClick={() => selectTab(type)}
+                        >
+                          <span>{label}</span>
+                        </button>
+                      )
+                    })}
+                  </div>
+
+                  <label className="search-query-sort">
+                    <span>Sort</span>
+                    <select
+                      value={activeSort}
+                      onChange={(event) => handleSortChange(event.target.value as SearchSort)}
+                    >
+                      {SEARCH_SORT_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
                 </div>
               )}
 
