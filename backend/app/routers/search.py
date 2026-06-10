@@ -6,14 +6,12 @@ from app.db import get_db
 
 router = APIRouter()
 
-SearchSort = Literal["relevance", "name_asc", "name_desc", "id_asc", "id_desc"]
+SearchSort = Literal["relevance", "name_asc", "name_desc"]
 
 SORT_ORDER_BY: dict[SearchSort, str] = {
     "relevance": "rank DESC, name ASC",
     "name_asc": "name ASC",
     "name_desc": "name DESC",
-    "id_asc": "id ASC",
-    "id_desc": "id DESC",
 }
 
 class SearchResult(BaseModel):

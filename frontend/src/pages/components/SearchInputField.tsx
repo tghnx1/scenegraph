@@ -12,8 +12,6 @@ const SEARCH_SORT_OPTIONS: { value: SearchSort; label: string }[] = [
   { value: 'relevance', label: 'Relevance' },
   { value: 'name_asc', label: 'Name A-Z' },
   { value: 'name_desc', label: 'Name Z-A' },
-  { value: 'id_asc', label: 'ID ascending' },
-  { value: 'id_desc', label: 'ID descending' },
 ]
 
 interface SearchInputFieldProps {
