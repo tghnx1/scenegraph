@@ -145,14 +145,14 @@ export function DashboardStatistics({dashboardStatus, isLoading, hasError}: Dash
     },
     {
       label: 'Events missing description',
-      value: dashboardStatus?.events_no_desc,
-      percent: dashboardStatus?.events_no_desc_percent,
+      value: dashboardStatus?.events_without_desc,
+      percent: dashboardStatus?.events_without_desc_percent,
       description: 'Events with no description.',
     },
     {
       label: 'Events missing genres',
-      value: dashboardStatus?.events_no_genres,
-      percent: dashboardStatus?.events_no_genres_percent,
+      value: dashboardStatus?.events_without_genres,
+      percent: dashboardStatus?.events_without_genres_percent,
       description: 'Events with no genre.',
     },
   ]

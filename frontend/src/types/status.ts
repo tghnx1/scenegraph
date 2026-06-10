@@ -16,8 +16,8 @@ export interface DashboardStatus {
   artists_with_extracted_genres_percent?: number | null
   events_without_description?: number
   events_without_description_percent?: number | null
-  events_no_desc?: number
-  events_no_desc_percent?: number | null
+  events_without_desc?: number
+  events_without_desc_percent?: number | null
   events_without_genres?: number
   events_without_genres_percent?: number | null
   events_no_genres?: number
