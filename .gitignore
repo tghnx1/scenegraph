@@ -49,6 +49,4 @@ scenegraph_dump*.sql
 *.iml
 
 # intentional by H
-backend_a/
-backend_t/
-backend_m/
+browser-compatibility/
