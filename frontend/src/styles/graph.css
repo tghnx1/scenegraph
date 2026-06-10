@@ -248,10 +248,79 @@
 }
 
 .graph-filter-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   text-transform: uppercase;
   letter-spacing: 0.14em;
   color: var(--accent);
   font-size: 0.72rem;
+}
+
+.graph-filter-info {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.graph-filter-info-button {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  box-sizing: border-box;
+  border-radius: 999px;
+  border: 1px solid var(--surface-border);
+  background: var(--surface-panel);
+  color: var(--text-muted);
+  cursor: help;
+  opacity: 0.9;
+  transition: background 140ms ease, border-color 140ms ease, color 140ms ease, opacity 140ms ease, transform 140ms ease;
+}
+
+.graph-filter-info-button span {
+  display: block;
+  width: 13px;
+  height: 13px;
+  border-radius: 999px;
+  font-family: ui-serif, Georgia, serif;
+  font-size: 0.7rem;
+  font-style: italic;
+  font-weight: 800;
+  line-height: 13px;
+  text-align: center;
+}
+
+.graph-filter-info-button:hover,
+.graph-filter-info-button:focus-visible,
+.graph-filter-info-button[aria-expanded="true"] {
+  border-color: var(--focus-border);
+  background: var(--surface-strong);
+  color: var(--text);
+  opacity: 1;
+  outline: none;
+  transform: translateY(-1px);
+}
+
+.graph-filter-info-popover {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  z-index: 20;
+  width: min(300px, calc(100vw - 48px));
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--surface-panel);
+  border: 1px solid var(--surface-border);
+  box-shadow: var(--surface-shadow);
+  color: var(--text);
+  font-size: 0.82rem;
+  font-weight: 600;
+  line-height: 1.35;
+  text-align: left;
 }
 
 .graph-filter-buttons,

@@ -48,8 +48,16 @@ export default function App() {
     const storedRole = localStorage.getItem('role')
     return storedToken && (storedRole === 'user' || storedRole === 'admin') ? storedRole : null
   })
+  const [authUsername, setAuthUsername] = useState<string | null>(() => {
+    const storedToken = localStorage.getItem('token')
+    return storedToken ? localStorage.getItem('username') : null
+  })
   const [themeName, setThemeName] = useState<ThemeName>(() => getStoredTheme())
   const isAuthenticated = Boolean(authRole)
+  const normalizedUsername = authUsername?.trim().toLowerCase() ?? ''
+  const canOpenProfile = normalizedUsername === 'maksim'
+  const canOpenAgency = normalizedUsername === 'tarcisio'
+  const canOpenDashboard = authRole === 'admin' && normalizedUsername === 'aaron'
 
   const handleAuthClick = () => {
     if (isAuthenticated) {
@@ -58,14 +66,16 @@ export default function App() {
       localStorage.removeItem('username')
       localStorage.removeItem('user_id')
       setAuthRole(null)
+      setAuthUsername(null)
       return
     }
 
     navigate('/login')
   }
 
-  const handleLogin = (role: AuthRole) => {
+  const handleLogin = (role: AuthRole, username: string) => {
     setAuthRole(role)
+    setAuthUsername(username)
   }
 
   const handleThemeToggle = () => {
@@ -80,15 +90,17 @@ export default function App() {
         <NavLink to="/graph" className="app-nav-link">
           Graph
         </NavLink>
-        {authRole === 'user' && (
+        {canOpenProfile && (
           <NavLink to="/profile" className="app-nav-link">
             Profile
           </NavLink>
         )}
+        {canOpenAgency && (
           <NavLink to="/agency" className="app-nav-link">
             Agency
           </NavLink>
-        {authRole === 'admin' && (
+        )}
+        {canOpenDashboard && (
           <NavLink to="/dashboard" className="app-nav-link">
             Dashboard
           </NavLink>
@@ -108,9 +120,9 @@ export default function App() {
           <Route path="/graph" element={<GraphPage />} />
           <Route path="/login" element={isAuthenticated ? <Navigate to="/graph" replace /> : <LoginPage onLogin={handleLogin} />} />
           <Route path="/register" element={isAuthenticated ? <Navigate to="/graph" replace /> : <RegisterPage />} />
-          <Route path="/dashboard" element={authRole === 'admin' ? <DashboardPage /> : <Navigate to={isAuthenticated ? '/graph' : '/login'} replace />} />
-          <Route path="/profile" element={authRole === 'user' ? <ProfilePage /> : <Navigate to={isAuthenticated ? '/graph' : '/login'} replace />} />
-          <Route path="/agency" element={isAuthenticated ? <AgencyPage /> : <Navigate to="/login" replace />} />
+          <Route path="/dashboard" element={canOpenDashboard ? <DashboardPage /> : <Navigate to={isAuthenticated ? '/graph' : '/login'} replace />} />
+          <Route path="/profile" element={canOpenProfile ? <ProfilePage /> : <Navigate to={isAuthenticated ? '/graph' : '/login'} replace />} />
+          <Route path="/agency" element={canOpenAgency ? <AgencyPage /> : <Navigate to={isAuthenticated ? '/graph' : '/login'} replace />} />
           <Route path="/search" element={<SearchRedirect />} />
           <Route path="/artist/:id" element={<EntityRedirect type="artist" />} />
           <Route path="/promoter/:id" element={<EntityRedirect type="promoter" />} />
