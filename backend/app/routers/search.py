@@ -6,6 +6,16 @@ from app.db import get_db
 
 router = APIRouter()
 
+SearchSort = Literal["relevance", "name_asc", "name_desc", "id_asc", "id_desc"]
+
+SORT_ORDER_BY: dict[SearchSort, str] = {
+    "relevance": "rank DESC, name ASC",
+    "name_asc": "name ASC",
+    "name_desc": "name DESC",
+    "id_asc": "id ASC",
+    "id_desc": "id DESC",
+}
+
 class SearchResult(BaseModel):
     type: str
     id: int
@@ -79,31 +89,59 @@ ORDER BY rank DESC, name ASC;
 
 SEARCH_BY_TYPE_SQL = {
     "artist": """
-        SELECT 'artist' AS type, id, name
-        FROM artists
-        WHERE name ILIKE %s
-        ORDER BY ts_rank(to_tsvector('simple', name), plainto_tsquery('simple', %s)) DESC, name ASC
+        SELECT type, id, name
+        FROM (
+            SELECT
+                'artist' AS type,
+                id,
+                name,
+                ts_rank(to_tsvector('simple', name), plainto_tsquery('simple', %s)) AS rank
+            FROM artists
+            WHERE name ILIKE %s
+        ) results
+        ORDER BY {order_by}
         LIMIT %s;
     """,
     "venue": """
-        SELECT 'venue' AS type, id, name
-        FROM venues
-        WHERE name ILIKE %s
-        ORDER BY ts_rank(to_tsvector('simple', name), plainto_tsquery('simple', %s)) DESC, name ASC
+        SELECT type, id, name
+        FROM (
+            SELECT
+                'venue' AS type,
+                id,
+                name,
+                ts_rank(to_tsvector('simple', name), plainto_tsquery('simple', %s)) AS rank
+            FROM venues
+            WHERE name ILIKE %s
+        ) results
+        ORDER BY {order_by}
         LIMIT %s;
     """,
     "event": """
-        SELECT 'event' AS type, id, title AS name
-        FROM events
-        WHERE title ILIKE %s
-        ORDER BY ts_rank(to_tsvector('simple', title), plainto_tsquery('simple', %s)) DESC, title ASC
+        SELECT type, id, name
+        FROM (
+            SELECT
+                'event' AS type,
+                id,
+                title AS name,
+                ts_rank(to_tsvector('simple', title), plainto_tsquery('simple', %s)) AS rank
+            FROM events
+            WHERE title ILIKE %s
+        ) results
+        ORDER BY {order_by}
         LIMIT %s;
     """,
     "promoter": """
-        SELECT 'promoter' AS type, id, name
-        FROM promoters
-        WHERE name ILIKE %s
-        ORDER BY ts_rank(to_tsvector('simple', name), plainto_tsquery('simple', %s)) DESC, name ASC
+        SELECT type, id, name
+        FROM (
+            SELECT
+                'promoter' AS type,
+                id,
+                name,
+                ts_rank(to_tsvector('simple', name), plainto_tsquery('simple', %s)) AS rank
+            FROM promoters
+            WHERE name ILIKE %s
+        ) results
+        ORDER BY {order_by}
         LIMIT %s;
     """,
 }
@@ -113,13 +151,15 @@ def search(
     q: str = Query(..., min_length=1, max_length=100),
     limit: int = Query(8, ge=1, le=100),
     entity_type: Optional[Literal["artist", "venue", "event", "promoter"]] = Query(None, alias="type"),
+    sort: SearchSort = Query("relevance"),
     db: Connection = Depends(get_db),
 ):
     pattern = f"%{q}%"
 
     with db.cursor() as cur:
         if entity_type:
-            cur.execute(SEARCH_BY_TYPE_SQL[entity_type], (pattern, q, limit))
+            sql = SEARCH_BY_TYPE_SQL[entity_type].format(order_by=SORT_ORDER_BY[sort])
+            cur.execute(sql, (q, pattern, limit))
         else:
             per_type = max(2, limit // 4)
             cur.execute(SEARCH_SQL, (
