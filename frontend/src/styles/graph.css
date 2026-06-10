@@ -307,7 +307,6 @@
 
 .graph-filter-info-popover {
   position: absolute;
-  right: 0;
   top: calc(100% + 8px);
   z-index: 20;
   width: min(300px, calc(100vw - 48px));
@@ -321,6 +320,14 @@
   font-weight: 600;
   line-height: 1.35;
   text-align: left;
+}
+
+.graph-filter-info--genre .graph-filter-info-popover {
+  left: 0;
+}
+
+.graph-filter-info--limit .graph-filter-info-popover {
+  right: 0;
 }
 
 .graph-filter-buttons,

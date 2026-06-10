@@ -117,6 +117,16 @@
   .dashboard-table--claims .dashboard-table-row {
     grid-template-columns: 1fr;
   }
+
+  .graph-filter-info-popover {
+    position: fixed;
+    left: 16px;
+    right: 16px;
+    top: auto;
+    bottom: 24px;
+    width: auto;
+    z-index: 40;
+  }
 }
 
 @media (min-width: 641px) and (max-width: 1100px) {
