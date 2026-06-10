@@ -48,10 +48,14 @@
 
 .context-panel {
   grid-area: context;
+  position: relative;
+  z-index: 30;
 }
 
 .graph-workspace {
   grid-area: graph;
+  position: relative;
+  z-index: 1;
   display: grid;
   min-width: 0;
   min-height: 0;
@@ -617,6 +621,7 @@
 }
 
 .agency-artist-recommendation-search .search-query-dropdown {
+  max-height: min(460px, calc(100dvh - 170px));
   text-align: left;
 }
 

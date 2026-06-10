@@ -1,5 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent, type KeyboardEvent } from 'react'
-import { SEARCH_RESULT_LIMIT } from '../../api/search'
+import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
 import type { SearchEntityType, SearchResult } from '../../types/search'
 
 const SEARCH_RESULT_TABS: { type: SearchEntityType; label: string }[] = [
@@ -20,6 +19,12 @@ interface SearchInputFieldProps {
   showClear: boolean
   results?: SearchResult[]
   isLoading?: boolean
+  activeResultType?: SearchEntityType
+  onActiveResultTypeChange?: (type: SearchEntityType) => void
+  showResultTabs?: boolean
+  showResultsWhenEmpty?: boolean
+  canLoadMore?: boolean
+  onLoadMore?: () => void
   onSelectResult?: (result: SearchResult) => void
 }
 
@@ -38,30 +43,71 @@ export function SearchInputField({
   showClear,
   results = [],
   isLoading = false,
+  activeResultType: controlledActiveResultType,
+  onActiveResultTypeChange,
+  showResultTabs = true,
+  showResultsWhenEmpty = false,
+  canLoadMore = false,
+  onLoadMore,
   onSelectResult,
 }: SearchInputFieldProps) {
+  const dropdownRef = useRef<HTMLDivElement | null>(null)
+  const pendingScrollTopRef = useRef<number | null>(null)
+  const pendingResultCountRef = useRef<number | null>(null)
   const [isDropdownOpen, setIsDropdownOpen] = useState(false)
   const [activeResultIndex, setActiveResultIndex] = useState(-1)
-  const limitedResults = results.slice(0, SEARCH_RESULT_LIMIT)
   const groupedResults = useMemo(
     () => Object.fromEntries(
       SEARCH_RESULT_TABS.map(({ type }) => [
         type,
-        limitedResults.filter((result) => result.type === type),
+        results.filter((result) => result.type === type),
       ])
     ) as Record<SearchEntityType, SearchResult[]>,
-    [limitedResults]
+    [results]
   )
   const firstTabWithResults = SEARCH_RESULT_TABS.find(({ type }) => groupedResults[type].length > 0)?.type ?? 'artist'
-  const [activeResultType, setActiveResultType] = useState<SearchEntityType>(firstTabWithResults)
-  const visibleResults = groupedResults[activeResultType]
-  const shouldShowDropdown = Boolean(onSelectResult && isDropdownOpen && value.trim().length >= 2 && (isLoading || results.length > 0))
+  const [internalActiveResultType, setInternalActiveResultType] = useState<SearchEntityType>(firstTabWithResults)
+  const [hasManualTabSelection, setHasManualTabSelection] = useState(false)
+  const activeResultType = controlledActiveResultType ?? internalActiveResultType
+  const isActiveResultTypeControlled = controlledActiveResultType !== undefined
+  const visibleResults = showResultTabs ? groupedResults[activeResultType] : results
+  const shouldShowDropdown = Boolean(
+    onSelectResult &&
+    isDropdownOpen &&
+    value.trim().length >= 2 &&
+    (isLoading || results.length > 0 || showResultsWhenEmpty)
+  )
   const activeResult = activeResultIndex >= 0 ? visibleResults[activeResultIndex] : undefined
 
   useEffect(() => {
     setActiveResultIndex(-1)
-    setActiveResultType(firstTabWithResults)
-  }, [value, results, firstTabWithResults])
+    setHasManualTabSelection(false)
+  }, [value])
+
+  useEffect(() => {
+    setActiveResultIndex(-1)
+  }, [value, results])
+
+  useEffect(() => {
+    if (!isActiveResultTypeControlled && !hasManualTabSelection) {
+      setInternalActiveResultType(firstTabWithResults)
+    }
+  }, [firstTabWithResults, hasManualTabSelection, isActiveResultTypeControlled])
+
+  useEffect(() => {
+    if (pendingScrollTopRef.current === null) return
+    if (isLoading) return
+    if (pendingResultCountRef.current !== null && visibleResults.length <= pendingResultCountRef.current) return
+
+    window.requestAnimationFrame(() => {
+      if (dropdownRef.current && pendingScrollTopRef.current !== null) {
+        dropdownRef.current.scrollTop = pendingScrollTopRef.current
+      }
+
+      pendingScrollTopRef.current = null
+      pendingResultCountRef.current = null
+    })
+  }, [isLoading, visibleResults.length])
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     setIsDropdownOpen(false)
@@ -82,8 +128,20 @@ export function SearchInputField({
   }
 
   const selectTab = (type: SearchEntityType) => {
-    setActiveResultType(type)
+    setHasManualTabSelection(true)
+    if (isActiveResultTypeControlled) {
+      onActiveResultTypeChange?.(type)
+    } else {
+      setInternalActiveResultType(type)
+    }
     setActiveResultIndex(-1)
+  }
+
+  const handleLoadMore = () => {
+    pendingScrollTopRef.current = dropdownRef.current?.scrollTop ?? null
+    pendingResultCountRef.current = visibleResults.length
+    setActiveResultIndex(-1)
+    onLoadMore?.()
   }
 
   const handleKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
@@ -155,42 +213,44 @@ export function SearchInputField({
       </div>
 
       {shouldShowDropdown && (
-        <div id={`${inputId}-results`} className="search-query-dropdown">
+        <div id={`${inputId}-results`} className="search-query-dropdown" ref={dropdownRef}>
           {isLoading && <div className="search-query-dropdown-status">Searching...</div>}
           {!isLoading && (
             <>
-              <div className="search-query-tabs" role="tablist" aria-label="Search result types">
-                {SEARCH_RESULT_TABS.map(({ type, label }) => {
-                  const isActive = activeResultType === type
-                  const resultCount = groupedResults[type].length
+              {showResultTabs && (
+                <div className="search-query-tabs" role="tablist" aria-label="Search result types">
+                  {SEARCH_RESULT_TABS.map(({ type, label }) => {
+                    const isActive = activeResultType === type
+                    const resultCount = groupedResults[type].length
 
-                  return (
-                    <button
-                      key={type}
-                      id={`${inputId}-tab-${type}`}
-                      type="button"
-                      className={`search-query-tab${isActive ? ' search-query-tab--active' : ''}`}
-                      role="tab"
-                      aria-selected={isActive}
-                      aria-controls={`${inputId}-results-panel-${type}`}
-                      onMouseDown={(event) => event.preventDefault()}
-                      onClick={() => selectTab(type)}
-                    >
-                      <span>{label}</span>
-                      <strong>{resultCount}</strong>
-                    </button>
-                  )
-                })}
-              </div>
+                    return (
+                      <button
+                        key={type}
+                        id={`${inputId}-tab-${type}`}
+                        type="button"
+                        className={`search-query-tab${isActive ? ' search-query-tab--active' : ''}`}
+                        role="tab"
+                        aria-selected={isActive}
+                        aria-controls={`${inputId}-results-panel-${type}`}
+                        onMouseDown={(event) => event.preventDefault()}
+                        onClick={() => selectTab(type)}
+                      >
+                        <span>{label}</span>
+                        <strong>{resultCount}</strong>
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
 
               <div
                 id={`${inputId}-results-panel-${activeResultType}`}
                 className="search-query-tab-panel"
-                role="tabpanel"
-                aria-labelledby={`${inputId}-tab-${activeResultType}`}
+                role={showResultTabs ? 'tabpanel' : undefined}
+                aria-labelledby={showResultTabs ? `${inputId}-tab-${activeResultType}` : undefined}
               >
                 {visibleResults.length > 0 ? (
-                  <div role="listbox" aria-label={`${activeResultType} search results`}>
+                  <div role="listbox" aria-label={showResultTabs ? `${activeResultType} search results` : 'Search results'}>
                     {visibleResults.map((result, index) => (
                       <button
                         key={`${result.type}-${result.id}`}
@@ -204,11 +264,11 @@ export function SearchInputField({
                           selectResult(result)
                         }}
                       >
-                        <span>
+                        <span className="search-query-option-index">{index + 1}</span>
+                        <span className="search-query-option-text">
                           <strong>{result.name}</strong>
                           {getResultMeta(result) && <small>{getResultMeta(result)}</small>}
                         </span>
-                        <em>{result.type}</em>
                       </button>
                     ))}
                   </div>
@@ -216,6 +276,17 @@ export function SearchInputField({
                   <div className="search-query-dropdown-status">No {activeResultType} matches</div>
                 )}
               </div>
+
+              {canLoadMore && (
+                <button
+                  type="button"
+                  className="search-query-load-more"
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={handleLoadMore}
+                >
+                  Load more results
+                </button>
+              )}
             </>
           )}
         </div>

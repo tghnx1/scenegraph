@@ -1,14 +1,25 @@
 import { api } from './client'
-import type { SearchResponse } from '../types/search'
+import type { SearchEntityType, SearchResponse } from '../types/search'
 
-export const SEARCH_RESULT_LIMIT = 16
+export const SEARCH_RESULT_LIMIT = 10
+export const SEARCH_RESULT_MAX_LIMIT = 100
 
-export const fetchSearch = async (query: string, limit = SEARCH_RESULT_LIMIT): Promise<SearchResponse> => {
+export const fetchSearch = async (query: string, limit = SEARCH_RESULT_LIMIT, type?: SearchEntityType): Promise<SearchResponse> => {
   const trimmed = query.trim()
 
   if (!trimmed) {
     return { query: '', results: [] }
   }
 
-  return api.get<SearchResponse>(`/search?q=${encodeURIComponent(trimmed)}&limit=${limit}`)
+  const safeLimit = Math.min(limit, SEARCH_RESULT_MAX_LIMIT)
+  const params = new URLSearchParams({
+    q: trimmed,
+    limit: String(safeLimit),
+  })
+
+  if (type) {
+    params.set('type', type)
+  }
+
+  return api.get<SearchResponse>(`/search?${params.toString()}`)
 }
