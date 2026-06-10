@@ -4,7 +4,7 @@ import { getFallbackRole, login, type AuthRole } from '../api/auth'
 import { authButtonStyle, authInputStyle, PasswordInput } from './components/PasswordToggle'
 
 interface LoginPageProps {
-  onLogin: (role: AuthRole) => void
+  onLogin: (role: AuthRole, username: string) => void
 }
 
 const colorVar = (name: string) => `var(${name})`
@@ -39,7 +39,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
         localStorage.setItem('user_id', String(response.user_id))
       }
 
-      onLogin(role)
+      onLogin(role, authenticatedUsername)
     } catch {
       setError('Login failed. Please try again.')
     } finally {

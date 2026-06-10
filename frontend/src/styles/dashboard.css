@@ -63,7 +63,7 @@
   padding: 14px;
   border-radius: 8px;
   background: var(--surface-strong);
-  border: 1px solid var(--event-border-soft);
+  border: 1px solid var(--surface-border-soft);
 }
 
 .dashboard-stat-card span,
@@ -197,8 +197,10 @@
   padding: 0;
   box-sizing: border-box;
   border-radius: 999px;
-  border: 1px solid var(--selection-border);
-  background: color-mix(in srgb, var(--selection-panel) 58%, var(--surface-panel));
+  /* border: 1px solid var(--selection-border); */
+  /* background: color-mix(in srgb, var(--selection-panel) 58%, var(--surface-panel)); */
+  border: 1px solid var(--surface-border);
+  background: var(--surface-panel);
   color: var(--text);
   cursor: help;
   opacity: 0.86;
@@ -231,7 +233,7 @@
 .dashboard-info-popover {
   position: absolute;
   right: 0;
-  bottom: calc(100% + 8px);
+  top: calc(100% + 8px);
   z-index: 10;
   width: min(320px, calc(100vw - 48px));
   padding: 10px 12px;
@@ -273,7 +275,7 @@
   padding: 8px 10px;
   border-radius: 8px;
   background: var(--surface-strong);
-  border: 1px solid var(--event-border-soft);
+  border: 1px solid var(--surface-border-soft);
 }
 
 .dashboard-top-list li span {
