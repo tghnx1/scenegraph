@@ -1,10 +1,15 @@
 import { api } from './client'
-import type { SearchEntityType, SearchResponse } from '../types/search'
+import type { SearchEntityType, SearchResponse, SearchSort } from '../types/search'
 
 export const SEARCH_RESULT_LIMIT = 10
 export const SEARCH_RESULT_MAX_LIMIT = 100
 
-export const fetchSearch = async (query: string, limit = SEARCH_RESULT_LIMIT, type?: SearchEntityType): Promise<SearchResponse> => {
+export const fetchSearch = async (
+  query: string,
+  limit = SEARCH_RESULT_LIMIT,
+  type?: SearchEntityType,
+  sort?: SearchSort
+): Promise<SearchResponse> => {
   const trimmed = query.trim()
 
   if (!trimmed) {
@@ -19,6 +24,10 @@ export const fetchSearch = async (query: string, limit = SEARCH_RESULT_LIMIT, ty
 
   if (type) {
     params.set('type', type)
+  }
+
+  if (sort) {
+    params.set('sort', sort)
   }
 
   return api.get<SearchResponse>(`/search?${params.toString()}`)
