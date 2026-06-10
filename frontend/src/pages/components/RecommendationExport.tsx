@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import type { PromoterRecommendation, PromoterRecommendationResponse } from '../../types/recommendation'
 
 type RecommendationGraphMode = 'compact' | 'full'
@@ -57,6 +57,17 @@ function htmlEscape(value: unknown): string {
     .replaceAll("'", '&#39;')
 }
 
+function sourceArtistName(recommendationsData: PromoterRecommendationResponse): string {
+  const sourceNode = [
+    ...recommendationsData.graph.nodes,
+    ...(recommendationsData.analyticsGraph?.nodes ?? []),
+  ].find((node) => (
+    node.type === 'artist' && node.entityId === recommendationsData.entityId
+  ))
+
+  return sourceNode?.name ?? `Artist ${recommendationsData.entityId}`
+}
+
 export function RecommendationExportMenu({
   recommendationsData,
   filteredRecommendations,
@@ -64,6 +75,15 @@ export function RecommendationExportMenu({
   recommendationGraphMode,
 }: RecommendationExportMenuProps) {
   const [isExportMenuOpen, setIsExportMenuOpen] = useState(false)
+  const exportRecommendations = useMemo(() => {
+    if (!recommendationsData) return []
+
+    return [...recommendationsData.recommendations].sort((left, right) => {
+      const scoreDelta = recommendationScore(right) - recommendationScore(left)
+      if (Math.abs(scoreDelta) > 1e-9) return scoreDelta
+      return left.name.localeCompare(right.name)
+    })
+  }, [recommendationsData])
 
   const handleExportJson = useCallback(() => {
     if (!recommendationsData) return
@@ -91,7 +111,7 @@ export function RecommendationExportMenu({
     if (!recommendationsData) return
     setIsExportMenuOpen(false)
 
-    const rows = filteredRecommendations.map((recommendation, index) => [
+    const rows = exportRecommendations.map((recommendation, index) => [
       index + 1,
       recommendation.name,
       `${Math.round(recommendationScore(recommendation) * 100)}%`,
@@ -110,13 +130,14 @@ export function RecommendationExportMenu({
       csv,
       'text/csv;charset=utf-8',
     )
-  }, [filteredRecommendations, recommendationsData])
+  }, [exportRecommendations, recommendationsData])
 
   const handleExportPdf = useCallback(() => {
     if (!recommendationsData) return
     setIsExportMenuOpen(false)
 
-    const reportRows = filteredRecommendations.map((recommendation, index) => {
+    const artistName = sourceArtistName(recommendationsData)
+    const reportRows = exportRecommendations.map((recommendation, index) => {
       const reasons = recommendation.reasons
         .map((reason) => `<li>${htmlEscape(reason.replace(MORE_SUFFIX_PATTERN, ''))}</li>`)
         .join('')
@@ -151,9 +172,8 @@ export function RecommendationExportMenu({
         <body>
           <h1>Promoter Recommendations</h1>
           <p class="meta">
-            Artist ${htmlEscape(recommendationsData.entityId)} ·
-            ${filteredRecommendations.length} of ${recommendationsData.recommendations.length} shown ·
-            threshold ${Math.round(recommendationStrengthThreshold * 100)}% ·
+            Artist ${htmlEscape(artistName)} ·
+            ${exportRecommendations.length} recommendations exported ·
             exported ${htmlEscape(new Date().toLocaleString())}
           </p>
           ${reportRows}
@@ -165,7 +185,7 @@ export function RecommendationExportMenu({
     window.setTimeout(() => {
       popup.print()
     }, 250)
-  }, [filteredRecommendations, recommendationStrengthThreshold, recommendationsData])
+  }, [exportRecommendations, recommendationsData])
 
   return (
     <div className="export-menu">
