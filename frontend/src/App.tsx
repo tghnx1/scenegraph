@@ -6,7 +6,7 @@ import { ProfilePage } from './pages/ProfilePage'
 import { AgencyPage } from './pages/AgencyPage'
 import { LoginPage } from './pages/LoginPage'
 import { RegisterPage } from './pages/RegisterPage'
-import type { AuthRole } from './api/auth'
+import { getFallbackRole, isAuthRole, type AuthRole } from './api/auth'
 import { applyTheme, getStoredTheme, type ThemeName } from './styles/colors'
 
 const colorVar = (name: string) => `var(${name})`
@@ -46,18 +46,22 @@ export default function App() {
   const [authRole, setAuthRole] = useState<AuthRole | null>(() => {
     const storedToken = localStorage.getItem('token')
     const storedRole = localStorage.getItem('role')
-    return storedToken && (storedRole === 'user' || storedRole === 'admin') ? storedRole : null
-  })
-  const [authUsername, setAuthUsername] = useState<string | null>(() => {
-    const storedToken = localStorage.getItem('token')
-    return storedToken ? localStorage.getItem('username') : null
+    const storedUsername = localStorage.getItem('username')
+
+    if (!storedToken) return null
+    if (isAuthRole(storedRole)) return storedRole
+    if (storedUsername) return getFallbackRole(storedUsername)
+
+    return null
   })
   const [themeName, setThemeName] = useState<ThemeName>(() => getStoredTheme())
   const isAuthenticated = Boolean(authRole)
-  const normalizedUsername = authUsername?.trim().toLowerCase() ?? ''
-  const canOpenProfile = normalizedUsername === 'maksim'
-  const canOpenAgency = normalizedUsername === 'tarcisio'
-  const canOpenDashboard = authRole === 'admin' && normalizedUsername === 'aaron'
+  const canOpenDashboard = authRole === 'admin'
+  const graphPage = authRole === 'artist'
+    ? <ProfilePage />
+    : authRole === 'agent' || authRole === 'admin'
+      ? <AgencyPage />
+      : <GraphPage />
 
   const handleAuthClick = () => {
     if (isAuthenticated) {
@@ -66,16 +70,14 @@ export default function App() {
       localStorage.removeItem('username')
       localStorage.removeItem('user_id')
       setAuthRole(null)
-      setAuthUsername(null)
       return
     }
 
     navigate('/login')
   }
 
-  const handleLogin = (role: AuthRole, username: string) => {
+  const handleLogin = (role: AuthRole, _username: string) => {
     setAuthRole(role)
-    setAuthUsername(username)
   }
 
   const handleThemeToggle = () => {
@@ -90,16 +92,6 @@ export default function App() {
         <NavLink to="/graph" className="app-nav-link">
           Graph
         </NavLink>
-        {canOpenProfile && (
-          <NavLink to="/profile" className="app-nav-link">
-            Profile
-          </NavLink>
-        )}
-        {canOpenAgency && (
-          <NavLink to="/agency" className="app-nav-link">
-            Agency
-          </NavLink>
-        )}
         {canOpenDashboard && (
           <NavLink to="/dashboard" className="app-nav-link">
             Dashboard
@@ -117,12 +109,12 @@ export default function App() {
       <main className="app-main">
         <Routes>
           <Route path="/" element={<Navigate to="/graph" />} />
-          <Route path="/graph" element={<GraphPage />} />
+          <Route path="/graph" element={graphPage} />
           <Route path="/login" element={isAuthenticated ? <Navigate to="/graph" replace /> : <LoginPage onLogin={handleLogin} />} />
           <Route path="/register" element={isAuthenticated ? <Navigate to="/graph" replace /> : <RegisterPage />} />
           <Route path="/dashboard" element={canOpenDashboard ? <DashboardPage /> : <Navigate to={isAuthenticated ? '/graph' : '/login'} replace />} />
-          <Route path="/profile" element={canOpenProfile ? <ProfilePage /> : <Navigate to={isAuthenticated ? '/graph' : '/login'} replace />} />
-          <Route path="/agency" element={canOpenAgency ? <AgencyPage /> : <Navigate to={isAuthenticated ? '/graph' : '/login'} replace />} />
+          <Route path="/profile" element={<Navigate to="/graph" replace />} />
+          <Route path="/agency" element={<Navigate to="/graph" replace />} />
           <Route path="/search" element={<SearchRedirect />} />
           <Route path="/artist/:id" element={<EntityRedirect type="artist" />} />
           <Route path="/promoter/:id" element={<EntityRedirect type="promoter" />} />
