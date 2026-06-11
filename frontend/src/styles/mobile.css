@@ -100,9 +100,32 @@
 
   .dashboard-overview-chart {
     grid-template-columns: 1fr;
+    grid-template-areas:
+      "mode"
+      "chart"
+      "legend"
+      "dates";
+    align-items: stretch;
+  }
+
+  .dashboard-chart-wrap {
+    width: min(280px, 100%);
+  }
+
+  .dashboard-chart-wrap--stackedbar {
+    width: 100%;
+    min-height: 170px;
+  }
+
+  .dashboard-chart-mode {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
   .dashboard-chart-legend {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-chart-dates {
     grid-template-columns: 1fr;
   }
 
@@ -145,6 +168,28 @@
 
   .dashboard-overview-chart {
     grid-template-columns: 1fr;
+    grid-template-areas:
+      "mode"
+      "chart"
+      "legend"
+      "dates";
+    align-items: stretch;
+  }
+
+  .dashboard-chart-wrap {
+    width: min(360px, 100%);
+  }
+
+  .dashboard-chart-wrap--stackedbar {
+    width: 100%;
+  }
+
+  .dashboard-chart-mode {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .dashboard-chart-legend {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .dashboard-panel-full {
