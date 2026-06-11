@@ -82,3 +82,42 @@ export const register = (
     password,
     password_confirm,
   })
+
+export interface ActivityLogItem {
+  id: number
+  username: string | null
+  event_type: string
+  target: string | null
+  created_at: string
+}
+
+export const getActivityLog = (): Promise<{ success: boolean; activity: ActivityLogItem[] }> =>
+  api.get('/admin/activity', {
+    headers: { 'X-Admin-Username': localStorage.getItem('username') ?? ''},
+  })
+
+export const logout = (
+  username: string,
+): Promise<{ success: boolean; message: string }> =>
+  api.post('/logout', { username, password: '' })
+
+export interface UserItem {
+  id: number
+  username: string
+  email: string
+  role: AuthRole
+  status: string
+  created_at: string
+}
+
+export const getUsers = (): Promise<{ success: boolean; users: UserItem[] }> =>
+  api.get('/admin/users', {
+    headers: { 'X-Admin-Username': localStorage.getItem('username') ?? '' },
+  })
+
+export const deactivateUser = (
+  userId: number,
+): Promise<{ success: boolean; message: string }> =>
+  api.post(`/admin/users/${userId}/deactivate`, undefined, {
+    headers: { 'X-Admin-Username': localStorage.getItem('username') ?? '' },
+  })

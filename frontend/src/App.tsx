@@ -4,10 +4,8 @@ import { GraphPage } from './pages/GraphPage'
 import { DashboardPage } from './pages/DashboardPage'
 import { ProfilePage } from './pages/ProfilePage'
 import { LoginPage } from './pages/LoginPage'
-import { RegisterPage } from './pages/RegisterPage'
-import type { AuthRole } from './api/auth'
+import { logout, type AuthRole } from './api/auth'
 import { applyTheme, getStoredTheme, type ThemeName } from './styles/colors'
-import { AdminUsersPage } from './pages/AdminUsersPage'
 
 const colorVar = (name: string) => `var(${name})`
 
@@ -51,8 +49,19 @@ export default function App() {
   const [themeName, setThemeName] = useState<ThemeName>(() => getStoredTheme())
   const isAuthenticated = Boolean(authRole)
 
-  const handleAuthClick = () => {
+  const handleAuthClick = async () => {
     if (isAuthenticated) {
+
+      const username = localStorage.getItem('username')
+
+      if (username) {
+        try {
+          await logout(username)
+        } catch {
+          console.error('Logout logging failed')
+        }
+      }
+
       localStorage.removeItem('token')
       localStorage.removeItem('role')
       localStorage.removeItem('username')
@@ -90,11 +99,6 @@ export default function App() {
             Dashboard
           </NavLink>
         )}
-        {authRole === 'admin' && (
-          <NavLink to="/admin/users" className="app-nav-link">
-            Pending users
-          </NavLink>
-        )}
         <span className="app-nav-spacer" />
         <button type="button" className="app-nav-button" onClick={handleThemeToggle}>
           {themeName === 'light' ? 'Dark' : 'Light'}
@@ -119,14 +123,6 @@ export default function App() {
           <Route path="/impressum" element={<LegalPage section="impressum" />} />
           <Route path="/cookie-settings" element={<LegalPage section="cookies" />} />
           <Route path="/contact" element={<LegalPage section="contact" />} />
-          <Route
-            path="/admin/users"
-            element={
-              isAuthenticated && authRole === 'admin'
-                ? <AdminUsersPage />
-                : <Navigate to="/login" replace />
-            }
-          />
         </Routes>
       </main>
 
