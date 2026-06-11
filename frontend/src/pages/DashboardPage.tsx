@@ -63,7 +63,10 @@ export function DashboardPage() {
 
       <section className="dashboard-admin-grid" aria-label="Admin dashboard sections">
         <article className="dashboard-panel dashboard-mock-element">
-          <PanelHeading label="Data quality" status="Missing entries" />
+          <div className="panel-heading">
+            <span className="search-query-label">Data quality</span>
+            <span className="panel-status">Missing entries</span>
+          </div>
           <div className="quality-list">
             {qualityItems.map((item) => (
               <div key={item.label} className={`quality-item ${item.tone}`}>
@@ -75,7 +78,10 @@ export function DashboardPage() {
         </article>
 
         <article className="dashboard-panel dashboard-mock-element">
-          <PanelHeading label="Data statistics" status="Connectivity" />
+          <div className="panel-heading">
+            <span className="search-query-label">Data statistics</span>
+            <span className="panel-status">Connectivity</span>
+          </div>
           <div className="graph-health-grid">
             {dataStatistics.map((metric) => (
               <div key={metric.label}>
