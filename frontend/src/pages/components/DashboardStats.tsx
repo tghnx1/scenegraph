@@ -253,15 +253,12 @@ export function DashboardStatistics({dashboardStatus, isLoading, hasError}: Dash
       <article className="dashboard-panel dashboard-panel-full">
         <PanelHeading label="Dataset Overview" status="General metrics" />
         <div className="dashboard-overview">
-          <OverviewChart items={overviewStats} isUnavailable={isLoading || hasError} formatValue={formatNumber} />
-          <div className="dashboard-stat-card dashboard-date-card">
-            {eventDateStats.map((item) => (
-              <div key={item.label}>
-                <span>{item.label}</span>
-                <strong>{isLoading || hasError ? '-' : item.value}</strong>
-              </div>
-            ))}
-          </div>
+          <OverviewChart
+            items={overviewStats}
+            dateItems={eventDateStats}
+            isUnavailable={isLoading || hasError}
+            formatValue={formatNumber}
+          />
         </div>
       </article>
 

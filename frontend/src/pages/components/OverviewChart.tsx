@@ -6,8 +6,14 @@ export type OverviewChartItem = {
   color: string
 }
 
+export type OverviewDateItem = {
+  label: string
+  value: string | number
+}
+
 type OverviewChartProps = {
   items: OverviewChartItem[]
+  dateItems: OverviewDateItem[]
   isUnavailable: boolean
   formatValue: (value: number | string | null | undefined) => string | number
 }
@@ -78,13 +84,13 @@ function buildWaffleCells(items: OverviewChartItem[], total: number) {
   return [...cells, ...Array<null>(Math.max(0, cellCount - cells.length)).fill(null)].slice(0, cellCount)
 }
 
-export function OverviewChart({items, isUnavailable, formatValue}: OverviewChartProps) {
+export function OverviewChart({items, dateItems, isUnavailable, formatValue}: OverviewChartProps) {
   const [activeStat, setActiveStat] = useState<string | null>(null)
   const [chartMode, setChartMode] = useState<ChartMode>('donut')
-  const chartSize = 220
+  const chartSize = 360
   const center = chartSize / 2
-  const radius = 94
-  const innerRadius = 56
+  const radius = 156
+  const innerRadius = 94
   const ringRadius = (radius + innerRadius) / 2
   const ringWidth = radius - innerRadius
   const resolvedItems = isUnavailable ? [] : items.filter((item) => typeof item.value === 'number' && item.value > 0)
@@ -95,6 +101,29 @@ export function OverviewChart({items, isUnavailable, formatValue}: OverviewChart
 
   return (
     <div className="dashboard-overview-chart">
+      <div className="dashboard-chart-mode" role="group" aria-label="Dataset overview chart type">
+        <button
+          type="button"
+          aria-pressed={chartMode === 'donut'}
+          onClick={() => setChartMode('donut')}
+        >
+          Donut
+        </button>
+        <button
+          type="button"
+          aria-pressed={chartMode === 'waffle'}
+          onClick={() => setChartMode('waffle')}
+        >
+          Waffle
+        </button>
+        <button
+          type="button"
+          aria-pressed={chartMode === 'stackedbar'}
+          onClick={() => setChartMode('stackedbar')}
+        >
+          Stacked
+        </button>
+      </div>
       <div className={`dashboard-chart-wrap dashboard-chart-wrap--${chartMode}`}>
         {chartMode === 'donut' ? (
           <>
@@ -217,43 +246,26 @@ export function OverviewChart({items, isUnavailable, formatValue}: OverviewChart
           </div>
         )}
       </div>
-      <div className="dashboard-chart-side">
-        <div className="dashboard-chart-mode" role="group" aria-label="Dataset overview chart type">
-          <button
-            type="button"
-            aria-pressed={chartMode === 'donut'}
-            onClick={() => setChartMode('donut')}
+      <div className="dashboard-chart-legend" aria-label="Dataset overview legend">
+        {items.map((item) => (
+          <span
+            key={item.label}
+            className="dashboard-chart-legend-item"
+            onMouseEnter={() => !isUnavailable && setActiveStat(item.label)}
+            onMouseLeave={() => setActiveStat(null)}
           >
-            Donut
-          </button>
-          <button
-            type="button"
-            aria-pressed={chartMode === 'waffle'}
-            onClick={() => setChartMode('waffle')}
-          >
-            Waffle
-          </button>
-          <button
-            type="button"
-            aria-pressed={chartMode === 'stackedbar'}
-            onClick={() => setChartMode('stackedbar')}
-          >
-            Stacked
-          </button>
-        </div>
-        <div className="dashboard-chart-legend" aria-label="Dataset overview legend">
-          {items.map((item) => (
-            <span
-              key={item.label}
-              className="dashboard-chart-legend-item"
-              onMouseEnter={() => !isUnavailable && setActiveStat(item.label)}
-              onMouseLeave={() => setActiveStat(null)}
-            >
-              <i style={{background: item.color}} aria-hidden="true" />
-              {item.label}
-            </span>
-          ))}
-        </div>
+            <i style={{background: item.color}} aria-hidden="true" />
+            {item.label}
+          </span>
+        ))}
+      </div>
+      <div className="dashboard-chart-dates" aria-label="Dataset event date range">
+        {dateItems.map((item) => (
+          <div key={item.label} className="dashboard-chart-date-row">
+            <span>{item.label}</span>
+            <strong>{isUnavailable ? '-' : item.value}</strong>
+          </div>
+        ))}
       </div>
     </div>
   )
