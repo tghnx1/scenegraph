@@ -10,6 +10,32 @@ interface LoginPageProps {
 const colorVar = (name: string) => `var(${name})`
 const colorAlpha = (name: string, percent: number) => `color-mix(in srgb, var(${name}) ${percent}%, transparent)`
 
+const loginButtonStyle: CSSProperties = {
+  textDecoration: 'none',
+  color: colorVar('--text-muted'),
+  padding: '6px 10px',
+  borderRadius: 8,
+  fontSize: 14,
+  fontWeight: 600,
+  transition: 'all 120ms ease',
+  cursor: 'pointer',
+  border: `1px solid ${colorAlpha('--text', 18)}`,
+  background: colorAlpha('--text', 6),
+  font: 'inherit',
+}
+
+const inputStyle: CSSProperties = {
+  width: '100%',
+  minWidth: 0,
+  border: `1px solid ${colorAlpha('--text', 18)}`,
+  borderRadius: 8,
+  background: colorAlpha('--background', 64),
+  color: colorVar('--text'),
+  font: 'inherit',
+  padding: '10px 12px',
+  outline: 'none',
+}
+
 export function LoginPage({ onLogin }: LoginPageProps) {
   const [username, setUsername] = useState(localStorage.getItem('last_username') ?? '')   // for keeping the username in the login mask
   const [password, setPassword] = useState('')
@@ -137,7 +163,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
           <label style={{ display: 'grid', gap: 6, color: colorVar('--text-muted'), fontSize: 14 }}>
             Username
             <input
-              style={authInputStyle}
+              style={inputStyle}
               value={username}
               onChange={(event) => setUsername(event.target.value)}
               autoComplete="username"
@@ -158,9 +184,11 @@ export function LoginPage({ onLogin }: LoginPageProps) {
           )}
           <label style={{ display: 'grid', gap: 6, color: colorVar('--text-muted'), fontSize: 14 }}>
             Password
-            <PasswordInput
+            <input
+              style={inputStyle}
+              type="password"
               value={password}
-              onChange={setPassword}
+              onChange={(event) => setPassword(event.target.value)}
               autoComplete="current-password"
               required
             />
@@ -225,12 +253,6 @@ export function LoginPage({ onLogin }: LoginPageProps) {
             {isRegistering ? 'Back to sign in' : 'Create account'}
           </button>
         </form>
-        <p style={{ margin: '18px 0 0', color: colorVar('--text-muted'), fontSize: 14 }}>
-          No account yet?{' '}
-          <Link to="/register" style={{ color: colorVar('--text'), fontWeight: 700 }}>
-            Create one
-          </Link>
-        </p>
       </section>
     </div>
   )
