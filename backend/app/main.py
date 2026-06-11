@@ -85,6 +85,23 @@ def create_bootstrap_admin(connection: Connection) -> None:         #like void
 
         connection.commit()
 
+def log_activity(
+        connection: Connection,
+        user_id: int | None,
+        username: str | None,
+        event_type: str,
+        target: str | None = None,
+) -> None:
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            INSERT INTO activity_log (user_id, username, event_type, target)
+            VALUES (%s, %s, %s, %s)
+            """,
+            (user_id, username, event_type, target),
+        )
+    connection.commit()
+
 @asynccontextmanager
 async def lifespan(app_instance: FastAPI):
     schema_report: dict[str, object] = {
@@ -241,6 +258,15 @@ async def login(
             message="Account is not approved"
         )
     
+    log_activity(
+        connection,
+        user["id"],
+        user["username"],
+        "login",
+        "Login page",
+    )
+    connection.commit()
+    
     return LoginResponse(
         success=True,
         message="Login successful",
@@ -299,6 +325,13 @@ async def register(
 
         created_user = cursor.fetchone()
 
+        log_activity(
+            connection,
+            created_user["id"],
+            register_data.username,
+            "registration",
+            "User account",
+        )
         connection.commit() # ensure to save the changes...
     
     return RegisterResponse(
@@ -368,6 +401,14 @@ async def change_password(
             ),
         )
 
+        log_activity(
+            connection,
+            user["id"],
+            user["username"],
+            "password change",
+            "Own account",
+        )
+
         connection.commit()
 
     return ChangePasswordResponse(
@@ -417,6 +458,15 @@ async def approve_user(
     
     if updated_user is None:
         raise HTTPException(status_code=404, detail="User not found")
+    
+    log_activity(
+        connection,
+        admin["id"],
+        admin["username"],
+        "user approved",
+        updated_user["username"],
+    )
+    connection.commit()
 
     return {
         "success": True,
@@ -445,12 +495,123 @@ async def reject_user(
     
     if updated_user is None:
         raise HTTPException(status_code=404, detail="User not found")
+    
+    log_activity(
+        connection,
+        admin["id"],
+        admin["username"],
+        "user registration rejected",
+        updated_user["username"],
+    )
+    connection.commit()
 
     return {
         "success": True,
         "message": "User rejected",
         "user": updated_user,
     }
+
+
+@app.post("/api/admin/users/{user_id}/deactivate")
+async def deactivate_user(
+    user_id: int,
+    admin: dict = Depends(require_admin),
+    connection: Connection = Depends(get_db),
+) -> dict:
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            UPDATE users
+            SET status = 'deactivated'
+            WHERE id = %s
+            RETURNING id, username, email, role, status
+            """,
+            (user_id,),
+        )
+        updated_user = cursor.fetchone()
+
+        if updated_user is None:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        log_activity(
+            connection,
+            updated_user["id"],
+            updated_user["username"],
+            "deactivation",
+            f"Deactivated by {admin['username']}",
+        )
+
+        log_activity(
+            connection,
+            admin["id"],
+            admin["username"],
+            "user deactivated",
+            updated_user["username"],
+        )
+        connection.commit()
+    
+    return {
+        "success": True,
+        "message": "User deactivated",
+        "user": updated_user,
+    }
+
+@app.get("/api/admin/activity")
+async def list_activity(
+    admin: dict = Depends(require_admin),
+    connection: Connection = Depends(get_db),
+) -> dict:
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT id, username, event_type, target, created_at
+            FROM activity_log
+            ORDER BY created_at DESC
+            LIMIT 20
+            """
+        )
+        rows = cursor.fetchall()
+    
+    return {
+        "success": True,
+        "activity": rows,
+    }
+
+@app.get("/api/admin/users")
+async def list_users(
+    admin: dict = Depends(require_admin),
+    connection: Connection = Depends(get_db),
+) -> dict:
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT id, username, email, role, status, created_at
+            FROM users
+            ORDER BY created_at DESC
+            """
+        )
+        users = cursor.fetchall()
+
+    return {
+        "success": True,
+        "users": users,
+    }
+
+@app.post("/api/logout")
+async def logout(
+    logout_data: LoginRequest,
+    connection: Connection = Depends(get_db),
+) ->dict:
+    log_activity(
+        connection,
+        None,
+        logout_data.username,
+        "logout",
+        "Frontend logout",
+    )
+    connection.commit()
+
+    return {"success": True, "message": "Logout logged"}
 
 @app.get("/api/venues", response_model=VenuesResponse)
 async def list_venues(connection: Connection = Depends(get_db)) -> VenuesResponse:
