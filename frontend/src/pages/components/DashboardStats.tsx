@@ -1,5 +1,6 @@
 import {useState} from 'react'
 import type {DashboardStatus, DashboardTopListItem} from '../../types/status'
+import {OverviewChart, type OverviewChartItem} from './OverviewChart'
 
 type DashboardStatisticsProps = {
   dashboardStatus: DashboardStatus | null
@@ -118,11 +119,11 @@ function loadingItems(items: MetricRow[]) {
 }
 
 export function DashboardStatistics({dashboardStatus, isLoading, hasError}: DashboardStatisticsProps) {
-  const overviewStats = [
-    { label: 'Total events', value: dashboardStatus?.events },
-    { label: 'Total artists', value: dashboardStatus?.artists },
-    { label: 'Total promoters', value: dashboardStatus?.promoters },
-    { label: 'Total venues', value: dashboardStatus?.venues },
+  const overviewStats: OverviewChartItem[] = [
+    { label: 'Total events', value: dashboardStatus?.events, color: 'var(--event)' },
+    { label: 'Total artists', value: dashboardStatus?.artists, color: 'var(--artist)' },
+    { label: 'Total promoters', value: dashboardStatus?.promoters, color: 'var(--promoter)' },
+    { label: 'Total venues', value: dashboardStatus?.venues, color: 'var(--venue)' },
   ]
 
   const eventDateStats = [
@@ -252,12 +253,7 @@ export function DashboardStatistics({dashboardStatus, isLoading, hasError}: Dash
       <article className="dashboard-panel dashboard-panel-full">
         <PanelHeading label="Dataset Overview" status="General metrics" />
         <div className="dashboard-overview">
-          {overviewStats.map((item) => (
-            <div key={item.label} className="dashboard-stat-card">
-              <span>{item.label}</span>
-              <strong>{isLoading || hasError ? '-' : formatNumber(item.value)}</strong>
-            </div>
-          ))}
+          <OverviewChart items={overviewStats} isUnavailable={isLoading || hasError} formatValue={formatNumber} />
           <div className="dashboard-stat-card dashboard-date-card">
             {eventDateStats.map((item) => (
               <div key={item.label}>
