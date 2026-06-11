@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { GraphParams } from '../../api/graph'
 import type { GenreOption } from '../../api/genres'
 
@@ -15,6 +15,33 @@ const FILTER_DESCRIPTIONS = {
   limit: 'Limit the number of events. Higher limits make the rendering heavier.',
 }
 
+const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/
+const DISPLAY_DATE_PATTERN = /^\d{2}\.\d{2}\.\d{4}$/
+
+function isoDateToDisplayDate(value: string) {
+  if (!ISO_DATE_PATTERN.test(value)) return value
+
+  const [year, month, day] = value.split('-')
+  return `${day}.${month}.${year}`
+}
+
+function displayDateToIsoDate(value: string) {
+  if (!DISPLAY_DATE_PATTERN.test(value)) return null
+
+  const [day, month, year] = value.split('.')
+  const date = new Date(Number(year), Number(month) - 1, Number(day))
+
+  if (
+    date.getFullYear() !== Number(year) ||
+    date.getMonth() !== Number(month) - 1 ||
+    date.getDate() !== Number(day)
+  ) {
+    return null
+  }
+
+  return `${year}-${month}-${day}`
+}
+
 interface GraphFiltersProps {
   filters: GraphParams
   genres: GenreOption[]
@@ -22,6 +49,57 @@ interface GraphFiltersProps {
   genresError: string | null
   displayedDateRange: { from: string; to: string } | null
   onChange: (filters: GraphParams) => void
+}
+
+interface GraphDateInputProps {
+  label: string
+  value: string
+  onCommit: (value: string | undefined) => void
+}
+
+function GraphDateInput({ label, value, onCommit }: GraphDateInputProps) {
+  const displayValue = isoDateToDisplayDate(value)
+  const [inputValue, setInputValue] = useState(displayValue)
+
+  useEffect(() => {
+    setInputValue(displayValue)
+  }, [displayValue])
+
+  const handleChange = (nextValue: string) => {
+    setInputValue(nextValue)
+
+    if (!nextValue) {
+      onCommit(undefined)
+      return
+    }
+
+    const nextIsoDate = displayDateToIsoDate(nextValue)
+    if (nextIsoDate) {
+      onCommit(nextIsoDate)
+    }
+  }
+
+  const handleBlur = () => {
+    if (inputValue && !displayDateToIsoDate(inputValue)) {
+      setInputValue(displayValue)
+    }
+  }
+
+  return (
+    <input
+      className="graph-filter-date"
+      type="text"
+      value={inputValue}
+      inputMode="numeric"
+      maxLength={10}
+      placeholder="DD.MM.YYYY"
+      pattern="\d{2}\.\d{2}\.\d{4}"
+      title="Use DD.MM.YYYY, for example 11.06.2026"
+      onChange={(event) => handleChange(event.target.value)}
+      onBlur={handleBlur}
+      aria-label={label}
+    />
+  )
 }
 
 export function GraphFilters({
@@ -95,21 +173,15 @@ export function GraphFilters({
       <div className="graph-filter-group">
         <span className="graph-filter-label">Filter by Date</span>
         <div className="graph-filter-date-row">
-          <input
-            className="graph-filter-date"
-            type="date"
+          <GraphDateInput
+            label="Date from"
             value={dateFromValue}
-            max={dateToValue}
-            onChange={(event) => updateFilter({ dateFrom: event.target.value || undefined })}
-            aria-label="Date from"
+            onCommit={(dateFrom) => updateFilter({ dateFrom })}
           />
-          <input
-            className="graph-filter-date"
-            type="date"
+          <GraphDateInput
+            label="Date to"
             value={dateToValue}
-            min={dateFromValue}
-            onChange={(event) => updateFilter({ dateTo: event.target.value || undefined })}
-            aria-label="Date to"
+            onCommit={(dateTo) => updateFilter({ dateTo })}
           />
         </div>
       </div>
