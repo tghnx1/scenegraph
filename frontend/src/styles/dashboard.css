@@ -47,7 +47,7 @@
 
 .dashboard-overview {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 0.34fr);
   gap: 12px;
   margin-top: 12px;
 }
@@ -79,6 +79,299 @@
 .dashboard-stat-card strong {
   font-size: 1.55rem;
   line-height: 1.1;
+}
+
+.dashboard-overview-chart {
+  display: grid;
+  grid-template-columns: minmax(200px, 240px) minmax(0, 1fr);
+  gap: 18px;
+  align-items: center;
+  min-width: 0;
+  padding: 14px;
+  border-radius: 8px;
+  background: var(--surface-strong);
+  border: 1px solid var(--surface-border-soft);
+}
+
+.dashboard-chart-wrap {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: min(240px, 100%);
+  aspect-ratio: 1;
+  justify-self: center;
+}
+
+.dashboard-chart {
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.dashboard-chart-wrap--waffle,
+.dashboard-chart-wrap--stackedbar {
+  padding: 10px;
+}
+
+.dashboard-chart-empty {
+  fill: none;
+  stroke: var(--surface-border-soft);
+  stroke-width: 38;
+}
+
+.dashboard-chart-segment {
+  stroke: var(--surface-panel);
+  stroke-width: 2;
+  transition: filter 140ms ease, opacity 140ms ease, transform 140ms ease;
+  transform-box: fill-box;
+  transform-origin: center;
+  cursor: help;
+}
+
+.dashboard-chart-segment:hover,
+.dashboard-chart-segment:focus-visible {
+  filter: saturate(1.15) brightness(1.04);
+  opacity: 0.92;
+  outline: none;
+  transform: scale(1.015);
+}
+
+.dashboard-chart-center-fill {
+  fill: var(--background);
+  stroke: var(--surface-border-soft);
+  stroke-width: 1;
+  pointer-events: none;
+}
+
+.dashboard-chart-center {
+  position: absolute;
+  display: grid;
+  gap: 2px;
+  place-items: center;
+  width: 92px;
+  height: 92px;
+  border-radius: 999px;
+  text-align: center;
+  color: var(--text-muted);
+  font-weight: 800;
+  line-height: 1.1;
+  pointer-events: none;
+}
+
+.dashboard-chart-center strong {
+  max-width: 82px;
+  color: var(--text);
+  font-size: 1rem;
+  line-height: 1;
+  overflow-wrap: anywhere;
+}
+
+.dashboard-chart-center span {
+  color: var(--text-muted);
+  font-size: 0.68rem;
+  line-height: 1.1;
+}
+
+.dashboard-chart-tooltip {
+  position: absolute;
+  left: 50%;
+  bottom: 8px;
+  z-index: 5;
+  display: grid;
+  gap: 2px;
+  min-width: 150px;
+  padding: 9px 11px;
+  border-radius: 8px;
+  background: var(--surface-dropdown);
+  border: 1px solid var(--surface-border);
+  box-shadow: var(--surface-shadow);
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.dashboard-chart-tooltip span {
+  color: var(--text-muted);
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.dashboard-chart-tooltip strong {
+  font-size: 1.18rem;
+  line-height: 1.1;
+}
+
+.dashboard-waffle-stack {
+  display: grid;
+  gap: 10px;
+  justify-items: center;
+  width: min(210px, 100%);
+}
+
+.dashboard-waffle-chart {
+  display: grid;
+  grid-template-columns: repeat(10, minmax(0, 1fr));
+  gap: 4px;
+  width: 100%;
+  aspect-ratio: 1;
+}
+
+.dashboard-waffle-cell {
+  min-width: 0;
+  aspect-ratio: 1;
+  border-radius: 3px;
+  background: var(--surface-border-soft);
+  border: 1px solid color-mix(in srgb, var(--surface-panel) 68%, transparent);
+  cursor: help;
+  transition: filter 140ms ease, opacity 140ms ease, transform 140ms ease;
+}
+
+.dashboard-waffle-cell:hover,
+.dashboard-waffle-cell:focus-visible {
+  filter: saturate(1.15) brightness(1.04);
+  opacity: 0.92;
+  outline: none;
+  transform: scale(1.08);
+}
+
+.dashboard-waffle-total {
+  display: grid;
+  gap: 2px;
+  justify-items: center;
+  text-align: center;
+}
+
+.dashboard-waffle-total strong {
+  color: var(--text);
+  font-size: 1rem;
+  line-height: 1;
+  overflow-wrap: anywhere;
+}
+
+.dashboard-waffle-total span {
+  color: var(--text-muted);
+  font-size: 0.68rem;
+  font-weight: 800;
+  line-height: 1.1;
+}
+
+.dashboard-stackedbar-chart {
+  display: grid;
+  gap: 14px;
+  width: min(220px, 100%);
+  align-content: center;
+}
+
+.dashboard-stackedbar-total {
+  display: grid;
+  gap: 3px;
+  justify-items: center;
+  text-align: center;
+}
+
+.dashboard-stackedbar-total strong {
+  color: var(--text);
+  font-size: 1.38rem;
+  line-height: 1;
+  overflow-wrap: anywhere;
+}
+
+.dashboard-stackedbar-total span {
+  color: var(--text-muted);
+  font-size: 0.76rem;
+  font-weight: 800;
+  line-height: 1.1;
+}
+
+.dashboard-stackedbar-bar {
+  display: flex;
+  width: 100%;
+  height: 42px;
+  overflow: hidden;
+  border-radius: 8px;
+  background: var(--surface-border-soft);
+  border: 1px solid var(--surface-border-soft);
+}
+
+.dashboard-stackedbar-segment {
+  min-width: 3px;
+  height: 100%;
+  cursor: help;
+  transition: filter 140ms ease, opacity 140ms ease;
+}
+
+.dashboard-stackedbar-segment:hover,
+.dashboard-stackedbar-segment:focus-visible {
+  filter: saturate(1.15) brightness(1.04);
+  opacity: 0.92;
+  outline: none;
+}
+
+.dashboard-stackedbar-empty {
+  width: 100%;
+  background: var(--surface-border-soft);
+}
+
+.dashboard-chart-side {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.dashboard-chart-mode {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
+  padding: 4px;
+  border-radius: 8px;
+  background: var(--surface-soft);
+  border: 1px solid var(--surface-border-soft);
+}
+
+.dashboard-panel .dashboard-chart-mode button {
+  min-width: 0;
+  min-height: 32px;
+  padding: 6px 8px;
+  border-color: transparent;
+  background: transparent;
+  color: var(--text-muted);
+  border-radius: 6px;
+  font-size: 0.84rem;
+}
+
+.dashboard-panel .dashboard-chart-mode button[aria-pressed="true"] {
+  border-color: var(--selection-border);
+  background: var(--selection-panel);
+  color: var(--text);
+}
+
+.dashboard-chart-legend {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  min-width: 0;
+}
+
+.dashboard-chart-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  min-height: 34px;
+  padding: 7px 9px;
+  border-radius: 8px;
+  background: var(--surface-soft);
+  border: 1px solid var(--surface-border-soft);
+  color: var(--text-muted);
+  font-size: 0.86rem;
+  font-weight: 800;
+  cursor: help;
+}
+
+.dashboard-chart-legend-item i {
+  width: 10px;
+  height: 10px;
+  flex: 0 0 auto;
+  border-radius: 999px;
 }
 
 .dashboard-date-card {
