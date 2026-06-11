@@ -13,6 +13,7 @@ const LIMIT_OPTIONS = [100, 250, 500]
 const FILTER_DESCRIPTIONS = {
   genre: 'Filter the by event genres. Choose All genres to undo the filter.',
   limit: 'Limit the number of events. Higher limits make the rendering heavier.',
+  date: 'Dates in DD.MM.YYYY format.',
 }
 
 const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/
@@ -94,7 +95,6 @@ function GraphDateInput({ label, value, onCommit }: GraphDateInputProps) {
       maxLength={10}
       placeholder="DD.MM.YYYY"
       pattern="\d{2}\.\d{2}\.\d{4}"
-      title="Use DD.MM.YYYY, for example 11.06.2026"
       onChange={(event) => handleChange(event.target.value)}
       onBlur={handleBlur}
       aria-label={label}
@@ -171,7 +171,10 @@ export function GraphFilters({
       </div>
 
       <div className="graph-filter-group">
-        <span className="graph-filter-label">Filter by Date</span>
+        <span className="graph-filter-label">
+          Filter by Date
+          {renderInfoButton('date', 'Filter by Date')}
+        </span>
         <div className="graph-filter-date-row">
           <GraphDateInput
             label="Date from"
