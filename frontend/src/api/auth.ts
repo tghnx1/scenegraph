@@ -1,6 +1,9 @@
 import { api } from './client'
 
-export type AuthRole = 'artist' | 'agent' | 'admin'
+export type AuthRole = 'user' | 'contributor' | 'admin'
+
+export const isAuthRole = (value: unknown): value is AuthRole =>
+  value === 'user' || value === 'contributor' || value === 'admin'
 
 export interface LoginResponse {
   success: boolean
@@ -32,10 +35,6 @@ export const changePassword = (
 
 export const login = (username: string, password: string): Promise<LoginResponse> =>
   api.post<LoginResponse>('/login', { username, password })
-
-//export const getFallbackRole = (username: string): AuthRole => (
-//  username.trim().toLowerCase() === 'aaron' ? 'admin' : 'user'
-//)  the backend already knows the role.
 
 export interface PendingUser {
   id: number

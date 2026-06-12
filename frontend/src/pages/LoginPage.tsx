@@ -1,6 +1,4 @@
 import { useState, type CSSProperties, type FormEvent } from 'react'
-import { changePassword, login, register, type AuthRole } from '../api/auth'
-import { useState, type CSSProperties, type FormEvent } from 'react'
 import { changePassword, isAuthRole, login, register, type AuthRole } from '../api/auth'
 
 interface LoginPageProps {
@@ -108,8 +106,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
       }
 
       const authenticatedUsername = response.username ?? username
-      const role: AuthRole =
-        response.role === 'admin' ? 'admin' : 'user'
+      const role: AuthRole = isAuthRole(response.role) ? response.role : 'user'
 
       localStorage.setItem('token', response.access_token)
       localStorage.setItem('role', role)
@@ -125,19 +122,12 @@ export function LoginPage({ onLogin }: LoginPageProps) {
         localStorage.removeItem('artist_id')
       }
 
-      if (response.must_change_password)
-      {
+      if (response.must_change_password) {
         setMustChangePassword(true)
         setError('You must change your password before continuing.')
         return
       }
-      if (response.must_change_password)
-      {
-        setMustChangePassword(true)
-        setError('You must change your password before continuing.')
-        return
-      }
-      onLogin(role)
+      onLogin(role, authenticatedUsername)
     } catch {
       setError('Login failed. Please try again.')
     } finally {
