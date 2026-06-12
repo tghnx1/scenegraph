@@ -69,6 +69,7 @@ export default function App() {
       localStorage.removeItem('role')
       localStorage.removeItem('username')
       localStorage.removeItem('user_id')
+      localStorage.removeItem('artist_id')
       setAuthRole(null)
       return
     }

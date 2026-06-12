@@ -71,6 +71,7 @@ export function AgencyPage() {
 
   return (
     <ProfilePage
+      showBiography={false}
       recommendationTargetControls={{
         artistId: selectedArtist?.id ?? null,
         emptyMessage: selectedArtist
