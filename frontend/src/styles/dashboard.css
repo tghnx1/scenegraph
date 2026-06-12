@@ -372,7 +372,18 @@
   color: var(--text-muted);
   font-size: 0.86rem;
   font-weight: 800;
-  cursor: help;
+  cursor: pointer;
+  text-align: left;
+}
+
+.dashboard-panel .dashboard-chart-legend-item[aria-pressed="true"] {
+  border-color: var(--selection-border);
+  background: var(--selection-panel);
+  color: var(--text);
+}
+
+.dashboard-panel .dashboard-chart-legend-item[aria-pressed="false"] {
+  opacity: 0.55;
 }
 
 .dashboard-chart-legend-item i {
@@ -383,33 +394,36 @@
 }
 
 .dashboard-chart-dates {
-  display: grid;
-  grid-template-columns: 1fr;
   grid-area: dates;
-  gap: 8px;
   align-self: start;
 }
 
-.dashboard-chart-date-row {
+.dashboard-chart-dates .graph-filter-date-row {
   display: grid;
-  gap: 3px;
-  min-height: 48px;
-  padding: 9px 10px;
-  border-radius: 8px;
-  background: var(--surface-soft);
-  border: 1px solid var(--surface-border-soft);
+  grid-template-columns: 1fr;
 }
 
-.dashboard-chart-date-row span {
+.dashboard-panel .graph-filter-button.dashboard-chart-date-apply {
+  width: 100%;
+  border: 1px solid var(--control-border-subtle);
+  border-radius: 999px;
+  background: var(--control-soft);
   color: var(--text-muted);
-  font-size: 0.82rem;
-  font-weight: 800;
+  padding: 7px 10px;
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 400;
 }
 
-.dashboard-chart-date-row strong {
+.dashboard-panel .graph-filter-button.dashboard-chart-date-apply:hover:not(:disabled) {
+  border-color: var(--selection-border);
+  background: var(--selection-soft);
   color: var(--text);
-  font-size: 0.98rem;
-  line-height: 1.1;
+}
+
+.dashboard-panel .graph-filter-button.dashboard-chart-date-apply:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
 }
 
 .dashboard-date-card {
