@@ -76,31 +76,6 @@ export function ProfilePage({ recommendationTargetControls }: ProfilePageProps =
             />
           </article>
         </section>
-
-        <article className="profile-card profile-summary-panel">
-          <div className="panel-heading">
-            <span className="search-query-label">Profile</span>
-            <button type="button">Edit</button>
-          </div>
-          <h2>Artist biography</h2>
-          <p>Self biography and claimed profile fields appear here.</p>
-          <div className="profile-fields">
-            <span>Name</span>
-            <span>Genres</span>
-            <span>Location</span>
-          </div>
-        </article>
-
-        <article className="profile-card side-panel communications-panel">
-          <div className="panel-heading">
-            <span className="search-query-label">Communications</span>
-            {/* <span className="panel-status">Inbox</span> */}
-          </div>
-          <div className="placeholder-list">
-            <span>Clickable contact names</span>
-            <span>Open a chat</span>
-          </div>
-        </article>
       </section>
     </div>
   )

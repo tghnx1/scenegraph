@@ -2,6 +2,7 @@ import {useState} from 'react'
 import {fetchDashboardStatus} from '../api/dashboardComposition'
 import {useApi} from '../hooks/useApi'
 import type {DashboardEntity} from '../types/dashboardComposition'
+import {DashboardExportMenu} from './components/ExportDashboard'
 import {DashboardManagement} from './components/DashboardManagement'
 import {DashboardStatistics} from './components/DashboardStats'
 
@@ -31,7 +32,12 @@ export function DashboardPage() {
     <div className="dashboard-page">
       <div className="dashboard-actions" aria-label="Dashboard actions">
         <button type="button">Run import</button>
-        <button type="button">View logs</button>
+        <DashboardExportMenu
+          dashboardStatus={dashboardStatus}
+          selectedEntities={selectedEntities}
+          dateFrom={dateFrom}
+          dateTo={dateTo}
+        />
       </div>
 
       {error && <p className="error">Failed to load dashboard status.</p>}

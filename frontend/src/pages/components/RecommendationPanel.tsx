@@ -3,7 +3,7 @@ import { graphEntityId, type GraphNode } from '../../types/graph'
 import type { PromoterRecommendationResponse } from '../../types/recommendation'
 import { RecommendationLoading } from './LoadingScreen'
 import { ScenegraphMapPanel } from './GraphPanel'
-import { RecommendationExportMenu } from './RecommendationExport'
+import { RecommendationExportMenu } from './ExportRecommendation'
 
 const DEFAULT_PROFILE_RECOMMENDATION_ARTIST_ID = 2178
 const PROMOTER_RECOMMENDATIONS_API_PATH = '/api/recommendations/artists'
