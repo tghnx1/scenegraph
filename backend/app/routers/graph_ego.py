@@ -70,18 +70,6 @@ WHERE artist_id = %s
 ORDER BY confidence DESC;
 """
 
-ARTIST_MANUAL_CONNECTIONS_SQL = """
-SELECT amc.connected_artist_id AS artist_id, a.name
-FROM artist_manual_connections amc
-JOIN artists a ON a.id = amc.connected_artist_id
-WHERE amc.source_artist_id = %s
-UNION
-SELECT amc.source_artist_id AS artist_id, a.name
-FROM artist_manual_connections amc
-JOIN artists a ON a.id = amc.source_artist_id
-WHERE amc.connected_artist_id = %s;
-"""
-
 ARTIST_EVENTS_SQL = """
 SELECT
     e.id                     AS event_id,
@@ -213,7 +201,7 @@ def fetch_event_tags(event_id: int, db: Connection) -> List[ExtractedTag]:
             for row in cur.fetchall()
         ]
 
-def build_artist_graph(id: int, limit: int, db: Connection) -> GraphResponse:
+def build_artist_graph(id: int, limit: int, depth: int, db: Connection) -> GraphResponse:
     center_id = f"artist-{id}"
     nodes = {}
     links: List[GraphLink] = []
@@ -235,26 +223,6 @@ def build_artist_graph(id: int, limit: int, db: Connection) -> GraphResponse:
         genres=artist["genres"],
         tags=center_tags,
     )
-
-    with db.cursor() as cur:
-        cur.execute(ARTIST_MANUAL_CONNECTIONS_SQL, (id, id))
-        for row in cur.fetchall():
-            connected_id = f"artist-{row['artist_id']}"
-            if connected_id not in nodes:
-                connected_tags = fetch_artist_tags(row["artist_id"], db)
-                nodes[connected_id] = ArtistNode(
-                    id=connected_id,
-                    entityId=row["artist_id"],
-                    type="artist",
-                    name=row["name"],
-                    tags=connected_tags,
-                )
-            links.append(GraphLink(
-                source=center_id,
-                target=connected_id,
-                weight=1,
-                relationship="connected_to",
-            ))
 
     with db.cursor() as cur:
         cur.execute(ARTIST_EVENTS_SQL, (id, limit))
@@ -283,15 +251,15 @@ def build_artist_graph(id: int, limit: int, db: Connection) -> GraphResponse:
             relationship="performed_at",
         ))
 
-        if venue_id and venue_id not in nodes:
+        if depth >= 2 and venue_id and venue_id not in nodes:
             nodes[venue_id] = VenueNode(
                 id=venue_id,
-                entityId=row["venue_id"],
+                entityId=row["event_id"],
                 type="venue",
                 name=row["venue_name"],
             )
 
-        if venue_id:
+        if depth >= 2 and venue_id:
             links.append(GraphLink(
                 source=event_id,
                 target=venue_id,
@@ -304,7 +272,6 @@ def build_artist_graph(id: int, limit: int, db: Connection) -> GraphResponse:
         nodes=list(nodes.values()),
         links=links,
     )
-
 
 def build_venue_graph(id: int, limit: int, db: Connection) -> GraphResponse:
     center_id = f"venue-{id}"
@@ -444,7 +411,7 @@ def build_event_graph(id: int, limit: int, db: Connection) -> GraphResponse:
         links=links,
     )
 
-def build_promoter_graph(id: int, limit: int, db: Connection) -> GraphResponse:
+def build_promoter_graph(id: int, limit: int, depth: int, db: Connection) -> GraphResponse:
     center_id = f"promoter-{id}"
     nodes = {}
     links: List[GraphLink] = []
@@ -490,7 +457,7 @@ def build_promoter_graph(id: int, limit: int, db: Connection) -> GraphResponse:
             relationship="promoted",
         ))
 
-        if venue_id and venue_id not in nodes:
+        if depth >= 2 and venue_id and venue_id not in nodes:
             nodes[venue_id] = VenueNode(
                 id=venue_id,
                 entityId=row["venue_id"],
@@ -498,7 +465,7 @@ def build_promoter_graph(id: int, limit: int, db: Connection) -> GraphResponse:
                 name=row["venue_name"],
             )
 
-        if venue_id:
+        if depth >= 2 and venue_id:
             links.append(GraphLink(
                 source=event_id,
                 target=venue_id,
@@ -521,12 +488,12 @@ def get_ego_graph(
     db: Connection = Depends(get_db),
 ):
     if type == "artist":
-        return build_artist_graph(id, limit, db)
+        return build_artist_graph(id, limit, depth, db)
     elif type == "venue":
         return build_venue_graph(id, limit, db)
     elif type == "event":
         return build_event_graph(id, limit, db)
     elif type == "promoter":
-        return build_promoter_graph(id, limit, db)
+        return build_promoter_graph(id, limit, depth, db)
     else:
         raise HTTPException(status_code=400, detail=f"Unsupported type: {type}")
