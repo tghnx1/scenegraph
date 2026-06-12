@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from app.routers import artist_connections, artists, feedback, graph, recommendations, search, venues, events, promoters, genres, graph_ego, stats
+from app.routers import artist_connections, artists, feedback, graph, recommendations, search, venues, events, promoters, genres, graph_ego, admin
 
 router = APIRouter()
 
@@ -15,4 +15,4 @@ router.include_router(feedback.router, tags=["feedback"])
 router.include_router(graph.router, tags=["graph"])
 router.include_router(graph_ego.router, prefix="/graph", tags=["graph"])
 router.include_router(genres.router, prefix="/genres", tags=["genres"])
-router.include_router(stats.router, prefix="/stats", tags=["stats"])
+router.include_router(admin.router, prefix="/admin", tags=["admin"])
