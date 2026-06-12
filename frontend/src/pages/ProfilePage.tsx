@@ -87,7 +87,6 @@ export function ProfilePage({ recommendationTargetControls, showBiography = true
               isActive={activeWorkspaceTab === 'recommendations'}
               targetControls={recommendationTargetControls}
               onSelectNode={setSelected}
-              refreshToken={manualConnections.revision}
             />
           </article>
         </section>

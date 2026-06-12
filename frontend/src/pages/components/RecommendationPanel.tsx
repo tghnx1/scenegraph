@@ -44,7 +44,6 @@ interface PromoterRecommendationsPanelProps {
   isActive: boolean
   targetControls?: RecommendationTargetControls
   onSelectNode: (node: GraphNode | null) => void
-  refreshToken?: number
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -138,7 +137,6 @@ export function PromoterRecommendationsPanel({
   isActive,
   targetControls,
   onSelectNode,
-  refreshToken = 0,
 }: PromoterRecommendationsPanelProps) {
   const [recommendationsData, setRecommendationsData] = useState<PromoterRecommendationResponse | null>(null)
   const [isRecommendationsLoading, setIsRecommendationsLoading] = useState(false)
@@ -154,7 +152,6 @@ export function PromoterRecommendationsPanel({
   const recommendationThresholdInitializedRef = useRef(false)
   const recommendationListRef = useRef<HTMLElement | null>(null)
   const recommendationRequestIdRef = useRef(0)
-  const previousRefreshTokenRef = useRef(refreshToken)
   const recommendationArtistId = targetControls
     ? targetControls.artistId
     : DEFAULT_PROFILE_RECOMMENDATION_ARTIST_ID
@@ -238,11 +235,19 @@ export function PromoterRecommendationsPanel({
     }
   }, [recommendationArtistId, targetControls?.emptyMessage])
 
-  useEffect(() => {
-    if (previousRefreshTokenRef.current === refreshToken) return
-    previousRefreshTokenRef.current = refreshToken
-    if (recommendationsData) void handleLoadRecommendations()
-  }, [handleLoadRecommendations, recommendationsData, refreshToken])
+  const handleResetRecommendations = useCallback(() => {
+    recommendationRequestIdRef.current += 1
+    recommendationThresholdInitializedRef.current = false
+    setRecommendationsData(null)
+    setRecommendationsError(null)
+    setIsRecommendationsLoading(false)
+    setRecommendationStrengthThreshold(DEFAULT_RECOMMENDATION_STRENGTH_THRESHOLD)
+    setExpandedRecommendationId(null)
+    setFocusedRecommendationPromoterIds(null)
+    setExpandedReasonItems({})
+    setRecommendationGraphMode('compact')
+    onSelectNode(null)
+  }, [onSelectNode])
 
   const handleSelectRecommendation = useCallback((recommendationId: number) => {
     const recommendationNode = recommendationsData?.graph.nodes.find((node) => (
@@ -407,15 +412,21 @@ export function PromoterRecommendationsPanel({
     >
       <div className="panel-heading recommendations-panel-heading">
         <span className="search-query-label">Promoter Recommendations</span>
-        {targetControls && (
+        {(targetControls || recommendationsData) && (
           <div className="recommendation-target-actions">
-            {targetControls.controls}
+            {targetControls?.controls}
             <button
               type="button"
-              onClick={() => void handleLoadRecommendations()}
+              onClick={() => {
+                if (recommendationsData) {
+                  handleResetRecommendations()
+                } else {
+                  void handleLoadRecommendations()
+                }
+              }}
               disabled={isRecommendationsLoading || recommendationArtistId === null}
             >
-              {targetControls.getButtonLabel ?? 'Get rec'}
+              {recommendationsData ? 'Reset' : (targetControls?.getButtonLabel ?? 'Get rec')}
             </button>
           </div>
         )}

@@ -11,7 +11,6 @@ export function useManualArtistConnections(artistId: number | null) {
   const [isLoading, setIsLoading] = useState(artistId !== null)
   const [pendingArtistId, setPendingArtistId] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [revision, setRevision] = useState(0)
 
   useEffect(() => {
     let isCurrent = true
@@ -56,7 +55,6 @@ export function useManualArtistConnections(artistId: number | null) {
         connection,
         ...current.filter((item) => item.connectedArtistId !== connection.connectedArtistId),
       ])
-      setRevision((current) => current + 1)
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : 'Failed to add artist.')
     } finally {
@@ -72,7 +70,6 @@ export function useManualArtistConnections(artistId: number | null) {
     try {
       await removeKnownArtist(artistId, connectedArtistId)
       setConnections((current) => current.filter((item) => item.connectedArtistId !== connectedArtistId))
-      setRevision((current) => current + 1)
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : 'Failed to remove artist.')
     } finally {
@@ -92,7 +89,6 @@ export function useManualArtistConnections(artistId: number | null) {
     isLoading,
     pendingArtistId,
     error,
-    revision,
     remove,
     toggle,
   }
