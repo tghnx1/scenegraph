@@ -120,8 +120,9 @@ async def root() -> dict[str, str]:
 #async means this function can pause while waiting without blocking whole server
 @app.post("/api/login", response_model=LoginResponse, response_model_exclude_none=True)        
 async def login(login_data: LoginRequest) -> LoginResponse:
+    normalized_username = login_data.username.strip().lower()
     for user in dummy_users:
-        if (user["username"] == login_data.username and user["password"] == login_data.password):
+        if (user["username"].lower() == normalized_username and user["password"] == login_data.password):
             return LoginResponse(
                 success=True,
                 message="Login successful",
