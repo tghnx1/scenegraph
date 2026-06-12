@@ -57,6 +57,27 @@
       "graph";
   }
 
+  .profile-grid:has(.biography-panel) {
+    grid-template-rows:
+      minmax(540px, var(--profile-secondary-panel-height))
+      auto
+      auto;
+    grid-template-areas:
+      "context"
+      "graph"
+      "biography";
+  }
+
+  .biography-form-footer {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .biography-form-actions,
+  .biography-form-actions button {
+    width: 100%;
+  }
+
   .recommendations-content {
     grid-template-columns: 1fr;
     grid-template-rows: auto minmax(240px, max-content) minmax(520px, 78dvh);

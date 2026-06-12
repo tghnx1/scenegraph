@@ -6,6 +6,7 @@ export interface LoginResponse {
   success: boolean
   message: string
   user_id?: number
+  artist_id?: number
   username?: string
   role?: AuthRole
   access_token?: string

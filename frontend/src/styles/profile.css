@@ -17,6 +17,15 @@
   gap: 20px;
 }
 
+.profile-grid:has(.biography-panel) {
+  grid-template-rows:
+    minmax(570px, var(--profile-main-panel-height))
+    minmax(320px, auto);
+  grid-template-areas:
+    "context graph graph"
+    "biography biography biography";
+}
+
 .profile-card {
   min-width: 0;
   min-height: 0;
@@ -51,6 +60,93 @@
   display: grid;
   min-width: 0;
   min-height: 0;
+}
+
+.biography-panel {
+  grid-area: biography;
+  overflow: visible;
+}
+
+.biography-panel .panel-heading {
+  align-items: start;
+}
+
+.biography-panel .panel-heading h2 {
+  margin: 6px 0 0;
+}
+
+.biography-panel .panel-heading button,
+.biography-form-actions button {
+  border: 1px solid var(--artist-border);
+  border-radius: 6px;
+  background: var(--artist-soft);
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 700;
+  padding: 8px 12px;
+}
+
+.biography-panel button:hover:not(:disabled) {
+  border-color: var(--selection-border-strong);
+  background: var(--selection-panel);
+}
+
+.biography-panel button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.biography-copy {
+  max-width: 92ch;
+  line-height: 1.65;
+  white-space: pre-wrap;
+}
+
+.biography-empty {
+  font-style: italic;
+}
+
+.biography-form {
+  display: grid;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.biography-form textarea {
+  width: 100%;
+  min-height: 220px;
+  resize: vertical;
+  border: 1px solid var(--control-border);
+  border-radius: 12px;
+  background: var(--surface-input);
+  color: var(--text);
+  font: inherit;
+  line-height: 1.55;
+  padding: 12px;
+}
+
+.biography-form textarea:focus {
+  border-color: var(--focus-border);
+  box-shadow: 0 0 0 3px var(--focus-ring);
+  outline: none;
+}
+
+.biography-form-footer,
+.biography-form-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.biography-form-footer {
+  justify-content: space-between;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+.biography-message.success {
+  color: var(--success, #2f8f5b);
 }
 
 .profile-workspace-tabs {

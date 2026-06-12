@@ -39,6 +39,11 @@ export function LoginPage({ onLogin }: LoginPageProps) {
       if (response.user_id !== undefined) {
         localStorage.setItem('user_id', String(response.user_id))
       }
+      if (response.artist_id !== undefined) {
+        localStorage.setItem('artist_id', String(response.artist_id))
+      } else {
+        localStorage.removeItem('artist_id')
+      }
 
       onLogin(role, authenticatedUsername)
     } catch {

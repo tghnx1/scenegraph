@@ -4,16 +4,20 @@ import { ScenegraphMapPanel } from './components/GraphPanel.tsx'
 import { PromoterRecommendationsPanel, type RecommendationTargetControls } from './components/RecommendationPanel.tsx'
 import { SearchInputField } from './components/SearchInputField.tsx'
 import { useGraphSearchDetails } from './hooks/useGraphSearchDetails.ts'
+import { BiographyPanel } from './components/BiographyPanel.tsx'
 
 type ProfileWorkspaceTab = 'graph' | 'recommendations'
 
 interface ProfilePageProps {
   recommendationTargetControls?: RecommendationTargetControls
+  showBiography?: boolean
 }
 
-export function ProfilePage({ recommendationTargetControls }: ProfilePageProps = {}) {
+export function ProfilePage({ recommendationTargetControls, showBiography = true }: ProfilePageProps = {}) {
   const { detailsPanelProps, searchFormProps, setSelected } = useGraphSearchDetails()
   const [activeWorkspaceTab, setActiveWorkspaceTab] = useState<ProfileWorkspaceTab>('graph')
+  const storedArtistId = Number(localStorage.getItem('artist_id'))
+  const artistId = Number.isInteger(storedArtistId) && storedArtistId > 0 ? storedArtistId : null
 
   return (
     <div className="profile-page">
@@ -76,6 +80,7 @@ export function ProfilePage({ recommendationTargetControls }: ProfilePageProps =
             />
           </article>
         </section>
+        {showBiography && <BiographyPanel artistId={artistId} />}
       </section>
     </div>
   )
