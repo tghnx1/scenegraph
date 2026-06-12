@@ -5,7 +5,6 @@ import { RecommendationLoading } from './LoadingScreen'
 import { ScenegraphMapPanel } from './GraphPanel'
 import { RecommendationExportMenu } from './ExportRecommendation'
 
-const DEFAULT_PROFILE_RECOMMENDATION_ARTIST_ID = 2178
 const PROMOTER_RECOMMENDATIONS_API_PATH = '/api/recommendations/artists'
 const RECOMMENDATION_LOADING_MESSAGES = [
   'Finding similar artists',
@@ -42,6 +41,7 @@ export interface RecommendationTargetControls {
 
 interface PromoterRecommendationsPanelProps {
   isActive: boolean
+  artistId: number
   targetControls?: RecommendationTargetControls
   onSelectNode: (node: GraphNode | null) => void
 }
@@ -135,6 +135,7 @@ function initialStrengthThreshold(recommendations: PromoterRecommendationRespons
 
 export function PromoterRecommendationsPanel({
   isActive,
+  artistId,
   targetControls,
   onSelectNode,
 }: PromoterRecommendationsPanelProps) {
@@ -154,7 +155,7 @@ export function PromoterRecommendationsPanel({
   const recommendationRequestIdRef = useRef(0)
   const recommendationArtistId = targetControls
     ? targetControls.artistId
-    : DEFAULT_PROFILE_RECOMMENDATION_ARTIST_ID
+    : artistId
 
   useEffect(() => {
     recommendationRequestIdRef.current += 1
