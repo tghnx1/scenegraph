@@ -225,26 +225,6 @@ def build_artist_graph(id: int, limit: int, depth: int, db: Connection) -> Graph
     )
 
     with db.cursor() as cur:
-        cur.execute(ARTIST_MANUAL_CONNECTIONS_SQL, (id, id))
-        for row in cur.fetchall():
-            connected_id = f"artist-{row['artist_id']}"
-            if connected_id not in nodes:
-                connected_tags = fetch_artist_tags(row["artist_id"], db)
-                nodes[connected_id] = ArtistNode(
-                    id=connected_id,
-                    entityId=row["artist_id"],
-                    type="artist",
-                    name=row["name"],
-                    tags=connected_tags,
-                )
-            links.append(GraphLink(
-                source=center_id,
-                target=connected_id,
-                weight=1,
-                relationship="connected_to",
-            ))
-
-    with db.cursor() as cur:
         cur.execute(ARTIST_EVENTS_SQL, (id, limit))
         rows = cur.fetchall()
 
