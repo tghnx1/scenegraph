@@ -56,9 +56,10 @@ interface GraphDateInputProps {
   label: string
   value: string
   onCommit: (value: string | undefined) => void
+  disabled?: boolean
 }
 
-function GraphDateInput({ label, value, onCommit }: GraphDateInputProps) {
+export function GraphDateInput({ label, value, onCommit, disabled = false }: GraphDateInputProps) {
   const displayValue = isoDateToDisplayDate(value)
   const [inputValue, setInputValue] = useState(displayValue)
 
@@ -95,6 +96,7 @@ function GraphDateInput({ label, value, onCommit }: GraphDateInputProps) {
       maxLength={10}
       placeholder="DD.MM.YYYY"
       pattern="\d{2}\.\d{2}\.\d{4}"
+      disabled={disabled}
       onChange={(event) => handleChange(event.target.value)}
       onBlur={handleBlur}
       aria-label={label}
@@ -117,6 +119,13 @@ export function GraphFilters({
   const genreOptions = genres.length > 0 ? genres : FALLBACK_GENRE_OPTIONS
   const dateFromValue = filters.dateFrom ?? displayedDateRange?.from ?? ''
   const dateToValue = filters.dateTo ?? displayedDateRange?.to ?? ''
+  const [draftDateFrom, setDraftDateFrom] = useState(dateFromValue)
+  const [draftDateTo, setDraftDateTo] = useState(dateToValue)
+
+  useEffect(() => {
+    setDraftDateFrom(dateFromValue)
+    setDraftDateTo(dateToValue)
+  }, [dateFromValue, dateToValue])
 
   const renderInfoButton = (key: keyof typeof FILTER_DESCRIPTIONS, label: string) => {
     const isActive = activeInfo === key
@@ -170,7 +179,16 @@ export function GraphFilters({
         )}
       </div>
 
-      <div className="graph-filter-group">
+      <form
+        className="graph-filter-group graph-filter-date-form"
+        onSubmit={(event) => {
+          event.preventDefault()
+          updateFilter({
+            dateFrom: draftDateFrom || undefined,
+            dateTo: draftDateTo || undefined,
+          })
+        }}
+      >
         <span className="graph-filter-label">
           Filter by Date
           {renderInfoButton('date', 'Filter by Date')}
@@ -178,16 +196,23 @@ export function GraphFilters({
         <div className="graph-filter-date-row">
           <GraphDateInput
             label="Date from"
-            value={dateFromValue}
-            onCommit={(dateFrom) => updateFilter({ dateFrom })}
+            value={draftDateFrom}
+            onCommit={(dateFrom) => setDraftDateFrom(dateFrom ?? '')}
           />
           <GraphDateInput
             label="Date to"
-            value={dateToValue}
-            onCommit={(dateTo) => updateFilter({ dateTo })}
+            value={draftDateTo}
+            onCommit={(dateTo) => setDraftDateTo(dateTo ?? '')}
           />
+          <button
+            type="submit"
+            className="graph-filter-button graph-filter-date-apply"
+            disabled={draftDateFrom === dateFromValue && draftDateTo === dateToValue}
+          >
+            Apply dates
+          </button>
         </div>
-      </div>
+      </form>
 
       <div className="graph-filter-group">
         <span className="graph-filter-label">

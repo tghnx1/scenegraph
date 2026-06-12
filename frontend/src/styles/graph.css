@@ -356,6 +356,20 @@
   color: var(--text);
 }
 
+.graph-filter-date-apply {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.graph-filter-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.graph-filter-date-form .graph-filter-date {
+  flex: 1 1 112px;
+}
+
 .graph-filter-date,
 .graph-filter-select {
   min-width: 0;

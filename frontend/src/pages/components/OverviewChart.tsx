@@ -1,21 +1,25 @@
-import {useState} from 'react'
+import {useEffect, useState} from 'react'
+import type {DashboardEntity} from '../../types/dashboardComposition'
+import {GraphDateInput} from './GraphDataFilter'
 
 export type OverviewChartItem = {
+  id: DashboardEntity
   label: string
   value: number | null | undefined
   color: string
 }
 
-export type OverviewDateItem = {
-  label: string
-  value: string | number
-}
-
 type OverviewChartProps = {
   items: OverviewChartItem[]
-  dateItems: OverviewDateItem[]
   isUnavailable: boolean
   formatValue: (value: number | string | null | undefined) => string | number
+  selectedItemIds: DashboardEntity[]
+  onToggleItem: (id: DashboardEntity) => void
+  dateFrom: string
+  dateTo: string
+  displayedDateFrom?: string
+  displayedDateTo?: string
+  onDateRangeChange: (dateFrom: string, dateTo: string) => void
 }
 
 type ChartMode = 'donut' | 'waffle' | 'stackedbar'
@@ -84,9 +88,29 @@ function buildWaffleCells(items: OverviewChartItem[], total: number) {
   return [...cells, ...Array<null>(Math.max(0, cellCount - cells.length)).fill(null)].slice(0, cellCount)
 }
 
-export function OverviewChart({items, dateItems, isUnavailable, formatValue}: OverviewChartProps) {
+export function OverviewChart({
+  items,
+  isUnavailable,
+  formatValue,
+  selectedItemIds,
+  onToggleItem,
+  dateFrom,
+  dateTo,
+  displayedDateFrom,
+  displayedDateTo,
+  onDateRangeChange,
+}: OverviewChartProps) {
   const [activeStat, setActiveStat] = useState<string | null>(null)
   const [chartMode, setChartMode] = useState<ChartMode>('donut')
+  const dateFromValue = dateFrom || displayedDateFrom || ''
+  const dateToValue = dateTo || displayedDateTo || ''
+  const [draftDateFrom, setDraftDateFrom] = useState(dateFromValue)
+  const [draftDateTo, setDraftDateTo] = useState(dateToValue)
+
+  useEffect(() => {
+    setDraftDateFrom(dateFromValue)
+    setDraftDateTo(dateToValue)
+  }, [dateFromValue, dateToValue])
   const chartSize = 360
   const center = chartSize / 2
   const radius = 156
@@ -248,25 +272,52 @@ export function OverviewChart({items, dateItems, isUnavailable, formatValue}: Ov
       </div>
       <div className="dashboard-chart-legend" aria-label="Dataset overview legend">
         {items.map((item) => (
-          <span
-            key={item.label}
+          <button
+            type="button"
+            key={item.id}
             className="dashboard-chart-legend-item"
+            aria-pressed={selectedItemIds.includes(item.id)}
+            disabled={isUnavailable}
+            onClick={() => onToggleItem(item.id)}
             onMouseEnter={() => !isUnavailable && setActiveStat(item.label)}
             onMouseLeave={() => setActiveStat(null)}
           >
             <i style={{background: item.color}} aria-hidden="true" />
             {item.label}
-          </span>
+          </button>
         ))}
       </div>
-      <div className="dashboard-chart-dates" aria-label="Dataset event date range">
-        {dateItems.map((item) => (
-          <div key={item.label} className="dashboard-chart-date-row">
-            <span>{item.label}</span>
-            <strong>{isUnavailable ? '-' : item.value}</strong>
-          </div>
-        ))}
-      </div>
+      <form
+        className="dashboard-chart-dates graph-filter-group"
+        aria-label="Filter dataset by event date range"
+        onSubmit={(event) => {
+          event.preventDefault()
+          onDateRangeChange(draftDateFrom, draftDateTo)
+        }}
+      >
+        <span className="graph-filter-label">Filter by Date</span>
+        <div className="graph-filter-date-row">
+          <GraphDateInput
+            label="Date from"
+            value={draftDateFrom}
+            disabled={isUnavailable}
+            onCommit={(value) => setDraftDateFrom(value ?? '')}
+          />
+          <GraphDateInput
+            label="Date to"
+            value={draftDateTo}
+            disabled={isUnavailable}
+            onCommit={(value) => setDraftDateTo(value ?? '')}
+          />
+        </div>
+        <button
+          type="submit"
+          className="graph-filter-button dashboard-chart-date-apply"
+          disabled={isUnavailable}
+        >
+          Apply dates
+        </button>
+      </form>
     </div>
   )
 }
