@@ -164,6 +164,9 @@ class PromoterRecommendationItem(BaseModel):
     type: Literal["promoter"] = "promoter"
     name: str
     score: float
+    baseScore: float | None = None
+    feedbackBoost: float = 0.0
+    feedbackState: Literal["positive", "negative"] | None = None
     semanticScore: float
     strengthScore: float
     activityScore: float
@@ -247,14 +250,15 @@ class ArtistTagsResponse(BaseModel):
     tags: list[ArtistTagItem]
 
 
-EntityKind = Literal["artist", "event"]
-FeedbackValue = Literal["positive", "negative", "hidden"]
+FeedbackSourceKind = Literal["artist"]
+FeedbackCandidateKind = Literal["promoter"]
+FeedbackValue = Literal["positive", "negative"]
 
 
 class RecommendationFeedbackRequest(BaseModel):
-    sourceEntityType: EntityKind
+    sourceEntityType: FeedbackSourceKind
     sourceEntityId: int
-    candidateEntityType: EntityKind
+    candidateEntityType: FeedbackCandidateKind
     candidateEntityId: int
     feedback: FeedbackValue
     reason: str | None = None
@@ -262,9 +266,10 @@ class RecommendationFeedbackRequest(BaseModel):
 
 class RecommendationFeedbackItem(BaseModel):
     id: int
-    sourceEntityType: EntityKind
+    userId: int
+    sourceEntityType: FeedbackSourceKind
     sourceEntityId: int
-    candidateEntityType: EntityKind
+    candidateEntityType: FeedbackCandidateKind
     candidateEntityId: int
     feedback: FeedbackValue
     reason: str | None = None

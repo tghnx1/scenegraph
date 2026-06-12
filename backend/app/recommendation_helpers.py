@@ -9,7 +9,7 @@ from app.recommendation_scoring import (
     semantic_artist_scoring_from_env,
     semantic_artist_tag_scoring_from_env,
 )
-from app.schemas import EntityKind, RecommendationFeedbackItem
+from app.schemas import RecommendationFeedbackItem
 from app.style_tags import extract_style_tags, style_overlap_score
 
 # Build stable graph node ids used across graph payloads.
@@ -22,6 +22,7 @@ def feedback_item_from_row(row: dict) -> RecommendationFeedbackItem:
     """Convert raw feedback SQL rows into API DTOs."""
     return RecommendationFeedbackItem(
         id=row["id"],
+        userId=row["user_id"],
         sourceEntityType=row["source_entity_type"],
         sourceEntityId=row["source_entity_id"],
         candidateEntityType=row["candidate_entity_type"],
@@ -32,15 +33,15 @@ def feedback_item_from_row(row: dict) -> RecommendationFeedbackItem:
         updatedAt=row["updated_at"],
     )
 
-# Validate that a referenced artist/event exists for feedback operations.
+# Validate that a referenced artist/promoter exists for feedback operations.
 def ensure_feedback_entity_exists(
     connection: Connection,
     *,
-    entity_type: EntityKind,
+    entity_type: str,
     entity_id: int,
 ) -> None:
     """Ensure referenced recommendation entity exists or raise 404."""
-    table_name = "artists" if entity_type == "artist" else "events"
+    table_name = "artists" if entity_type == "artist" else "promoters"
     with connection.cursor() as cursor:
         cursor.execute(f"SELECT 1 FROM {table_name} WHERE id = %s", (entity_id,))
         if cursor.fetchone() is None:
