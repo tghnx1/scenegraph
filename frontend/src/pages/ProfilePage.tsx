@@ -1,7 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { graphEntityId, type GraphNode } from '../types/graph'
 import type { PromoterRecommendationResponse } from '../types/recommendation'
-import { setPromoterFeedback, type PromoterFeedbackValue } from '../api/recommendationFeedback'
+import {
+  deletePromoterFeedback,
+  getPromoterFeedback,
+  setPromoterFeedback,
+  type PromoterFeedbackValue,
+} from '../api/recommendationFeedback'
 import { DetailsPanel } from './components/DetailsPanel.tsx'
 import { RecommendationLoading } from './components/LoadingScreen.tsx'
 import { ScenegraphMapPanel } from './components/GraphPanel.tsx'
@@ -146,6 +151,10 @@ export function ProfilePage() {
   const [focusedRecommendationPromoterIds, setFocusedRecommendationPromoterIds] = useState<number[] | null>(null)
   const [expandedReasonItems, setExpandedReasonItems] = useState<Record<string, boolean>>({})
   const [pendingFeedbackPromoterId, setPendingFeedbackPromoterId] = useState<number | null>(null)
+  const [localFeedbackByPromoterId, setLocalFeedbackByPromoterId] = useState<
+    Record<number, PromoterFeedbackValue | null>
+  >({})
+  const [localFeedbackIdByPromoterId, setLocalFeedbackIdByPromoterId] = useState<Record<number, number>>({})
   const recommendationThresholdInitializedRef = useRef(false)
   const recommendationListRef = useRef<HTMLElement | null>(null)
 
@@ -182,6 +191,8 @@ export function ProfilePage() {
     setFocusedRecommendationPromoterIds(null)
     setExpandedReasonItems({})
     setRecommendationGraphMode('compact')
+    setLocalFeedbackByPromoterId({})
+    setLocalFeedbackIdByPromoterId({})
 
     try {
       const requestUrl = new URL(PROMOTER_RECOMMENDATIONS_API_PATH, window.location.origin)
@@ -215,35 +226,45 @@ export function ProfilePage() {
     setPendingFeedbackPromoterId(promoterId)
     setRecommendationsError(null)
 
-    const previousRecommendationsData = recommendationsData
-    setRecommendationsData((current) => {
-      if (current === null) return null
-      if (feedback === 'negative') {
-        return {
-          ...current,
-          recommendations: current.recommendations.filter((item) => item.id !== promoterId),
-        }
-      }
-
-      return {
-        ...current,
-        recommendations: current.recommendations.map((item) => (
-          item.id === promoterId
-            ? { ...item, feedbackState: feedback }
-            : item
-        )),
-      }
-    })
+    const hasLocalFeedback = Object.prototype.hasOwnProperty.call(localFeedbackByPromoterId, promoterId)
+    const previousFeedback = hasLocalFeedback
+      ? localFeedbackByPromoterId[promoterId]
+      : recommendationsData?.recommendations.find((item) => item.id === promoterId)?.feedbackState
+    const isRemovingFeedback = previousFeedback === feedback
+    setLocalFeedbackByPromoterId((current) => ({
+      ...current,
+      [promoterId]: isRemovingFeedback ? null : feedback,
+    }))
 
     try {
-      await setPromoterFeedback(RECOMMENDATION_ARTIST_ID, promoterId, feedback)
+      if (isRemovingFeedback) {
+        let feedbackId = localFeedbackIdByPromoterId[promoterId]
+        if (!feedbackId) {
+          const response = await getPromoterFeedback(RECOMMENDATION_ARTIST_ID, promoterId)
+          feedbackId = response.feedback[0]?.id
+        }
+        if (feedbackId) {
+          await deletePromoterFeedback(feedbackId)
+        }
+        setLocalFeedbackIdByPromoterId((current) => {
+          const next = { ...current }
+          delete next[promoterId]
+          return next
+        })
+      } else {
+        const savedFeedback = await setPromoterFeedback(RECOMMENDATION_ARTIST_ID, promoterId, feedback)
+        setLocalFeedbackIdByPromoterId((current) => ({
+          ...current,
+          [promoterId]: savedFeedback.id,
+        }))
+      }
     } catch (error) {
-      setRecommendationsData(previousRecommendationsData)
+      setLocalFeedbackByPromoterId((current) => ({ ...current, [promoterId]: previousFeedback ?? null }))
       setRecommendationsError(error instanceof Error ? error.message : 'Failed to save feedback')
     } finally {
       setPendingFeedbackPromoterId(null)
     }
-  }, [recommendationsData])
+  }, [localFeedbackByPromoterId, recommendationsData])
 
   const handleSelectRecommendation = useCallback((recommendationId: number) => {
     const recommendationNode = recommendationsData?.graph.nodes.find((node) => (
@@ -537,7 +558,14 @@ export function ProfilePage() {
                               <button
                                 type="button"
                                 className="recommendation-feedback-button"
-                                aria-pressed={recommendation.feedbackState === 'positive'}
+                                aria-pressed={
+                                  (
+                                    Object.prototype.hasOwnProperty.call(localFeedbackByPromoterId, recommendation.id)
+                                      ? localFeedbackByPromoterId[recommendation.id]
+                                      : recommendation.feedbackState
+                                  )
+                                  === 'positive'
+                                }
                                 disabled={pendingFeedbackPromoterId === recommendation.id}
                                 onClick={() => void handlePromoterFeedback(recommendation.id, 'positive')}
                               >
@@ -546,7 +574,14 @@ export function ProfilePage() {
                               <button
                                 type="button"
                                 className="recommendation-feedback-button"
-                                aria-pressed={recommendation.feedbackState === 'negative'}
+                                aria-pressed={
+                                  (
+                                    Object.prototype.hasOwnProperty.call(localFeedbackByPromoterId, recommendation.id)
+                                      ? localFeedbackByPromoterId[recommendation.id]
+                                      : recommendation.feedbackState
+                                  )
+                                  === 'negative'
+                                }
                                 disabled={pendingFeedbackPromoterId === recommendation.id}
                                 onClick={() => void handlePromoterFeedback(recommendation.id, 'negative')}
                               >

@@ -15,6 +15,10 @@ export interface PromoterFeedbackItem {
   updatedAt: string
 }
 
+interface PromoterFeedbackResponse {
+  feedback: PromoterFeedbackItem[]
+}
+
 export const setPromoterFeedback = (
   artistId: number,
   promoterId: number,
@@ -26,6 +30,14 @@ export const setPromoterFeedback = (
   candidateEntityId: promoterId,
   feedback,
 })
+
+export const getPromoterFeedback = (
+  artistId: number,
+  promoterId: number,
+): Promise<PromoterFeedbackResponse> => api.get(
+  `/recommendation-feedback?sourceEntityType=artist&sourceEntityId=${artistId}`
+  + `&candidateEntityType=promoter&candidateEntityId=${promoterId}`,
+)
 
 export const deletePromoterFeedback = (feedbackId: number): Promise<PromoterFeedbackItem> =>
   api.delete(`/recommendation-feedback/${feedbackId}`)
