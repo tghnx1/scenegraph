@@ -5,10 +5,12 @@ import type { EventDetail } from '../../types/event'
 import type { PromoterDetail } from '../../types/promoter'
 import type { SearchResult } from '../../types/search'
 import type { VenueDetail } from '../../types/venue'
+import type { ManualArtistConnectionControl } from './DetailsPanel'
 
 type RenderDetailsProps = {
   result: SearchResult | EntityDetail
   variant?: 'card' | 'inline'
+  manualArtistConnections?: ManualArtistConnectionControl
 }
 
 type DisplayResult = SearchResult | EntityDetail
@@ -34,7 +36,36 @@ function dateOnly(date: string | null) {
   return date.split(/[T ]/)[0]
 }
 
-export function RenderDetails({ result, variant = 'card' }: RenderDetailsProps) {
+function ManualArtistConnectionButton({
+  artistId,
+  control,
+}: {
+  artistId: number
+  control?: ManualArtistConnectionControl
+}) {
+  if (!control || artistId === control.sourceArtistId) return null
+
+  const isConnected = control.connectedArtistIds.has(artistId)
+  const isPending = control.pendingArtistId === artistId
+
+  return (
+    <div className="manual-connection-action">
+      <button
+        type="button"
+        className={isConnected ? 'manual-connection-button connected' : 'manual-connection-button'}
+        onClick={() => void control.onToggle(artistId)}
+        disabled={control.isLoading || control.pendingArtistId !== null}
+      >
+        {isPending
+          ? (isConnected ? 'Removing...' : 'Adding...')
+          : (isConnected ? 'Remove manual connection' : 'Add manual connection')}
+      </button>
+      {control.error && <p className="manual-connection-error">{control.error}</p>}
+    </div>
+  )
+}
+
+export function RenderDetails({ result, variant = 'card', manualArtistConnections }: RenderDetailsProps) {
   const articleClassName = variant === 'inline' ? 'search-result-card search-result-card--inline' : 'search-result-card'
 
   if (isArtistDetail(result)) {
@@ -49,7 +80,9 @@ export function RenderDetails({ result, variant = 'card' }: RenderDetailsProps) 
             <h2>{result.name}</h2>
             <p className="result-meta">{result.genres.join(' · ') || 'No genres yet'}</p>
           </div>
-          <span className="result-badge">{result.event_count} events</span>
+          <div className="result-header-actions">
+            <ManualArtistConnectionButton artistId={result.id} control={manualArtistConnections} />
+          </div>
         </div>
 
         <section className="result-section">
@@ -112,7 +145,6 @@ export function RenderDetails({ result, variant = 'card' }: RenderDetailsProps) 
             <h2>{result.name}</h2>
             <p className="result-meta">ID {result.id}</p>
           </div>
-          <span className="result-badge">{result.event_count} events</span>
         </div>
 
         <section className="result-section">
@@ -144,7 +176,6 @@ export function RenderDetails({ result, variant = 'card' }: RenderDetailsProps) 
             <h2>{result.name}</h2>
             <p className="result-meta">{[result.address, result.district].filter(Boolean).join(' - ') || `ID ${result.id}`}</p>
           </div>
-          <span className="result-badge">{result.event_count} events</span>
         </div>
 
         <section className="result-section">
@@ -224,6 +255,7 @@ export function RenderDetails({ result, variant = 'card' }: RenderDetailsProps) 
             <h2>{result.name}</h2>
             <p className="result-meta">{result.id}</p>
           </div>
+          <ManualArtistConnectionButton artistId={result.id} control={manualArtistConnections} />
         </div>
       </article>
     )

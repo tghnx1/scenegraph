@@ -4,6 +4,7 @@ import { ScenegraphMapPanel } from './components/GraphPanel.tsx'
 import { PromoterRecommendationsPanel, type RecommendationTargetControls } from './components/RecommendationPanel.tsx'
 import { SearchInputField } from './components/SearchInputField.tsx'
 import { useGraphSearchDetails } from './hooks/useGraphSearchDetails.ts'
+import { useManualArtistConnections } from './hooks/useManualArtistConnections.ts'
 import { BiographyPanel } from './components/BiographyPanel.tsx'
 
 type ProfileWorkspaceTab = 'graph' | 'recommendations'
@@ -16,9 +17,9 @@ interface ProfilePageProps {
 export function ProfilePage({ recommendationTargetControls, showBiography = true }: ProfilePageProps = {}) {
   const { detailsPanelProps, searchFormProps, setSelected } = useGraphSearchDetails()
   const [activeWorkspaceTab, setActiveWorkspaceTab] = useState<ProfileWorkspaceTab>('graph')
-  const [recommendationRefreshToken, setRecommendationRefreshToken] = useState(0)
   const storedArtistId = Number(localStorage.getItem('artist_id'))
   const artistId = Number.isInteger(storedArtistId) && storedArtistId > 0 ? storedArtistId : null
+  const manualConnections = useManualArtistConnections(showBiography ? artistId : null)
 
   return (
     <div className="profile-page">
@@ -36,6 +37,14 @@ export function ProfilePage({ recommendationTargetControls, showBiography = true
           </div> */}
           <DetailsPanel
             {...detailsPanelProps}
+            manualArtistConnections={showBiography && artistId !== null ? {
+              sourceArtistId: artistId,
+              connectedArtistIds: manualConnections.connectedArtistIds,
+              isLoading: manualConnections.isLoading,
+              pendingArtistId: manualConnections.pendingArtistId,
+              error: manualConnections.error,
+              onToggle: manualConnections.toggle,
+            } : undefined}
           />
         </article>
 
@@ -78,14 +87,20 @@ export function ProfilePage({ recommendationTargetControls, showBiography = true
               isActive={activeWorkspaceTab === 'recommendations'}
               targetControls={recommendationTargetControls}
               onSelectNode={setSelected}
-              refreshToken={recommendationRefreshToken}
+              refreshToken={manualConnections.revision}
             />
           </article>
         </section>
         {showBiography && (
           <BiographyPanel
             artistId={artistId}
-            onConnectionsChange={() => setRecommendationRefreshToken((current) => current + 1)}
+            manualConnections={{
+              connections: manualConnections.connections,
+              isLoading: manualConnections.isLoading,
+              pendingArtistId: manualConnections.pendingArtistId,
+              error: manualConnections.error,
+              onRemove: manualConnections.remove,
+            }}
           />
         )}
       </section>
