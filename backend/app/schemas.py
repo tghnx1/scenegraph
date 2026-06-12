@@ -66,6 +66,7 @@ class LoginResponse(BaseModel):
     message: str
     user_id: int | None = None
     username: str | None = None
+    artist_id: int | None = None
     access_token: str | None = None
 
 
