@@ -7,7 +7,7 @@ import { ScenegraphMapPanel } from './components/GraphPanel.tsx'
 import { SearchQueryForm } from './components/SearchQuery.tsx'
 import { useGraphSearchDetails } from './hooks/useGraphSearchDetails.ts'
 
-const PROMOTER_RECOMMENDATIONS_API_BASE_URL = 'http://localhost:8080/api/recommendations/artists/2178/promoters'
+const PROMOTER_RECOMMENDATIONS_API_PATH = '/api/recommendations/artists/2178/promoters'
 const RECOMMENDATION_LOADING_MESSAGES = [
   'Finding similar artists',
   'Comparing related events',
@@ -180,7 +180,7 @@ export function ProfilePage() {
     setRecommendationGraphMode('compact')
 
     try {
-      const requestUrl = new URL(PROMOTER_RECOMMENDATIONS_API_BASE_URL)
+      const requestUrl = new URL(PROMOTER_RECOMMENDATIONS_API_PATH, window.location.origin)
       requestUrl.searchParams.set('limit', '50')
       const response = await fetch(requestUrl.toString())
 
