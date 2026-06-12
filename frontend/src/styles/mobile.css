@@ -51,13 +51,10 @@
     grid-template-columns: 1fr;
     grid-template-rows:
       minmax(540px, var(--profile-secondary-panel-height))
-      auto
-      repeat(2, minmax(540px, var(--profile-secondary-panel-height)));
+      auto;
     grid-template-areas:
       "context"
-      "graph"
-      "profile"
-      "communications";
+      "graph";
   }
 
   .recommendations-content {
