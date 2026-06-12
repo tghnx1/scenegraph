@@ -51,7 +51,7 @@
     grid-template-columns: 1fr;
     grid-template-rows:
       minmax(540px, var(--profile-secondary-panel-height))
-      minmax(720px, 120dvh)
+      auto
       repeat(2, minmax(540px, var(--profile-secondary-panel-height)));
     grid-template-areas:
       "context"
@@ -62,7 +62,34 @@
 
   .recommendations-content {
     grid-template-columns: 1fr;
-    grid-template-rows: minmax(240px, 0.65fr) minmax(360px, 1fr);
+    grid-template-rows: auto minmax(240px, max-content) minmax(520px, 78dvh);
+  }
+
+  .recommendations-panel {
+    min-height: 720px;
+  }
+
+  .recommendation-graph-map {
+    grid-template-rows: auto minmax(420px, 1fr);
+    min-height: 520px;
+  }
+
+  .recommendation-graph-map .scenegraph-map-panel {
+    min-height: 420px;
+    height: 100%;
+  }
+
+  .recommendation-graph-map .graph-canvas--large {
+    min-height: 360px;
+    height: 100%;
+  }
+
+  .recommendation-graph-map .graph-canvas-counts {
+    right: 12px;
+    bottom: 12px;
+    max-width: calc(100% - 24px);
+    border-radius: 12px;
+    font-size: 0.78rem;
   }
 
   .recommendation-graph-empty {
