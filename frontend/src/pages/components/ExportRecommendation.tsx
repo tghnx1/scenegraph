@@ -200,15 +200,9 @@ export function RecommendationExportMenu({
       </button>
       {isExportMenuOpen && recommendationsData && (
         <div className="export-menu-list" role="menu" aria-label="Export recommendations">
-          <button type="button" role="menuitem" onClick={handleExportJson}>
-            JSON
-          </button>
-          <button type="button" role="menuitem" onClick={handleExportCsv}>
-            CSV
-          </button>
-          <button type="button" role="menuitem" onClick={handleExportPdf}>
-            PDF
-          </button>
+          <button type="button" role="menuitem" onClick={handleExportJson}>JSON</button>
+          <button type="button" role="menuitem" onClick={handleExportCsv}>CSV</button>
+          <button type="button" role="menuitem" onClick={handleExportPdf}>PDF</button>
         </div>
       )}
     </div>
