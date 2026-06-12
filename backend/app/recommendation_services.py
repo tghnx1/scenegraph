@@ -22,6 +22,7 @@ from app.promoter_graph import (
 from app.promoter_feedback import (
     apply_promoter_feedback_reranking,
     load_promoter_feedback,
+    promoter_content_similarities,
     promoter_feedback_config_from_env,
 )
 from app.recommendation_engine import (
@@ -1162,10 +1163,22 @@ def build_artist_promoter_recommendation_response(
         user_id=user_id,
         artist_id=artist_id,
     )
+    feedback_config = promoter_feedback_config_from_env()
+    content_similarity_by_promoter_id = promoter_content_similarities(
+        connection,
+        candidate_promoter_ids=[recommendation.id for recommendation in recommendations],
+        positive_promoter_ids=[
+            promoter_id
+            for promoter_id, feedback in feedback_by_promoter_id.items()
+            if feedback == "positive"
+        ],
+        config=feedback_config,
+    )
     recommendations = apply_promoter_feedback_reranking(
         recommendations,
         feedback_by_promoter_id=feedback_by_promoter_id,
-        config=promoter_feedback_config_from_env(),
+        content_similarity_by_promoter_id=content_similarity_by_promoter_id,
+        config=feedback_config,
     )
     sorted_recommendations = sorted(
         recommendations,
