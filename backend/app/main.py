@@ -55,7 +55,7 @@ from app.routers.index import router
 app.include_router(router, prefix="/api")
 
 dummy_users = [
-    {"id": 1, "username": "maksim", "password": "12345"},
+    {"id": 1, "username": "maksim", "password": "12345", "artist_id": 2178},
     {"id": 2, "username": "howard", "password": "12345"},
     {"id": 3, "username": "tarcisio", "password": "12345"},
     {"id": 4, "username": "herold", "password": "12345"},
@@ -127,6 +127,7 @@ async def login(login_data: LoginRequest) -> LoginResponse:
                 message="Login successful",
                 user_id=user["id"],
                 username=user["username"],
+                artist_id=user.get("artist_id"),
                 access_token="dummy-token",
             )
     return LoginResponse(
