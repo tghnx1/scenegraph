@@ -98,6 +98,7 @@ export function ScenegraphMapPanel({
   const selectedType = isSearchEntityType(selectedTypeParam) ? selectedTypeParam : null
   const selectedId = searchParams.get('selectedId') ?? ''
   const selectedEntityId = selectedType && selectedId ? graphEntityId(selectedId, selectedType) : null
+  const isEgoGraphMode = Boolean(!providedData && selectedType && selectedId)
 
   const { data, isLoading, error, refetch } = useApi<GraphData>(
     () => {
@@ -128,11 +129,12 @@ export function ScenegraphMapPanel({
   const hasRecommendationControls = Boolean(providedData && !showFilters)
 
   const graphData = useMemo<GraphData>(() => {
-    const visibleNodes = showNodeTypeFilter
+    const isNodeTypeFilteringEnabled = showNodeTypeFilter && !isEgoGraphMode
+    const visibleNodes = isNodeTypeFilteringEnabled
       ? rawGraphData.nodes.filter((node) => visibleNodeTypes.has(node.type))
       : rawGraphData.nodes
     const visibleNodeIds = new Set(visibleNodes.map((node) => node.id))
-    const visibleLinks = showNodeTypeFilter
+    const visibleLinks = isNodeTypeFilteringEnabled
       ? rawGraphData.links.filter((link) => (
         visibleNodeIds.has(getLinkNodeId(link.source as LinkEndpoint))
         && visibleNodeIds.has(getLinkNodeId(link.target as LinkEndpoint))
@@ -163,6 +165,7 @@ export function ScenegraphMapPanel({
     }
   }, [
     hasRecommendationControls,
+    isEgoGraphMode,
     rawGraphData,
     showNodeTypeFilter,
     visibleNodeTypes,
@@ -572,7 +575,11 @@ export function ScenegraphMapPanel({
           <span>{linkCount} links</span>
         </div>
         {showNodeTypeFilter && (
-          <GraphNodeFilter visibleNodeTypes={visibleNodeTypes} onToggle={handleLegendToggle} />
+          <GraphNodeFilter
+            visibleNodeTypes={visibleNodeTypes}
+            onToggle={handleLegendToggle}
+            disabled={isEgoGraphMode}
+          />
         )}
         <ForceGraph2D
           ref={graphRef}
