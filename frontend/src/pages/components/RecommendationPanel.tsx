@@ -6,7 +6,7 @@ import { ScenegraphMapPanel } from './GraphPanel'
 import { RecommendationExportMenu } from './RecommendationExport'
 
 const DEFAULT_PROFILE_RECOMMENDATION_ARTIST_ID = 2178
-const PROMOTER_RECOMMENDATIONS_API_BASE_URL = 'http://localhost:8080/api/recommendations/artists'
+const PROMOTER_RECOMMENDATIONS_API_PATH = '/api/recommendations/artists'
 const RECOMMENDATION_LOADING_MESSAGES = [
   'Finding similar artists',
   'Comparing related events',
@@ -210,7 +210,10 @@ export function PromoterRecommendationsPanel({
     setRecommendationGraphMode('compact')
 
     try {
-      const requestUrl = new URL(`${PROMOTER_RECOMMENDATIONS_API_BASE_URL}/${recommendationArtistId}/promoters`)
+      const requestUrl = new URL(
+        `${PROMOTER_RECOMMENDATIONS_API_PATH}/${recommendationArtistId}/promoters`,
+        window.location.origin,
+      )
       requestUrl.searchParams.set('limit', '50')
       const response = await fetch(requestUrl.toString())
 
