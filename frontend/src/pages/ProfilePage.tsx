@@ -16,6 +16,7 @@ interface ProfilePageProps {
 export function ProfilePage({ recommendationTargetControls, showBiography = true }: ProfilePageProps = {}) {
   const { detailsPanelProps, searchFormProps, setSelected } = useGraphSearchDetails()
   const [activeWorkspaceTab, setActiveWorkspaceTab] = useState<ProfileWorkspaceTab>('graph')
+  const [recommendationRefreshToken, setRecommendationRefreshToken] = useState(0)
   const storedArtistId = Number(localStorage.getItem('artist_id'))
   const artistId = Number.isInteger(storedArtistId) && storedArtistId > 0 ? storedArtistId : null
 
@@ -77,10 +78,16 @@ export function ProfilePage({ recommendationTargetControls, showBiography = true
               isActive={activeWorkspaceTab === 'recommendations'}
               targetControls={recommendationTargetControls}
               onSelectNode={setSelected}
+              refreshToken={recommendationRefreshToken}
             />
           </article>
         </section>
-        {showBiography && <BiographyPanel artistId={artistId} />}
+        {showBiography && (
+          <BiographyPanel
+            artistId={artistId}
+            onConnectionsChange={() => setRecommendationRefreshToken((current) => current + 1)}
+          />
+        )}
       </section>
     </div>
   )

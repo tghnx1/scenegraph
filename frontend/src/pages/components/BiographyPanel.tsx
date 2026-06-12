@@ -1,14 +1,19 @@
 import {useEffect, useState, type FormEvent} from 'react'
+import {Link} from 'react-router-dom'
 import {fetchArtistBiography, updateArtistBiography} from '../../api/entityDetails'
+import type {ConnectedArtistItem} from '../../types/artist'
+import {ManualArtistConnections} from './ManualArtistConnections'
 
 interface BiographyPanelProps {
   artistId: number | null
+  onConnectionsChange: () => void
 }
 
-export function BiographyPanel({artistId}: BiographyPanelProps) {
+export function BiographyPanel({artistId, onConnectionsChange}: BiographyPanelProps) {
   const [artistName, setArtistName] = useState('Artist profile')
   const [biography, setBiography] = useState('')
   const [draftBiography, setDraftBiography] = useState('')
+  const [linkedArtists, setLinkedArtists] = useState<ConnectedArtistItem[]>([])
   const [isEditing, setIsEditing] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
@@ -33,6 +38,7 @@ export function BiographyPanel({artistId}: BiographyPanelProps) {
         setArtistName(artist.name)
         setBiography(nextBiography)
         setDraftBiography(nextBiography)
+        setLinkedArtists(artist.connected_artists)
       })
       .catch((requestError) => {
         if (!isCurrent) return
@@ -78,7 +84,7 @@ export function BiographyPanel({artistId}: BiographyPanelProps) {
             setSuccess(null)
             setIsEditing(true)
           }}>
-            Edit
+            Edit Biography
           </button>
         )}
       </div>
@@ -122,6 +128,33 @@ export function BiographyPanel({artistId}: BiographyPanelProps) {
 
       {error && <p className="biography-message error">{error}</p>}
       {success && <p className="biography-message success">{success}</p>}
+
+      {!isLoading && !error && (
+        <section className="biography-linked-artists" aria-labelledby="biography-linked-artists-heading">
+          <div className="biography-section-heading">
+            <h3 id="biography-linked-artists-heading">Linked artists</h3>
+            <span>{linkedArtists.length}</span>
+          </div>
+          <div className="biography-linked-artist-list">
+            {linkedArtists.length > 0 ? linkedArtists.map((artist) => (
+              <Link
+                key={artist.id}
+                to={`/graph?selectedType=artist&selectedId=${encodeURIComponent(artist.id)}`}
+                className="biography-linked-artist"
+              >
+                <strong>{artist.name}</strong>
+                <span>{artist.shared_events} shared event{artist.shared_events === 1 ? '' : 's'}</span>
+              </Link>
+            )) : (
+              <p className="biography-empty">No linked artists yet.</p>
+            )}
+          </div>
+        </section>
+      )}
+
+      {!isLoading && artistId !== null && (
+        <ManualArtistConnections artistId={artistId} onConnectionsChange={onConnectionsChange} />
+      )}
     </article>
   )
 }

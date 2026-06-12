@@ -44,6 +44,7 @@ interface PromoterRecommendationsPanelProps {
   isActive: boolean
   targetControls?: RecommendationTargetControls
   onSelectNode: (node: GraphNode | null) => void
+  refreshToken?: number
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -137,6 +138,7 @@ export function PromoterRecommendationsPanel({
   isActive,
   targetControls,
   onSelectNode,
+  refreshToken = 0,
 }: PromoterRecommendationsPanelProps) {
   const [recommendationsData, setRecommendationsData] = useState<PromoterRecommendationResponse | null>(null)
   const [isRecommendationsLoading, setIsRecommendationsLoading] = useState(false)
@@ -152,6 +154,7 @@ export function PromoterRecommendationsPanel({
   const recommendationThresholdInitializedRef = useRef(false)
   const recommendationListRef = useRef<HTMLElement | null>(null)
   const recommendationRequestIdRef = useRef(0)
+  const previousRefreshTokenRef = useRef(refreshToken)
   const recommendationArtistId = targetControls
     ? targetControls.artistId
     : DEFAULT_PROFILE_RECOMMENDATION_ARTIST_ID
@@ -234,6 +237,12 @@ export function PromoterRecommendationsPanel({
       }
     }
   }, [recommendationArtistId, targetControls?.emptyMessage])
+
+  useEffect(() => {
+    if (previousRefreshTokenRef.current === refreshToken) return
+    previousRefreshTokenRef.current = refreshToken
+    if (recommendationsData) void handleLoadRecommendations()
+  }, [handleLoadRecommendations, recommendationsData, refreshToken])
 
   const handleSelectRecommendation = useCallback((recommendationId: number) => {
     const recommendationNode = recommendationsData?.graph.nodes.find((node) => (

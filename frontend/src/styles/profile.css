@@ -76,7 +76,8 @@
 }
 
 .biography-panel .panel-heading button,
-.biography-form-actions button {
+.biography-form-actions button,
+.biography-panel .manual-artist-connection button {
   border: 1px solid var(--artist-border);
   border-radius: 6px;
   background: var(--artist-soft);
@@ -147,6 +148,113 @@
 
 .biography-message.success {
   color: var(--success, #2f8f5b);
+}
+
+.biography-linked-artists {
+  display: grid;
+  gap: 10px;
+  margin-top: 24px;
+  padding-top: 18px;
+  border-top: 1px solid var(--surface-border-soft);
+}
+
+.biography-section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.biography-section-heading h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.biography-section-heading span {
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.biography-linked-artist-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 8px;
+}
+
+.biography-linked-artist {
+  display: grid;
+  gap: 3px;
+  padding: 10px 12px;
+  border: 1px solid var(--surface-border-soft);
+  border-radius: 10px;
+  background: var(--surface-panel-soft);
+  color: var(--text);
+  text-decoration: none;
+}
+
+.biography-linked-artist:hover {
+  border-color: var(--selection-border);
+  background: var(--selection-soft);
+}
+
+.biography-linked-artist span {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+
+.manual-artist-connections {
+  display: grid;
+  gap: 12px;
+  margin-top: 24px;
+  padding-top: 18px;
+  border-top: 1px solid var(--surface-border-soft);
+}
+
+.manual-artist-connections .biography-section-heading p {
+  margin: 4px 0 0;
+  font-size: 0.82rem;
+}
+
+.manual-artist-connections .search-query-form {
+  max-width: 520px;
+}
+
+.manual-artist-connection-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 8px;
+}
+
+.manual-artist-connection {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 10px 8px 12px;
+  border: 1px solid var(--surface-border-soft);
+  border-radius: 10px;
+  background: var(--surface-panel-soft);
+}
+
+.manual-artist-connection a {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text);
+  font-weight: 700;
+  text-overflow: ellipsis;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.manual-artist-connection a:hover {
+  color: var(--accent);
+}
+
+.biography-panel .manual-artist-connection button {
+  flex: 0 0 auto;
+  padding: 6px 9px;
+  font-size: 0.8rem;
 }
 
 .profile-workspace-tabs {
