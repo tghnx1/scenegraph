@@ -5,7 +5,7 @@ import { DashboardPage } from './pages/DashboardPage'
 import { ProfilePage } from './pages/ProfilePage'
 import { AgencyPage } from './pages/AgencyPage'
 import { LoginPage } from './pages/LoginPage'
-import { logout, type AuthRole } from './api/auth'
+import { isAuthRole, logout, type AuthRole } from './api/auth'
 import { applyTheme, getStoredTheme, type ThemeName } from './styles/colors'
 
 const colorVar = (name: string) => `var(${name})`
@@ -45,20 +45,18 @@ export default function App() {
   const [authRole, setAuthRole] = useState<AuthRole | null>(() => {
     const storedToken = localStorage.getItem('token')
     const storedRole = localStorage.getItem('role')
-    const storedUsername = localStorage.getItem('username')
 
     if (!storedToken) return null
     if (isAuthRole(storedRole)) return storedRole
-    if (storedUsername) return getFallbackRole(storedUsername)
 
     return null
   })
   const [themeName, setThemeName] = useState<ThemeName>(() => getStoredTheme())
   const isAuthenticated = Boolean(authRole)
   const canOpenDashboard = authRole === 'admin'
-  const graphPage = authRole === 'artist'
+  const graphPage = authRole === 'user'
     ? <ProfilePage />
-    : authRole === 'agent' || authRole === 'admin'
+    : authRole === 'contributor' || authRole === 'admin'
       ? <AgencyPage />
       : <GraphPage />
 
