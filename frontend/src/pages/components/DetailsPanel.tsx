@@ -3,6 +3,15 @@ import type { EntityDetail } from '../../types/entityDetail'
 import type { GraphNode } from '../../types/graph'
 import type { SearchResult } from '../../types/search'
 
+export interface ManualArtistConnectionControl {
+  sourceArtistId: number
+  connectedArtistIds: ReadonlySet<number>
+  isLoading: boolean
+  pendingArtistId: number | null
+  error: string | null
+  onToggle: (artistId: number) => Promise<void>
+}
+
 interface DetailsPanelProps {
   searchQuery: string
   searchResults: SearchResult[]
@@ -10,6 +19,7 @@ interface DetailsPanelProps {
   searchError: string | null
   selectedNode: GraphNode | null
   selectedEntityDetail: EntityDetail | null
+  manualArtistConnections?: ManualArtistConnectionControl
 }
 
 export function DetailsPanel({
@@ -19,13 +29,18 @@ export function DetailsPanel({
   searchError,
   selectedNode,
   selectedEntityDetail,
+  manualArtistConnections,
 }: DetailsPanelProps) {
   const activeSearchResult = searchResults[0] ?? null
 
   if (selectedEntityDetail) {
     return (
       <div className="graph-sidebar-content">
-        <RenderDetails variant="inline" result={selectedEntityDetail} />
+        <RenderDetails
+          variant="inline"
+          result={selectedEntityDetail}
+          manualArtistConnections={manualArtistConnections}
+        />
       </div>
     )
   }
@@ -42,7 +57,6 @@ export function DetailsPanel({
                 {selectedNode.genres?.slice(0, 4).join(' · ') || 'No genres available'}
               </p>
             </div>
-            <span className="result-badge">{selectedNode.eventCount ?? 0} events</span>
           </div>
 
           <section className="result-section">
@@ -84,7 +98,13 @@ export function DetailsPanel({
           </div>
         )}
 
-        {activeSearchResult && <RenderDetails variant="inline" result={activeSearchResult} />}
+        {activeSearchResult && (
+          <RenderDetails
+            variant="inline"
+            result={activeSearchResult}
+            manualArtistConnections={manualArtistConnections}
+          />
+        )}
       </div>
     )
   }

@@ -2,14 +2,14 @@ import {useEffect, useState, type FormEvent} from 'react'
 import {Link} from 'react-router-dom'
 import {fetchArtistBiography, updateArtistBiography} from '../../api/entityDetails'
 import type {ConnectedArtistItem} from '../../types/artist'
-import {ManualArtistConnections} from './ManualArtistConnections'
+import {ManualArtistConnections, type ManualArtistConnectionsProps} from './ManualArtistConnections'
 
 interface BiographyPanelProps {
   artistId: number | null
-  onConnectionsChange: () => void
+  manualConnections: ManualArtistConnectionsProps
 }
 
-export function BiographyPanel({artistId, onConnectionsChange}: BiographyPanelProps) {
+export function BiographyPanel({artistId, manualConnections}: BiographyPanelProps) {
   const [artistName, setArtistName] = useState('Artist profile')
   const [biography, setBiography] = useState('')
   const [draftBiography, setDraftBiography] = useState('')
@@ -153,7 +153,7 @@ export function BiographyPanel({artistId, onConnectionsChange}: BiographyPanelPr
       )}
 
       {!isLoading && artistId !== null && (
-        <ManualArtistConnections artistId={artistId} onConnectionsChange={onConnectionsChange} />
+        <ManualArtistConnections {...manualConnections} />
       )}
     </article>
   )
