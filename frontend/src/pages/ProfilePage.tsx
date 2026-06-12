@@ -7,6 +7,8 @@ import { useGraphSearchDetails } from './hooks/useGraphSearchDetails.ts'
 import { useManualArtistConnections } from './hooks/useManualArtistConnections.ts'
 import { BiographyPanel } from './components/BiographyPanel.tsx'
 
+const DEFAULT_PROFILE_ARTIST_ID = 2178
+
 type ProfileWorkspaceTab = 'graph' | 'recommendations'
 
 interface ProfilePageProps {
@@ -18,7 +20,9 @@ export function ProfilePage({ recommendationTargetControls, showBiography = true
   const { detailsPanelProps, searchFormProps, setSelected } = useGraphSearchDetails()
   const [activeWorkspaceTab, setActiveWorkspaceTab] = useState<ProfileWorkspaceTab>('graph')
   const storedArtistId = Number(localStorage.getItem('artist_id'))
-  const artistId = Number.isInteger(storedArtistId) && storedArtistId > 0 ? storedArtistId : null
+  const artistId = Number.isInteger(storedArtistId) && storedArtistId > 0
+    ? storedArtistId
+    : DEFAULT_PROFILE_ARTIST_ID
   const manualConnections = useManualArtistConnections(showBiography ? artistId : null)
 
   return (
@@ -85,6 +89,7 @@ export function ProfilePage({ recommendationTargetControls, showBiography = true
             </section>
             <PromoterRecommendationsPanel
               isActive={activeWorkspaceTab === 'recommendations'}
+              artistId={artistId}
               targetControls={recommendationTargetControls}
               onSelectNode={setSelected}
             />
