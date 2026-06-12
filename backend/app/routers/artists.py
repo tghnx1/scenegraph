@@ -213,12 +213,11 @@ def update_artist_biography(
             """
             UPDATE artists
             SET biography = %s,
-                biography_normalized = %s,
                 biography_status = 'manually_edited'
             WHERE id = %s
             RETURNING id, name, biography;
             """,
-            (biography, biography, id),
+            (biography, id),
         )
         artist = cur.fetchone()
 
