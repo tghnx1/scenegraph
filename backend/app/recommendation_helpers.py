@@ -10,7 +10,12 @@ from app.recommendation_scoring import (
     semantic_artist_tag_scoring_from_env,
 )
 from app.schemas import EntityKind, RecommendationFeedbackItem
-from app.style_tags import extract_style_tags, style_overlap_score
+from app.style_tags import (
+    canonicalize_style_tags,
+    extract_style_tags,
+    style_overlap_score,
+    suppress_parent_style_tags,
+)
 
 # Build stable graph node ids used across graph payloads.
 def graph_node_id(node_type: str, entity_id: int) -> str:
@@ -140,6 +145,11 @@ def artist_semantic_metadata(
                 FROM artist_extracted_tags
                 WHERE artist_id = ANY(%s)
                   AND confidence >= 0.6
+                  AND (
+                      tag_type <> 'style'
+                      OR extractor LIKE 'llm_artist_tags_v2:%%'
+                      OR extractor = 'canonical_style_cleanup_v1'
+                  )
                 ORDER BY tag_type ASC, tag_value ASC
                 """,
                 (artist_ids,),
@@ -147,16 +157,21 @@ def artist_semantic_metadata(
             for tag in cursor.fetchall():
                 artist_tags = extracted_tags.setdefault(tag["artist_id"], {})
                 values = artist_tags.setdefault(tag["tag_type"], [])
-                normalized = tag["tag_value"].strip()
-                if normalized and normalized not in values:
-                    values.append(normalized)
+                normalized_values = (
+                    canonicalize_style_tags(tag["tag_value"])
+                    if tag["tag_type"] == "style"
+                    else [tag["tag_value"].strip()]
+                )
+                for normalized in normalized_values:
+                    if normalized and normalized not in values:
+                        values.append(normalized)
 
     metadata = {
         row["id"]: {
             "id": row["id"],
             "name": row["name"],
             "tags": extracted_tags.get(row["id"], {}),
-            "style_tags": sorted(
+            "style_tags": suppress_parent_style_tags(
                 set(extract_style_tags(row["biography"]))
                 | set(extracted_tags.get(row["id"], {}).get("style", []))
             ),

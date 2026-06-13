@@ -97,6 +97,7 @@ def main() -> None:
                     "artistId": artist["id"],
                     "artistName": artist["name"],
                     "extractor": config.extractor_key,
+                    "styleNormalization": "canonical-style-v2",
                     "mode": artist.get("_extraction_mode", "full"),
                     "tags": [
                         {
@@ -256,6 +257,7 @@ def main() -> None:
 
     print(
         f"Artist tag extraction complete with extractor={config.extractor_key}; "
+        "styles=canonical-style-v2; "
         f"processed={processed}; skipped={skipped}; failed={failed}"
     )
 

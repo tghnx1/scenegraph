@@ -3,7 +3,7 @@ from pydantic import BaseModel
 from typing import List, Optional
 from psycopg import Connection
 from app.db import get_db
-from app.style_tags import extract_style_tags
+from app.style_tags import canonicalize_style_tags, extract_style_tags
 
 router = APIRouter()
 
@@ -135,11 +135,13 @@ def get_artist(
         has_artist_extracted_genres = cur.fetchone()["table_name"] is not None
         if has_artist_extracted_genres:
             cur.execute(ARTIST_STYLE_TAGS_SQL, (id,))
-            profile_style_tags = [
-                row["extracted_genre"]
-                for row in cur.fetchall()
-                if isinstance(row["extracted_genre"], str) and row["extracted_genre"].strip()
-            ]
+            profile_style_tags = sorted(
+                {
+                    canonical
+                    for row in cur.fetchall()
+                    for canonical in canonicalize_style_tags(row["extracted_genre"])
+                }
+            )
 
     if not profile_style_tags:
         profile_style_tags = extract_style_tags(biography)

@@ -89,6 +89,11 @@ ARTIST_TAGS_SQL = """
 SELECT tag_type, tag_value, confidence
 FROM artist_extracted_tags
 WHERE artist_id = %s
+  AND (
+      tag_type <> 'style'
+      OR extractor LIKE 'llm_artist_tags_v2:%%'
+      OR extractor = 'canonical_style_cleanup_v1'
+  )
 ORDER BY confidence DESC;
 """
 
@@ -130,6 +135,10 @@ EVENT_TAGS_SQL = """
 SELECT tag_type, tag_value, confidence
 FROM event_extracted_tags
 WHERE event_id = %s
+  AND (
+      tag_type <> 'style'
+      OR extractor LIKE 'llm_event_tags_v3:%%'
+  )
 ORDER BY confidence DESC;
 """
 
