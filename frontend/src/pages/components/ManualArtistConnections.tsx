@@ -1,3 +1,4 @@
+import {useState} from 'react'
 import {Link} from 'react-router-dom'
 import { X } from 'lucide-react'
 import { Button } from '@/shared/ui/button'
@@ -18,12 +19,33 @@ export function ManualArtistConnections({
   error,
   onRemove,
 }: ManualArtistConnectionsProps) {
+  const [isInfoOpen, setIsInfoOpen] = useState(false)
+
   return (
     <section className="grid gap-3" aria-labelledby="manual-artist-connections-heading">
       <div className="flex items-center justify-between gap-3 border-b border-[var(--surface-border-soft)] pb-2">
-        <div>
+        <div className="flex items-center gap-1.5">
           <h3 id="manual-artist-connections-heading">Artists you know</h3>
-          <p className="m-0 text-sm text-[var(--text-muted)]">Add artists from their details panel.</p>
+          <span className="relative inline-grid place-items-center">
+            <button
+              type="button"
+              className="grid size-5 cursor-help place-items-center rounded-full border border-[var(--surface-border)] bg-[var(--surface-panel)] p-0 text-[var(--text-muted)] opacity-90 transition-all hover:-translate-y-px hover:border-[var(--focus-border)] hover:bg-[var(--surface-strong)] hover:text-[var(--text)] hover:opacity-100 focus-visible:-translate-y-px focus-visible:border-[var(--focus-border)] focus-visible:bg-[var(--surface-strong)] focus-visible:text-[var(--text)] focus-visible:opacity-100 focus-visible:outline-none"
+              aria-label="Explain how to add artists"
+              aria-expanded={isInfoOpen}
+              onClick={() => setIsInfoOpen((isOpen) => !isOpen)}
+              onBlur={() => setIsInfoOpen(false)}
+            >
+              <span className="block size-[13px] rounded-full text-center font-serif text-[0.7rem] font-extrabold italic leading-[13px]" aria-hidden="true">i</span>
+            </button>
+            {isInfoOpen && (
+              <span
+                className="absolute left-0 top-[calc(100%+8px)] z-20 w-[min(300px,calc(100vw-48px))] rounded-lg border border-[var(--surface-border)] bg-[var(--surface-panel)] px-3 py-2.5 text-left text-[0.82rem] font-semibold leading-snug text-[var(--text)] shadow-[var(--surface-shadow)]"
+                role="tooltip"
+              >
+                Add artists from their details panel.
+              </span>
+            )}
+          </span>
         </div>
       </div>
 

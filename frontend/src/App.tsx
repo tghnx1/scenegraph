@@ -5,6 +5,7 @@ import { DashboardPage } from './pages/DashboardPage'
 import { ProfilePage } from './pages/ProfilePage'
 import { AgencyPage } from './pages/AgencyPage'
 import { LoginPage } from './pages/LoginPage'
+import { AboutPage } from './pages/AboutPage'
 import { isAuthRole, logout, type AuthRole } from './api/auth'
 import { applyTheme, getStoredTheme, type ThemeName } from './shared/styles/colors'
 import { Button } from '@/shared/ui/button'
@@ -19,25 +20,6 @@ const footerLinkClass = ({ isActive }: { isActive: boolean }) => cn(
   navLinkClass({ isActive }),
   'px-2 py-1 text-xs',
 )
-
-function LegalPage({ section }: { section: string }) {
-  const titles: Record<string, string> = {
-    privacy: 'Privacy Policy',
-    terms: 'Terms of Service',
-    impressum: 'Impressum',
-    cookies: 'Cookie Settings',
-    contact: 'Contact',
-  }
-
-  return (
-    <div className="mx-auto max-w-[800px] p-10">
-      <h1>{titles[section] || 'Legal'}</h1>
-      <p className="mt-5 text-[var(--text-muted)]">
-        This page is a placeholder for {titles[section]?.toLowerCase() || 'legal information'}.
-      </p>
-    </div>
-  )
-}
 
 function SearchRedirect() {
   const [searchParams] = useSearchParams()
@@ -137,11 +119,11 @@ export default function App() {
           <Route path="/promoter/:id" element={<EntityRedirect type="promoter" />} />
           <Route path="/event/:id" element={<EntityRedirect type="event" />} />
           <Route path="/venue/:id" element={<EntityRedirect type="venue" />} />
-          <Route path="/privacy-policy" element={<LegalPage section="privacy" />} />
-          <Route path="/terms-of-service" element={<LegalPage section="terms" />} />
-          <Route path="/impressum" element={<LegalPage section="impressum" />} />
-          <Route path="/cookie-settings" element={<LegalPage section="cookies" />} />
-          <Route path="/contact" element={<LegalPage section="contact" />} />
+          <Route path="/privacy-policy" element={<AboutPage page="privacy" />} />
+          <Route path="/terms-of-service" element={<AboutPage page="terms" />} />
+          {/* <Route path="/impressum" element={<AboutPage page="impressum" />} /> */}
+          {/* <Route path="/cookie-settings" element={<AboutPage page="cookies" />} /> */}
+          <Route path="/contact" element={<AboutPage page="contact" />} />
         </Routes>
       </main>
 
@@ -154,9 +136,12 @@ export default function App() {
           <NavLink to="/terms-of-service" className={footerLinkClass}>
             Terms
           </NavLink>
-          <NavLink to="/impressum" className={footerLinkClass}>
+          {/* <NavLink to="/impressum" className={footerLinkClass}>
             Impressum
-          </NavLink>
+          </NavLink> */}
+          {/* <NavLink to="/cookie-settings" className={footerLinkClass}>
+            Cookies
+          </NavLink> */}
           <NavLink to="/contact" className={footerLinkClass}>
             Contact
           </NavLink>
