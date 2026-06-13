@@ -162,7 +162,7 @@ export function OverviewChart({
 
   const entityFilters = (
     <div className="grid gap-2" aria-label="Dataset overview legend">
-      <span className="inline-flex items-center gap-1.5 text-[0.72rem] uppercase tracking-[0.14em] text-[var(--accent)]">Entities</span>
+      <span className="inline-flex items-center gap-1.5 text-[0.72rem] uppercase tracking-[0.14em] text-[var(--accent)]">Filter by Entities</span>
       <div className="grid gap-2">
         {items.map((item) => (
           <button
