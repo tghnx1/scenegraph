@@ -1,37 +1,12 @@
-import { useState, type CSSProperties, type FormEvent } from 'react'
+import { useState, type FormEvent } from 'react'
+import { Button } from '@/shared/ui/button'
+import { Card, CardContent, CardHeader, CardTitle } from '@/shared/ui/card'
+import { Input } from '@/shared/ui/input'
+import { Label } from '@/shared/ui/label'
 import { changePassword, isAuthRole, login, register, type AuthRole } from '../api/auth'
 
 interface LoginPageProps {
   onLogin: (role: AuthRole, username: string) => void
-}
-
-const colorVar = (name: string) => `var(${name})`
-const colorAlpha = (name: string, percent: number) => `color-mix(in srgb, var(${name}) ${percent}%, transparent)`
-
-const loginButtonStyle: CSSProperties = {
-  textDecoration: 'none',
-  color: colorVar('--text-muted'),
-  padding: '6px 10px',
-  borderRadius: 8,
-  fontSize: 14,
-  fontWeight: 600,
-  transition: 'all 120ms ease',
-  cursor: 'pointer',
-  border: `1px solid ${colorAlpha('--text', 18)}`,
-  background: colorAlpha('--text', 6),
-  font: 'inherit',
-}
-
-const inputStyle: CSSProperties = {
-  width: '100%',
-  minWidth: 0,
-  border: `1px solid ${colorAlpha('--text', 18)}`,
-  borderRadius: 8,
-  background: colorAlpha('--background', 64),
-  color: colorVar('--text'),
-  font: 'inherit',
-  padding: '10px 12px',
-  outline: 'none',
 }
 
 export function LoginPage({ onLogin }: LoginPageProps) {
@@ -136,114 +111,103 @@ export function LoginPage({ onLogin }: LoginPageProps) {
   }
 
   return (
-    <div style={{ minHeight: '100%', display: 'grid', placeItems: 'center', padding: 24 }}>
-      <section
-        style={{
-          width: 'min(420px, 100%)',
-          padding: 24,
-          borderRadius: 8,
-          background: colorAlpha('--background', 72),
-          border: `1px solid ${colorAlpha('--text', 18)}`,
-          boxShadow: 'var(--surface-shadow)',
-        }}
-      >
-        <span className="search-query-label">Login page</span>
-        <h1 style={{ marginTop: 8, fontSize: 32 }}>Sign in</h1>
-        <form onSubmit={handleSubmit} style={{ display: 'grid', gap: 14, marginTop: 24 }}>
-          <label style={{ display: 'grid', gap: 6, color: colorVar('--text-muted'), fontSize: 14 }}>
-            Username
-            <input
-              style={inputStyle}
-              value={username}
-              onChange={(event) => setUsername(event.target.value)}
-              autoComplete="username"
-              required
-            />
-          </label>
-          {isRegistering && (
-            <label style={{ display: 'grid', gap: 6, color: colorVar('--text-muted'), fontSize: 14 }}>
-              Email
-              <input
-                style={inputStyle}
-                type="email"
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
+    <div className="grid min-h-full place-items-center p-6">
+      <Card className="w-full max-w-[420px] bg-[color-mix(in_srgb,var(--background)_72%,transparent)]">
+        <CardHeader>
+          <span className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--accent)]">Login page</span>
+          <CardTitle className="mt-2 text-[32px]">Sign in</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleSubmit} className="grid gap-3.5">
+            <Label>
+              Username
+              <Input
+                value={username}
+                onChange={(event) => setUsername(event.target.value)}
+                autoComplete="username"
                 required
               />
-            </label>
-          )}
-          <label style={{ display: 'grid', gap: 6, color: colorVar('--text-muted'), fontSize: 14 }}>
-            Password
-            <input
-              style={inputStyle}
-              type="password"
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              autoComplete="current-password"
-              required
-            />
-          </label>
-          {isRegistering && (
-            <label style={{ display: 'grid', gap: 6, color: colorVar('--text-muted'), fontSize: 14 }}>
-              Confirm password
-              <input
-                style={inputStyle}
+            </Label>
+            {isRegistering && (
+              <Label>
+                Email
+                <Input
+                  type="email"
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
+                  required
+                />
+              </Label>
+            )}
+            <Label>
+              Password
+              <Input
                 type="password"
-                value={passwordConfirm}
-                onChange={(event) => setPasswordConfirm(event.target.value)}
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                autoComplete="current-password"
                 required
               />
-            </label>
-          )}
-          {mustChangePassword && (
-            <>
-              <label style={{ display: 'grid', gap: 6, color: colorVar('--text-muted'), fontSize: 14 }}>
-                New password
-                <input
-                  style={inputStyle}
+            </Label>
+            {isRegistering && (
+              <Label>
+                Confirm password
+                <Input
                   type="password"
-                  value={newPassword}
-                  onChange={(event) => setNewPassword(event.target.value)}
+                  value={passwordConfirm}
+                  onChange={(event) => setPasswordConfirm(event.target.value)}
+                  required
                 />
-              </label>
+              </Label>
+            )}
+            {mustChangePassword && (
+              <>
+                <Label>
+                  New password
+                  <Input
+                    type="password"
+                    value={newPassword}
+                    onChange={(event) => setNewPassword(event.target.value)}
+                  />
+                </Label>
 
-              <label style={{ display: 'grid', gap: 6, color: colorVar('--text-muted'), fontSize: 14 }}>
-                Confirm new password
-                <input
-                  style={inputStyle}
-                  type="password"
-                  value={newPasswordConfirm}
-                  onChange={(event) => setNewPasswordConfirm(event.target.value)}
-                />
-              </label>
-            </>
-          )}
-          {error && <p style={{ margin: 0, color: 'var(--danger, #d94848)', fontSize: 14 }}>{error}</p>}
-          <button type="submit" style={loginButtonStyle} disabled={isSubmitting}>
-            {isSubmitting
-              ? isRegistering
-                ? 'Registering...'
-                : mustChangePassword
-                  ? 'Changing password...'
-                  : 'Signing in...'
-              : isRegistering
-                ? 'Register'
-                : mustChangePassword
-                  ? 'Change password'
-                  : 'Sign in'}
-          </button>
-          <button
-            type="button"
-            style={loginButtonStyle}
-            onClick={() => {
-              setIsRegistering(!isRegistering)
-              setError('')
-            }}
-          >
-            {isRegistering ? 'Back to sign in' : 'Create account'}
-          </button>
-        </form>
-      </section>
+                <Label>
+                  Confirm new password
+                  <Input
+                    type="password"
+                    value={newPasswordConfirm}
+                    onChange={(event) => setNewPasswordConfirm(event.target.value)}
+                  />
+                </Label>
+              </>
+            )}
+            {error && <p className="m-0 text-sm text-[var(--danger,#d94848)]">{error}</p>}
+            <Button type="submit" disabled={isSubmitting}>
+              {isSubmitting
+                ? isRegistering
+                  ? 'Registering...'
+                  : mustChangePassword
+                    ? 'Changing password...'
+                    : 'Signing in...'
+                : isRegistering
+                  ? 'Register'
+                  : mustChangePassword
+                    ? 'Change password'
+                    : 'Sign in'}
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => {
+                setIsRegistering(!isRegistering)
+                setError('')
+              }}
+            >
+              {isRegistering ? 'Back to sign in' : 'Create account'}
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
     </div>
   )
 }

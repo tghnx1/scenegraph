@@ -1,4 +1,4 @@
-import { getCssVar } from '../../styles/colors'
+import { getCssVar } from '../../shared/styles/colors'
 
 function getNodeColor(type: string, isSelected: boolean) {
   if (isSelected) {

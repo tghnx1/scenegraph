@@ -1,7 +1,8 @@
 import {useState} from 'react'
 import {fetchDashboardStatus} from '../api/dashboardComposition'
-import {useApi} from '../hooks/useApi'
+import {useApi} from '../api/useApi'
 import type {DashboardEntity} from '../types/dashboardComposition'
+import { Button } from '@/shared/ui/button'
 import {DashboardExportMenu} from './components/ExportDashboard'
 import {DashboardManagement} from './components/DashboardManagement'
 import {DashboardStatistics} from './components/DashboardStats'
@@ -29,9 +30,9 @@ export function DashboardPage() {
   }
 
   return (
-    <div className="dashboard-page">
-      <div className="dashboard-actions" aria-label="Dashboard actions">
-        <button type="button">Run import</button>
+    <div className="mx-auto min-h-full w-full max-w-[1480px] p-4">
+      <div className="mb-4 flex justify-end gap-2" aria-label="Dashboard actions">
+        <Button type="button">Run import</Button>
         <DashboardExportMenu
           dashboardStatus={dashboardStatus}
           selectedEntities={selectedEntities}
@@ -40,8 +41,8 @@ export function DashboardPage() {
         />
       </div>
 
-      {error && <p className="error">Failed to load dashboard status.</p>}
-      <section className="dashboard-admin-grid" aria-label="Admin dashboard sections">
+      {error && <p className="mt-5 text-[var(--event)]">Failed to load dashboard status.</p>}
+      <section className="grid gap-5" aria-label="Admin dashboard sections">
         <DashboardStatistics
           dashboardStatus={dashboardStatus}
           isLoading={isLoading}

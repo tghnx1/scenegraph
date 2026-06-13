@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Button } from '@/shared/ui/button'
 import { approveUser, rejectUser, getPendingUsers, getUsers, deactivateUser, type PendingUser, type UserItem, } from '../api/auth'
 
 interface AdminUsersPageProps { compact?: boolean }   //? means it's optional; compact is for a smaller version
@@ -66,65 +67,55 @@ export function AdminUsersPage({ compact = false }: AdminUsersPageProps) {
   }
 
   return (
-    <section style={{ display: 'grid', gap: 12}}>
+    <section className="grid gap-3">
       {compact ? (
-        <div className="dashboard-section-heading">
+        <div className="flex items-center justify-between gap-3 border-b border-[var(--surface-border-soft)] pb-2 text-sm font-semibold text-[var(--text)]">
           <span>Pending user registrations</span>
         </div>
       ) : (
-      <h1 style={{ fontSize: 32 }}>Pending users</h1>)}
+        <h1 className="text-[32px]">Pending users</h1>
+      )}
 
       {message && <p>{message}</p>}
 
       {users.map((user) => (
         <div 
           key={user.id}
-          className="dashboard-table-row"
-          style={{
-            display: 'grid',
-            gridTemplateColumns: '1fr',
-            gap: 10,
-            alignItems: 'start',
-          }}
+          className="grid grid-cols-1 items-start gap-2.5 rounded-xl border border-[var(--surface-border-soft)] bg-[var(--surface-soft)] p-3"
         >
-          <div style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          <div className="truncate whitespace-nowrap">
             <strong>{user.username}</strong>
             <span> — {user.email}</span>
           </div>
 
-          <div style={{display: 'flex', gap: 8}}>
-            <button type="button" onClick={() => handleApprove(user)}>Approve</button>
-            <button type="button" onClick={() => handleReject(user)}>Reject</button>
+          <div className="flex gap-2">
+            <Button type="button" size="sm" onClick={() => handleApprove(user)}>Approve</Button>
+            <Button type="button" size="sm" variant="destructive" onClick={() => handleReject(user)}>Reject</Button>
           </div>
         </div>
       ))}
 
-      <div className="dashboard-section-heading" style={{ marginTop: 16 }}>
+      <div className="mt-4 flex items-center justify-between gap-3 border-b border-[var(--surface-border-soft)] pb-2 text-sm font-semibold text-[var(--text)]">
         <span>List of users</span>
       </div>
 
-      <div style={{ display: 'grid', gap: 12 }}>
+      <div className="grid gap-3">
         {allUsers.map((user) => (
           <div
             key={user.id}
-            className="dashboard-table-row"
-            style={{
-              display: 'grid',
-              gridTemplateColumns: '1fr',
-              gap: 10,
-            }}
+            className="grid grid-cols-1 gap-2.5 rounded-xl border border-[var(--surface-border-soft)] bg-[var(--surface-soft)] p-3"
           >
-            <div style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            <div className="truncate whitespace-nowrap">
               <strong>{user.username}</strong>
               <span> — {user.email}</span>
               <span> — {user.status}</span>
             </div>
 
             {user.role !== 'admin' && user.status === 'approved' && (
-              <div style={{ display: 'flex', gap: 8 }}>
-                <button type="button" onClick={() => handleDeactivate(user)}>
+              <div className="flex gap-2">
+                <Button type="button" size="sm" variant="outline" onClick={() => handleDeactivate(user)}>
                   Deactivate
-                </button>
+                </Button>
               </div>
             )}
           </div>

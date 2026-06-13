@@ -1,4 +1,6 @@
 import { Link } from 'react-router-dom'
+import { Button } from '@/shared/ui/button'
+import { cn } from '@/shared/lib/utils'
 import type { ArtistDetail } from '../../types/artist'
 import type { EntityDetail } from '../../types/entityDetail'
 import type { EventDetail } from '../../types/event'
@@ -14,6 +16,21 @@ type RenderDetailsProps = {
 }
 
 type DisplayResult = SearchResult | EntityDetail
+
+const resultCardClass = 'rounded-[20px] border border-[var(--surface-border-soft)] bg-[var(--surface-panel-soft)] p-5'
+const inlineResultCardClass = 'rounded-[18px] border border-[var(--surface-border)] bg-[var(--surface-panel)] p-4 shadow-none'
+const resultHeaderClass = 'flex items-start justify-between gap-4'
+const resultTypeClass = 'text-xs font-semibold uppercase tracking-[0.14em] text-[var(--accent)]'
+const resultMetaClass = 'mt-1 text-sm text-[var(--text-muted)]'
+const resultSectionClass = 'mt-5 grid gap-2.5'
+const resultDescriptionClass = 'm-0 text-sm leading-6 text-[var(--text-muted)]'
+const resultListClass = 'grid gap-2.5'
+const resultTileClass = 'grid gap-1 rounded-xl border border-[var(--surface-border-soft)] bg-[var(--surface-soft)] p-3 text-[var(--text)] no-underline transition-colors hover:border-[var(--selection-border)] hover:bg-[var(--selection-soft)]'
+const resultPillClass = 'inline-flex items-center gap-2 rounded-full border border-[var(--control-border)] bg-[var(--control-bg)] px-3 py-1.5 text-sm font-semibold text-[var(--text)] no-underline transition-colors hover:border-[var(--selection-border)] hover:bg-[var(--selection-soft)]'
+const resultSubheadingClass = 'm-0 text-xs font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]'
+const resultEmptyClass = 'text-sm text-[var(--text-muted)]'
+const linkGroupClass = 'grid gap-4'
+const pillsClass = 'flex flex-wrap gap-2'
 
 function isArtistDetail(result: DisplayResult): result is ArtistDetail {
   return result.type === 'artist' && 'connected_artists' in result
@@ -49,24 +66,26 @@ function ManualArtistConnectionButton({
   const isPending = control.pendingArtistId === artistId
 
   return (
-    <div className="manual-connection-action">
-      <button
+    <div className="grid justify-items-start gap-1.5">
+      <Button
         type="button"
-        className={isConnected ? 'manual-connection-button connected' : 'manual-connection-button'}
+        size="sm"
+        variant={isConnected ? 'secondary' : 'outline'}
+        className={cn(isConnected && 'border-[var(--selection-border)] bg-[var(--selection-soft)]')}
         onClick={() => void control.onToggle(artistId)}
         disabled={control.isLoading || control.pendingArtistId !== null}
       >
         {isPending
           ? (isConnected ? 'Removing...' : 'Adding...')
           : (isConnected ? 'Remove manual connection' : 'Add manual connection')}
-      </button>
-      {control.error && <p className="manual-connection-error">{control.error}</p>}
+      </Button>
+      {control.error && <p className="m-0 text-sm text-[var(--event)]">{control.error}</p>}
     </div>
   )
 }
 
 export function RenderDetails({ result, variant = 'card', manualArtistConnections }: RenderDetailsProps) {
-  const articleClassName = variant === 'inline' ? 'search-result-card search-result-card--inline' : 'search-result-card'
+  const articleClassName = variant === 'inline' ? inlineResultCardClass : resultCardClass
 
   if (isArtistDetail(result)) {
     const linkedArtists = result.connected_artists
@@ -74,59 +93,59 @@ export function RenderDetails({ result, variant = 'card', manualArtistConnection
 
     return (
       <article className={articleClassName}>
-        <div className="result-header">
+        <div className={resultHeaderClass}>
           <div>
-            <span className="result-type">Artist</span>
+            <span className={resultTypeClass}>Artist</span>
             <h2>{result.name}</h2>
-            <p className="result-meta">{result.genres.join(' · ') || 'No genres yet'}</p>
+            <p className={resultMetaClass}>{result.genres.join(' · ') || 'No genres yet'}</p>
           </div>
-          <div className="result-header-actions">
+          <div className="flex shrink-0 items-start gap-2">
             <ManualArtistConnectionButton artistId={result.id} control={manualArtistConnections} />
           </div>
         </div>
 
-        <section className="result-section">
+        <section className={resultSectionClass}>
           <h3>Biography</h3>
-          <p className="result-description">{result.bio || 'No biography available yet.'}</p>
+          <p className={resultDescriptionClass}>{result.bio || 'No biography available yet.'}</p>
         </section>
 
-        <section className="result-section">
+        <section className={resultSectionClass}>
           <h3>Linked entities</h3>
-          <div className="result-link-groups">
+          <div className={linkGroupClass}>
             <div>
-              <p className="result-subheading">Artists</p>
-              <div className="result-pills compact">
+              <p className={resultSubheadingClass}>Artists</p>
+              <div className={pillsClass}>
                 {linkedArtists.length > 0 ? (
                   linkedArtists.map((artist) => (
                     <Link
                       key={artist.id}
                       to={`/graph?selectedType=artist&selectedId=${encodeURIComponent(artist.id)}`}
-                      className="result-pill"
+                      className={resultPillClass}
                     >
                       {artist.name} <span>{artist.shared_events} shared</span>
                     </Link>
                   ))
                 ) : (
-                  <span className="result-empty-inline">No linked artists yet</span>
+                  <span className={resultEmptyClass}>No linked artists yet</span>
                 )}
               </div>
             </div>
 
             <div>
-              <p className="result-subheading">Events</p>
-              <div className="result-pills compact">
+              <p className={resultSubheadingClass}>Events</p>
+              <div className={pillsClass}>
                 {linkedEvents.length > 0 ? (
                   linkedEvents.map((event) => (
                     <Link
                       key={event.id}
                       to={`/graph?selectedType=event&selectedId=${encodeURIComponent(event.id)}`}
-                      className="result-pill"
+                      className={resultPillClass}
                     >
                       {event.title} <span>{dateOnly(event.event_date)}</span>
                     </Link>
                   ))
                 ) : (
-                  <span className="result-empty-inline">No linked events yet</span>
+                  <span className={resultEmptyClass}>No linked events yet</span>
                 )}
               </div>
             </div>
@@ -139,22 +158,22 @@ export function RenderDetails({ result, variant = 'card', manualArtistConnection
   if (isPromoterDetail(result)) {
     return (
       <article className={articleClassName}>
-        <div className="result-header">
+        <div className={resultHeaderClass}>
           <div>
-            <span className="result-type">Promoter</span>
+            <span className={resultTypeClass}>Promoter</span>
             <h2>{result.name}</h2>
-            <p className="result-meta">ID {result.id}</p>
+            <p className={resultMetaClass}>ID {result.id}</p>
           </div>
         </div>
 
-        <section className="result-section">
+        <section className={resultSectionClass}>
           <h3>Events</h3>
-          <div className="result-list">
+          <div className={resultListClass}>
             {result.events.map((event) => (
               <Link
                 key={event.id}
                 to={`/graph?selectedType=event&selectedId=${encodeURIComponent(event.id)}`}
-                className="result-tile"
+                className={resultTileClass}
               >
                 <strong>{event.title}</strong>
                 <span>{[event.date, event.venue_name].filter(Boolean).join(' - ')}</span>
@@ -170,22 +189,22 @@ export function RenderDetails({ result, variant = 'card', manualArtistConnection
   if (isVenueDetail(result)) {
     return (
       <article className={articleClassName}>
-        <div className="result-header">
+        <div className={resultHeaderClass}>
           <div>
-            <span className="result-type">Venue</span>
+            <span className={resultTypeClass}>Venue</span>
             <h2>{result.name}</h2>
-            <p className="result-meta">{[result.address, result.district].filter(Boolean).join(' - ') || `ID ${result.id}`}</p>
+            <p className={resultMetaClass}>{[result.address, result.district].filter(Boolean).join(' - ') || `ID ${result.id}`}</p>
           </div>
         </div>
 
-        <section className="result-section">
+        <section className={resultSectionClass}>
           <h3>Events</h3>
-          <div className="result-list">
+          <div className={resultListClass}>
             {result.events.map((event) => (
               <Link
                 key={event.id}
                 to={`/graph?selectedType=event&selectedId=${encodeURIComponent(event.id)}`}
-                className="result-tile"
+                className={resultTileClass}
               >
                 <strong>{event.title}</strong>
                 <span>{event.date || 'Date unavailable'}</span>
@@ -201,40 +220,40 @@ export function RenderDetails({ result, variant = 'card', manualArtistConnection
   if (isEventDetail(result)) {
     return (
       <article className={articleClassName}>
-        <div className="result-header">
+        <div className={resultHeaderClass}>
           <div>
-            <span className="result-type">Event</span>
+            <span className={resultTypeClass}>Event</span>
             <h2>{result.title}</h2>
-            <p className="result-meta">{dateOnly(result.date)}</p>
+            <p className={resultMetaClass}>{dateOnly(result.date)}</p>
           </div>
         </div>
 
-        <section className="result-section">
+        <section className={resultSectionClass}>
           <h3>Linked entities</h3>
-          <div className="result-link-groups">
+          <div className={linkGroupClass}>
             {result.venue && (
               <div>
-                <p className="result-subheading">Venue</p>
-                <Link to={`/graph?selectedType=venue&selectedId=${encodeURIComponent(result.venue.id)}`} className="result-pill">
+                <p className={resultSubheadingClass}>Venue</p>
+                <Link to={`/graph?selectedType=venue&selectedId=${encodeURIComponent(result.venue.id)}`} className={resultPillClass}>
                   {result.venue.name}
                 </Link>
               </div>
             )}
             <div>
-              <p className="result-subheading">Artists</p>
-              <div className="result-pills compact">
+              <p className={resultSubheadingClass}>Artists</p>
+              <div className={pillsClass}>
                 {result.artists.map((artist) => (
-                  <Link key={artist.id} to={`/graph?selectedType=artist&selectedId=${encodeURIComponent(artist.id)}`} className="result-pill">
+                  <Link key={artist.id} to={`/graph?selectedType=artist&selectedId=${encodeURIComponent(artist.id)}`} className={resultPillClass}>
                     {artist.name}
                   </Link>
                 ))}
               </div>
             </div>
             <div>
-              <p className="result-subheading">Promoters</p>
-              <div className="result-pills compact">
+              <p className={resultSubheadingClass}>Promoters</p>
+              <div className={pillsClass}>
                 {result.promoters.map((promoter) => (
-                  <Link key={promoter.id} to={`/graph?selectedType=promoter&selectedId=${encodeURIComponent(promoter.id)}`} className="result-pill">
+                  <Link key={promoter.id} to={`/graph?selectedType=promoter&selectedId=${encodeURIComponent(promoter.id)}`} className={resultPillClass}>
                     {promoter.name}
                   </Link>
                 ))}
@@ -249,11 +268,11 @@ export function RenderDetails({ result, variant = 'card', manualArtistConnection
   if (result.type === 'artist') {
     return (
       <article className={articleClassName}>
-        <div className="result-header">
+        <div className={resultHeaderClass}>
           <div>
-            <span className="result-type">Artist</span>
+            <span className={resultTypeClass}>Artist</span>
             <h2>{result.name}</h2>
-            <p className="result-meta">{result.id}</p>
+            <p className={resultMetaClass}>{result.id}</p>
           </div>
           <ManualArtistConnectionButton artistId={result.id} control={manualArtistConnections} />
         </div>
@@ -264,11 +283,11 @@ export function RenderDetails({ result, variant = 'card', manualArtistConnection
   if (result.type === 'venue') {
     return (
       <article className={articleClassName}>
-        <div className="result-header">
+        <div className={resultHeaderClass}>
           <div>
-            <span className="result-type">Venue</span>
+            <span className={resultTypeClass}>Venue</span>
             <h2>{result.name}</h2>
-            <p className="result-meta">{result.id}</p>
+            <p className={resultMetaClass}>{result.id}</p>
           </div>
         </div>
       </article>
@@ -278,11 +297,11 @@ export function RenderDetails({ result, variant = 'card', manualArtistConnection
   if (result.type === 'promoter') {
     return (
       <article className={articleClassName}>
-        <div className="result-header">
+        <div className={resultHeaderClass}>
           <div>
-            <span className="result-type">Promoter</span>
+            <span className={resultTypeClass}>Promoter</span>
             <h2>{result.name}</h2>
-            <p className="result-meta">{result.id}</p>
+            <p className={resultMetaClass}>{result.id}</p>
           </div>
         </div>
       </article>
@@ -291,11 +310,11 @@ export function RenderDetails({ result, variant = 'card', manualArtistConnection
 
   return (
     <article className={articleClassName}>
-      <div className="result-header">
+      <div className={resultHeaderClass}>
         <div>
-          <span className="result-type">Event</span>
+          <span className={resultTypeClass}>Event</span>
           <h2>{result.name}</h2>
-          <p className="result-meta">{result.id}</p>
+          <p className={resultMetaClass}>{result.id}</p>
         </div>
       </div>
     </article>

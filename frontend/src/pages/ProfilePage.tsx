@@ -1,4 +1,6 @@
 import { useState } from 'react'
+import { Button } from '@/shared/ui/button'
+import { cn } from '@/shared/lib/utils'
 import { DetailsPanel } from './components/DetailsPanel.tsx'
 import { ScenegraphMapPanel } from './components/GraphPanel.tsx'
 import { PromoterRecommendationsPanel, type RecommendationTargetControls } from './components/RecommendationPanel.tsx'
@@ -24,21 +26,30 @@ export function ProfilePage({ recommendationTargetControls, showBiography = true
     ? storedArtistId
     : DEFAULT_PROFILE_ARTIST_ID
   const manualConnections = useManualArtistConnections(showBiography ? artistId : null)
+  const isSingleRowWorkspace = !showBiography
 
   return (
-    <div className="profile-page">
-      <section className="profile-grid" aria-label="Profile overview">
-        <article className="graph-sidebar-card context-panel">
-          <div className="graph-sidebar-search">
+    <div className={cn(
+      'mx-auto w-full max-w-[1480px] p-4',
+      isSingleRowWorkspace ? 'h-full min-h-0 overflow-hidden' : 'min-h-full',
+    )}>
+      <section
+        className={cn(
+          'grid grid-cols-[minmax(380px,440px)_minmax(0,1fr)] gap-5 max-[900px]:grid-cols-1 max-[900px]:grid-rows-none',
+          isSingleRowWorkspace
+            ? 'h-full min-h-0 grid-rows-[minmax(0,1fr)] overflow-hidden'
+            : 'grid-rows-[minmax(560px,calc(100dvh-128px))_auto]',
+        )}
+        aria-label="Profile overview"
+      >
+        <article className="relative z-20 grid min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-4 rounded-3xl border border-[color-mix(in_srgb,var(--text)_10%,transparent)] bg-[color-mix(in_srgb,var(--background)_42%,transparent)] p-5 shadow-[0_10px_24px_rgba(0,0,0,0.12)] backdrop-blur-sm">
+          <div className="search-sidebar-anchor grid gap-2.5 pb-4">
             <SearchInputField
               inputId="profile-details-search-query-input"
               {...searchFormProps}
             />
           </div>
 
-          {/* <div className="panel-heading">
-            <span className="search-query-label">Node details</span>
-          </div> */}
           <DetailsPanel
             {...detailsPanelProps}
             manualArtistConnections={showBiography && artistId !== null ? {
@@ -52,35 +63,39 @@ export function ProfilePage({ recommendationTargetControls, showBiography = true
           />
         </article>
 
-        <section className="graph-workspace" aria-label="Profile graph workspace">
-          <article className="profile-card graph-panel">
-            <div className="profile-workspace-tabs" role="tablist" aria-label="Profile graph views">
-              <button
+        <section className="relative z-0 grid min-h-0 min-w-0" aria-label="Profile graph workspace">
+          <article className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-3 overflow-hidden rounded-3xl border border-[color-mix(in_srgb,var(--text)_10%,transparent)] bg-[color-mix(in_srgb,var(--background)_42%,transparent)] p-5 shadow-[0_10px_24px_rgba(0,0,0,0.12)] backdrop-blur-sm">
+            <div className="inline-flex w-fit gap-1 rounded-xl bg-[var(--surface-input)] p-1" role="tablist" aria-label="Profile graph views">
+              <Button
                 type="button"
                 id="profile-workspace-tab-graph"
-                className={`profile-workspace-tab${activeWorkspaceTab === 'graph' ? ' active' : ''}`}
+                variant={activeWorkspaceTab === 'graph' ? 'default' : 'ghost'}
+                size="sm"
+                className={cn('rounded-lg', activeWorkspaceTab === 'graph' && 'border-[var(--selection-border)] bg-[var(--selection-soft)]')}
                 role="tab"
                 aria-selected={activeWorkspaceTab === 'graph'}
                 aria-controls="profile-workspace-panel-graph"
                 onClick={() => setActiveWorkspaceTab('graph')}
               >
                 Graph
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
                 id="profile-workspace-tab-recommendations"
-                className={`profile-workspace-tab${activeWorkspaceTab === 'recommendations' ? ' active' : ''}`}
+                variant={activeWorkspaceTab === 'recommendations' ? 'default' : 'ghost'}
+                size="sm"
+                className={cn('rounded-lg', activeWorkspaceTab === 'recommendations' && 'border-[var(--selection-border)] bg-[var(--selection-soft)]')}
                 role="tab"
                 aria-selected={activeWorkspaceTab === 'recommendations'}
                 aria-controls="profile-workspace-panel-recommendations"
                 onClick={() => setActiveWorkspaceTab('recommendations')}
               >
                 Recommendations
-              </button>
+              </Button>
             </div>
             <section
               id="profile-workspace-panel-graph"
-              className="profile-workspace-content"
+              className="min-h-0 min-w-0"
               role="tabpanel"
               aria-labelledby="profile-workspace-tab-graph"
               hidden={activeWorkspaceTab !== 'graph'}
@@ -96,16 +111,18 @@ export function ProfilePage({ recommendationTargetControls, showBiography = true
           </article>
         </section>
         {showBiography && (
-          <BiographyPanel
-            artistId={artistId}
-            manualConnections={{
-              connections: manualConnections.connections,
-              isLoading: manualConnections.isLoading,
-              pendingArtistId: manualConnections.pendingArtistId,
-              error: manualConnections.error,
-              onRemove: manualConnections.remove,
-            }}
-          />
+          <div className="col-span-2 max-[900px]:col-span-1">
+            <BiographyPanel
+              artistId={artistId}
+              manualConnections={{
+                connections: manualConnections.connections,
+                isLoading: manualConnections.isLoading,
+                pendingArtistId: manualConnections.pendingArtistId,
+                error: manualConnections.error,
+                onRemove: manualConnections.remove,
+              }}
+            />
+          </div>
         )}
       </section>
     </div>
