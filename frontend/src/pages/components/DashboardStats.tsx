@@ -40,12 +40,12 @@ export function DashboardStatistics({
   }))
 
   return (
-    <article className="dashboard-panel dashboard-panel-full">
-      <div className="panel-heading">
-        <span className="search-query-label">Dataset Overview</span>
-        <span className="panel-status">General metrics</span>
+    <article className="rounded-3xl border border-[color-mix(in_srgb,var(--text)_10%,transparent)] bg-[color-mix(in_srgb,var(--background)_42%,transparent)] p-5 shadow-[0_10px_24px_rgba(0,0,0,0.12)] backdrop-blur-sm">
+      <div className="flex items-center justify-between gap-3">
+        <span className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--accent)]">Dataset Overview</span>
+        <span className="rounded-full border border-[var(--control-border)] bg-[var(--control-bg)] px-2.5 py-1 text-xs font-semibold text-[var(--text-muted)]">General metrics</span>
       </div>
-      <div className="dashboard-overview">
+      <div className="mt-4">
         <OverviewChart
           items={overviewStats}
           isUnavailable={isLoading || hasError}

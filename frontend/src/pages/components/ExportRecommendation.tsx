@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useState } from 'react'
+import { Button } from '@/shared/ui/button'
 import type { PromoterRecommendation, PromoterRecommendationResponse } from '../../types/recommendation'
 
 type RecommendationGraphMode = 'compact' | 'full'
@@ -188,21 +189,22 @@ export function RecommendationExportMenu({
   }, [exportRecommendations, recommendationsData])
 
   return (
-    <div className="export-menu">
-      <button
+    <div className="relative inline-flex">
+      <Button
         type="button"
+        size="sm"
         aria-haspopup="menu"
         aria-expanded={isExportMenuOpen}
         disabled={!recommendationsData}
         onClick={() => setIsExportMenuOpen((isOpen) => !isOpen)}
       >
         Export
-      </button>
+      </Button>
       {isExportMenuOpen && recommendationsData && (
-        <div className="export-menu-list" role="menu" aria-label="Export recommendations">
-          <button type="button" role="menuitem" onClick={handleExportJson}>JSON</button>
-          <button type="button" role="menuitem" onClick={handleExportCsv}>CSV</button>
-          <button type="button" role="menuitem" onClick={handleExportPdf}>PDF</button>
+        <div className="absolute right-0 top-[calc(100%+8px)] z-30 grid min-w-32 gap-1 rounded-xl border border-[var(--surface-border)] bg-[var(--surface-dropdown)] p-1.5 shadow-[var(--surface-shadow)]" role="menu" aria-label="Export recommendations">
+          <Button type="button" variant="ghost" size="sm" role="menuitem" onClick={handleExportJson}>JSON</Button>
+          <Button type="button" variant="ghost" size="sm" role="menuitem" onClick={handleExportCsv}>CSV</Button>
+          <Button type="button" variant="ghost" size="sm" role="menuitem" onClick={handleExportPdf}>PDF</Button>
         </div>
       )}
     </div>

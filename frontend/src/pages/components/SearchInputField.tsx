@@ -1,4 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
+import { X } from 'lucide-react'
+import { Button } from '@/shared/ui/button'
+import { cn } from '@/shared/lib/utils'
 import type { SearchEntityType, SearchResult, SearchSort } from '../../types/search'
 
 const SEARCH_RESULT_TABS: { type: SearchEntityType; label: string }[] = [
@@ -13,6 +16,11 @@ const SEARCH_SORT_OPTIONS: { value: SearchSort; label: string }[] = [
   { value: 'name_asc', label: 'Name A-Z' },
   { value: 'name_desc', label: 'Name Z-A' },
 ]
+
+const labelClass = 'text-xs font-semibold uppercase tracking-[0.14em] text-[var(--accent)]'
+const dropdownStatusClass = 'px-3 py-2.5 text-sm text-[var(--text-muted)]'
+const tabClass = 'grid min-w-0 cursor-pointer justify-items-center rounded-[9px] border-0 bg-transparent px-1 py-2.5 text-[0.76rem] leading-tight text-[var(--text-muted)] outline-none hover:bg-[var(--control-bg)] hover:text-[var(--text)] focus-visible:bg-[var(--control-bg)] focus-visible:text-[var(--text)]'
+const optionClass = 'flex w-full cursor-pointer items-center justify-start gap-3 rounded-[10px] border-0 bg-transparent px-3 py-2.5 text-left font-[inherit] text-[var(--text)] outline-none hover:bg-[var(--control-bg)] focus-visible:bg-[var(--control-bg)]'
 
 interface SearchInputFieldProps {
   inputId: string
@@ -195,14 +203,14 @@ export function SearchInputField({
   }
 
   return (
-    <form className="search-query-form" ref={formRef} onSubmit={handleSubmit}>
-      <label className="search-query-label" htmlFor={inputId}>
+    <form className="relative grid gap-2" ref={formRef} onSubmit={handleSubmit}>
+      <label className={cn(labelClass, !label && 'sr-only')} htmlFor={inputId}>
         {label}
       </label>
-      <div className="search-query-box">
+      <div className="flex items-center gap-2.5 rounded-[14px] border border-[var(--control-border)] bg-[var(--surface-input)] px-3 py-2.5 transition-[border-color,box-shadow] focus-within:border-[var(--focus-border)] focus-within:shadow-[0_0_0_3px_var(--focus-ring)]">
         <input
           id={inputId}
-          className="search-query-input"
+          className="min-w-0 flex-1 border-0 bg-transparent text-sm font-[inherit] text-[var(--text)] outline-none placeholder:text-[var(--text-placeholder)]"
           type="search"
           autoComplete="off"
           autoCorrect="off"
@@ -228,20 +236,24 @@ export function SearchInputField({
           aria-activedescendant={activeResult ? `${inputId}-result-${activeResult.type}-${activeResult.id}` : undefined}
         />
         {showClear && (
-          <button type="button" className="search-query-clear" onClick={handleClear} aria-label="Clear search and selection">
-            x
-          </button>
+          <Button type="button" variant="ghost" size="icon" className="size-7 rounded-full bg-[var(--control-bg)] text-[var(--text-muted)] hover:bg-[var(--control-hover)] hover:text-[var(--text)]" onClick={handleClear} aria-label="Clear search and selection">
+            <X aria-hidden="true" />
+          </Button>
         )}
       </div>
 
       {shouldShowDropdown && (
-        <div id={`${inputId}-results`} className="search-query-dropdown" ref={dropdownRef}>
-          {isLoading && <div className="search-query-dropdown-status">Searching...</div>}
+        <div
+          id={`${inputId}-results`}
+          className="absolute left-0 right-0 top-[calc(100%+8px)] z-[100] grid max-h-[280px] gap-1 overflow-y-auto rounded-[14px] border border-[var(--surface-border)] bg-[var(--surface-dropdown)] p-1.5 shadow-[var(--surface-shadow)] min-[900px]:[.search-sidebar-anchor_&]:left-[calc(100%+20px)] min-[900px]:[.search-sidebar-anchor_&]:right-auto min-[900px]:[.search-sidebar-anchor_&]:top-[25px] min-[900px]:[.search-sidebar-anchor_&]:max-h-[min(580px,calc(100dvh-170px))] min-[900px]:[.search-sidebar-anchor_&]:w-[clamp(340px,34vw,500px)] min-[900px]:[.search-sidebar-anchor_&]:bg-[var(--surface-panel)] min-[900px]:[.search-sidebar-anchor_&]:backdrop-blur-[10px]"
+          ref={dropdownRef}
+        >
+          {isLoading && <div className={dropdownStatusClass}>Searching...</div>}
           {!isLoading && (
             <>
               {showResultTabs && (
-                <div className="search-query-controls">
-                  <div className="search-query-tabs" role="tablist" aria-label="Search result types">
+                <div className="grid gap-1.5">
+                  <div className="grid grid-cols-4 gap-1 rounded-xl bg-[var(--surface-input)] p-1" role="tablist" aria-label="Search result types">
                     {SEARCH_RESULT_TABS.map(({ type, label }) => {
                       const isActive = activeResultType === type
 
@@ -250,22 +262,23 @@ export function SearchInputField({
                           key={type}
                           id={`${inputId}-tab-${type}`}
                           type="button"
-                          className={`search-query-tab${isActive ? ' search-query-tab--active' : ''}`}
+                          className={cn(tabClass, isActive && 'bg-[var(--control-bg)] text-[var(--text)]')}
                           role="tab"
                           aria-selected={isActive}
                           aria-controls={`${inputId}-results-panel-${type}`}
                           onMouseDown={(event) => event.preventDefault()}
                           onClick={() => selectTab(type)}
                         >
-                          <span>{label}</span>
+                          <span className="max-w-full overflow-hidden text-ellipsis whitespace-nowrap">{label}</span>
                         </button>
                       )
                     })}
                   </div>
 
-                  <label className="search-query-sort">
-                    <span>Sort</span>
+                  <label className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-2 rounded-[10px] bg-[var(--surface-input)] px-1.5 py-1">
+                    <span className="text-[0.74rem] font-bold uppercase text-[var(--text-muted)]">Sort</span>
                     <select
+                      className="min-w-0 cursor-pointer rounded-lg border border-[var(--control-border)] bg-[var(--surface-panel)] px-2 py-1.5 text-[0.82rem] font-[inherit] text-[var(--text)]"
                       value={activeSort}
                       onChange={(event) => handleSortChange(event.target.value as SearchSort)}
                     >
@@ -281,18 +294,18 @@ export function SearchInputField({
 
               <div
                 id={`${inputId}-results-panel-${activeResultType}`}
-                className="search-query-tab-panel"
+                className="grid gap-1"
                 role={showResultTabs ? 'tabpanel' : undefined}
                 aria-labelledby={showResultTabs ? `${inputId}-tab-${activeResultType}` : undefined}
               >
                 {visibleResults.length > 0 ? (
-                  <div role="listbox" aria-label={showResultTabs ? `${activeResultType} search results` : 'Search results'}>
+                  <div className="grid gap-1" role="listbox" aria-label={showResultTabs ? `${activeResultType} search results` : 'Search results'}>
                     {visibleResults.map((result, index) => (
                       <button
                         key={`${result.type}-${result.id}`}
                         id={`${inputId}-result-${result.type}-${result.id}`}
                         type="button"
-                        className={`search-query-option${index === activeResultIndex ? ' search-query-option--active' : ''}`}
+                        className={cn(optionClass, index === activeResultIndex && 'bg-[var(--control-bg)]')}
                         role="option"
                         aria-selected={index === activeResultIndex}
                         onMouseDown={(event) => event.preventDefault()}
@@ -300,23 +313,23 @@ export function SearchInputField({
                           selectResult(result)
                         }}
                       >
-                        <span className="search-query-option-index">{index + 1}</span>
-                        <span className="search-query-option-text">
-                          <strong>{result.name}</strong>
-                          {getResultMeta(result) && <small>{getResultMeta(result)}</small>}
+                        <span className="grid size-6 flex-[0_0_24px] place-items-center rounded-full bg-[var(--control-bg)] text-[0.76rem] font-bold text-[var(--text-muted)]">{index + 1}</span>
+                        <span className="grid min-w-0 flex-auto justify-items-start gap-0.5 text-left">
+                          <strong className="max-w-full overflow-hidden text-ellipsis whitespace-nowrap">{result.name}</strong>
+                          {getResultMeta(result) && <small className="max-w-full overflow-hidden text-ellipsis whitespace-nowrap text-[0.82rem] text-[var(--text-muted)]">{getResultMeta(result)}</small>}
                         </span>
                       </button>
                     ))}
                   </div>
                 ) : (
-                  <div className="search-query-dropdown-status">No {activeResultType} matches</div>
+                  <div className={dropdownStatusClass}>No {activeResultType} matches</div>
                 )}
               </div>
 
               {canLoadMore && (
                 <button
                   type="button"
-                  className="search-query-load-more"
+                  className="w-full cursor-pointer rounded-[10px] border border-[var(--control-border)] bg-[var(--control-bg)] px-3 py-2.5 text-center text-[0.88rem] font-[inherit] text-[var(--text)] outline-none hover:border-[var(--focus-border)] hover:bg-[var(--control-hover)] focus-visible:border-[var(--focus-border)] focus-visible:bg-[var(--control-hover)]"
                   onMouseDown={(event) => event.preventDefault()}
                   onClick={handleLoadMore}
                 >

@@ -1,5 +1,6 @@
 import {useEffect, useState, type FormEvent} from 'react'
 import {Link} from 'react-router-dom'
+import { Button } from '@/shared/ui/button'
 import {fetchArtistBiography, updateArtistBiography} from '../../api/entityDetails'
 import type {ConnectedArtistItem} from '../../types/artist'
 import {ManualArtistConnections, type ManualArtistConnectionsProps} from './ManualArtistConnections'
@@ -72,39 +73,42 @@ export function BiographyPanel({artistId, manualConnections}: BiographyPanelProp
   }
 
   return (
-    <article className="profile-card biography-panel">
-      <div className="panel-heading">
+    <article className="grid gap-4 rounded-3xl border border-[color-mix(in_srgb,var(--text)_10%,transparent)] bg-[color-mix(in_srgb,var(--background)_42%,transparent)] p-5 shadow-[0_10px_24px_rgba(0,0,0,0.12)] backdrop-blur-sm">
+      <div className="flex items-center justify-between gap-3">
         <div>
-          <span className="search-query-label">Biography</span>
+          <span className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--accent)]">Biography</span>
           <h2>{artistName}</h2>
         </div>
         {!isEditing && artistId !== null && !isLoading && (
-          <button type="button" onClick={() => {
+          <Button type="button" size="sm" onClick={() => {
             setDraftBiography(biography)
             setSuccess(null)
             setIsEditing(true)
           }}>
             Edit Biography
-          </button>
+          </Button>
         )}
       </div>
 
       {isLoading ? (
         <p>Loading biography...</p>
       ) : isEditing ? (
-        <form className="biography-form" onSubmit={handleSubmit}>
+        <form className="grid gap-3" onSubmit={handleSubmit}>
           <textarea
+            className="min-h-64 w-full resize-y rounded-xl border border-[var(--control-border)] bg-[var(--surface-input)] p-3 text-sm text-[var(--text)] outline-none placeholder:text-[var(--text-placeholder)] focus:border-[var(--focus-border)] focus:shadow-[0_0_0_3px_var(--focus-ring)]"
             value={draftBiography}
             onChange={(event) => setDraftBiography(event.target.value)}
             placeholder="Tell promoters and collaborators about your work, sound, and background."
             rows={10}
             maxLength={6000}
           />
-          <div className="biography-form-footer">
+          <div className="flex items-center justify-between gap-3 text-sm text-[var(--text-muted)]">
             <span>{draftBiography.length}/6000</span>
-            <div className="biography-form-actions">
-              <button
+            <div className="flex gap-2">
+              <Button
                 type="button"
+                variant="outline"
+                size="sm"
                 onClick={() => {
                   setDraftBiography(biography)
                   setError(null)
@@ -113,40 +117,39 @@ export function BiographyPanel({artistId, manualConnections}: BiographyPanelProp
                 disabled={isSaving}
               >
                 Cancel
-              </button>
-              <button type="submit" disabled={isSaving || draftBiography === biography}>
+              </Button>
+              <Button type="submit" size="sm" disabled={isSaving || draftBiography === biography}>
                 {isSaving ? 'Saving...' : 'Save biography'}
-              </button>
+              </Button>
             </div>
           </div>
         </form>
       ) : (
-        <p className={biography ? 'biography-copy' : 'biography-empty'}>
+        <p className={biography ? 'm-0 whitespace-pre-wrap text-sm leading-6 text-[var(--text)]' : 'm-0 text-sm text-[var(--text-muted)]'}>
           {biography || 'No biography added yet. Select Edit to introduce yourself.'}
         </p>
       )}
 
-      {error && <p className="biography-message error">{error}</p>}
-      {success && <p className="biography-message success">{success}</p>}
+      {error && <p className="m-0 rounded-xl border border-[var(--event-border-soft)] bg-[var(--event-soft)] p-3 text-sm text-[var(--event)]">{error}</p>}
+      {success && <p className="m-0 rounded-xl border border-[var(--promoter-border)] bg-[var(--promoter-soft)] p-3 text-sm text-[var(--text)]">{success}</p>}
 
       {!isLoading && !error && (
-        <section className="biography-linked-artists" aria-labelledby="biography-linked-artists-heading">
-          <div className="biography-section-heading">
+        <section className="grid gap-3" aria-labelledby="biography-linked-artists-heading">
+          <div className="flex items-center justify-between gap-3 border-b border-[var(--surface-border-soft)] pb-2">
             <h3 id="biography-linked-artists-heading">Linked artists</h3>
-            <span>{linkedArtists.length}</span>
           </div>
-          <div className="biography-linked-artist-list">
+          <div className="grid grid-cols-[repeat(auto-fit,minmax(150px,1fr))] gap-2">
             {linkedArtists.length > 0 ? linkedArtists.map((artist) => (
               <Link
                 key={artist.id}
                 to={`/graph?selectedType=artist&selectedId=${encodeURIComponent(artist.id)}`}
-                className="biography-linked-artist"
+                className="grid gap-1 rounded-xl border border-[var(--surface-border-soft)] bg-[var(--surface-soft)] p-3 text-[var(--text)] no-underline transition-colors hover:border-[var(--selection-border)] hover:bg-[var(--selection-soft)]"
               >
                 <strong>{artist.name}</strong>
-                <span>{artist.shared_events} shared event{artist.shared_events === 1 ? '' : 's'}</span>
+                <span className="text-sm text-[var(--text-muted)]">{artist.shared_events} shared event{artist.shared_events === 1 ? '' : 's'}</span>
               </Link>
             )) : (
-              <p className="biography-empty">No linked artists yet.</p>
+              <p className="m-0 text-sm text-[var(--text-muted)]">No linked artists yet.</p>
             )}
           </div>
         </section>

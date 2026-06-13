@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react'
+import { Button } from '@/shared/ui/button'
+import { cn } from '@/shared/lib/utils'
 import type { GraphParams } from '../../api/graph'
 import type { GenreOption } from '../../api/genres'
 
@@ -15,6 +17,11 @@ const FILTER_DESCRIPTIONS = {
   limit: 'Limit the number of events. Higher limits make the rendering heavier.',
   date: 'Dates in DD.MM.YYYY format.',
 }
+
+const groupClass = 'grid gap-2'
+const labelClass = 'inline-flex items-center gap-1.5 text-[0.72rem] uppercase tracking-[0.14em] text-[var(--accent)]'
+const inputClass = 'min-h-9 min-w-0 rounded-[10px] border border-[var(--control-border)] bg-[var(--surface-input)] px-3 py-2 text-sm font-[inherit] text-[var(--text)] outline-none transition-[border-color,box-shadow] placeholder:text-[var(--text-placeholder)] focus:border-[var(--focus-border)] focus:shadow-[0_0_0_3px_var(--focus-ring)] disabled:cursor-not-allowed disabled:opacity-60'
+const filterButtonClass = 'cursor-pointer rounded-full border border-[var(--control-border)] bg-[var(--control-bg)] px-3 py-2 text-sm font-semibold text-[var(--text)] transition-colors hover:border-[var(--selection-border)] hover:bg-[var(--selection-soft)] disabled:cursor-not-allowed disabled:opacity-50'
 
 const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/
 const DISPLAY_DATE_PATTERN = /^\d{2}\.\d{2}\.\d{4}$/
@@ -89,7 +96,7 @@ export function GraphDateInput({ label, value, onCommit, disabled = false }: Gra
 
   return (
     <input
-      className="graph-filter-date"
+      className={inputClass}
       type="text"
       value={inputValue}
       inputMode="numeric"
@@ -131,19 +138,22 @@ export function GraphFilters({
     const isActive = activeInfo === key
 
     return (
-      <span className={`graph-filter-info graph-filter-info--${key}`}>
+      <span className="relative inline-grid place-items-center normal-case tracking-normal">
         <button
           type="button"
-          className="graph-filter-info-button"
+          className="grid size-5 cursor-help place-items-center rounded-full border border-[var(--surface-border)] bg-[var(--surface-panel)] p-0 text-[var(--text-muted)] opacity-90 transition-all hover:-translate-y-px hover:border-[var(--focus-border)] hover:bg-[var(--surface-strong)] hover:text-[var(--text)] hover:opacity-100 focus-visible:-translate-y-px focus-visible:border-[var(--focus-border)] focus-visible:bg-[var(--surface-strong)] focus-visible:text-[var(--text)] focus-visible:opacity-100 focus-visible:outline-none"
           aria-label={`Explain ${label}`}
           aria-expanded={isActive}
           onClick={() => setActiveInfo(isActive ? null : key)}
           onBlur={() => setActiveInfo(null)}
         >
-          <span aria-hidden="true">i</span>
+          <span className="block size-[13px] rounded-full text-center font-serif text-[0.7rem] font-extrabold italic leading-[13px]" aria-hidden="true">i</span>
         </button>
         {isActive && (
-          <span className="graph-filter-info-popover" role="tooltip">
+          <span className={cn(
+            'absolute top-[calc(100%+8px)] z-20 w-[min(300px,calc(100vw-48px))] rounded-lg border border-[var(--surface-border)] bg-[var(--surface-panel)] px-3 py-2.5 text-left text-[0.82rem] font-semibold leading-snug text-[var(--text)] shadow-[var(--surface-shadow)]',
+            key === 'limit' ? 'right-0' : 'left-0',
+          )} role="tooltip">
             {FILTER_DESCRIPTIONS[key]}
           </span>
         )}
@@ -152,14 +162,14 @@ export function GraphFilters({
   }
 
   return (
-    <section className="graph-filter-panel" aria-label="Graph filters">
-      <div className="graph-filter-group">
-        <span className="graph-filter-label">
+    <section className="grid gap-3.5 border-b border-[var(--surface-border-soft)] pb-4 min-[1100px]:grid-cols-[minmax(180px,1fr)_minmax(300px,1.35fr)_auto] min-[1100px]:items-end min-[1100px]:border-b-0 min-[1100px]:pb-0" aria-label="Graph filters">
+      <div className={groupClass}>
+        <span className={labelClass}>
           Filter by Genre
           {renderInfoButton('genre', 'Filter by Genre')}
         </span>
         <select
-          className="graph-filter-select"
+          className={inputClass}
           value={filters.genre ?? ''}
           onChange={(event) => updateFilter({ genre: event.target.value || undefined })}
           disabled={isGenresLoading && genreOptions.length === 0}
@@ -175,12 +185,12 @@ export function GraphFilters({
           ))}
         </select>
         {genresError && (
-          <span className="graph-filter-help">Using fallback genres.</span>
+          <span className="text-[0.78rem] text-[var(--text-muted)]">Using fallback genres.</span>
         )}
       </div>
 
       <form
-        className="graph-filter-group graph-filter-date-form"
+        className={cn(groupClass, 'min-w-0')}
         onSubmit={(event) => {
           event.preventDefault()
           updateFilter({
@@ -189,11 +199,11 @@ export function GraphFilters({
           })
         }}
       >
-        <span className="graph-filter-label">
+        <span className={labelClass}>
           Filter by Date
           {renderInfoButton('date', 'Filter by Date')}
         </span>
-        <div className="graph-filter-date-row">
+        <div className="grid grid-cols-[repeat(2,minmax(0,1fr))_auto] gap-2">
           <GraphDateInput
             label="Date from"
             value={draftDateFrom}
@@ -204,27 +214,28 @@ export function GraphFilters({
             value={draftDateTo}
             onCommit={(dateTo) => setDraftDateTo(dateTo ?? '')}
           />
-          <button
+          <Button
             type="submit"
-            className="graph-filter-button graph-filter-date-apply"
+            size="sm"
+            className="rounded-full"
             disabled={draftDateFrom === dateFromValue && draftDateTo === dateToValue}
           >
             Apply dates
-          </button>
+          </Button>
         </div>
       </form>
 
-      <div className="graph-filter-group">
-        <span className="graph-filter-label">
+      <div className={groupClass}>
+        <span className={labelClass}>
           Event Limit
           {renderInfoButton('limit', 'Event Limit')}
         </span>
-        <div className="graph-filter-buttons">
+        <div className="flex flex-wrap gap-2">
           {LIMIT_OPTIONS.map((limit) => (
             <button
               key={limit}
               type="button"
-              className={`graph-filter-button${filters.limit === limit ? ' active' : ''}`}
+              className={cn(filterButtonClass, filters.limit === limit && 'border-[var(--selection-border-strong)] bg-[var(--selection-soft)] text-[var(--text)]')}
               onClick={() => updateFilter({ limit })}
             >
               {limit}

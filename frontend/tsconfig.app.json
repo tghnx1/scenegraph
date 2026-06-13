@@ -9,7 +9,12 @@
 
     /* Bundler mode */
     "moduleResolution": "bundler",
+    "ignoreDeprecations": "6.0",
     "allowImportingTsExtensions": true,
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./src/*"]
+    },
     "verbatimModuleSyntax": true,
     "moduleDetection": "force",
     "noEmit": true,

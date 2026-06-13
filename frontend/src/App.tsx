@@ -6,9 +6,19 @@ import { ProfilePage } from './pages/ProfilePage'
 import { AgencyPage } from './pages/AgencyPage'
 import { LoginPage } from './pages/LoginPage'
 import { isAuthRole, logout, type AuthRole } from './api/auth'
-import { applyTheme, getStoredTheme, type ThemeName } from './styles/colors'
+import { applyTheme, getStoredTheme, type ThemeName } from './shared/styles/colors'
+import { Button } from '@/shared/ui/button'
+import { cn } from '@/shared/lib/utils'
 
-const colorVar = (name: string) => `var(${name})`
+const navLinkClass = ({ isActive }: { isActive: boolean }) => cn(
+  'rounded-lg border border-transparent px-2.5 py-1.5 text-sm font-semibold text-[var(--text-muted)] no-underline transition-all duration-150 hover:opacity-90',
+  isActive && 'border-[color-mix(in_srgb,var(--link-highlight)_45%,transparent)] bg-[color-mix(in_srgb,var(--link-highlight)_20%,transparent)] text-[var(--text)]',
+)
+
+const footerLinkClass = ({ isActive }: { isActive: boolean }) => cn(
+  navLinkClass({ isActive }),
+  'px-2 py-1 text-xs',
+)
 
 function LegalPage({ section }: { section: string }) {
   const titles: Record<string, string> = {
@@ -20,9 +30,9 @@ function LegalPage({ section }: { section: string }) {
   }
 
   return (
-    <div style={{ padding: '40px', maxWidth: '800px', margin: '0 auto' }}>
+    <div className="mx-auto max-w-[800px] p-10">
       <h1>{titles[section] || 'Legal'}</h1>
-      <p style={{ color: colorVar('--text-muted'), marginTop: '20px' }}>
+      <p className="mt-5 text-[var(--text-muted)]">
         This page is a placeholder for {titles[section]?.toLowerCase() || 'legal information'}.
       </p>
     </div>
@@ -96,26 +106,26 @@ export default function App() {
   }
 
   return (
-    <div className="app-shell">
-      <nav className="app-nav">
-        <NavLink to="/graph" className="app-nav-link">
+    <div className="flex h-dvh min-h-screen flex-col bg-[var(--background)] text-[var(--text)] [background:radial-gradient(1000px_520px_at_12%_-10%,color-mix(in_srgb,var(--link-highlight)_18%,transparent),transparent_60%),radial-gradient(900px_460px_at_95%_0%,color-mix(in_srgb,var(--accent-warm)_15%,transparent),transparent_55%),var(--background)]">
+      <nav className="flex items-center gap-3 border-b border-[color-mix(in_srgb,var(--text)_18%,transparent)] bg-[color-mix(in_srgb,var(--background)_55%,transparent)] px-5 py-3 backdrop-blur-md">
+        <NavLink to="/graph" className={navLinkClass}>
           Graph
         </NavLink>
         {canOpenDashboard && (
-          <NavLink to="/dashboard" className="app-nav-link">
+          <NavLink to="/dashboard" className={navLinkClass}>
             Dashboard
           </NavLink>
         )}
-        <span className="app-nav-spacer" />
-        <button type="button" className="app-nav-button" onClick={handleThemeToggle}>
+        <span className="flex-1" />
+        <Button type="button" size="sm" variant="outline" onClick={handleThemeToggle}>
           {themeName === 'light' ? 'Dark' : 'Light'}
-        </button>
-        <button type="button" className="app-nav-button" onClick={handleAuthClick}>
+        </Button>
+        <Button type="button" size="sm" variant="outline" onClick={handleAuthClick}>
           {isAuthenticated ? 'Logout' : 'Login'}
-        </button>
+        </Button>
       </nav>
 
-      <main className="app-main">
+      <main className="flex-1 overflow-y-auto overflow-x-hidden">
         <Routes>
           <Route path="/" element={<Navigate to="/graph" />} />
           <Route path="/graph" element={graphPage} />
@@ -135,19 +145,19 @@ export default function App() {
         </Routes>
       </main>
 
-      <footer className="app-footer">
+      <footer className="flex items-center justify-between border-t border-[color-mix(in_srgb,var(--text)_15%,transparent)] bg-[color-mix(in_srgb,var(--background)_72%,transparent)] px-5 py-3.5 text-[13px] text-[var(--text-muted)]">
         <span>© 2026 Scenegraph</span>
-        <div className="app-footer-links">
-          <NavLink to="/privacy-policy" className="app-nav-link">
+        <div className="flex gap-4">
+          <NavLink to="/privacy-policy" className={footerLinkClass}>
             Privacy Policy
           </NavLink>
-          <NavLink to="/terms-of-service" className="app-nav-link">
+          <NavLink to="/terms-of-service" className={footerLinkClass}>
             Terms
           </NavLink>
-          <NavLink to="/impressum" className="app-nav-link">
+          <NavLink to="/impressum" className={footerLinkClass}>
             Impressum
           </NavLink>
-          <NavLink to="/contact" className="app-nav-link">
+          <NavLink to="/contact" className={footerLinkClass}>
             Contact
           </NavLink>
         </div>
