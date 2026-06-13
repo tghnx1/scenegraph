@@ -37,7 +37,7 @@ export function ProfilePage({ recommendationTargetControls, showBiography = true
         className={cn(
           'grid grid-cols-[minmax(380px,440px)_minmax(0,1fr)] gap-5 max-[900px]:grid-cols-1 max-[900px]:grid-rows-none',
           isSingleRowWorkspace
-            ? 'h-full min-h-0 grid-rows-[minmax(0,1fr)] overflow-hidden'
+            ? 'h-full min-h-0 grid-rows-[minmax(0,1fr)]'
             : 'grid-rows-[minmax(560px,calc(100dvh-128px))_auto]',
         )}
         aria-label="Profile overview"
