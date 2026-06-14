@@ -75,6 +75,7 @@ class RegisterRequest(BaseModel):
     email: str
     password: str
     password_confirm: str    
+    role: str
 
 class RegisterResponse(BaseModel): 
     success: bool
@@ -91,6 +92,8 @@ class ChangePasswordResponse(BaseModel):
     success: bool
     message: str
 
+class ChangeRoleRequest(BaseModel):
+    role: str
 class SimilarityItem(BaseModel):
     id: int
     type: Literal["artist", "event"]

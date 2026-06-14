@@ -1,6 +1,6 @@
 import { AdminUsersPage } from "./AdminUsersPage"
 import { useEffect, useState } from 'react'
-import { getActivityLog, type ActivityLogItem } from "../api/auth"
+import { getActivityLog, type ActivityLogItem, exportActivityLog } from "../api/auth"
 
 const overviewStats = [
   { label: 'Events', value: '2,486', note: '+184 this import' },
@@ -32,15 +32,16 @@ const dataStatistics = [
 export function DashboardPage() {
   const[activityRows, setActivityRows] = useState<ActivityLogItem[]>([])
 
-  useEffect(() => {
-    const loadActivity = async () => {
-      try {
-        const response = await getActivityLog()
-        setActivityRows(response.activity)
-      } catch (error) {
-        console.error(error)
-      }
+  const loadActivity = async () => {
+    try {
+      const response = await getActivityLog()
+      setActivityRows(response.activity)
+    } catch (error) {
+      console.error(error)
     }
+  }
+
+  useEffect(() => {
     loadActivity()
   }, [])
 
@@ -94,10 +95,6 @@ export function DashboardPage() {
         </article>
 
         <article className="dashboard-panel dashboard-panel-full dashboard-mock-element">
-          <div className="panel-heading">
-            <span className="search-query-label">Management</span>
-            <button type="button">Invite user</button>
-          </div>
           <div 
             className="dashboard-management-stack"
             style={{
@@ -108,20 +105,46 @@ export function DashboardPage() {
             }}
           >
             <section>
-              <AdminUsersPage compact />
+                <AdminUsersPage compact onActivityChanged={loadActivity} />
             </section>
 
             <section>
-              <div className="dashboard-section-heading">
+              <div
+                className="dashboard-section-heading"
+                style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, }}  
+              >
                 <span>Login, logout, and registration activity</span>
+                <button type="button" onClick={exportActivityLog}>
+                  Export activity log
+                </button>
               </div>
-              <div className="dashboard-table dashboard-table--management-log">
+              <div 
+                className="dashboard-scroll-list"
+                style={{
+                  maxHeight: 460, 
+                  overflowY: 'auto',
+                  display: 'grid',
+                  gap: 6,
+                  fontFamily: 'monospace',
+                  fontSize: 13,
+                }}
+              >
                 {activityRows.map((row) => (
-                  <div key={row.id} className="dashboard-table-row">
-                    <strong>{row.username ?? 'unknown'}</strong>
-                    <span>{row.event_type}</span>
-                    <span>{row.target ?? '-'}</span>
+                  <div 
+                    key={row.id}
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: '170px 120px 1fr',
+                      gap: 12,
+                      padding: '6px 0',
+                      borderBottom: '1px solid color-mix(in srgb, var(--text) 12%, transparent)',
+                    }}
+                  >
                     <span>{new Date(row.created_at).toLocaleString()}</span>
+                    <strong>{row.event_type}</strong>
+                    <span>
+                      {row.username ?? 'unknown'} → {row.target ?? '-'}
+                    </span>
                   </div>
                 ))}
               </div>

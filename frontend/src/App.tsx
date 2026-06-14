@@ -6,6 +6,7 @@ import { ProfilePage } from './pages/ProfilePage'
 import { LoginPage } from './pages/LoginPage'
 import { logout, type AuthRole } from './api/auth'
 import { applyTheme, getStoredTheme, type ThemeName } from './styles/colors'
+import { ChangePasswordPage } from './pages/ChangePasswordPage'
 
 const colorVar = (name: string) => `var(${name})`
 
@@ -44,7 +45,9 @@ export default function App() {
   const [authRole, setAuthRole] = useState<AuthRole | null>(() => {
     const storedToken = localStorage.getItem('token')
     const storedRole = localStorage.getItem('role')
-    return storedToken && (storedRole === 'user' || storedRole === 'admin') ? storedRole : null
+    return storedToken && ['artist', 'agent', 'admin'].includes(storedRole) 
+      ? storedRole as AuthRole
+      : null
   })
   const [themeName, setThemeName] = useState<ThemeName>(() => getStoredTheme())
   const isAuthenticated = Boolean(authRole)
@@ -73,8 +76,12 @@ export default function App() {
     navigate('/login')
   }
 
-  const handleLogin = (role: AuthRole) => {
+  const handleLogin = (role: AuthRole, redirect = true) => {
     setAuthRole(role)
+
+    if (redirect) {
+      navigate(role === 'admin' ? '/dashboard' : '/profile')
+    }
   }
 
   const handleThemeToggle = () => {
@@ -89,7 +96,7 @@ export default function App() {
         <NavLink to="/graph" className="app-nav-link">
           Graph
         </NavLink>
-        {authRole === 'user' && (
+        {(authRole === 'artist' || authRole === 'agent') && (
           <NavLink to="/profile" className="app-nav-link">
             Profile
           </NavLink>
@@ -100,6 +107,15 @@ export default function App() {
           </NavLink>
         )}
         <span className="app-nav-spacer" />
+        {isAuthenticated && (
+          <button
+            type="button"
+            className="app-nav-button"
+            onClick={() => navigate('/change-password')}
+          >
+            Change password
+          </button>
+        )}
         <button type="button" className="app-nav-button" onClick={handleThemeToggle}>
           {themeName === 'light' ? 'Dark' : 'Light'}
         </button>
@@ -113,8 +129,15 @@ export default function App() {
           <Route path="/" element={<Navigate to="/graph" />} />
           <Route path="/graph" element={<GraphPage />} />
           <Route path="/login" element={isAuthenticated ? <Navigate to="/graph" replace /> : <LoginPage onLogin={handleLogin} />} />
+          <Route 
+            path="/change-password" 
+            element={
+              isAuthenticated || localStorage.getItem('token')
+                ? <ChangePasswordPage onLogin={handleLogin} />
+                : <Navigate to="/login" replace />} 
+          />
           <Route path="/dashboard" element={authRole === 'admin' ? <DashboardPage /> : <Navigate to={isAuthenticated ? '/graph' : '/login'} replace />} />
-          <Route path="/profile" element={authRole === 'user' ? <ProfilePage /> : <Navigate to={isAuthenticated ? '/graph' : '/login'} replace />} />
+          <Route path="/profile" element={authRole === 'artist' || authRole === 'agent' ? <ProfilePage /> : <Navigate to={isAuthenticated ? '/graph' : '/login'} replace />} />
           <Route path="/search" element={<SearchRedirect />} />
           <Route path="/artist/:id" element={<ArtistRedirect />} />
           <Route path="/privacy-policy" element={<LegalPage section="privacy" />} />

@@ -729,6 +729,24 @@
   grid-template-columns: 1.1fr 1.2fr 0.8fr auto;
 }
 
+.dashboard-scroll-list {
+  scrollbar-color: var(--surface) transparent;
+  scrollbar-width: thin;
+}
+
+.dashboard-scroll-list::-webkit-scrollbar {
+  width: 8px;
+}
+
+.dashboard-scroll-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.dashboard-scroll-list::-webkit-scrollbar-thumb {
+  background: var(--surface);
+  border-radius: 8px;
+}
+
 .quality-item {
   display: flex;
   align-items: center;

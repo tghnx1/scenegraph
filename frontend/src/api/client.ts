@@ -22,7 +22,8 @@ async function request<T>( //typescript generics, request<GraphData> returns Pro
   }
 
   if (!res.ok) { //anything other than  200–299 throw an error that useApi's catch block will catch and put in the error state
-    throw new Error(`${res.status} ${res.statusText}`)
+    const text = await res.text()
+    throw new Error(`${res.status} ${res.statusText}: ${text}`)
   }
 
   return res.json() as Promise<T> //parses the response body as json and returns it as type t

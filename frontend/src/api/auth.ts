@@ -1,6 +1,6 @@
 import { api } from './client'
 
-export type AuthRole = 'user' | 'admin'
+export type AuthRole = 'artist' | 'agent' | 'admin'
 
 export interface LoginResponse {
   success: boolean
@@ -32,10 +32,6 @@ export const changePassword = (
 export const login = (username: string, password: string): Promise<LoginResponse> =>
   api.post<LoginResponse>('/login', { username, password })
 
-//export const getFallbackRole = (username: string): AuthRole => (
-//  username.trim().toLowerCase() === 'aaron' ? 'admin' : 'user'
-//)  the backend already knows the role.
-
 export interface PendingUser {
   id: number
   username: string
@@ -46,23 +42,15 @@ export interface PendingUser {
 }
 
 export const getPendingUsers = (): Promise<{ success: boolean; users: PendingUser[] }> =>
-  api.get('/admin/users/pending', {
-    headers: { 'X-Admin-Username': localStorage.getItem('username') ?? '' },
-  })
+  api.get('/admin/users/pending')
 
 export const approveUser = (userId: number): Promise<{ success: boolean; message: string }> =>
-  api.post(`/admin/users/${userId}/approve`, undefined, {
-    headers: { 'X-Admin-Username': localStorage.getItem('username') ?? '' },
-  })
+  api.post(`/admin/users/${userId}/approve`, undefined)
 
 export const rejectUser = (
   userId: number,
 ): Promise<{ success: boolean; message: string }> =>
-  api.post(`/admin/users/${userId}/reject`, undefined, {
-    headers: {
-      'X-Admin-Username': localStorage.getItem('username') ?? '',
-    },
-  })
+  api.post(`/admin/users/${userId}/reject`, undefined)
 
 export interface RegisterResponse {
   success: boolean
@@ -74,13 +62,15 @@ export const register = (
   username: string,
   email: string,
   password: string,
-  password_confirm: string
+  password_confirm: string,
+  role: 'artist' | 'agent',
 ): Promise<RegisterResponse> =>
   api.post<RegisterResponse>('/register', {
     username,
     email,
     password,
     password_confirm,
+    role,
   })
 
 export interface ActivityLogItem {
@@ -92,9 +82,32 @@ export interface ActivityLogItem {
 }
 
 export const getActivityLog = (): Promise<{ success: boolean; activity: ActivityLogItem[] }> =>
-  api.get('/admin/activity', {
-    headers: { 'X-Admin-Username': localStorage.getItem('username') ?? ''},
+  api.get('/admin/activity')
+
+export const exportActivityLog = async (): Promise<void> => {
+  const token = localStorage.getItem('token')
+
+  const response = await fetch('/api/admin/activity/export', {
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
   })
+
+  if (!response.ok) {
+    throw new Error('Export failed')
+  }
+
+  const text = await response.text()
+  const blob = new Blob([text], { type: 'text/plain' })
+  const url = URL.createObjectURL(blob)
+
+  const link = document.createElement('a')
+  link.href = url
+  link.download = 'activity_log.txt'
+  link.click()
+
+  URL.revokeObjectURL(url)
+}
 
 export const logout = (
   username: string,
@@ -111,13 +124,20 @@ export interface UserItem {
 }
 
 export const getUsers = (): Promise<{ success: boolean; users: UserItem[] }> =>
-  api.get('/admin/users', {
-    headers: { 'X-Admin-Username': localStorage.getItem('username') ?? '' },
-  })
+  api.get('/admin/users')
 
 export const deactivateUser = (
   userId: number,
 ): Promise<{ success: boolean; message: string }> =>
-  api.post(`/admin/users/${userId}/deactivate`, undefined, {
-    headers: { 'X-Admin-Username': localStorage.getItem('username') ?? '' },
-  })
+  api.post(`/admin/users/${userId}/deactivate`, undefined)
+
+export const activateUser = (
+  userId: number,
+): Promise<{ success: boolean; message: string }> =>
+  api.post(`/admin/users/${userId}/activate`, undefined)
+
+export const changeUserRole = (
+  userId: number,
+  role: 'artist' | 'agent',
+): Promise<{ success: boolean; message: string }> =>
+  api.post(`/admin/users/${userId}/role`, { role })
