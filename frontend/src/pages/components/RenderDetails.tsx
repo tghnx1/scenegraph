@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom'
 import { Button } from '@/shared/ui/button'
-import { cn } from '@/shared/lib/utils'
+import { cn } from '@/shared/lib/cn-utils'
 import type { ArtistDetail } from '../../types/artist'
 import type { EntityDetail } from '../../types/entityDetail'
 import type { EventDetail } from '../../types/event'

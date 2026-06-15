@@ -10,7 +10,7 @@ import { AboutPage } from './pages/AboutPage'
 import { isAuthRole, logout, type AuthRole } from './api/auth'
 import { applyTheme, getStoredTheme, type ThemeName } from './shared/styles/colors'
 import { Button } from '@/shared/ui/button'
-import { cn } from '@/shared/lib/utils'
+import { cn } from '@/shared/lib/cn-utils'
 
 const navLinkClass = ({ isActive }: { isActive: boolean }) => cn(
   'rounded-lg border border-transparent px-2.5 py-1.5 text-sm font-semibold text-[var(--text-muted)] no-underline transition-all duration-150 hover:opacity-90',

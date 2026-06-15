@@ -158,77 +158,54 @@ function MetricCard({metric, fallbackLabel}: {metric?: DashboardMetric; fallback
   )
 }
 
-function DatasetMetricGrid({
-  group,
+function MetricCluster({
+  ids,
+  definitions,
   metrics,
   isUnavailable,
 }: {
-  group: MetricGroup
+  ids: readonly string[]
+  definitions: Map<string, {label: string}>
   metrics: Map<string, DashboardMetric>
   isUnavailable: boolean
 }) {
-  const metricDefinitions = new Map(group.metrics.map((metric) => [metric.id, metric]))
-
   return (
-    <div className="mt-4 grid gap-3 md:grid-cols-2">
-      {DATASET_METRIC_GROUPS.map((metricGroup) => (
-        <section
-          className="rounded-2xl border border-[var(--surface-border-soft)] bg-[color-mix(in_srgb,var(--surface-soft)_65%,transparent)] p-3"
-          key={metricGroup[0]}
-        >
-          <div className="grid gap-3">
-            {metricGroup.map((id) => {
-              const definition = metricDefinitions.get(id)
-              if (!definition) return null
-
-              return (
-                <MetricCard
-                  key={id}
-                  metric={isUnavailable ? undefined : metrics.get(id)}
-                  fallbackLabel={definition.label}
-                />
-              )
-            })}
-          </div>
-        </section>
-      ))}
-    </div>
+    <section className="rounded-2xl border border-[var(--surface-border-soft)] bg-[color-mix(in_srgb,var(--surface-soft)_65%,transparent)] p-3">
+      <div className="grid gap-3">
+        {ids.map((id) => {
+          const definition = definitions.get(id)
+          return definition && <MetricCard key={id} metric={isUnavailable ? undefined : metrics.get(id)} fallbackLabel={definition.label} />
+        })}
+      </div>
+    </section>
   )
 }
 
-function SemanticMetricGrid({
+function GroupedMetricGrid({
   group,
+  metricGroups,
   metrics,
   isUnavailable,
 }: {
   group: MetricGroup
+  metricGroups: readonly (readonly string[])[]
   metrics: Map<string, DashboardMetric>
   isUnavailable: boolean
 }) {
-  const metricDefinitions = new Map(group.metrics.map((metric) => [metric.id, metric]))
+  const metricDefinitions = new Map<string, {id: string; label: string}>(
+    group.metrics.map((metric) => [metric.id, metric]),
+  )
 
   return (
     <div className="mt-4 grid gap-3 md:grid-cols-2">
-      {SEMANTIC_METRIC_GROUPS.map((metricGroup) => (
-        <section
-          className="rounded-2xl border border-[var(--surface-border-soft)] bg-[color-mix(in_srgb,var(--surface-soft)_65%,transparent)] p-3"
+      {metricGroups.map((metricGroup) => (
+        <MetricCluster
           key={metricGroup[0]}
-        >
-          <div className="grid gap-3">
-            {metricGroup.map((id) => {
-              const definition = metricDefinitions.get(id)
-              if (!definition) return null
-
-              return (
-                <MetricCard
-                  key={id}
-                  metric={isUnavailable ? undefined : metrics.get(id)}
-                  fallbackLabel={definition.label}
-                />
-              )
-            })}
-          </div>
-        </section>
+          ids={metricGroup}
+          definitions={metricDefinitions}
+          metrics={metrics}
+          isUnavailable={isUnavailable}
+        />
       ))}
     </div>
   )
@@ -250,25 +227,13 @@ function NetworkMetricGrid({
   return (
     <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
       {NETWORK_METRIC_PAIRS.map((pair) => (
-        <section
-          className="rounded-2xl border border-[var(--surface-border-soft)] bg-[color-mix(in_srgb,var(--surface-soft)_65%,transparent)] p-3"
+        <MetricCluster
           key={pair[0]}
-        >
-          <div className="grid gap-3">
-            {pair.map((id) => {
-              const definition = metricDefinitions.get(id)
-              if (!definition) return null
-
-              return (
-                <MetricCard
-                  key={id}
-                  metric={isUnavailable ? undefined : metrics.get(id)}
-                  fallbackLabel={definition.label}
-                />
-              )
-            })}
-          </div>
-        </section>
+          ids={pair}
+          definitions={metricDefinitions}
+          metrics={metrics}
+          isUnavailable={isUnavailable}
+        />
       ))}
       <div className="grid gap-3">
         {unpairedMetrics.map((metric) => (
@@ -330,11 +295,11 @@ function MetricGroupPanel({
         )}
       </div>
       {group.title === 'Dataset Coverage' ? (
-        <DatasetMetricGrid group={group} metrics={metrics} isUnavailable={isUnavailable} />
+        <GroupedMetricGrid group={group} metricGroups={DATASET_METRIC_GROUPS} metrics={metrics} isUnavailable={isUnavailable} />
       ) : group.title === 'Network Health / Distribution' ? (
         <NetworkMetricGrid group={group} metrics={metrics} isUnavailable={isUnavailable} />
       ) : (
-        <SemanticMetricGrid group={group} metrics={metrics} isUnavailable={isUnavailable} />
+        <GroupedMetricGrid group={group} metricGroups={SEMANTIC_METRIC_GROUPS} metrics={metrics} isUnavailable={isUnavailable} />
       )}
     </article>
   )

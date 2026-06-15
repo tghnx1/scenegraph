@@ -1,5 +1,6 @@
-import { useCallback, useMemo, useState } from 'react'
-import { Button } from '@/shared/ui/button'
+import {useCallback, useMemo} from 'react'
+import {csvCell, downloadTextFile, htmlEscape, printHtmlDocument} from '@/shared/lib/export'
+import {ExportMenu} from '@/shared/ui/export-menu'
 import type { PromoterRecommendation, PromoterRecommendationResponse } from '../../types/recommendation'
 
 type RecommendationGraphMode = 'compact' | 'full'
@@ -32,32 +33,6 @@ function recommendationScore(recommendation: PromoterRecommendation): number {
   return 0
 }
 
-function downloadTextFile(filename: string, content: string, type: string) {
-  const blob = new Blob([content], { type })
-  const url = URL.createObjectURL(blob)
-  const link = document.createElement('a')
-  link.href = url
-  link.download = filename
-  document.body.appendChild(link)
-  link.click()
-  document.body.removeChild(link)
-  URL.revokeObjectURL(url)
-}
-
-function csvCell(value: unknown): string {
-  const text = Array.isArray(value) ? value.join('; ') : String(value ?? '')
-  return `"${text.replaceAll('"', '""')}"`
-}
-
-function htmlEscape(value: unknown): string {
-  return String(value ?? '')
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#39;')
-}
-
 function sourceArtistName(recommendationsData: PromoterRecommendationResponse): string {
   const sourceNode = [
     ...recommendationsData.graph.nodes,
@@ -75,7 +50,6 @@ export function RecommendationExportMenu({
   recommendationStrengthThreshold,
   recommendationGraphMode,
 }: RecommendationExportMenuProps) {
-  const [isExportMenuOpen, setIsExportMenuOpen] = useState(false)
   const exportRecommendations = useMemo(() => {
     if (!recommendationsData) return []
 
@@ -88,7 +62,6 @@ export function RecommendationExportMenu({
 
   const handleExportJson = useCallback(() => {
     if (!recommendationsData) return
-    setIsExportMenuOpen(false)
 
     downloadTextFile(
       `promoter-recommendations-artist-${recommendationsData.entityId}.json`,
@@ -110,7 +83,6 @@ export function RecommendationExportMenu({
 
   const handleExportCsv = useCallback(() => {
     if (!recommendationsData) return
-    setIsExportMenuOpen(false)
 
     const rows = exportRecommendations.map((recommendation, index) => [
       index + 1,
@@ -135,7 +107,6 @@ export function RecommendationExportMenu({
 
   const handleExportPdf = useCallback(() => {
     if (!recommendationsData) return
-    setIsExportMenuOpen(false)
 
     const artistName = sourceArtistName(recommendationsData)
     const reportRows = exportRecommendations.map((recommendation, index) => {
@@ -150,10 +121,7 @@ export function RecommendationExportMenu({
         </article>
       `
     }).join('')
-    const popup = window.open('', '_blank')
-    if (!popup) return
-
-    popup.document.write(`
+    printHtmlDocument(`
       <!doctype html>
       <html>
         <head>
@@ -181,32 +149,7 @@ export function RecommendationExportMenu({
         </body>
       </html>
     `)
-    popup.document.close()
-    popup.focus()
-    window.setTimeout(() => {
-      popup.print()
-    }, 250)
   }, [exportRecommendations, recommendationsData])
 
-  return (
-    <div className="relative inline-flex">
-      <Button
-        type="button"
-        size="sm"
-        aria-haspopup="menu"
-        aria-expanded={isExportMenuOpen}
-        disabled={!recommendationsData}
-        onClick={() => setIsExportMenuOpen((isOpen) => !isOpen)}
-      >
-        Export
-      </Button>
-      {isExportMenuOpen && recommendationsData && (
-        <div className="absolute right-0 top-[calc(100%+8px)] z-30 grid min-w-32 gap-1 rounded-xl border border-[var(--surface-border)] bg-[var(--surface-dropdown)] p-1.5 shadow-[var(--surface-shadow)]" role="menu" aria-label="Export recommendations">
-          <Button type="button" variant="ghost" size="sm" role="menuitem" onClick={handleExportJson}>JSON</Button>
-          <Button type="button" variant="ghost" size="sm" role="menuitem" onClick={handleExportCsv}>CSV</Button>
-          <Button type="button" variant="ghost" size="sm" role="menuitem" onClick={handleExportPdf}>PDF</Button>
-        </div>
-      )}
-    </div>
-  )
+  return <ExportMenu enabled={Boolean(recommendationsData)} label="Export recommendations" onJson={handleExportJson} onCsv={handleExportCsv} onPdf={handleExportPdf} />
 }

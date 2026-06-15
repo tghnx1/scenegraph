@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Button } from '@/shared/ui/button'
-import { cn } from '@/shared/lib/utils'
+import { cn } from '@/shared/lib/cn-utils.ts'
 import { DetailsPanel } from './components/DetailsPanel.tsx'
 import { ScenegraphMapPanel } from './components/GraphPanel.tsx'
 import { PromoterRecommendationsPanel, type RecommendationTargetControls } from './components/RecommendationPanel.tsx'
