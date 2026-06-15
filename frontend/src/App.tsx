@@ -5,6 +5,7 @@ import { DashboardPage } from './pages/DashboardPage'
 import { ProfilePage } from './pages/ProfilePage'
 import { AgencyPage } from './pages/AgencyPage'
 import { LoginPage } from './pages/LoginPage'
+import { ChangePasswordPage } from './pages/ChangePasswordPage'
 import { AboutPage } from './pages/AboutPage'
 import { isAuthRole, logout, type AuthRole } from './api/auth'
 import { applyTheme, getStoredTheme, type ThemeName } from './shared/styles/colors'
@@ -46,9 +47,9 @@ export default function App() {
   const [themeName, setThemeName] = useState<ThemeName>(() => getStoredTheme())
   const isAuthenticated = Boolean(authRole)
   const canOpenDashboard = authRole === 'admin'
-  const graphPage = authRole === 'user'
+  const graphPage = authRole === 'artist'
     ? <ProfilePage />
-    : authRole === 'contributor' || authRole === 'admin'
+    : authRole === 'agent' || authRole === 'admin'
       ? <AgencyPage />
       : <GraphPage />
 
@@ -99,6 +100,11 @@ export default function App() {
           </NavLink>
         )}
         <span className="flex-1" />
+        {isAuthenticated && (
+          <Button type="button" size="sm" variant="outline" onClick={() => navigate('/change-password')}>
+            Change password
+          </Button>
+        )}
         <Button type="button" size="sm" variant="outline" onClick={handleThemeToggle}>
           {themeName === 'light' ? 'Dark' : 'Light'}
         </Button>
@@ -112,8 +118,16 @@ export default function App() {
           <Route path="/" element={<Navigate to="/graph" />} />
           <Route path="/graph" element={graphPage} />
           <Route path="/login" element={isAuthenticated ? <Navigate to="/graph" replace /> : <LoginPage onLogin={handleLogin} />} />
+          <Route
+            path="/change-password"
+            element={
+              isAuthenticated || localStorage.getItem('token')
+                ? <ChangePasswordPage onLogin={handleLogin} />
+                : <Navigate to="/login" replace />
+            }
+          />
           <Route path="/dashboard" element={authRole === 'admin' ? <DashboardPage /> : <Navigate to={isAuthenticated ? '/graph' : '/login'} replace />} />
-          <Route path="/profile" element={authRole === 'user' ? <ProfilePage /> : <Navigate to={isAuthenticated ? '/graph' : '/login'} replace />} />
+          <Route path="/profile" element={authRole === 'artist' ? <ProfilePage /> : <Navigate to={isAuthenticated ? '/graph' : '/login'} replace />} />
           <Route path="/search" element={<SearchRedirect />} />
           <Route path="/artist/:id" element={<EntityRedirect type="artist" />} />
           <Route path="/promoter/:id" element={<EntityRedirect type="promoter" />} />
