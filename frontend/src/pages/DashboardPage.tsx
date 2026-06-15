@@ -39,7 +39,7 @@ export function DashboardPage() {
   return (
     <div className="mx-auto min-h-full w-full max-w-[1480px] p-4">
       <div className="mb-4 flex justify-end gap-2" aria-label="Dashboard actions">
-        <Button type="button">Run import</Button>
+        <Button type="button" size="sm">Run import</Button>
         <DashboardExportMenu
           dashboardStatus={dashboardStatus}
           selectedEntities={selectedEntities}

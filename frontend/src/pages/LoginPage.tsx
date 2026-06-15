@@ -1,5 +1,6 @@
-import { useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { ChevronDown } from 'lucide-react'
 import { Button } from '@/shared/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/shared/ui/card'
 import { Input } from '@/shared/ui/input'
@@ -8,6 +9,75 @@ import { isAuthRole, login, register, type AuthRole } from '../api/auth'
 
 interface LoginPageProps {
   onLogin: (role: AuthRole, username: string) => void
+}
+
+const REGISTRATION_ROLES = [
+  {value: 'artist', label: 'Artist'},
+  {value: 'agent', label: 'Agent'},
+] as const
+
+type RegistrationRole = (typeof REGISTRATION_ROLES)[number]['value']
+
+function RoleSelect({value, onChange}: {value: RegistrationRole; onChange: (role: RegistrationRole) => void}) {
+  const [isOpen, setIsOpen] = useState(false)
+  const containerRef = useRef<HTMLDivElement>(null)
+  const selectedRole = REGISTRATION_ROLES.find((role) => role.value === value) ?? REGISTRATION_ROLES[0]
+
+  useEffect(() => {
+    if (!isOpen) return
+
+    const closeOnOutsideClick = (event: MouseEvent) => {
+      if (!containerRef.current?.contains(event.target as Node)) setIsOpen(false)
+    }
+
+    document.addEventListener('mousedown', closeOnOutsideClick)
+    return () => document.removeEventListener('mousedown', closeOnOutsideClick)
+  }, [isOpen])
+
+  return (
+    <div className="relative" ref={containerRef}>
+      <button
+        type="button"
+        className="flex h-10 w-full min-w-0 items-center justify-between rounded-md border border-[var(--control-border)] bg-[var(--surface-input)] px-3 py-2 text-left text-sm text-[var(--text)] outline-none transition-[border-color,box-shadow] hover:border-[var(--focus-border)] focus-visible:border-[var(--focus-border)] focus-visible:ring-3 focus-visible:ring-[var(--focus-ring)]"
+        aria-haspopup="listbox"
+        aria-expanded={isOpen}
+        onClick={() => setIsOpen((open) => !open)}
+        onKeyDown={(event) => {
+          if (event.key === 'Escape') setIsOpen(false)
+          if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+            event.preventDefault()
+            setIsOpen(true)
+          }
+        }}
+      >
+        <span>{selectedRole.label}</span>
+        <ChevronDown className="size-4 text-[var(--text-muted)]" aria-hidden="true" />
+      </button>
+      {isOpen && (
+        <div
+          className="absolute left-0 right-0 top-[calc(100%+6px)] z-30 grid gap-1 rounded-xl border border-[var(--surface-border)] bg-[var(--surface-dropdown)] p-1.5 shadow-[var(--surface-shadow)]"
+          role="listbox"
+          aria-label="Requested role"
+        >
+          {REGISTRATION_ROLES.map((role) => (
+            <button
+              type="button"
+              className="rounded-lg border border-transparent bg-transparent px-3 py-2 text-left text-sm text-[var(--text)] outline-none transition-colors hover:bg-[var(--control-bg)] focus-visible:bg-[var(--control-bg)]"
+              role="option"
+              aria-selected={role.value === value}
+              key={role.value}
+              onClick={() => {
+                onChange(role.value)
+                setIsOpen(false)
+              }}
+            >
+              {role.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
 }
 
 export function LoginPage({ onLogin }: LoginPageProps) {
@@ -19,7 +89,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
   const [isRegistering, setIsRegistering] = useState(false)
   const [email, setEmail] = useState('')
   const [passwordConfirm, setPasswordConfirm] = useState('')
-  const [requestedRole, setRequestedRole] = useState<'artist' | 'agent'>('artist')
+  const [requestedRole, setRequestedRole] = useState<RegistrationRole>('artist')
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -93,14 +163,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
                 <Label>Email<Input type="email" value={email} onChange={(event) => setEmail(event.target.value)} required /></Label>
                 <Label>
                   Requested role
-                  <select
-                    className="h-10 w-full rounded-md border border-[var(--control-border)] bg-[var(--control-bg)] px-3 text-sm text-[var(--text)] outline-none"
-                    value={requestedRole}
-                    onChange={(event) => setRequestedRole(event.target.value as 'artist' | 'agent')}
-                  >
-                    <option value="artist">Artist</option>
-                    <option value="agent">Agent</option>
-                  </select>
+                  <RoleSelect value={requestedRole} onChange={setRequestedRole} />
                 </Label>
               </>
             )}
