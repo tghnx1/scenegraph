@@ -224,7 +224,7 @@ export function OverviewChart({
   return (
     <div className="grid grid-cols-[140px_minmax(0,1fr)_220px] items-stretch gap-4 max-[1050px]:grid-cols-1">
       <aside className="grid content-start gap-2 max-[1050px]:grid-cols-[auto_1fr]">
-        <span className="inline-flex items-center gap-1.5 text-[0.72rem] uppercase tracking-[0.14em] text-[var(--accent)] max-[1050px]:self-center">Chart</span>
+        <span className="inline-flex items-center gap-1.5 text-[0.72rem] uppercase tracking-[0.14em] text-[var(--accent)] max-[1050px]:self-center">Chart Options</span>
         {chartModeControls}
       </aside>
       <div className={cn(
