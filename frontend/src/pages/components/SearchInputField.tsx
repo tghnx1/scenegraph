@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
 import { X } from 'lucide-react'
 import { Button } from '@/shared/ui/button'
-import { cn } from '@/shared/lib/utils'
+import { cn } from '@/shared/lib/cn-utils'
 import type { SearchEntityType, SearchResult, SearchSort } from '../../types/search'
 
 const SEARCH_RESULT_TABS: { type: SearchEntityType; label: string }[] = [

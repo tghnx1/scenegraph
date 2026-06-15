@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Button } from '@/shared/ui/button'
-import { cn } from '@/shared/lib/utils'
+import { cn } from '@/shared/lib/cn-utils'
 import { graphEntityId, type GraphNode } from '../../types/graph'
 import type { PromoterRecommendationResponse } from '../../types/recommendation'
 import { RecommendationLoading } from './LoadingScreen'

@@ -1,5 +1,6 @@
-import {useCallback, useState} from 'react'
-import { Button } from '@/shared/ui/button'
+import {useCallback} from 'react'
+import {csvCell, downloadTextFile, htmlEscape, printHtmlDocument} from '@/shared/lib/export'
+import {ExportMenu} from '@/shared/ui/export-menu'
 import type {DashboardEntity, DashboardStatus} from '../../types/dashboardComposition'
 
 interface DashboardExportMenuProps {
@@ -9,42 +10,14 @@ interface DashboardExportMenuProps {
   dateTo: string
 }
 
-function downloadTextFile(filename: string, content: string, type: string) {
-  const blob = new Blob([content], {type})
-  const url = URL.createObjectURL(blob)
-  const link = document.createElement('a')
-  link.href = url
-  link.download = filename
-  document.body.appendChild(link)
-  link.click()
-  document.body.removeChild(link)
-  URL.revokeObjectURL(url)
-}
-
-function csvCell(value: unknown) {
-  return `"${String(value ?? '').replaceAll('"', '""')}"`
-}
-
-function htmlEscape(value: unknown) {
-  return String(value ?? '')
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#39;')
-}
-
 export function DashboardExportMenu({
   dashboardStatus,
   selectedEntities,
   dateFrom,
   dateTo,
 }: DashboardExportMenuProps) {
-  const [isExportMenuOpen, setIsExportMenuOpen] = useState(false)
-
   const handleExportJson = useCallback(() => {
     if (!dashboardStatus) return
-    setIsExportMenuOpen(false)
     downloadTextFile(
       'dashboard-composition.json',
       JSON.stringify({
@@ -58,7 +31,6 @@ export function DashboardExportMenu({
 
   const handleExportCsv = useCallback(() => {
     if (!dashboardStatus) return
-    setIsExportMenuOpen(false)
     const rows = dashboardStatus.items.map((item) => [
       item.id,
       item.label,
@@ -76,9 +48,6 @@ export function DashboardExportMenu({
 
   const handleExportPdf = useCallback(() => {
     if (!dashboardStatus) return
-    setIsExportMenuOpen(false)
-    const popup = window.open('', '_blank')
-    if (!popup) return
     const rows = dashboardStatus.items.map((item) => `
       <tr>
         <td>${htmlEscape(item.label)}</td>
@@ -86,7 +55,7 @@ export function DashboardExportMenu({
         <td>${htmlEscape(item.percentage.toFixed(2))}%</td>
       </tr>
     `).join('')
-    popup.document.write(`
+    printHtmlDocument(`
       <!doctype html>
       <html>
         <head>
@@ -115,30 +84,7 @@ export function DashboardExportMenu({
         </body>
       </html>
     `)
-    popup.document.close()
-    popup.focus()
-    window.setTimeout(() => popup.print(), 250)
   }, [dashboardStatus])
 
-  return (
-    <div className="relative inline-flex">
-      <Button
-        type="button"
-        size="sm"
-        aria-haspopup="menu"
-        aria-expanded={isExportMenuOpen}
-        disabled={!dashboardStatus}
-        onClick={() => setIsExportMenuOpen((isOpen) => !isOpen)}
-      >
-        Export
-      </Button>
-      {isExportMenuOpen && dashboardStatus && (
-        <div className="absolute right-0 top-[calc(100%+8px)] z-30 grid min-w-32 gap-1 rounded-xl border border-[var(--surface-border)] bg-[var(--surface-dropdown)] p-1.5 shadow-[var(--surface-shadow)]" role="menu" aria-label="Export dashboard composition">
-          <Button type="button" variant="ghost" size="sm" role="menuitem" onClick={handleExportJson}>JSON</Button>
-          <Button type="button" variant="ghost" size="sm" role="menuitem" onClick={handleExportCsv}>CSV</Button>
-          <Button type="button" variant="ghost" size="sm" role="menuitem" onClick={handleExportPdf}>PDF</Button>
-        </div>
-      )}
-    </div>
-  )
+  return <ExportMenu enabled={Boolean(dashboardStatus)} label="Export dashboard composition" onJson={handleExportJson} onCsv={handleExportCsv} onPdf={handleExportPdf} />
 }

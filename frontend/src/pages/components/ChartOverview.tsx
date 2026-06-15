@@ -1,6 +1,6 @@
 import {useEffect, useState} from 'react'
 import { Button } from '@/shared/ui/button'
-import { cn } from '@/shared/lib/utils'
+import { cn } from '@/shared/lib/cn-utils'
 import type {DashboardEntity} from '../../types/dashboardComposition'
 import {GraphDateInput} from './GraphDataFilter'
 

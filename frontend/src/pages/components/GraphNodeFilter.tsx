@@ -1,4 +1,4 @@
-import { cn } from '@/shared/lib/utils'
+import { cn } from '@/shared/lib/cn-utils.ts'
 import type { NodeType } from '../../types/graph.ts'
 
 export const GRAPH_NODE_TYPES: NodeType[] = ['venue', 'artist', 'promoter', 'event']
