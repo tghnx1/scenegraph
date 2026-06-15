@@ -1,5 +1,5 @@
 import type {DashboardEntity, DashboardStatus} from '../../types/dashboardComposition'
-import {OverviewChart, type OverviewChartItem} from './OverviewChart'
+import {OverviewChart, type OverviewChartItem} from './ChartOverview'
 
 type DashboardStatisticsProps = {
   dashboardStatus: DashboardStatus | null
