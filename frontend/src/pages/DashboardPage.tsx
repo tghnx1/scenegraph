@@ -1,11 +1,13 @@
 import {useState} from 'react'
 import {fetchDashboardStatus} from '../api/dashboardComposition'
+import {fetchDashboardStats} from '../api/dashboardStats'
 import {useApi} from '../api/useApi'
 import type {DashboardEntity} from '../types/dashboardComposition'
 import { Button } from '@/shared/ui/button'
 import {DashboardExportMenu} from './components/ExportDashboard'
 import {DashboardManagement} from './components/DashboardManagement'
-import {DashboardStatistics} from './components/DashboardStats'
+import {DashboardMetricPanels} from './components/DashboardMetric'
+import {DashboardStatistics} from './components/DashboardComposition'
 
 export function DashboardPage() {
   const [selectedEntities, setSelectedEntities] = useState<DashboardEntity[]>([
@@ -21,6 +23,11 @@ export function DashboardPage() {
     () => fetchDashboardStatus({entities: selectedEntities, dateFrom, dateTo}),
     [include, dateFrom, dateTo]
   )
+  const {
+    data: dashboardStats,
+    isLoading: areStatsLoading,
+    error: statsError,
+  } = useApi(fetchDashboardStats, [])
 
   const toggleEntity = (entity: DashboardEntity) => {
     setSelectedEntities((current) => current.includes(entity)
@@ -55,6 +62,11 @@ export function DashboardPage() {
             setDateFrom(nextDateFrom)
             setDateTo(nextDateTo)
           }}
+        />
+        <DashboardMetricPanels
+          dashboardStats={dashboardStats}
+          isLoading={areStatsLoading}
+          hasError={Boolean(statsError)}
         />
         <DashboardManagement />
       </section>
