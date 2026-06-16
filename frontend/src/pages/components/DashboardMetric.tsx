@@ -144,7 +144,7 @@ function MetricCard({metric, fallbackLabel}: {metric?: DashboardMetric; fallback
           <span className="text-xs text-[var(--text-muted)]">of {formatValue(metric.total)}</span>
         )}
       </div>
-      {hasDetails && (
+      {/* {hasDetails && (
         <details className="mt-3 border-t border-[var(--surface-border-soft)] pt-2 text-xs text-[var(--text-muted)]">
           <summary className="cursor-pointer font-semibold text-[var(--text)]">About this metric</summary>
           <div className="mt-2 grid gap-2 leading-relaxed">
@@ -153,7 +153,7 @@ function MetricCard({metric, fallbackLabel}: {metric?: DashboardMetric; fallback
             {metric?.fix && <p className="m-0"><strong>Suggested fix:</strong> {metric.fix}</p>}
           </div>
         </details>
-      )}
+      )} */}
     </div>
   )
 }
