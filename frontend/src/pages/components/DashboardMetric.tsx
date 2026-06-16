@@ -22,6 +22,9 @@ const METRIC_GROUPS = [
       {id: 'artists_without_event', label: 'Artists without an event'},
       {id: 'promoters_without_event', label: 'Promoters without an event'},
       {id: 'venues_without_event', label: 'Venues without an event'},
+      {id: 'events_without_artists', label: 'Events without artists'},
+      {id: 'events_without_promoter', label: 'Events without promoter'},
+      {id: 'events_without_venue', label: 'Events without venue'},
     ],
   },
   {
@@ -68,6 +71,7 @@ const NETWORK_METRIC_PAIRS = [
 const DATASET_METRIC_GROUPS = [
   ['event_artist_links', 'event_promoter_links', 'events_venue_links'],
   ['artists_without_event', 'promoters_without_event', 'venues_without_event'],
+  ['events_without_artists', 'events_without_promoter', 'events_without_venue'],
 ] as const
 
 const SEMANTIC_METRIC_GROUPS = [
@@ -123,8 +127,6 @@ function SubpanelHeading({title, description}: {title: string; description: stri
 }
 
 function MetricCard({metric, fallbackLabel}: {metric?: DashboardMetric; fallbackLabel: string}) {
-  const hasDetails = Boolean(metric?.meaning || metric?.whyItMatters || metric?.fix)
-
   return (
     <div className={`rounded-xl border p-3 ${statusClass[metric?.status ?? 'neutral'] ?? statusClass.neutral}`}>
       <div className="flex items-start justify-between gap-3">
@@ -186,18 +188,20 @@ function GroupedMetricGrid({
   metricGroups,
   metrics,
   isUnavailable,
+  className = 'md:grid-cols-2',
 }: {
   group: MetricGroup
   metricGroups: readonly (readonly string[])[]
   metrics: Map<string, DashboardMetric>
   isUnavailable: boolean
+  className?: string
 }) {
   const metricDefinitions = new Map<string, {id: string; label: string}>(
     group.metrics.map((metric) => [metric.id, metric]),
   )
 
   return (
-    <div className="mt-4 grid gap-3 md:grid-cols-2">
+    <div className={`mt-4 grid gap-3 ${className}`}>
       {metricGroups.map((metricGroup) => (
         <MetricCluster
           key={metricGroup[0]}
@@ -255,13 +259,13 @@ function RankingCard({ranking, fallbackLabel}: {ranking?: DashboardRanking; fall
     <section className="rounded-xl border border-[var(--surface-border-soft)] bg-[var(--surface-soft)] p-3">
       <h3 className="m-0 text-sm font-semibold text-[var(--text)]">{label}</h3>
       <DashboardRankingBarChart items={ranking?.items} rankingLabel={label} />
-      {(ranking?.meaning || ranking?.whyItMatters) && (
+      {/* {(ranking?.meaning || ranking?.whyItMatters) && (
         <details className="mt-3 border-t border-[var(--surface-border-soft)] pt-2 text-xs text-[var(--text-muted)]">
           <summary className="cursor-pointer font-semibold text-[var(--text)]">About this ranking</summary>
           {ranking.meaning && <p className="mb-0 mt-2 leading-relaxed">{ranking.meaning}</p>}
           {ranking.whyItMatters && <p className="mb-0 mt-2 leading-relaxed"><strong>Why it matters:</strong> {ranking.whyItMatters}</p>}
         </details>
-      )}
+      )} */}
     </section>
   )
 }
@@ -295,7 +299,13 @@ function MetricGroupPanel({
         )}
       </div>
       {group.title === 'Dataset Coverage' ? (
-        <GroupedMetricGrid group={group} metricGroups={DATASET_METRIC_GROUPS} metrics={metrics} isUnavailable={isUnavailable} />
+        <GroupedMetricGrid
+          group={group}
+          metricGroups={DATASET_METRIC_GROUPS}
+          metrics={metrics}
+          isUnavailable={isUnavailable}
+          className="md:grid-cols-3"
+        />
       ) : group.title === 'Network Health / Distribution' ? (
         <NetworkMetricGrid group={group} metrics={metrics} isUnavailable={isUnavailable} />
       ) : (
