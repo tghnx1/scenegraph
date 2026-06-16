@@ -19,6 +19,8 @@ const ENTITY_OPTIONS: Array<{id: DashboardEntity; label: string; color: string}>
   {id: 'venues', label: 'Venues', color: 'var(--venue)'},
 ]
 
+const DATASET_OVERVIEW_DESCRIPTION = 'Total events, artists, promoters, and venues in the current dataset.'
+
 function formatNumber(value: number | string | null | undefined) {
   return typeof value === 'number' ? value.toLocaleString() : value ?? '-'
 }
@@ -42,7 +44,26 @@ export function DashboardStatistics({
   return (
     <article className="rounded-3xl border border-[color-mix(in_srgb,var(--text)_10%,transparent)] bg-[color-mix(in_srgb,var(--background)_42%,transparent)] p-5 shadow-[0_10px_24px_rgba(0,0,0,0.12)] backdrop-blur-sm">
       <div className="flex items-center justify-between gap-3">
-        <span className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--accent)]">Dataset Overview</span>
+        <div className="flex items-center gap-1.5">
+          <span className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--accent)]">Dataset Overview</span>
+          <span className="group relative inline-grid place-items-center normal-case tracking-normal">
+            <button
+              type="button"
+              className="grid size-5 cursor-help place-items-center rounded-full border border-[var(--surface-border)] bg-[var(--surface-panel)] p-0 text-[var(--text-muted)] opacity-90 transition-all hover:-translate-y-px hover:border-[var(--focus-border)] hover:bg-[var(--surface-strong)] hover:text-[var(--text)] hover:opacity-100 focus-visible:-translate-y-px focus-visible:border-[var(--focus-border)] focus-visible:bg-[var(--surface-strong)] focus-visible:text-[var(--text)] focus-visible:opacity-100 focus-visible:outline-none"
+              aria-label="Explain Dataset Overview"
+              aria-describedby="dataset-overview-tooltip"
+            >
+              <span className="block size-[13px] rounded-full text-center font-serif text-[0.7rem] font-extrabold italic leading-[13px]" aria-hidden="true">i</span>
+            </button>
+            <span
+              id="dataset-overview-tooltip"
+              className="pointer-events-none absolute left-0 top-[calc(100%+8px)] z-20 hidden w-[min(300px,calc(100vw-48px))] rounded-lg border border-[var(--surface-border)] bg-[var(--surface-panel)] px-3 py-2.5 text-left text-[0.82rem] font-semibold leading-snug text-[var(--text)] shadow-[var(--surface-shadow)] group-hover:block group-focus-within:block"
+              role="tooltip"
+            >
+              {DATASET_OVERVIEW_DESCRIPTION}
+            </span>
+          </span>
+        </div>
         <span className="rounded-full border border-[var(--control-border)] bg-[var(--control-bg)] px-2.5 py-1 text-xs font-semibold text-[var(--text-muted)]">General metrics</span>
       </div>
       <div className="mt-4">
