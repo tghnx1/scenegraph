@@ -126,12 +126,22 @@ function SubpanelHeading({title, description}: {title: string; description: stri
   )
 }
 
-function MetricCard({metric, fallbackLabel}: {metric?: DashboardMetric; fallbackLabel: string}) {
+function MetricCard({
+  metric,
+  fallbackLabel,
+  showStatus = true,
+}: {
+  metric?: DashboardMetric
+  fallbackLabel: string
+  showStatus?: boolean
+}) {
+  const cardStatus = showStatus ? metric?.status : 'neutral'
+
   return (
-    <div className={`rounded-xl border p-3 ${statusClass[metric?.status ?? 'neutral'] ?? statusClass.neutral}`}>
+    <div className={`rounded-xl border p-3 ${statusClass[cardStatus ?? 'neutral'] ?? statusClass.neutral}`}>
       <div className="flex items-start justify-between gap-3">
         <span className="text-sm font-medium text-[var(--text-muted)]">{metric?.label ?? fallbackLabel}</span>
-        {metric?.status && (
+        {showStatus && metric?.status && (
           <span className="rounded-full border border-current px-2 py-0.5 text-[0.65rem] font-semibold uppercase tracking-wide opacity-75">
             {metric.status}
           </span>
@@ -165,18 +175,27 @@ function MetricCluster({
   definitions,
   metrics,
   isUnavailable,
+  showStatus = true,
 }: {
   ids: readonly string[]
   definitions: Map<string, {label: string}>
   metrics: Map<string, DashboardMetric>
   isUnavailable: boolean
+  showStatus?: boolean
 }) {
   return (
     <section className="rounded-2xl border border-[var(--surface-border-soft)] bg-[color-mix(in_srgb,var(--surface-soft)_65%,transparent)] p-3">
       <div className="grid gap-3">
         {ids.map((id) => {
           const definition = definitions.get(id)
-          return definition && <MetricCard key={id} metric={isUnavailable ? undefined : metrics.get(id)} fallbackLabel={definition.label} />
+          return definition && (
+            <MetricCard
+              key={id}
+              metric={isUnavailable ? undefined : metrics.get(id)}
+              fallbackLabel={definition.label}
+              showStatus={showStatus}
+            />
+          )
         })}
       </div>
     </section>
@@ -189,12 +208,14 @@ function GroupedMetricGrid({
   metrics,
   isUnavailable,
   className = 'md:grid-cols-2',
+  statuslessMetricGroups = [],
 }: {
   group: MetricGroup
   metricGroups: readonly (readonly string[])[]
   metrics: Map<string, DashboardMetric>
   isUnavailable: boolean
   className?: string
+  statuslessMetricGroups?: readonly string[]
 }) {
   const metricDefinitions = new Map<string, {id: string; label: string}>(
     group.metrics.map((metric) => [metric.id, metric]),
@@ -209,6 +230,7 @@ function GroupedMetricGrid({
           definitions={metricDefinitions}
           metrics={metrics}
           isUnavailable={isUnavailable}
+          showStatus={!statuslessMetricGroups.includes(metricGroup[0])}
         />
       ))}
     </div>
@@ -237,6 +259,7 @@ function NetworkMetricGrid({
           definitions={metricDefinitions}
           metrics={metrics}
           isUnavailable={isUnavailable}
+          showStatus={false}
         />
       ))}
       <div className="grid gap-3">
@@ -245,6 +268,7 @@ function NetworkMetricGrid({
             key={metric.id}
             metric={isUnavailable ? undefined : metrics.get(metric.id)}
             fallbackLabel={metric.label}
+            showStatus={false}
           />
         ))}
       </div>
@@ -305,6 +329,7 @@ function MetricGroupPanel({
           metrics={metrics}
           isUnavailable={isUnavailable}
           className="md:grid-cols-3"
+          statuslessMetricGroups={['event_artist_links']}
         />
       ) : group.title === 'Network Health / Distribution' ? (
         <NetworkMetricGrid group={group} metrics={metrics} isUnavailable={isUnavailable} />
@@ -343,13 +368,14 @@ export function DashboardMetricPanels({dashboardStats, isLoading, hasError}: Das
 
       <article className="rounded-3xl border border-[color-mix(in_srgb,var(--text)_10%,transparent)] bg-[color-mix(in_srgb,var(--background)_42%,transparent)] p-5 shadow-[0_10px_24px_rgba(0,0,0,0.12)] backdrop-blur-sm">
         <SubpanelHeading title="Top List" description="Most represented entities and genres in the dataset" />
-        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-          {RANKINGS.map((ranking) => (
-            <RankingCard
-              key={ranking.id}
-              ranking={isUnavailable ? undefined : rankings.get(ranking.id)}
-              fallbackLabel={ranking.label}
-            />
+        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-6">
+          {RANKINGS.map((ranking, index) => (
+            <div key={ranking.id} className={`xl:col-span-2 ${index === 3 ? 'xl:col-start-2' : ''}`}>
+              <RankingCard
+                ranking={isUnavailable ? undefined : rankings.get(ranking.id)}
+                fallbackLabel={ranking.label}
+              />
+            </div>
           ))}
         </div>
       </article>
