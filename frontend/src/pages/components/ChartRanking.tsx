@@ -49,7 +49,7 @@ export function DashboardRankingBarChart({items, rankingLabel}: DashboardRanking
         const isActive = activeIndex === index
 
         return (
-          <li className="grid grid-cols-[1rem_minmax(0,1fr)_auto] items-center gap-2" key={entry.item.id ?? `${entry.label}-${index}`}>
+          <li className="grid grid-cols-[1rem_minmax(0,1fr)_minmax(4.5rem,7rem)] items-center gap-2" key={entry.item.id ?? `${entry.label}-${index}`}>
             <span className="text-[0.68rem] font-semibold text-[var(--text-muted)]">{index + 1}</span>
             <div className="relative min-w-0">
               <div className="h-5 overflow-hidden rounded-md border border-[var(--surface-border-soft)] bg-[var(--control-bg)]">
@@ -71,11 +71,11 @@ export function DashboardRankingBarChart({items, rankingLabel}: DashboardRanking
                   className="pointer-events-none absolute bottom-[calc(100%+6px)] left-0 z-20 w-max max-w-[min(220px,calc(100vw-48px))] rounded-lg border border-[var(--surface-border)] bg-[var(--surface-dropdown)] px-2.5 py-1.5 text-xs font-semibold leading-snug text-[var(--text)] shadow-[var(--surface-shadow)]"
                   role="tooltip"
                 >
-                  {entry.label}: {formatValue(entry.value)}
+                  {formatValue(entry.value)}
                 </span>
               )}
             </div>
-            <strong className="text-xs tabular-nums text-[var(--text)]">{formatValue(entry.value)}</strong>
+            <strong className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-xs text-[var(--text)]">{entry.label}</strong>
           </li>
         )
       })}
