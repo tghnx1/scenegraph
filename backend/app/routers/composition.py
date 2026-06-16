@@ -1,18 +1,16 @@
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
-from typing import List, Optional
+from typing import Any, List, Optional
 from psycopg import Connection
 from app.db import get_db
 
 router = APIRouter()
-
 
 class CompositionItem(BaseModel):
     id: str
     label: str
     value: int
     percentage: float
-
 
 class CompositionResponse(BaseModel):
     from_date: Optional[str] = Field(None, alias="from")
@@ -100,4 +98,3 @@ def get_composition(
         "total": total,
         "items": items,
     })
-
