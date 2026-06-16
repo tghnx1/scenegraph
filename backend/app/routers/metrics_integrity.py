@@ -55,6 +55,11 @@ SELECT
     (SELECT COUNT(*) FROM venues v
     WHERE NOT EXISTS (SELECT 1 FROM events e WHERE e.venue_id = v.id))               AS venues_without_event,
     (SELECT COUNT(*) FROM venues)                                                    AS total_venues,
+    
+    (SELECT COUNT(*) FROM events e
+     WHERE NOT EXISTS (SELECT 1 FROM event_artists ea WHERE ea.event_id = e.id))    AS events_without_artists,     
+    (SELECT COUNT(*) FROM events e
+     WHERE NOT EXISTS (SELECT 1 FROM event_promoters ep WHERE ep.event_id = e.id))  AS events_without_promoter,
 
     -- network health:
     (SELECT ROUND(AVG(n)::numeric, 2) FROM artist_event_counts)                        AS avg_events_per_artist,
@@ -182,6 +187,39 @@ def get_integrity(db: Connection) -> dict:
             "meaning":      "Venues that have no linked events in the database.",
             "whyItMatters": "Isolated venues cannot appear in any graph traversal or recommendation.",
             "fix":          "Check import pipeline for missing venue_id assignments on events.",
+        }),
+        IntegrityItem(**{
+            "id":           "events_without_artists",
+            "label":        "Events without artists",
+            "value":        row["events_without_artists"],
+            "total":        total_events,
+            "percentage":   round(row["events_without_artists"] / total_events * 100, 2) if total_events > 0 else 0.0,
+            "status":       compute_status(row["events_without_artists"], total_events),
+            "meaning":      "Events with no artist linked in event_artists.",
+            "whyItMatters": "Events without artists are invisible in artist-based graph traversals.",
+            "fix":          "Check import pipeline for missing event_artists rows.",
+        }),
+        IntegrityItem(**{
+            "id":           "events_without_promoter",
+            "label":        "Events without promoter",
+            "value":        row["events_without_promoter"],
+            "total":        total_events,
+            "percentage":   round(row["events_without_promoter"] / total_events * 100, 2) if total_events > 0 else 0.0,
+            "status":       compute_status(row["events_without_promoter"], total_events),
+            "meaning":      "Events with no promoter linked in event_promoters.",
+            "whyItMatters": "Events without a promoter are missing a key scene graph connection.",
+            "fix":          "Check import pipeline for missing event_promoters rows.",
+        }),
+        IntegrityItem(**{
+            "id":           "events_without_venue",
+            "label":        "Events without venue",
+            "value":        events_without_venue,
+            "total":        total_events,
+            "percentage":   round(events_without_venue / total_events * 100, 2) if total_events > 0 else 0.0,
+            "status":       compute_status(events_without_venue, total_events),
+            "meaning":      "Events with no venue_id assigned.",
+            "whyItMatters": "Events without a venue cannot form held_at graph edges.",
+            "fix":          "Check import pipeline for missing venue data in source payloads.",
         }),
         IntegrityItem(**{
             "id":           "avg_events_per_artist",
