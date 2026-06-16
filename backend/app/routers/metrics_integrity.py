@@ -106,9 +106,9 @@ def compute_status(value: int, total: int) -> str:
     if total == 0:
         return "unknown"
     pct = value / total * 100
-    if pct == 0:
+    if pct <= 20:
         return "good"
-    if pct < 10:
+    if pct >= 21 and pct <= 60:
         return "warning"
     return "critical"
 
