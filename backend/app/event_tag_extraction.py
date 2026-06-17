@@ -615,6 +615,7 @@ def fetch_event_texts(
     event_id: int | None = None,
     limit: int | None = None,
     offset: int = 0,
+    after_id: int | None = None,
 ) -> list[dict[str, Any]]:
     params: list[Any] = []
     where = [
@@ -623,6 +624,9 @@ def fetch_event_texts(
     if event_id is not None:
         where.append("e.id = %s")
         params.append(event_id)
+    if after_id is not None:
+        where.append("e.id > %s")
+        params.append(after_id)
     sql = f"""
         SELECT
             e.id,

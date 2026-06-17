@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 import argparse
 import json
 import os
@@ -27,9 +29,38 @@ DATABASE_URL = os.environ["DATABASE_URL"]
 SOURCE = "biography"
 
 
+# Formats one extracted artist for compact progress logs.
+def artist_log_label(artist: dict) -> str:
+    name = str(artist.get("name") or "").replace("\n", " ").strip()
+    if len(name) > 80:
+        name = f"{name[:77]}..."
+    return f"{artist['id']}:{name}"
+
+
+# Writes batch-level progress so long extraction runs can be resumed confidently.
+def print_batch_progress(
+    *,
+    batch: list[dict],
+    processed: int,
+    skipped: int,
+    failed: int,
+    total: int,
+) -> None:
+    remaining = max(total - processed - skipped - failed, 0)
+    labels = ", ".join(artist_log_label(artist) for artist in batch)
+    print(
+        "Processed artist batch "
+        f"[{labels}]; processed={processed}; skipped={skipped}; "
+        f"failed={failed}; remaining={remaining}/{total}",
+        file=sys.stderr,
+        flush=True,
+    )
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Extract structured artist tags from biographies with an LLM.")
     parser.add_argument("--artist-id", type=int, default=None, help="Extract tags for one artist id.")
+    parser.add_argument("--after-id", type=int, default=None, help="Only process artists with id greater than this.")
     parser.add_argument("--limit", type=int, default=None, help="Maximum artists to process.")
     parser.add_argument(
         "--batch-size",
@@ -73,6 +104,8 @@ def main() -> None:
 
     if args.limit is not None and args.limit < 1:
         raise ValueError("--limit must be at least 1")
+    if args.after_id is not None and args.after_id < 0:
+        raise ValueError("--after-id must be zero or greater")
     if args.batch_size < 1:
         raise ValueError("--batch-size must be at least 1")
     if args.artist_id is not None and args.batch_size != 1:
@@ -88,7 +121,9 @@ def main() -> None:
             connection,
             artist_id=args.artist_id,
             limit=args.limit,
+            after_id=args.after_id,
         )
+        total_artists = len(artists)
 
         def write_artist_tags(artist: dict, tags: list) -> None:
             nonlocal processed
@@ -191,13 +226,21 @@ def main() -> None:
 
         def process_batch(batch: list[dict]) -> None:
             nonlocal failed
+            before_processed = processed
+            before_failed = failed
             if not batch:
                 return
 
             if args.batch_size == 1 or len(batch) == 1:
                 for batch_artist in batch:
                     process_one(batch_artist)
-                    print(f"Processed {processed} artists; skipped {skipped}; failed {failed}")
+                    print_batch_progress(
+                        batch=[batch_artist],
+                        processed=processed,
+                        skipped=skipped,
+                        failed=failed,
+                        total=total_artists,
+                    )
                 return
 
             try:
@@ -214,7 +257,13 @@ def main() -> None:
                 )
                 for batch_artist in batch:
                     process_one(batch_artist)
-                    print(f"Processed {processed} artists; skipped {skipped}; failed {failed}")
+                    print_batch_progress(
+                        batch=[batch_artist],
+                        processed=processed,
+                        skipped=skipped,
+                        failed=failed,
+                        total=total_artists,
+                    )
                 return
 
             for batch_artist in batch:
@@ -226,12 +275,25 @@ def main() -> None:
                         file=sys.stderr,
                     )
                     process_one(batch_artist)
-                    print(f"Processed {processed} artists; skipped {skipped}; failed {failed}")
+                    print_batch_progress(
+                        batch=[batch_artist],
+                        processed=processed,
+                        skipped=skipped,
+                        failed=failed,
+                        total=total_artists,
+                    )
                     continue
 
                 write_artist_tags(batch_artist, batch_results[artist_id])
 
-            print(f"Processed {processed} artists; skipped {skipped}; failed {failed}")
+            if processed != before_processed or failed != before_failed:
+                print_batch_progress(
+                    batch=batch,
+                    processed=processed,
+                    skipped=skipped,
+                    failed=failed,
+                    total=total_artists,
+                )
 
         pending_batch: list[dict] = []
 

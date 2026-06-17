@@ -782,6 +782,7 @@ def fetch_artist_biographies(
     *,
     artist_id: int | None = None,
     limit: int | None = None,
+    after_id: int | None = None,
 ) -> list[dict[str, Any]]:
     params: list[Any] = []
     where = [
@@ -791,6 +792,9 @@ def fetch_artist_biographies(
     if artist_id is not None:
         where.append("id = %s")
         params.append(artist_id)
+    if after_id is not None:
+        where.append("id > %s")
+        params.append(after_id)
 
     sql = f"""
         SELECT

@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 import argparse
 import json
 import os
@@ -26,6 +28,34 @@ from app.event_tag_extraction import (
 
 DATABASE_URL = os.environ["DATABASE_URL"]
 SOURCE = "description"
+
+
+# Formats one extracted event for compact progress logs.
+def event_log_label(event: dict) -> str:
+    name = str(event.get("name") or "").replace("\n", " ").strip()
+    if len(name) > 80:
+        name = f"{name[:77]}..."
+    return f"{event['id']}:{name}"
+
+
+# Writes batch-level progress so long extraction runs can be resumed confidently.
+def print_batch_progress(
+    *,
+    batch: list[dict],
+    processed: int,
+    skipped: int,
+    failed: int,
+    total: int,
+) -> None:
+    remaining = max(total - processed - skipped - failed, 0)
+    labels = ", ".join(event_log_label(event) for event in batch)
+    print(
+        "Processed event batch "
+        f"[{labels}]; processed={processed}; skipped={skipped}; "
+        f"failed={failed}; remaining={remaining}/{total}",
+        file=sys.stderr,
+        flush=True,
+    )
 
 
 def event_tags_json_line(event: dict, tags: list, config: EventTagExtractionConfig) -> str:
@@ -91,6 +121,7 @@ def output_or_persist_event_tags(
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Extract structured event tags from event text with an LLM.")
     parser.add_argument("--event-id", type=int, default=None, help="Extract tags for one event id.")
+    parser.add_argument("--after-id", type=int, default=None, help="Only process events with id greater than this.")
     parser.add_argument("--limit", type=int, default=None, help="Maximum events to process.")
     parser.add_argument("--offset", type=int, default=0, help="Skip this many events in deterministic id order.")
     parser.add_argument("--batch-size", type=int, default=1, help="Number of events per LLM request.")
@@ -121,6 +152,8 @@ def main() -> None:
 
     if args.limit is not None and args.limit < 1:
         raise ValueError("--limit must be at least 1")
+    if args.after_id is not None and args.after_id < 0:
+        raise ValueError("--after-id must be zero or greater")
     if args.offset < 0:
         raise ValueError("--offset must be zero or greater")
     if args.batch_size < 1:
@@ -139,7 +172,9 @@ def main() -> None:
             event_id=args.event_id,
             limit=args.limit,
             offset=args.offset,
+            after_id=args.after_id,
         )
+        total_events = len(events)
 
         def write_event_tags(event: dict, tags: list) -> None:
             nonlocal processed
@@ -200,17 +235,33 @@ def main() -> None:
             return True
 
         def process_batch(batch: list[dict]) -> None:
+            before_processed = processed
+            before_failed = failed
             if not batch:
                 return
             if args.batch_size == 1 or len(batch) == 1:
                 for row in batch:
                     process_one(row)
+                    print_batch_progress(
+                        batch=[row],
+                        processed=processed,
+                        skipped=skipped,
+                        failed=failed,
+                        total=total_events,
+                    )
                 return
             try:
                 batch_results = extract_event_tag_batch_with_llm(client, events=batch, config=config)
             except Exception:
                 for row in batch:
                     process_one(row)
+                    print_batch_progress(
+                        batch=[row],
+                        processed=processed,
+                        skipped=skipped,
+                        failed=failed,
+                        total=total_events,
+                    )
                 return
 
             for row in batch:
@@ -219,6 +270,14 @@ def main() -> None:
                     process_one(row)
                     continue
                 write_event_tags(row, batch_results[event_id])
+            if processed != before_processed or failed != before_failed:
+                print_batch_progress(
+                    batch=batch,
+                    processed=processed,
+                    skipped=skipped,
+                    failed=failed,
+                    total=total_events,
+                )
 
         pending_batch: list[dict] = []
         for event in events:
