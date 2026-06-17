@@ -13,8 +13,8 @@ export default defineConfig({
   server: {
     host: '0.0.0.0',
     port: 5173,
-    /* allowedHosts: ['localhost', '127.0.0.1'],
-    proxy: {
+    allowedHosts: ['localhost', '127.0.0.1', '.42berlin.de'],
+    /* proxy: {
       '/api': {
         target: 'http://localhost:8080',
         changeOrigin: true,
