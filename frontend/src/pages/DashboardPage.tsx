@@ -1,4 +1,4 @@
-import {useState} from 'react'
+import {useCallback, useState} from 'react'
 import {fetchDashboardStatus} from '../api/dashboardComposition'
 import {fetchDashboardStats} from '../api/dashboardStats'
 import {useApi} from '../api/useApi'
@@ -8,6 +8,7 @@ import {DashboardExportMenu} from './components/ExportDashboard'
 import {DashboardManagement} from './components/DashboardManagement'
 import {DashboardMetricPanels} from './components/DashboardMetric'
 import {DashboardStatistics} from './components/DashboardComposition'
+import {useDashboardUpdates, type DashboardUpdate} from './hooks/useDashboardUpdates'
 
 export function DashboardPage() {
   const [selectedEntities, setSelectedEntities] = useState<DashboardEntity[]>([
@@ -19,7 +20,12 @@ export function DashboardPage() {
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
   const include = selectedEntities.join(',')
-  const {data: dashboardStatus, isLoading, error} = useApi(
+  const {
+    data: dashboardStatus,
+    isLoading,
+    error,
+    refetch: refetchComposition,
+  } = useApi(
     () => fetchDashboardStatus({entities: selectedEntities, dateFrom, dateTo}),
     [include, dateFrom, dateTo]
   )
@@ -27,7 +33,23 @@ export function DashboardPage() {
     data: dashboardStats,
     isLoading: areStatsLoading,
     error: statsError,
+    refetch: refetchMetrics,
   } = useApi(fetchDashboardStats, [])
+
+  const handleDashboardUpdate = useCallback(
+    ({areas}: DashboardUpdate) => {
+      if (areas.includes('composition')) {
+        void refetchComposition()
+      }
+
+      if (areas.includes('metrics')) {
+        void refetchMetrics()
+      }
+    },
+    [refetchComposition, refetchMetrics],
+  )
+
+  useDashboardUpdates(handleDashboardUpdate)
 
   const toggleEntity = (entity: DashboardEntity) => {
     setSelectedEntities((current) => current.includes(entity)
