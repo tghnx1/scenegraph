@@ -2,6 +2,12 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { Button } from '@/shared/ui/button'
 import { cn } from '@/shared/lib/cn-utils'
 import { api } from '@/api/client'
+import {
+  deletePromoterFeedback,
+  getPromoterFeedback,
+  setPromoterFeedback,
+  type PromoterFeedbackValue,
+} from '@/api/recommendationFeedback'
 import { graphEntityId, type GraphNode } from '../../types/graph'
 import type { PromoterRecommendationResponse } from '../../types/recommendation'
 import { RecommendationLoading } from './LoadingScreen'
@@ -157,6 +163,11 @@ export function PromoterRecommendationsPanel({
   const [expandedRecommendationId, setExpandedRecommendationId] = useState<number | null>(null)
   const [focusedRecommendationPromoterIds, setFocusedRecommendationPromoterIds] = useState<number[] | null>(null)
   const [expandedReasonItems, setExpandedReasonItems] = useState<Record<string, boolean>>({})
+  const [pendingFeedbackPromoterId, setPendingFeedbackPromoterId] = useState<number | null>(null)
+  const [localFeedbackByPromoterId, setLocalFeedbackByPromoterId] = useState<
+    Record<number, PromoterFeedbackValue | null>
+  >({})
+  const [localFeedbackIdByPromoterId, setLocalFeedbackIdByPromoterId] = useState<Record<number, number>>({})
   const recommendationThresholdInitializedRef = useRef(false)
   const recommendationListRef = useRef<HTMLElement | null>(null)
   const recommendationRequestIdRef = useRef(0)
@@ -172,6 +183,9 @@ export function PromoterRecommendationsPanel({
     setExpandedRecommendationId(null)
     setFocusedRecommendationPromoterIds(null)
     setExpandedReasonItems({})
+    setPendingFeedbackPromoterId(null)
+    setLocalFeedbackByPromoterId({})
+    setLocalFeedbackIdByPromoterId({})
     setRecommendationGraphMode('compact')
     recommendationThresholdInitializedRef.current = false
   }, [recommendationArtistId])
@@ -244,9 +258,65 @@ export function PromoterRecommendationsPanel({
     setExpandedRecommendationId(null)
     setFocusedRecommendationPromoterIds(null)
     setExpandedReasonItems({})
+    setPendingFeedbackPromoterId(null)
+    setLocalFeedbackByPromoterId({})
+    setLocalFeedbackIdByPromoterId({})
     setRecommendationGraphMode('compact')
     onSelectNode(null)
   }, [onSelectNode])
+
+  const handlePromoterFeedback = useCallback(async (
+    promoterId: number,
+    feedback: PromoterFeedbackValue,
+  ) => {
+    if (recommendationArtistId === null) {
+      setRecommendationsError(targetControls?.emptyMessage ?? 'Select an artist to load recommendations.')
+      return
+    }
+
+    setPendingFeedbackPromoterId(promoterId)
+    setRecommendationsError(null)
+
+    const hasLocalFeedback = Object.prototype.hasOwnProperty.call(localFeedbackByPromoterId, promoterId)
+    const previousFeedback = hasLocalFeedback
+      ? localFeedbackByPromoterId[promoterId]
+      : recommendationsData?.recommendations.find((item) => item.id === promoterId)?.feedbackState
+    const isRemovingFeedback = previousFeedback === feedback
+
+    setLocalFeedbackByPromoterId((current) => ({
+      ...current,
+      [promoterId]: isRemovingFeedback ? null : feedback,
+    }))
+
+    try {
+      if (isRemovingFeedback) {
+        let feedbackId = localFeedbackIdByPromoterId[promoterId]
+        if (!feedbackId) {
+          const response = await getPromoterFeedback(recommendationArtistId, promoterId)
+          feedbackId = response.feedback[0]?.id
+        }
+        if (feedbackId) {
+          await deletePromoterFeedback(feedbackId)
+        }
+        setLocalFeedbackIdByPromoterId((current) => {
+          const next = { ...current }
+          delete next[promoterId]
+          return next
+        })
+      } else {
+        const savedFeedback = await setPromoterFeedback(recommendationArtistId, promoterId, feedback)
+        setLocalFeedbackIdByPromoterId((current) => ({
+          ...current,
+          [promoterId]: savedFeedback.id,
+        }))
+      }
+    } catch (error) {
+      setLocalFeedbackByPromoterId((current) => ({ ...current, [promoterId]: previousFeedback ?? null }))
+      setRecommendationsError(error instanceof Error ? error.message : 'Failed to save feedback')
+    } finally {
+      setPendingFeedbackPromoterId(null)
+    }
+  }, [localFeedbackByPromoterId, localFeedbackIdByPromoterId, recommendationArtistId, recommendationsData, targetControls?.emptyMessage])
 
   const handleSelectRecommendation = useCallback((recommendationId: number) => {
     const recommendationNode = recommendationsData?.graph.nodes.find((node) => (
@@ -316,6 +386,12 @@ export function PromoterRecommendationsPanel({
     setFocusedRecommendationPromoterIds(null)
     onSelectNode(null)
   }, [onSelectNode])
+
+  const effectiveFeedbackForPromoter = useCallback((promoterId: number) => (
+    Object.prototype.hasOwnProperty.call(localFeedbackByPromoterId, promoterId)
+      ? localFeedbackByPromoterId[promoterId]
+      : recommendationsData?.recommendations.find((item) => item.id === promoterId)?.feedbackState ?? null
+  ), [localFeedbackByPromoterId, recommendationsData])
 
   useEffect(() => {
     if (expandedRecommendationId === null) return
@@ -505,6 +581,40 @@ export function PromoterRecommendationsPanel({
                     {PROMOTER_SIZE_LABELS[recommendation.promoterSizeSegment]}
                   </span>
                 </button>
+                <div className="flex flex-wrap gap-2 px-3 pb-2" aria-label={`Feedback for ${recommendation.name}`}>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className={cn(
+                      'min-w-[7.5rem]',
+                      effectiveFeedbackForPromoter(recommendation.id) === 'positive'
+                        ? 'border-[var(--selection-border)] bg-[var(--selection-soft)]'
+                        : '',
+                    )}
+                    aria-pressed={effectiveFeedbackForPromoter(recommendation.id) === 'positive'}
+                    disabled={pendingFeedbackPromoterId === recommendation.id}
+                    onClick={() => void handlePromoterFeedback(recommendation.id, 'positive')}
+                  >
+                    Interested
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className={cn(
+                      'min-w-[7.5rem]',
+                      effectiveFeedbackForPromoter(recommendation.id) === 'negative'
+                        ? 'border-[color-mix(in_srgb,var(--event)_50%,transparent)] bg-[color-mix(in_srgb,var(--event)_12%,transparent)]'
+                        : '',
+                    )}
+                    aria-pressed={effectiveFeedbackForPromoter(recommendation.id) === 'negative'}
+                    disabled={pendingFeedbackPromoterId === recommendation.id}
+                    onClick={() => void handlePromoterFeedback(recommendation.id, 'negative')}
+                  >
+                    Not relevant
+                  </Button>
+                </div>
                 {expandedRecommendationId === recommendation.id && (
                   <ul
                     id={`recommendation-reasons-${recommendation.id}`}
