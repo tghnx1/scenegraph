@@ -1,21 +1,44 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { fetchEntityDetail } from '../../api/entityDetails'
-import { fetchSearch } from '../../api/search'
-import { useApi } from '../../hooks/useApi'
-import { useGraphStore } from '../../store/graphStore'
+import { SEARCH_RESULT_LIMIT, SEARCH_RESULT_MAX_LIMIT, fetchSearch } from '../../api/search'
+import { useApi } from '../../api/useApi'
+import { useGraphStore } from '../../shared/store/graphStore'
 import type { EntityDetail } from '../../types/entityDetail'
 import { graphEntityId, type NodeType } from '../../types/graph'
-import type { SearchResponse, SearchResult } from '../../types/search'
+import type { SearchEntityType, SearchResponse, SearchResult, SearchSort } from '../../types/search'
 import { useDebouncedValue } from './useDebouncedValue'
 
 const EMPTY_SEARCH_RESPONSE: SearchResponse = { query: '', results: [] }
+const SEARCH_ENTITY_TYPES: SearchEntityType[] = ['artist', 'venue', 'promoter', 'event']
+
+function createDefaultLimitsByType() {
+  return {
+    artist: SEARCH_RESULT_LIMIT,
+    venue: SEARCH_RESULT_LIMIT,
+    promoter: SEARCH_RESULT_LIMIT,
+    event: SEARCH_RESULT_LIMIT,
+  }
+}
+
+function createEmptyResultsByType() {
+  return {
+    artist: [],
+    venue: [],
+    promoter: [],
+    event: [],
+  } satisfies Record<SearchEntityType, SearchResult[]>
+}
 
 export function useGraphSearchDetails() {
   const [searchParams, setSearchParams] = useSearchParams()
   const { setSelected, selectedNode } = useGraphStore()
   const submittedQuery = searchParams.get('q') ?? ''
   const [searchValue, setSearchValue] = useState(submittedQuery)
+  const [dropdownSearchType, setDropdownSearchType] = useState<SearchEntityType>('artist')
+  const [dropdownSearchSort, setDropdownSearchSort] = useState<SearchSort>('relevance')
+  const [dropdownSearchLimitsByType, setDropdownSearchLimitsByType] = useState(createDefaultLimitsByType)
+  const [dropdownSearchResultsByType, setDropdownSearchResultsByType] = useState(createEmptyResultsByType)
   const debouncedSearchValue = useDebouncedValue(searchValue.trim(), 350)
   const selectedTypeParam = searchParams.get('selectedType')
   const selectedIdParam = searchParams.get('selectedId')
@@ -49,6 +72,7 @@ export function useGraphSearchDetails() {
 
   const trimmedSearchValue = searchValue.trim()
   const trimmedSubmittedQuery = submittedQuery.trim()
+  const dropdownSearchLimit = dropdownSearchLimitsByType[dropdownSearchType]
   const shouldFetchDropdownSearch =
     debouncedSearchValue.length >= 2 &&
     debouncedSearchValue === trimmedSearchValue &&
@@ -57,15 +81,29 @@ export function useGraphSearchDetails() {
   const { data: dropdownSearchData, isLoading: isDropdownSearchLoading } = useApi<SearchResponse>(
     () => (
       shouldFetchDropdownSearch
-        ? fetchSearch(debouncedSearchValue)
+        ? fetchSearch(debouncedSearchValue, dropdownSearchLimit, dropdownSearchType, dropdownSearchSort)
         : Promise.resolve(EMPTY_SEARCH_RESPONSE)
     ),
-    [debouncedSearchValue, shouldFetchDropdownSearch]
+    [debouncedSearchValue, dropdownSearchLimit, dropdownSearchSort, dropdownSearchType, shouldFetchDropdownSearch]
   )
 
   useEffect(() => {
     setSearchValue(submittedQuery)
   }, [submittedQuery])
+
+  useEffect(() => {
+    setDropdownSearchLimitsByType(createDefaultLimitsByType())
+    setDropdownSearchResultsByType(createEmptyResultsByType())
+  }, [debouncedSearchValue, dropdownSearchSort])
+
+  useEffect(() => {
+    if (!shouldFetchDropdownSearch || !dropdownSearchData) return
+
+    setDropdownSearchResultsByType((currentResults) => ({
+      ...currentResults,
+      [dropdownSearchType]: dropdownSearchData.results,
+    }))
+  }, [dropdownSearchData, dropdownSearchType, shouldFetchDropdownSearch])
 
   const handleSearchSubmit = useCallback(
     (event: FormEvent<HTMLFormElement>) => {
@@ -98,6 +136,13 @@ export function useGraphSearchDetails() {
     setSearchValue(nextValue)
   }, [])
 
+  const handleLoadMoreDropdownResults = useCallback(() => {
+    setDropdownSearchLimitsByType((currentLimits) => ({
+      ...currentLimits,
+      [dropdownSearchType]: Math.min(currentLimits[dropdownSearchType] + SEARCH_RESULT_LIMIT, SEARCH_RESULT_MAX_LIMIT),
+    }))
+  }, [dropdownSearchType])
+
   const handleSelectSearchResult = useCallback(
     (result: SearchResult) => {
       const nextParams = new URLSearchParams(searchParams)
@@ -113,7 +158,16 @@ export function useGraphSearchDetails() {
   )
 
   const isDropdownWaiting = trimmedSearchValue.length >= 2 && debouncedSearchValue !== trimmedSearchValue
-  const dropdownSearchResults = shouldFetchDropdownSearch ? dropdownSearchData?.results ?? [] : []
+  const dropdownSearchResults = shouldFetchDropdownSearch
+    ? SEARCH_ENTITY_TYPES.flatMap((type) => dropdownSearchResultsByType[type])
+    : []
+  const activeDropdownSearchResults = dropdownSearchResultsByType[dropdownSearchType]
+  const canLoadMoreDropdownResults =
+    shouldFetchDropdownSearch &&
+    !isDropdownWaiting &&
+    !isDropdownSearchLoading &&
+    dropdownSearchLimit < SEARCH_RESULT_MAX_LIMIT &&
+    activeDropdownSearchResults.length >= dropdownSearchLimit
   const isDetailsSearchLoading = isSearchLoading || isSelectedEntityDetailLoading
   const hasActiveSearchState = Boolean(searchValue || submittedQuery || selectedNode)
   const detailsSelectedNode = selectedEntityDetail ? null : selectedNode
@@ -135,6 +189,13 @@ export function useGraphSearchDetails() {
       showClear: hasActiveSearchState,
       results: dropdownSearchResults,
       isLoading: isDropdownWaiting || isDropdownSearchLoading,
+      activeResultType: dropdownSearchType,
+      onActiveResultTypeChange: setDropdownSearchType,
+      activeSort: dropdownSearchSort,
+      onActiveSortChange: setDropdownSearchSort,
+      showResultsWhenEmpty: shouldFetchDropdownSearch,
+      canLoadMore: canLoadMoreDropdownResults,
+      onLoadMore: handleLoadMoreDropdownResults,
       onSelectResult: handleSelectSearchResult,
     },
     selectedNode,

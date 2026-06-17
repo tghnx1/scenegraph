@@ -1,7 +1,24 @@
-import { SearchResultCard } from './SearchResultDetails.tsx'
+import { RenderDetails } from './RenderDetails.tsx'
+import { Badge } from '@/shared/ui/badge'
 import type { EntityDetail } from '../../types/entityDetail'
 import type { GraphNode } from '../../types/graph'
 import type { SearchResult } from '../../types/search'
+
+export interface ManualArtistConnectionControl {
+  sourceArtistId: number
+  connectedArtistIds: ReadonlySet<number>
+  isLoading: boolean
+  pendingArtistId: number | null
+  error: string | null
+  onToggle: (artistId: number) => Promise<void>
+}
+
+const sidebarContentClass = 'grid min-h-0 min-w-0 gap-3.5 overflow-y-auto'
+const resultTypeClass = 'text-xs font-semibold uppercase tracking-[0.14em] text-[var(--accent)]'
+const resultMetaClass = 'mt-1 text-sm text-[var(--text-muted)]'
+const emptyStateClass = 'rounded-[18px] border border-[var(--surface-border-soft)] bg-[var(--surface-soft)] p-5 text-sm text-[var(--text-muted)]'
+const errorClass = 'mt-5 text-[var(--event)]'
+const tileClass = 'grid gap-1 rounded-xl border border-[var(--surface-border-soft)] bg-[var(--surface-soft)] p-3'
 
 interface DetailsPanelProps {
   searchQuery: string
@@ -10,6 +27,7 @@ interface DetailsPanelProps {
   searchError: string | null
   selectedNode: GraphNode | null
   selectedEntityDetail: EntityDetail | null
+  manualArtistConnections?: ManualArtistConnectionControl
 }
 
 export function DetailsPanel({
@@ -19,40 +37,44 @@ export function DetailsPanel({
   searchError,
   selectedNode,
   selectedEntityDetail,
+  manualArtistConnections,
 }: DetailsPanelProps) {
   const activeSearchResult = searchResults[0] ?? null
 
   if (selectedEntityDetail) {
     return (
-      <div className="graph-sidebar-content">
-        <SearchResultCard variant="inline" result={selectedEntityDetail} />
+      <div className={sidebarContentClass}>
+        <RenderDetails
+          variant="inline"
+          result={selectedEntityDetail}
+          manualArtistConnections={manualArtistConnections}
+        />
       </div>
     )
   }
 
   if (selectedNode) {
     return (
-      <div className="graph-sidebar-content">
-        <div className="search-result-card search-result-card--inline graph-node-detail">
-          <div className="result-header">
+      <div className={sidebarContentClass}>
+        <div className="rounded-[18px] border border-[var(--surface-border)] bg-[var(--surface-panel)] p-4">
+          <div className="flex items-start justify-between gap-4">
             <div>
-              <span className="result-type">{selectedNode.type}</span>
+              <span className={resultTypeClass}>{selectedNode.type}</span>
               <h2>{selectedNode.name}</h2>
-              <p className="result-meta">
+              <p className={resultMetaClass}>
                 {selectedNode.genres?.slice(0, 4).join(' · ') || 'No genres available'}
               </p>
             </div>
-            <span className="result-badge">{selectedNode.eventCount ?? 0} events</span>
           </div>
 
-          <section className="result-section">
+          <section className="mt-5 grid gap-2.5">
             <h3>Details</h3>
-            <div className="result-list">
-              <div className="result-tile">
+            <div className="grid gap-2.5">
+              <div className={tileClass}>
                 <strong>Type</strong>
                 <span>{selectedNode.type}</span>
               </div>
-              <div className="result-tile">
+              <div className={tileClass}>
                 <strong>Node ID</strong>
                 <span>{selectedNode.id}</span>
               </div>
@@ -66,32 +88,38 @@ export function DetailsPanel({
 
   if (searchQuery) {
     return (
-      <div className="graph-sidebar-content">
-        <div className="search-summary compact">
+      <div className={sidebarContentClass}>
+        <div className="mb-4 flex items-end justify-between gap-4">
           <div>
-            <p className="result-type">Query</p>
+            <p className={resultTypeClass}>Query</p>
             <h2>{searchQuery}</h2>
           </div>
-          <span className="result-badge">{searchResults.length} matches</span>
+          <Badge>{searchResults.length} matches</Badge>
         </div>
 
-        {isSearchLoading && <p className="empty-state">Loading search results...</p>}
-        {searchError && <p className="error">{searchError}</p>}
+        {isSearchLoading && <p className={emptyStateClass}>Loading search results...</p>}
+        {searchError && <p className={errorClass}>{searchError}</p>}
         {!isSearchLoading && !searchError && !activeSearchResult && (
-          <div className="empty-state">
+          <div className={emptyStateClass}>
             <h3>No matches found</h3>
             <p>Try a shorter query or search by artist, venue, promoter, or event name.</p>
           </div>
         )}
 
-        {activeSearchResult && <SearchResultCard variant="inline" result={activeSearchResult} />}
+        {activeSearchResult && (
+          <RenderDetails
+            variant="inline"
+            result={activeSearchResult}
+            manualArtistConnections={manualArtistConnections}
+          />
+        )}
       </div>
     )
   }
 
   return (
-    <div className="graph-sidebar-content">
-      <div className="empty-state">
+    <div className={sidebarContentClass}>
+      <div className={emptyStateClass}>
         {/* <h3>Information</h3> */}
         <p>Search for an artist, venue, promoter, or event on the search field above, or click a node in the graph to view details.</p>
       </div>

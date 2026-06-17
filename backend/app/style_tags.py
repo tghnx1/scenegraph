@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Iterable
 from typing import Any
 
 
@@ -47,7 +48,15 @@ STYLE_ALIASES: dict[str, tuple[str, ...]] = {
     "downtempo": ("downtempo", "down tempo"),
     "dream house": ("dream house",),
     "drone": ("drone",),
-    "drum and bass": ("drum and bass", "drum & bass", "dnb", "d&b"),
+    "drum and bass": (
+        "drum and bass",
+        "drum & bass",
+        "drum n bass",
+        "drum 'n' bass",
+        "drum n' bass",
+        "dnb",
+        "d&b",
+    ),
     "dub": ("dub",),
     "dub techno": ("dub techno",),
     "dubstep": ("dubstep",),
@@ -85,7 +94,7 @@ STYLE_ALIASES: dict[str, tuple[str, ...]] = {
     "hardcore": ("hardcore",),
     "hardcore punk": ("hardcore punk",),
     "hardgroove": ("hardgroove",),
-    "hi-nrg": ("hi-nrg", "hi nrg", "high energy"),
+    "hi-nrg": ("hi-nrg", "hi nrg", "high nrg"),
     "hip hop": ("hip hop", "hip-hop", "hiphop"),
     "house": ("house",),
     "hypnotic techno": ("hypnotic techno",),
@@ -173,7 +182,7 @@ def normalize_style_text(value: Any) -> str:
 
 def style_alias_pattern(alias: str) -> re.Pattern[str]:
     escaped = re.escape(alias).replace(r"\ ", r"[\s\-]+")
-    return re.compile(rf"(?<![a-z0-9]){escaped}(?![a-z0-9])", re.IGNORECASE)
+    return re.compile(rf"(?<!\w){escaped}(?!\w)", re.IGNORECASE)
 
 
 STYLE_PATTERNS = {
@@ -255,22 +264,28 @@ PARENT_STYLE_TAGS: dict[str, tuple[str, ...]] = {
 }
 
 
-def extract_style_tags(value: Any) -> list[str]:
-    text = normalize_style_text(value).lower()
-    if not text:
-        return []
-
-    tags = [
-        tag
-        for tag, patterns in STYLE_PATTERNS.items()
-        if any(pattern.search(text) for pattern in patterns)
-    ]
+def suppress_parent_style_tags(tags: Iterable[str]) -> list[str]:
     tag_set = set(tags)
     for specific_tag, parent_tags in PARENT_STYLE_TAGS.items():
         if specific_tag in tag_set:
             tag_set.difference_update(parent_tags)
-
     return sorted(tag_set)
+
+
+def canonicalize_style_tags(value: Any) -> list[str]:
+    text = normalize_style_text(value).lower()
+    if not text:
+        return []
+
+    return suppress_parent_style_tags(
+        tag
+        for tag, patterns in STYLE_PATTERNS.items()
+        if any(pattern.search(text) for pattern in patterns)
+    )
+
+
+def extract_style_tags(value: Any) -> list[str]:
+    return canonicalize_style_tags(value)
 
 
 def style_overlap_score(source_tags: list[str], candidate_tags: list[str]) -> float:

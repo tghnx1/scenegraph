@@ -11,6 +11,7 @@ import httpx
 from openai import AzureOpenAI, OpenAI
 from psycopg import Connection
 
+from app.style_tags import canonicalize_style_tags, suppress_parent_style_tags
 from app.text_profiles import normalize_biography_text, normalize_text, truncate_text
 
 
@@ -183,7 +184,7 @@ class TagExtractionConfig:
 
     @property
     def extractor_key(self) -> str:
-        return f"llm_artist_tags_v1:{self.provider}:{self.api}:{self.model}"
+        return f"llm_artist_tags_v2:{self.provider}:{self.api}:{self.model}"
 
 
 def tag_extraction_text_hash(text: str) -> str:
@@ -224,6 +225,8 @@ def system_prompt() -> str:
     return (
         "You extract structured music-scene facts from artist biographies. "
         "Return only JSON. Extract only facts explicitly supported by the biography; do not guess. "
+        "For style tags, return short explicit music genres/styles only. Never turn promotional "
+        "descriptions or generic adjectives into genres. "
         "Do not extract cities, countries, or generic venues played unless the text says the artist is a resident. "
         "Do not repeat the artist's own name as an alias."
     )
@@ -249,7 +252,9 @@ Return JSON in this exact shape:
 }}
 
 Extraction rules:
-- style: genres or sound descriptors such as dark disco, EBM, electro, industrial, minimal, house.
+- style: short explicit music genres/styles only, supported by the biography.
+- A style value may contain multiple explicit genres; they will be canonicalized after extraction.
+- Do not return promotional descriptions or invent genres from generic adjectives.
 - label: record labels, imprints, release platforms, or label affiliations.
 - collective: crews, groups, communities, or artistic collectives.
 - role: artist roles such as DJ, producer, live act, vocalist, promoter, curator, resident.
@@ -300,7 +305,9 @@ Return JSON in this exact shape:
 
 Extraction rules:
 - Extract tags independently for each artist ID.
-- style: genres or sound descriptors such as dark disco, EBM, electro, industrial, minimal, house.
+- style: short explicit music genres/styles only, supported by that artist biography.
+- A style value may contain multiple explicit genres; they will be canonicalized after extraction.
+- Do not return promotional descriptions or invent genres from generic adjectives.
 - label: record labels, imprints, release platforms, or label affiliations.
 - collective: crews, groups, communities, or artistic collectives.
 - role: artist roles such as DJ, producer, live act, vocalist, promoter, curator, resident.
@@ -346,7 +353,10 @@ def normalize_tag_value(tag_type: str, value: Any) -> str:
         return ""
 
     text = re.sub(r"\s+", " ", text)
-    if tag_type in {"style", "role"}:
+    if tag_type == "style":
+        canonical = canonicalize_style_tags(text)
+        return canonical[0] if canonical else ""
+    if tag_type == "role":
         text = text.lower()
     elif tag_type in SCENE_ENTITY_TAG_TYPES:
         text = normalize_scene_entity_tag(tag_type, text)
@@ -407,8 +417,8 @@ def parse_tags_response(payload: dict[str, Any], *, artist_name: str, max_tags: 
         return []
 
     artist_name_key = normalize_text(artist_name).casefold()
-    seen: set[tuple[str, str]] = set()
-    tags: list[ArtistTag] = []
+    tags_by_key: dict[tuple[str, str], ArtistTag] = {}
+    order: list[tuple[str, str]] = []
 
     for item in raw_tags:
         if not isinstance(item, dict):
@@ -418,31 +428,46 @@ def parse_tags_response(payload: dict[str, Any], *, artist_name: str, max_tags: 
         if tag_type not in ALLOWED_TAG_TYPES:
             continue
 
-        tag_value = normalize_tag_value(tag_type, item.get("value"))
-        if len(tag_value) < 2 or tag_value.casefold() == artist_name_key:
-            continue
-        if is_generic_tag_value(tag_type, tag_value):
-            continue
-
-        key = (tag_type, tag_value.casefold())
-        if key in seen:
-            continue
-
         evidence = truncate_text(item.get("evidence", ""), 300) or None
-        tags.append(
-            ArtistTag(
+        confidence = normalize_confidence(item.get("confidence"), tag_type=tag_type)
+        tag_values = (
+            canonicalize_style_tags(item.get("value"))
+            if tag_type == "style"
+            else [normalize_tag_value(tag_type, item.get("value"))]
+        )
+        for tag_value in tag_values:
+            if len(tag_value) < 2 or tag_value.casefold() == artist_name_key:
+                continue
+            if is_generic_tag_value(tag_type, tag_value):
+                continue
+
+            key = (tag_type, tag_value.casefold())
+            candidate = ArtistTag(
                 tag_type=tag_type,  # type: ignore[arg-type]
                 tag_value=tag_value,
-                confidence=normalize_confidence(item.get("confidence"), tag_type=tag_type),
+                confidence=confidence,
                 evidence=evidence,
             )
-        )
-        seen.add(key)
+            existing = tags_by_key.get(key)
+            if existing is None:
+                order.append(key)
+                tags_by_key[key] = candidate
+            elif candidate.confidence > existing.confidence or (
+                candidate.confidence == existing.confidence
+                and existing.evidence is None
+                and candidate.evidence is not None
+            ):
+                tags_by_key[key] = candidate
 
-        if len(tags) >= max_tags:
-            break
-
-    return tags
+    result = [tags_by_key[key] for key in order]
+    allowed_styles = set(
+        suppress_parent_style_tags(tag.tag_value for tag in result if tag.tag_type == "style")
+    )
+    return [
+        tag
+        for tag in result
+        if tag.tag_type != "style" or tag.tag_value in allowed_styles
+    ][:max_tags]
 
 
 def merge_artist_tags(tag_groups: list[list[ArtistTag]], *, max_tags: int) -> list[ArtistTag]:
@@ -456,10 +481,22 @@ def merge_artist_tags(tag_groups: list[list[ArtistTag]], *, max_tags: int) -> li
             if existing is None:
                 order.append(key)
                 merged[key] = tag
-            elif tag.confidence > existing.confidence:
+            elif tag.confidence > existing.confidence or (
+                tag.confidence == existing.confidence
+                and existing.evidence is None
+                and tag.evidence is not None
+            ):
                 merged[key] = tag
 
-    return [merged[key] for key in order[:max_tags]]
+    result = [merged[key] for key in order]
+    allowed_styles = set(
+        suppress_parent_style_tags(tag.tag_value for tag in result if tag.tag_type == "style")
+    )
+    return [
+        tag
+        for tag in result
+        if tag.tag_type != "style" or tag.tag_value in allowed_styles
+    ][:max_tags]
 
 
 def is_generic_tag_value(tag_type: str, tag_value: str) -> bool:
@@ -524,7 +561,12 @@ def extract_responses_output_text(payload: dict[str, Any]) -> str:
     return "\n".join(chunks)
 
 
-def create_azure_responses_completion(*, prompt: str, config: TagExtractionConfig) -> str:
+def create_azure_responses_completion(
+    *,
+    prompt: str,
+    config: TagExtractionConfig,
+    instructions: str | None = None,
+) -> str:
     if not config.azure_responses_url:
         raise RuntimeError("AZURE_OPENAI_RESPONSES_URL must be set for Azure Responses tag extraction")
 
@@ -536,7 +578,7 @@ def create_azure_responses_completion(*, prompt: str, config: TagExtractionConfi
         },
         json={
             "model": config.model,
-            "instructions": system_prompt(),
+            "instructions": instructions or system_prompt(),
             "input": prompt,
             "store": False,
             "temperature": 0,
@@ -562,6 +604,7 @@ def create_chat_completion(
     *,
     prompt: str,
     config: TagExtractionConfig,
+    instructions: str | None = None,
 ) -> str:
     if client is None:
         raise RuntimeError("Chat completions extraction requires a client")
@@ -571,7 +614,7 @@ def create_chat_completion(
         temperature=0,
         response_format={"type": "json_object"},
         messages=[
-            {"role": "system", "content": system_prompt()},
+            {"role": "system", "content": instructions or system_prompt()},
             {"role": "user", "content": prompt},
         ],
     )
@@ -739,6 +782,7 @@ def fetch_artist_biographies(
     *,
     artist_id: int | None = None,
     limit: int | None = None,
+    after_id: int | None = None,
 ) -> list[dict[str, Any]]:
     params: list[Any] = []
     where = [
@@ -748,6 +792,9 @@ def fetch_artist_biographies(
     if artist_id is not None:
         where.append("id = %s")
         params.append(artist_id)
+    if after_id is not None:
+        where.append("id > %s")
+        params.append(after_id)
 
     sql = f"""
         SELECT

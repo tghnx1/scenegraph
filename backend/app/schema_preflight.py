@@ -23,12 +23,10 @@ REQUIRED_TABLES: tuple[str, ...] = (
     "event_extracted_tags",
     "event_tag_extraction_runs",
     "recommendation_feedback",
-)
-
-OPTIONAL_TABLES: tuple[str, ...] = (
-    # The recommendations pipeline can gracefully run without this table.
     "artist_manual_connections",
 )
+
+OPTIONAL_TABLES: tuple[str, ...] = ()
 
 
 def _env_bool(name: str, default: bool) -> bool:
@@ -74,4 +72,3 @@ def check_schema_tables(connection: Connection) -> dict[str, object]:
         "missingRequiredTables": missing_required,
         "missingOptionalTables": missing_optional,
     }
-

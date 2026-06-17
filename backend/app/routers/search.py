@@ -1,10 +1,18 @@
 from fastapi import APIRouter, Depends, Query, HTTPException
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import List, Literal, Optional
 from psycopg import Connection
 from app.db import get_db
 
 router = APIRouter()
+
+SearchSort = Literal["relevance", "name_asc", "name_desc"]
+
+SORT_ORDER_BY: dict[SearchSort, str] = {
+    "relevance": "rank DESC, name ASC",
+    "name_asc": "name ASC",
+    "name_desc": "name DESC",
+}
 
 class SearchResult(BaseModel):
     type: str
@@ -77,22 +85,87 @@ FROM (
 ORDER BY rank DESC, name ASC;
 """
 
+SEARCH_BY_TYPE_SQL = {
+    "artist": """
+        SELECT type, id, name
+        FROM (
+            SELECT
+                'artist' AS type,
+                id,
+                name,
+                ts_rank(to_tsvector('simple', name), plainto_tsquery('simple', %s)) AS rank
+            FROM artists
+            WHERE name ILIKE %s
+        ) results
+        ORDER BY {order_by}
+        LIMIT %s;
+    """,
+    "venue": """
+        SELECT type, id, name
+        FROM (
+            SELECT
+                'venue' AS type,
+                id,
+                name,
+                ts_rank(to_tsvector('simple', name), plainto_tsquery('simple', %s)) AS rank
+            FROM venues
+            WHERE name ILIKE %s
+        ) results
+        ORDER BY {order_by}
+        LIMIT %s;
+    """,
+    "event": """
+        SELECT type, id, name
+        FROM (
+            SELECT
+                'event' AS type,
+                id,
+                title AS name,
+                ts_rank(to_tsvector('simple', title), plainto_tsquery('simple', %s)) AS rank
+            FROM events
+            WHERE title ILIKE %s
+        ) results
+        ORDER BY {order_by}
+        LIMIT %s;
+    """,
+    "promoter": """
+        SELECT type, id, name
+        FROM (
+            SELECT
+                'promoter' AS type,
+                id,
+                name,
+                ts_rank(to_tsvector('simple', name), plainto_tsquery('simple', %s)) AS rank
+            FROM promoters
+            WHERE name ILIKE %s
+        ) results
+        ORDER BY {order_by}
+        LIMIT %s;
+    """,
+}
+
 @router.get("", response_model=SearchResponse)
 def search(
     q: str = Query(..., min_length=1, max_length=100),
-    limit: int = Query(8, ge=1, le=50),
+    limit: int = Query(8, ge=1, le=100),
+    entity_type: Optional[Literal["artist", "venue", "event", "promoter"]] = Query(None, alias="type"),
+    sort: SearchSort = Query("relevance"),
     db: Connection = Depends(get_db),
 ):
     pattern = f"%{q}%"
-    per_type = max(2, limit // 4)
 
     with db.cursor() as cur:
-        cur.execute(SEARCH_SQL, (
-            q, q, pattern, per_type,
-            q, q, pattern, per_type,
-            q, q, pattern, per_type,
-            q, q, pattern, per_type,
-        ))
+        if entity_type:
+            sql = SEARCH_BY_TYPE_SQL[entity_type].format(order_by=SORT_ORDER_BY[sort])
+            cur.execute(sql, (q, pattern, limit))
+        else:
+            per_type = max(2, limit // 4)
+            cur.execute(SEARCH_SQL, (
+                q, q, pattern, per_type,
+                q, q, pattern, per_type,
+                q, q, pattern, per_type,
+                q, q, pattern, per_type,
+            ))
         rows = cur.fetchall()
 
     results = [

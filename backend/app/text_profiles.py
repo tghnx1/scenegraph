@@ -7,7 +7,7 @@ from typing import Any
 
 from psycopg import Connection
 
-from app.style_tags import extract_style_tags
+from app.style_tags import canonicalize_style_tags, extract_style_tags, suppress_parent_style_tags
 
 
 MAX_EVENT_CONTEXTS = 12
@@ -146,7 +146,12 @@ def compose_artist_text_profile(
     biography = artist.get("biography_normalized") or normalize_biography_text(
         artist.get("biography", "")
     )
-    style_tags = sorted(set(extract_style_tags(biography)) | set(extracted_tags.get("style", [])))
+    stored_style_tags = {
+        canonical
+        for value in extracted_tags.get("style", [])
+        for canonical in canonicalize_style_tags(value)
+    }
+    style_tags = suppress_parent_style_tags(set(extract_style_tags(biography)) | stored_style_tags)
 
     return join_sections(
         [
@@ -312,6 +317,11 @@ def build_artist_text_profile(connection: Connection, artist_id: int) -> str:
                 FROM artist_extracted_tags
                 WHERE artist_id = %s
                   AND confidence >= 0.6
+                  AND (
+                      tag_type <> 'style'
+                      OR extractor LIKE 'llm_artist_tags_v2:%%'
+                      OR extractor = 'canonical_style_cleanup_v1'
+                  )
                 ORDER BY tag_type ASC, tag_value ASC
                 """,
                 (artist_id,),

@@ -22,15 +22,21 @@ async function request<T>( //typescript generics, request<GraphData> returns Pro
   }
 
   if (!res.ok) { //anything other than  200–299 throw an error that useApi's catch block will catch and put in the error state
-    throw new Error(`${res.status} ${res.statusText}`)
+    const text = await res.text()
+    throw new Error(`${res.status} ${res.statusText}: ${text}`)
   }
 
   return res.json() as Promise<T> //parses the response body as json and returns it as type t
 }
 
+//options necessary to fit the headers for the pending users
 export const api = { //exported api object --> public interface. everything else call api.get<GraphData>('/graph') or api.post('/auth/login', body), never request() directly.
-  get:  <T>(path: string) =>
-    request<T>(path),
-  post: <T>(path: string, body: unknown) =>
-    request<T>(path, { method: 'POST', body: JSON.stringify(body) }),
+  get:  <T>(path: string, options: RequestInit = {}) =>
+    request<T>(path, options),
+  post: <T>(path: string, body: unknown, options: RequestInit = {}) =>
+    request<T>(path, { ...options, method: 'POST', body: JSON.stringify(body) }),
+  patch: <T>(path: string, body: unknown) =>
+    request<T>(path, { method: 'PATCH', body: JSON.stringify(body) }),
+  delete: <T>(path: string) =>
+    request<T>(path, { method: 'DELETE' }),
 }

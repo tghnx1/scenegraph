@@ -1,12 +1,14 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from psycopg import Connection
 
+from app.auth import get_current_user_id
 from app.db import get_db
 from app.recommendation_helpers import ensure_feedback_entity_exists, feedback_item_from_row
 from app.schemas import (
-    EntityKind,
+    FeedbackCandidateKind,
+    FeedbackSourceKind,
     RecommendationFeedbackItem,
     RecommendationFeedbackRequest,
     RecommendationFeedbackResponse,
@@ -22,6 +24,7 @@ router = APIRouter()
 )
 async def upsert_recommendation_feedback(
     request: RecommendationFeedbackRequest,
+    user_id: int = Depends(get_current_user_id),
     connection: Connection = Depends(get_db),
 ) -> RecommendationFeedbackItem:
     ensure_feedback_entity_exists(
@@ -43,6 +46,7 @@ async def upsert_recommendation_feedback(
         cursor.execute(
             """
             INSERT INTO recommendation_feedback (
+                user_id,
                 source_entity_type,
                 source_entity_id,
                 candidate_entity_type,
@@ -50,8 +54,9 @@ async def upsert_recommendation_feedback(
                 feedback,
                 reason
             )
-            VALUES (%s, %s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (
+                user_id,
                 source_entity_type,
                 source_entity_id,
                 candidate_entity_type,
@@ -63,6 +68,7 @@ async def upsert_recommendation_feedback(
                 updated_at = CURRENT_TIMESTAMP
             RETURNING
                 id,
+                user_id,
                 source_entity_type,
                 source_entity_id,
                 candidate_entity_type,
@@ -73,6 +79,7 @@ async def upsert_recommendation_feedback(
                 updated_at
             """,
             (
+                user_id,
                 request.sourceEntityType,
                 request.sourceEntityId,
                 request.candidateEntityType,
@@ -92,10 +99,11 @@ async def upsert_recommendation_feedback(
     response_model_exclude_none=True,
 )
 async def list_recommendation_feedback(
-    source_entity_type: EntityKind | None = Query(default=None, alias="sourceEntityType"),
+    source_entity_type: FeedbackSourceKind | None = Query(default=None, alias="sourceEntityType"),
     source_entity_id: int | None = Query(default=None, ge=1, alias="sourceEntityId"),
-    candidate_entity_type: EntityKind | None = Query(default=None, alias="candidateEntityType"),
+    candidate_entity_type: FeedbackCandidateKind | None = Query(default=None, alias="candidateEntityType"),
     candidate_entity_id: int | None = Query(default=None, ge=1, alias="candidateEntityId"),
+    user_id: int = Depends(get_current_user_id),
     connection: Connection = Depends(get_db),
 ) -> RecommendationFeedbackResponse:
     with connection.cursor() as cursor:
@@ -103,6 +111,7 @@ async def list_recommendation_feedback(
             """
             SELECT
                 id,
+                user_id,
                 source_entity_type,
                 source_entity_id,
                 candidate_entity_type,
@@ -112,7 +121,8 @@ async def list_recommendation_feedback(
                 created_at,
                 updated_at
             FROM recommendation_feedback
-            WHERE (%s::text IS NULL OR source_entity_type = %s)
+            WHERE user_id = %s
+              AND (%s::text IS NULL OR source_entity_type = %s)
               AND (%s::bigint IS NULL OR source_entity_id = %s)
               AND (%s::text IS NULL OR candidate_entity_type = %s)
               AND (%s::bigint IS NULL OR candidate_entity_id = %s)
@@ -120,6 +130,7 @@ async def list_recommendation_feedback(
             LIMIT 500
             """,
             (
+                user_id,
                 source_entity_type,
                 source_entity_type,
                 source_entity_id,
@@ -135,3 +146,39 @@ async def list_recommendation_feedback(
     return RecommendationFeedbackResponse(
         feedback=[feedback_item_from_row(row) for row in rows],
     )
+
+
+@router.delete(
+    "/recommendation-feedback/{feedback_id}",
+    response_model=RecommendationFeedbackItem,
+    response_model_exclude_none=True,
+)
+async def delete_recommendation_feedback(
+    feedback_id: int,
+    user_id: int = Depends(get_current_user_id),
+    connection: Connection = Depends(get_db),
+) -> RecommendationFeedbackItem:
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            DELETE FROM recommendation_feedback
+            WHERE id = %s
+              AND user_id = %s
+            RETURNING
+                id,
+                user_id,
+                source_entity_type,
+                source_entity_id,
+                candidate_entity_type,
+                candidate_entity_id,
+                feedback,
+                reason,
+                created_at,
+                updated_at
+            """,
+            (feedback_id, user_id),
+        )
+        row = cursor.fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail="recommendation feedback not found")
+    return feedback_item_from_row(row)
