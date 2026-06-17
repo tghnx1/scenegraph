@@ -50,9 +50,9 @@
   .profile-grid {
     grid-template-columns: 1fr;
     grid-template-rows:
-      minmax(540px, var(--profile-tall-panel-height))
+      minmax(540px, var(--profile-secondary-panel-height))
       minmax(720px, 120dvh)
-      repeat(2, minmax(540px, var(--profile-tall-panel-height)));
+      repeat(2, minmax(540px, var(--profile-secondary-panel-height)));
     grid-template-areas:
       "context"
       "graph"
@@ -87,20 +87,58 @@
     padding: 12px;
   }
 
-  .dashboard-actions,
-  .profile-actions {
+  .dashboard-actions {
     justify-content: start;
   }
 
   .dashboard-overview,
   .dashboard-admin-grid,
   .dashboard-management-stack,
-  .quality-list,
-  .graph-health-grid {
+  .dashboard-top-grid {
     grid-template-columns: 1fr;
   }
 
-  .dashboard-panel-wide,
+  .dashboard-overview-chart {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "mode"
+      "chart"
+      "legend"
+      "dates";
+    align-items: stretch;
+  }
+
+  .dashboard-chart-wrap {
+    width: min(280px, 100%);
+  }
+
+  .dashboard-chart-wrap--stackedbar {
+    width: 100%;
+    min-height: 170px;
+  }
+
+  .dashboard-chart-mode {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .dashboard-chart-legend {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-chart-dates {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-metric-row {
+    grid-template-columns: minmax(0, 1fr) auto 28px;
+  }
+
+  .dashboard-metric-row small {
+    grid-column: 1 / 2;
+    grid-row: 2;
+    text-align: left;
+  }
+
   .dashboard-panel-full {
     grid-column: auto;
   }
@@ -110,6 +148,16 @@
   .dashboard-table--claims .dashboard-table-row {
     grid-template-columns: 1fr;
   }
+
+  .graph-filter-info-popover {
+    position: fixed;
+    left: 16px;
+    right: 16px;
+    top: auto;
+    bottom: 24px;
+    width: auto;
+    z-index: 40;
+  }
 }
 
 @media (min-width: 641px) and (max-width: 1100px) {
@@ -118,13 +166,37 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .dashboard-panel-wide,
+  .dashboard-overview-chart {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "mode"
+      "chart"
+      "legend"
+      "dates";
+    align-items: stretch;
+  }
+
+  .dashboard-chart-wrap {
+    width: min(360px, 100%);
+  }
+
+  .dashboard-chart-wrap--stackedbar {
+    width: 100%;
+  }
+
+  .dashboard-chart-mode {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .dashboard-chart-legend {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .dashboard-panel-full {
     grid-column: span 2;
   }
 
-  .quality-list,
-  .graph-health-grid {
+  .dashboard-top-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 

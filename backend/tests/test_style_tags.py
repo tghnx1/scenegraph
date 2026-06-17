@@ -1,4 +1,61 @@
-from app.style_tags import extract_style_tags, style_overlap_score
+import pytest
+
+from app.style_tags import canonicalize_style_tags, extract_style_tags, style_overlap_score
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "drum n bass",
+        "drum 'n' bass",
+        "drum n' bass",
+        "drum & bass",
+        "dnb",
+        "d&b",
+    ],
+)
+def test_canonicalize_drum_and_bass_aliases(value):
+    assert canonicalize_style_tags(value) == ["drum and bass"]
+
+
+@pytest.mark.parametrize("value", ["Zielińska", "Kościuszko", "Škabrnja"])
+def test_style_alias_boundaries_are_unicode_safe(value):
+    assert canonicalize_style_tags(value) == []
+
+
+@pytest.mark.parametrize("value", ["Ska night", "ska, punk and reggae"])
+def test_unicode_safe_boundaries_keep_real_ska_mentions(value):
+    assert "ska" in canonicalize_style_tags(value)
+
+
+def test_hi_nrg_does_not_treat_high_energy_as_a_style():
+    assert canonicalize_style_tags("a high-energy set") == []
+    assert canonicalize_style_tags("Hi-NRG night") == ["hi-nrg"]
+
+
+def test_canonicalize_multiple_styles_and_suppress_parents():
+    assert canonicalize_style_tags("Dark Disco, EBM and Electro") == [
+        "dark disco",
+        "ebm",
+        "electro",
+    ]
+    assert canonicalize_style_tags("deep techno and techno") == ["deep techno"]
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "deep raw essential",
+        "sensual deep electric",
+        "reversed revolution",
+        "latex",
+        "leather",
+        "performance",
+        "live",
+    ],
+)
+def test_canonicalize_unknown_descriptions_returns_empty(value):
+    assert canonicalize_style_tags(value) == []
 
 
 def test_extract_style_tags_from_artist_biography():

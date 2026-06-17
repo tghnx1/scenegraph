@@ -27,7 +27,7 @@ def test_tag_extraction_config_reads_openai_env(monkeypatch):
     assert config.model == "gpt-4.1-nano"
     assert config.api == "chat_completions"
     assert config.max_tags == 12
-    assert config.extractor_key == "llm_artist_tags_v1:openai:chat_completions:gpt-4.1-nano"
+    assert config.extractor_key == "llm_artist_tags_v2:openai:chat_completions:gpt-4.1-nano"
 
 
 def test_tag_extraction_config_reads_azure_env(monkeypatch):
@@ -41,7 +41,7 @@ def test_tag_extraction_config_reads_azure_env(monkeypatch):
     assert config.api == "chat_completions"
     assert (
         config.extractor_key
-        == "llm_artist_tags_v1:azure:chat_completions:scenegraph-gpt-41-mini"
+        == "llm_artist_tags_v2:azure:chat_completions:scenegraph-gpt-41-mini"
     )
 
 
@@ -65,13 +65,15 @@ def test_tag_extraction_config_reads_azure_responses_url(monkeypatch):
     assert config.azure_responses_url == (
         "https://example.cognitiveservices.azure.com/openai/responses?api-version=2025-04-01-preview"
     )
-    assert config.extractor_key == "llm_artist_tags_v1:azure:responses:gpt-4.1-mini"
+    assert config.extractor_key == "llm_artist_tags_v2:azure:responses:gpt-4.1-mini"
 
 
 def test_tag_extraction_config_requires_azure_deployment(monkeypatch):
     monkeypatch.setenv("EXTRACTION_PROVIDER", "azure")
     monkeypatch.delenv("AZURE_OPENAI_EXTRACTION_DEPLOYMENT", raising=False)
     monkeypatch.delenv("AZURE_OPENAI_CHAT_DEPLOYMENT", raising=False)
+    monkeypatch.delenv("AZURE_OPENAI_RESPONSES_MODEL", raising=False)
+    monkeypatch.delenv("OPENAI_EXTRACTION_MODEL", raising=False)
 
     with pytest.raises(ValueError, match="AZURE_OPENAI_EXTRACTION_DEPLOYMENT"):
         TagExtractionConfig.from_env()
@@ -149,6 +151,71 @@ def test_parse_tags_response_normalizes_and_deduplicates():
         ("label", "Laut & Luise", 0.8),
     ]
     assert tags[0].evidence == "EBM and dark disco"
+
+
+def test_parse_tags_response_expands_and_deduplicates_canonical_styles():
+    tags = parse_tags_response(
+        {
+            "tags": [
+                {
+                    "type": "style",
+                    "value": "Dark Disco, EBM and drum n bass",
+                    "confidence": 0.9,
+                    "evidence": "explicit styles",
+                },
+                {"type": "style", "value": "d&b", "confidence": 0.8},
+                {"type": "style", "value": "sensual deep electric", "confidence": 1.0},
+            ]
+        },
+        artist_name="Artist",
+        max_tags=10,
+    )
+
+    assert [(tag.tag_type, tag.tag_value, tag.confidence) for tag in tags] == [
+        ("style", "dark disco", 0.9),
+        ("style", "drum and bass", 0.9),
+        ("style", "ebm", 0.9),
+    ]
+    assert all(tag.evidence == "explicit styles" for tag in tags)
+
+
+def test_parse_tags_response_suppresses_parent_styles_across_llm_items():
+    tags = parse_tags_response(
+        {
+            "tags": [
+                {"type": "style", "value": "techno"},
+                {"type": "style", "value": "deep techno"},
+            ]
+        },
+        artist_name="Artist",
+        max_tags=10,
+    )
+
+    assert [(tag.tag_type, tag.tag_value) for tag in tags] == [("style", "deep techno")]
+
+
+def test_parse_tags_response_preserves_non_style_normalization():
+    tags = parse_tags_response(
+        {
+            "tags": [
+                {"type": "label", "value": "Laut & Luise Records"},
+                {"type": "collective", "value": "The Holyberg Music Association"},
+                {"type": "role", "value": "DJ"},
+                {"type": "residency", "value": "Resident at Sameheads"},
+                {"type": "alias", "value": "Other Name"},
+            ]
+        },
+        artist_name="Artist",
+        max_tags=10,
+    )
+
+    assert [(tag.tag_type, tag.tag_value) for tag in tags] == [
+        ("label", "Laut & Luise"),
+        ("collective", "Holyberg"),
+        ("role", "dj"),
+        ("residency", "Sameheads"),
+        ("alias", "Other Name"),
+    ]
 
 
 def test_parse_artist_batch_response_normalizes_by_artist_id():

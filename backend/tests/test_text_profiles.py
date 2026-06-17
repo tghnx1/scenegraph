@@ -124,6 +124,21 @@ def test_artist_text_profile_includes_extracted_tags():
     assert "Residencies: Radio Night" in profile
 
 
+def test_artist_text_profile_recanonicalizes_stored_style_tags():
+    profile = compose_artist_text_profile(
+        {
+            "name": "Tagged Artist",
+            "biography": "No explicit genre.",
+            "biography_normalized": None,
+        },
+        extracted_tags={"style": ["dnb", "drum & bass", "sensual deep electric"]},
+    )
+
+    assert "Styles: drum and bass" in profile
+    assert "dnb" not in profile
+    assert "sensual deep electric" not in profile
+
+
 def test_artist_text_profile_caps_long_biography():
     profile = compose_artist_text_profile(
         {

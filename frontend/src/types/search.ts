@@ -1,4 +1,5 @@
 export type SearchEntityType = 'artist' | 'venue' | 'promoter' | 'event'
+export type SearchSort = 'relevance' | 'name_asc' | 'name_desc'
 
 export interface SearchResultItem {
   type: SearchEntityType

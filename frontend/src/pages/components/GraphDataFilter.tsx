@@ -1,3 +1,6 @@
+import { useEffect, useState } from 'react'
+import { Button } from '@/shared/ui/button'
+import { cn } from '@/shared/lib/cn-utils'
 import type { GraphParams } from '../../api/graph'
 import type { GenreOption } from '../../api/genres'
 
@@ -9,6 +12,43 @@ const FALLBACK_GENRE_OPTIONS = [
 ]
 
 const LIMIT_OPTIONS = [100, 250, 500]
+const FILTER_DESCRIPTIONS = {
+  genre: 'Filter the by event genres. Choose All genres to undo the filter.',
+  limit: 'Limit the number of events. Higher limits make the rendering heavier.',
+  date: 'Dates in DD.MM.YYYY format.',
+}
+
+const groupClass = 'grid gap-2'
+const labelClass = 'inline-flex items-center gap-1.5 text-[0.72rem] uppercase tracking-[0.14em] text-[var(--accent)]'
+const inputClass = 'min-h-9 min-w-0 rounded-[10px] border border-[var(--control-border)] bg-[var(--surface-input)] px-3 py-2 text-sm font-[inherit] text-[var(--text)] outline-none transition-[border-color,box-shadow] placeholder:text-[var(--text-placeholder)] focus:border-[var(--focus-border)] focus:shadow-[0_0_0_3px_var(--focus-ring)] disabled:cursor-not-allowed disabled:opacity-60'
+const filterButtonClass = 'cursor-pointer rounded-full border border-[var(--control-border)] bg-[var(--control-bg)] px-3 py-2 text-sm font-semibold text-[var(--text)] transition-colors hover:border-[var(--selection-border)] hover:bg-[var(--selection-soft)] disabled:cursor-not-allowed disabled:opacity-50'
+
+const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/
+const DISPLAY_DATE_PATTERN = /^\d{2}\.\d{2}\.\d{4}$/
+
+function isoDateToDisplayDate(value: string) {
+  if (!ISO_DATE_PATTERN.test(value)) return value
+
+  const [year, month, day] = value.split('-')
+  return `${day}.${month}.${year}`
+}
+
+function displayDateToIsoDate(value: string) {
+  if (!DISPLAY_DATE_PATTERN.test(value)) return null
+
+  const [day, month, year] = value.split('.')
+  const date = new Date(Number(year), Number(month) - 1, Number(day))
+
+  if (
+    date.getFullYear() !== Number(year) ||
+    date.getMonth() !== Number(month) - 1 ||
+    date.getDate() !== Number(day)
+  ) {
+    return null
+  }
+
+  return `${year}-${month}-${day}`
+}
 
 interface GraphFiltersProps {
   filters: GraphParams
@@ -19,6 +59,58 @@ interface GraphFiltersProps {
   onChange: (filters: GraphParams) => void
 }
 
+interface GraphDateInputProps {
+  label: string
+  value: string
+  onCommit: (value: string | undefined) => void
+  disabled?: boolean
+}
+
+export function GraphDateInput({ label, value, onCommit, disabled = false }: GraphDateInputProps) {
+  const displayValue = isoDateToDisplayDate(value)
+  const [inputValue, setInputValue] = useState(displayValue)
+
+  useEffect(() => {
+    setInputValue(displayValue)
+  }, [displayValue])
+
+  const handleChange = (nextValue: string) => {
+    setInputValue(nextValue)
+
+    if (!nextValue) {
+      onCommit(undefined)
+      return
+    }
+
+    const nextIsoDate = displayDateToIsoDate(nextValue)
+    if (nextIsoDate) {
+      onCommit(nextIsoDate)
+    }
+  }
+
+  const handleBlur = () => {
+    if (inputValue && !displayDateToIsoDate(inputValue)) {
+      setInputValue(displayValue)
+    }
+  }
+
+  return (
+    <input
+      className={inputClass}
+      type="text"
+      value={inputValue}
+      inputMode="numeric"
+      maxLength={10}
+      placeholder="DD.MM.YYYY"
+      pattern="\d{2}\.\d{2}\.\d{4}"
+      disabled={disabled}
+      onChange={(event) => handleChange(event.target.value)}
+      onBlur={handleBlur}
+      aria-label={label}
+    />
+  )
+}
+
 export function GraphFilters({
   filters,
   genres,
@@ -27,19 +119,57 @@ export function GraphFilters({
   displayedDateRange,
   onChange,
 }: GraphFiltersProps) {
+  const [activeInfo, setActiveInfo] = useState<keyof typeof FILTER_DESCRIPTIONS | null>(null)
   const updateFilter = (next: Partial<GraphParams>) => {
     onChange({ ...filters, ...next })
   }
   const genreOptions = genres.length > 0 ? genres : FALLBACK_GENRE_OPTIONS
   const dateFromValue = filters.dateFrom ?? displayedDateRange?.from ?? ''
   const dateToValue = filters.dateTo ?? displayedDateRange?.to ?? ''
+  const [draftDateFrom, setDraftDateFrom] = useState(dateFromValue)
+  const [draftDateTo, setDraftDateTo] = useState(dateToValue)
+
+  useEffect(() => {
+    setDraftDateFrom(dateFromValue)
+    setDraftDateTo(dateToValue)
+  }, [dateFromValue, dateToValue])
+
+  const renderInfoButton = (key: keyof typeof FILTER_DESCRIPTIONS, label: string) => {
+    const isActive = activeInfo === key
+
+    return (
+      <span className="relative inline-grid place-items-center normal-case tracking-normal">
+        <button
+          type="button"
+          className="grid size-5 cursor-help place-items-center rounded-full border border-[var(--surface-border)] bg-[var(--surface-panel)] p-0 text-[var(--text-muted)] opacity-90 transition-all hover:-translate-y-px hover:border-[var(--focus-border)] hover:bg-[var(--surface-strong)] hover:text-[var(--text)] hover:opacity-100 focus-visible:-translate-y-px focus-visible:border-[var(--focus-border)] focus-visible:bg-[var(--surface-strong)] focus-visible:text-[var(--text)] focus-visible:opacity-100 focus-visible:outline-none"
+          aria-label={`Explain ${label}`}
+          aria-expanded={isActive}
+          onClick={() => setActiveInfo(isActive ? null : key)}
+          onBlur={() => setActiveInfo(null)}
+        >
+          <span className="block size-[13px] rounded-full text-center font-serif text-[0.7rem] font-extrabold italic leading-[13px]" aria-hidden="true">i</span>
+        </button>
+        {isActive && (
+          <span className={cn(
+            'absolute top-[calc(100%+8px)] z-20 w-[min(300px,calc(100vw-48px))] rounded-lg border border-[var(--surface-border)] bg-[var(--surface-panel)] px-3 py-2.5 text-left text-[0.82rem] font-semibold leading-snug text-[var(--text)] shadow-[var(--surface-shadow)]',
+            key === 'limit' ? 'right-0' : 'left-0',
+          )} role="tooltip">
+            {FILTER_DESCRIPTIONS[key]}
+          </span>
+        )}
+      </span>
+    )
+  }
 
   return (
-    <section className="graph-filter-panel" aria-label="Graph filters">
-      <div className="graph-filter-group">
-        <span className="graph-filter-label">Filter by Genre</span>
+    <section className="grid gap-3.5 border-b border-[var(--surface-border-soft)] pb-4 min-[1100px]:grid-cols-[minmax(180px,1fr)_minmax(300px,1.35fr)_auto] min-[1100px]:items-end min-[1100px]:border-b-0 min-[1100px]:pb-0" aria-label="Graph filters">
+      <div className={groupClass}>
+        <span className={labelClass}>
+          Filter by Genre
+          {renderInfoButton('genre', 'Filter by Genre')}
+        </span>
         <select
-          className="graph-filter-select"
+          className={inputClass}
           value={filters.genre ?? ''}
           onChange={(event) => updateFilter({ genre: event.target.value || undefined })}
           disabled={isGenresLoading && genreOptions.length === 0}
@@ -55,40 +185,57 @@ export function GraphFilters({
           ))}
         </select>
         {genresError && (
-          <span className="graph-filter-help">Using fallback genres.</span>
+          <span className="text-[0.78rem] text-[var(--text-muted)]">Using fallback genres.</span>
         )}
       </div>
 
-      <div className="graph-filter-group">
-        <span className="graph-filter-label">Filter by Date</span>
-        <div className="graph-filter-date-row">
-          <input
-            className="graph-filter-date"
-            type="date"
-            value={dateFromValue}
-            max={dateToValue}
-            onChange={(event) => updateFilter({ dateFrom: event.target.value || undefined })}
-            aria-label="Date from"
+      <form
+        className={cn(groupClass, 'min-w-0')}
+        onSubmit={(event) => {
+          event.preventDefault()
+          updateFilter({
+            dateFrom: draftDateFrom || undefined,
+            dateTo: draftDateTo || undefined,
+          })
+        }}
+      >
+        <span className={labelClass}>
+          Filter by Date
+          {renderInfoButton('date', 'Filter by Date')}
+        </span>
+        <div className="grid grid-cols-[repeat(2,minmax(0,1fr))_auto] gap-2">
+          <GraphDateInput
+            label="Date from"
+            value={draftDateFrom}
+            onCommit={(dateFrom) => setDraftDateFrom(dateFrom ?? '')}
           />
-          <input
-            className="graph-filter-date"
-            type="date"
-            value={dateToValue}
-            min={dateFromValue}
-            onChange={(event) => updateFilter({ dateTo: event.target.value || undefined })}
-            aria-label="Date to"
+          <GraphDateInput
+            label="Date to"
+            value={draftDateTo}
+            onCommit={(dateTo) => setDraftDateTo(dateTo ?? '')}
           />
+          <Button
+            type="submit"
+            size="sm"
+            className="rounded-full"
+            disabled={draftDateFrom === dateFromValue && draftDateTo === dateToValue}
+          >
+            Apply dates
+          </Button>
         </div>
-      </div>
+      </form>
 
-      <div className="graph-filter-group">
-        <span className="graph-filter-label">Event Limit</span>
-        <div className="graph-filter-buttons">
+      <div className={groupClass}>
+        <span className={labelClass}>
+          Event Limit
+          {renderInfoButton('limit', 'Event Limit')}
+        </span>
+        <div className="flex flex-wrap gap-2">
           {LIMIT_OPTIONS.map((limit) => (
             <button
               key={limit}
               type="button"
-              className={`graph-filter-button${filters.limit === limit ? ' active' : ''}`}
+              className={cn(filterButtonClass, filters.limit === limit && 'border-[var(--selection-border-strong)] bg-[var(--selection-soft)] text-[var(--text)]')}
               onClick={() => updateFilter({ limit })}
             >
               {limit}

@@ -13,7 +13,7 @@ from app.recommendation_scoring import (
     recommendation_scoring_from_env,
 )
 from app.schemas import SimilarityItem, SimilarityResponse
-from app.style_tags import extract_style_tags
+from app.style_tags import canonicalize_style_tags, extract_style_tags, suppress_parent_style_tags
 
 # Normalize nullable id arrays from SQL into a set.
 def as_id_set(values: list[int | None] | None) -> set[int]:
@@ -151,10 +151,8 @@ def recommendation_feature_sets(
                 )
                 for row in cursor.fetchall():
                     artist_id = int(row["artist_id"])
-                    extracted_genre = str(row["extracted_genre"]).strip().lower()
-                    if not extracted_genre:
-                        continue
-                    extracted_genres_by_artist.setdefault(artist_id, set()).add(extracted_genre)
+                    for extracted_genre in canonicalize_style_tags(row["extracted_genre"]):
+                        extracted_genres_by_artist.setdefault(artist_id, set()).add(extracted_genre)
 
         for row in artist_rows:
             artist_id = int(row["id"])
@@ -162,7 +160,9 @@ def recommendation_feature_sets(
                 continue
             biography_styles = set(extract_style_tags(row["biography"]))
             extracted_genres = extracted_genres_by_artist.get(artist_id, set())
-            feature_sets[artist_id]["extracted_genres"] = biography_styles | extracted_genres  # type: ignore[assignment]
+            feature_sets[artist_id]["extracted_genres"] = set(  # type: ignore[assignment]
+                suppress_parent_style_tags(biography_styles | extracted_genres)
+            )
     return feature_sets
 
 # Fetch candidate/source artist features excluding direct shared source events.

@@ -5,6 +5,9 @@ export interface PromoterRecommendation {
   type: 'promoter'
   name: string
   score?: number
+  baseScore?: number
+  feedbackBoost?: number
+  feedbackState?: 'positive' | 'negative' | null
   reasons: string[]
   warmConnectionArtists?: Array<{ id: number; name: string }>
   manualConnectionArtists?: Array<{ id: number; name: string }>
