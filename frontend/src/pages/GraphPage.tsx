@@ -1,6 +1,6 @@
 import { DetailsPanel } from './components/DetailsPanel.tsx'
 import { ScenegraphMapPanel } from './components/GraphPanel.tsx'
-import { SearchQueryForm } from './components/SearchQuery.tsx'
+import { SearchInputField } from './components/SearchInputField.tsx'
 import { useGraphSearchDetails } from './hooks/useGraphSearchDetails.ts'
 
 export function GraphPage() {
@@ -11,7 +11,7 @@ export function GraphPage() {
       <aside className="graph-sidebar">
         <article className="graph-sidebar-card">
           <div className="graph-sidebar-search">
-            <SearchQueryForm
+            <SearchInputField
               inputId="graph-search-query-input"
               {...searchFormProps}
             />
@@ -25,7 +25,9 @@ export function GraphPage() {
       </aside>
 
       <section className="graph-main">
-        <ScenegraphMapPanel />
+        <article className="profile-card graph-panel">
+          <ScenegraphMapPanel />
+        </article>
       </section>
     </div>
   )

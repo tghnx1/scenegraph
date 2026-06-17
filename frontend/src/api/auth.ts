@@ -1,12 +1,13 @@
 import { api } from './client'
 
-export type AuthRole = 'user' | 'admin'
+export type AuthRole = 'artist' | 'agent' | 'admin'
 
 export interface LoginResponse {
   success: boolean
   message: string
   user_id?: number
   username?: string
+  role?: AuthRole
   access_token?: string
 }
 
@@ -32,6 +33,14 @@ export const register = (
     password_confirm,
   })
 
-export const getFallbackRole = (username: string): AuthRole => (
-  username.trim().toLowerCase() === 'aaron' ? 'admin' : 'user'
+export const getFallbackRole = (username: string): AuthRole => {
+  const normalizedUsername = username.trim().toLowerCase()
+
+  if (normalizedUsername === 'aaron') return 'admin'
+  if (normalizedUsername === 'tarcisio') return 'agent'
+  return 'artist'
+}
+
+export const isAuthRole = (role: string | null): role is AuthRole => (
+  role === 'artist' || role === 'agent' || role === 'admin'
 )

@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import type { GraphParams } from '../../api/graph'
 import type { GenreOption } from '../../api/genres'
 
@@ -9,6 +10,38 @@ const FALLBACK_GENRE_OPTIONS = [
 ]
 
 const LIMIT_OPTIONS = [100, 250, 500]
+const FILTER_DESCRIPTIONS = {
+  genre: 'Filter the by event genres. Choose All genres to undo the filter.',
+  limit: 'Limit the number of events. Higher limits make the rendering heavier.',
+  date: 'Dates in DD.MM.YYYY format.',
+}
+
+const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/
+const DISPLAY_DATE_PATTERN = /^\d{2}\.\d{2}\.\d{4}$/
+
+function isoDateToDisplayDate(value: string) {
+  if (!ISO_DATE_PATTERN.test(value)) return value
+
+  const [year, month, day] = value.split('-')
+  return `${day}.${month}.${year}`
+}
+
+function displayDateToIsoDate(value: string) {
+  if (!DISPLAY_DATE_PATTERN.test(value)) return null
+
+  const [day, month, year] = value.split('.')
+  const date = new Date(Number(year), Number(month) - 1, Number(day))
+
+  if (
+    date.getFullYear() !== Number(year) ||
+    date.getMonth() !== Number(month) - 1 ||
+    date.getDate() !== Number(day)
+  ) {
+    return null
+  }
+
+  return `${year}-${month}-${day}`
+}
 
 interface GraphFiltersProps {
   filters: GraphParams
@@ -19,6 +52,56 @@ interface GraphFiltersProps {
   onChange: (filters: GraphParams) => void
 }
 
+interface GraphDateInputProps {
+  label: string
+  value: string
+  onCommit: (value: string | undefined) => void
+}
+
+function GraphDateInput({ label, value, onCommit }: GraphDateInputProps) {
+  const displayValue = isoDateToDisplayDate(value)
+  const [inputValue, setInputValue] = useState(displayValue)
+
+  useEffect(() => {
+    setInputValue(displayValue)
+  }, [displayValue])
+
+  const handleChange = (nextValue: string) => {
+    setInputValue(nextValue)
+
+    if (!nextValue) {
+      onCommit(undefined)
+      return
+    }
+
+    const nextIsoDate = displayDateToIsoDate(nextValue)
+    if (nextIsoDate) {
+      onCommit(nextIsoDate)
+    }
+  }
+
+  const handleBlur = () => {
+    if (inputValue && !displayDateToIsoDate(inputValue)) {
+      setInputValue(displayValue)
+    }
+  }
+
+  return (
+    <input
+      className="graph-filter-date"
+      type="text"
+      value={inputValue}
+      inputMode="numeric"
+      maxLength={10}
+      placeholder="DD.MM.YYYY"
+      pattern="\d{2}\.\d{2}\.\d{4}"
+      onChange={(event) => handleChange(event.target.value)}
+      onBlur={handleBlur}
+      aria-label={label}
+    />
+  )
+}
+
 export function GraphFilters({
   filters,
   genres,
@@ -27,6 +110,7 @@ export function GraphFilters({
   displayedDateRange,
   onChange,
 }: GraphFiltersProps) {
+  const [activeInfo, setActiveInfo] = useState<keyof typeof FILTER_DESCRIPTIONS | null>(null)
   const updateFilter = (next: Partial<GraphParams>) => {
     onChange({ ...filters, ...next })
   }
@@ -34,10 +118,37 @@ export function GraphFilters({
   const dateFromValue = filters.dateFrom ?? displayedDateRange?.from ?? ''
   const dateToValue = filters.dateTo ?? displayedDateRange?.to ?? ''
 
+  const renderInfoButton = (key: keyof typeof FILTER_DESCRIPTIONS, label: string) => {
+    const isActive = activeInfo === key
+
+    return (
+      <span className={`graph-filter-info graph-filter-info--${key}`}>
+        <button
+          type="button"
+          className="graph-filter-info-button"
+          aria-label={`Explain ${label}`}
+          aria-expanded={isActive}
+          onClick={() => setActiveInfo(isActive ? null : key)}
+          onBlur={() => setActiveInfo(null)}
+        >
+          <span aria-hidden="true">i</span>
+        </button>
+        {isActive && (
+          <span className="graph-filter-info-popover" role="tooltip">
+            {FILTER_DESCRIPTIONS[key]}
+          </span>
+        )}
+      </span>
+    )
+  }
+
   return (
     <section className="graph-filter-panel" aria-label="Graph filters">
       <div className="graph-filter-group">
-        <span className="graph-filter-label">Filter by Genre</span>
+        <span className="graph-filter-label">
+          Filter by Genre
+          {renderInfoButton('genre', 'Filter by Genre')}
+        </span>
         <select
           className="graph-filter-select"
           value={filters.genre ?? ''}
@@ -60,29 +171,29 @@ export function GraphFilters({
       </div>
 
       <div className="graph-filter-group">
-        <span className="graph-filter-label">Filter by Date</span>
+        <span className="graph-filter-label">
+          Filter by Date
+          {renderInfoButton('date', 'Filter by Date')}
+        </span>
         <div className="graph-filter-date-row">
-          <input
-            className="graph-filter-date"
-            type="date"
+          <GraphDateInput
+            label="Date from"
             value={dateFromValue}
-            max={dateToValue}
-            onChange={(event) => updateFilter({ dateFrom: event.target.value || undefined })}
-            aria-label="Date from"
+            onCommit={(dateFrom) => updateFilter({ dateFrom })}
           />
-          <input
-            className="graph-filter-date"
-            type="date"
+          <GraphDateInput
+            label="Date to"
             value={dateToValue}
-            min={dateFromValue}
-            onChange={(event) => updateFilter({ dateTo: event.target.value || undefined })}
-            aria-label="Date to"
+            onCommit={(dateTo) => updateFilter({ dateTo })}
           />
         </div>
       </div>
 
       <div className="graph-filter-group">
-        <span className="graph-filter-label">Event Limit</span>
+        <span className="graph-filter-label">
+          Event Limit
+          {renderInfoButton('limit', 'Event Limit')}
+        </span>
         <div className="graph-filter-buttons">
           {LIMIT_OPTIONS.map((limit) => (
             <button

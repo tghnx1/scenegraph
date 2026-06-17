@@ -17,9 +17,7 @@ import { GRAPH_NODE_TYPES, GraphNodeFilter } from './GraphNodeFilter.tsx'
 const MIN_GRAPH_HEIGHT = 320
 const DEFAULT_GRAPH_FILTERS: GraphParams = { limit: 100 }
 const EMPTY_GRAPH_DATA: GraphData = { nodes: [], links: [] }
-const DEFAULT_VISIBLE_NODE_TYPES = new Set<NodeType>(
-  GRAPH_NODE_TYPES.filter((nodeType) => nodeType !== 'venue'),
-)
+const DEFAULT_VISIBLE_NODE_TYPES = new Set<NodeType>(GRAPH_NODE_TYPES)
 const EGO_GRAPH_CENTER_RETRIES = 24
 const EGO_GRAPH_CENTER_RETRY_MS = 80
 const EGO_GRAPH_CENTER_DURATION_MS = 520
@@ -424,7 +422,7 @@ export function ScenegraphMapPanel({
     if (nextSelectedNode && selectedNode?.id !== nextSelectedNode.id) {
       setSelected(nextSelectedNode)
     }
-  }, [data, providedData, selectedEntityId, selectedNode?.id, selectedType, setSelected])
+  }, [data, providedData, selectedEntityId, selectedType, setSelected])
 
   useEffect(() => {
     const container = containerRef.current
@@ -472,9 +470,6 @@ export function ScenegraphMapPanel({
       if (isSameSelectedNode && !isCurrentEgoGraph) {
         nextParams.set('selectedType', nextNode.type)
         nextParams.set('selectedId', String(nextNode.entityId))
-      } else {
-        nextParams.delete('selectedType')
-        nextParams.delete('selectedId')
       }
 
       setSearchParams(nextParams, { replace: false })

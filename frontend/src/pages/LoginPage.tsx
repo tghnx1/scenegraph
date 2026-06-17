@@ -1,10 +1,10 @@
 import { useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
-import { getFallbackRole, login, type AuthRole } from '../api/auth'
+import { getFallbackRole, isAuthRole, login, type AuthRole } from '../api/auth'
 import { authButtonStyle, authInputStyle, PasswordInput } from './components/PasswordToggle'
 
 interface LoginPageProps {
-  onLogin: (role: AuthRole) => void
+  onLogin: (role: AuthRole, username: string) => void
 }
 
 const colorVar = (name: string) => `var(${name})`
@@ -30,7 +30,8 @@ export function LoginPage({ onLogin }: LoginPageProps) {
       }
 
       const authenticatedUsername = response.username ?? username
-      const role = getFallbackRole(authenticatedUsername)
+      const responseRole = response.role ?? null
+      const role = isAuthRole(responseRole) ? responseRole : getFallbackRole(authenticatedUsername)
 
       localStorage.setItem('token', response.access_token)
       localStorage.setItem('role', role)
@@ -39,7 +40,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
         localStorage.setItem('user_id', String(response.user_id))
       }
 
-      onLogin(role)
+      onLogin(role, authenticatedUsername)
     } catch {
       setError('Login failed. Please try again.')
     } finally {

@@ -3,9 +3,10 @@ import { Routes, Route, Navigate, NavLink, useNavigate, useParams, useSearchPara
 import { GraphPage } from './pages/GraphPage'
 import { DashboardPage } from './pages/DashboardPage'
 import { ProfilePage } from './pages/ProfilePage'
+import { AgencyPage } from './pages/AgencyPage'
 import { LoginPage } from './pages/LoginPage'
 import { RegisterPage } from './pages/RegisterPage'
-import type { AuthRole } from './api/auth'
+import { getFallbackRole, isAuthRole, type AuthRole } from './api/auth'
 import { applyTheme, getStoredTheme, type ThemeName } from './styles/colors'
 
 const colorVar = (name: string) => `var(${name})`
@@ -34,10 +35,10 @@ function SearchRedirect() {
   return <Navigate to={`/graph?${searchParams.toString()}`} replace />
 }
 
-function ArtistRedirect() {
+function EntityRedirect({ type }: { type: 'artist' | 'promoter' | 'event' | 'venue' }) {
   const { id } = useParams<{ id: string }>()
-  const artistId = id?.startsWith('artist-') ? id : `artist-${id ?? ''}`
-  return <Navigate to={`/graph?selectedType=artist&selectedId=${encodeURIComponent(artistId)}`} replace />
+  const selectedId = id?.startsWith(`${type}-`) ? id : `${type}-${id ?? ''}`
+  return <Navigate to={`/graph?selectedType=${type}&selectedId=${encodeURIComponent(selectedId)}`} replace />
 }
 
 export default function App() {
@@ -45,10 +46,22 @@ export default function App() {
   const [authRole, setAuthRole] = useState<AuthRole | null>(() => {
     const storedToken = localStorage.getItem('token')
     const storedRole = localStorage.getItem('role')
-    return storedToken && (storedRole === 'user' || storedRole === 'admin') ? storedRole : null
+    const storedUsername = localStorage.getItem('username')
+
+    if (!storedToken) return null
+    if (isAuthRole(storedRole)) return storedRole
+    if (storedUsername) return getFallbackRole(storedUsername)
+
+    return null
   })
   const [themeName, setThemeName] = useState<ThemeName>(() => getStoredTheme())
   const isAuthenticated = Boolean(authRole)
+  const canOpenDashboard = authRole === 'admin'
+  const graphPage = authRole === 'artist'
+    ? <ProfilePage />
+    : authRole === 'agent' || authRole === 'admin'
+      ? <AgencyPage />
+      : <GraphPage />
 
   const handleAuthClick = () => {
     if (isAuthenticated) {
@@ -63,7 +76,7 @@ export default function App() {
     navigate('/login')
   }
 
-  const handleLogin = (role: AuthRole) => {
+  const handleLogin = (role: AuthRole, _username: string) => {
     setAuthRole(role)
   }
 
@@ -79,12 +92,7 @@ export default function App() {
         <NavLink to="/graph" className="app-nav-link">
           Graph
         </NavLink>
-        {authRole === 'user' && (
-          <NavLink to="/profile" className="app-nav-link">
-            Profile
-          </NavLink>
-        )}
-        {authRole === 'admin' && (
+        {canOpenDashboard && (
           <NavLink to="/dashboard" className="app-nav-link">
             Dashboard
           </NavLink>
@@ -101,13 +109,17 @@ export default function App() {
       <main className="app-main">
         <Routes>
           <Route path="/" element={<Navigate to="/graph" />} />
-          <Route path="/graph" element={<GraphPage />} />
+          <Route path="/graph" element={graphPage} />
           <Route path="/login" element={isAuthenticated ? <Navigate to="/graph" replace /> : <LoginPage onLogin={handleLogin} />} />
           <Route path="/register" element={isAuthenticated ? <Navigate to="/graph" replace /> : <RegisterPage />} />
-          <Route path="/dashboard" element={authRole === 'admin' ? <DashboardPage /> : <Navigate to={isAuthenticated ? '/graph' : '/login'} replace />} />
-          <Route path="/profile" element={authRole === 'user' ? <ProfilePage /> : <Navigate to={isAuthenticated ? '/graph' : '/login'} replace />} />
+          <Route path="/dashboard" element={canOpenDashboard ? <DashboardPage /> : <Navigate to={isAuthenticated ? '/graph' : '/login'} replace />} />
+          <Route path="/profile" element={<Navigate to="/graph" replace />} />
+          <Route path="/agency" element={<Navigate to="/graph" replace />} />
           <Route path="/search" element={<SearchRedirect />} />
-          <Route path="/artist/:id" element={<ArtistRedirect />} />
+          <Route path="/artist/:id" element={<EntityRedirect type="artist" />} />
+          <Route path="/promoter/:id" element={<EntityRedirect type="promoter" />} />
+          <Route path="/event/:id" element={<EntityRedirect type="event" />} />
+          <Route path="/venue/:id" element={<EntityRedirect type="venue" />} />
           <Route path="/privacy-policy" element={<LegalPage section="privacy" />} />
           <Route path="/terms-of-service" element={<LegalPage section="terms" />} />
           <Route path="/impressum" element={<LegalPage section="impressum" />} />
