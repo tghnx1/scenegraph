@@ -245,6 +245,7 @@ model EventTagExtractionRun {
 
 model RecommendationFeedback {
   id                  BigInt   @id @default(autoincrement())
+  userId              BigInt   @map("user_id")
   sourceEntityType    String   @map("source_entity_type")
   sourceEntityId      BigInt   @map("source_entity_id")
   candidateEntityType String   @map("candidate_entity_type")
@@ -254,8 +255,9 @@ model RecommendationFeedback {
   createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt           DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  @@unique([sourceEntityType, sourceEntityId, candidateEntityType, candidateEntityId])
-  @@index([sourceEntityType, sourceEntityId])
-  @@index([candidateEntityType, candidateEntityId])
+  @@unique([userId, sourceEntityType, sourceEntityId, candidateEntityType, candidateEntityId])
+  @@index([userId])
+  @@index([userId, sourceEntityType, sourceEntityId])
+  @@index([userId, candidateEntityType, candidateEntityId])
   @@map("recommendation_feedback")
 }

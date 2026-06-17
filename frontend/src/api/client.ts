@@ -6,12 +6,15 @@ async function request<T>( //typescript generics, request<GraphData> returns Pro
 ): Promise<T> {
 
   const token = localStorage.getItem('token') //if given, reads the Json Web Token saved at login
+  const userId = localStorage.getItem('user_id')
 
   const res = await fetch(`${BASE}${path}`, { //fetch() is the browser's builtin http function, actual network call
     ...options,
     headers: {
       'Content-Type': 'application/json',
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      // TODO: remove this temporary seam once the real auth/session identity is wired in.
+      ...(userId ? { 'X-User-Id': userId } : {}),
       ...options.headers,
     },
   })
@@ -33,4 +36,6 @@ export const api = { //exported api object --> public interface. everything else
     request<T>(path),
   post: <T>(path: string, body: unknown) =>
     request<T>(path, { method: 'POST', body: JSON.stringify(body) }),
+  delete: <T>(path: string) =>
+    request<T>(path, { method: 'DELETE' }),
 }

@@ -9,13 +9,8 @@ from app.recommendation_scoring import (
     semantic_artist_scoring_from_env,
     semantic_artist_tag_scoring_from_env,
 )
-from app.schemas import EntityKind, RecommendationFeedbackItem
-from app.style_tags import (
-    canonicalize_style_tags,
-    extract_style_tags,
-    style_overlap_score,
-    suppress_parent_style_tags,
-)
+from app.schemas import RecommendationFeedbackItem
+from app.style_tags import extract_style_tags, style_overlap_score
 
 # Build stable graph node ids used across graph payloads.
 def graph_node_id(node_type: str, entity_id: int) -> str:
@@ -27,6 +22,7 @@ def feedback_item_from_row(row: dict) -> RecommendationFeedbackItem:
     """Convert raw feedback SQL rows into API DTOs."""
     return RecommendationFeedbackItem(
         id=row["id"],
+        userId=row["user_id"],
         sourceEntityType=row["source_entity_type"],
         sourceEntityId=row["source_entity_id"],
         candidateEntityType=row["candidate_entity_type"],
@@ -37,15 +33,15 @@ def feedback_item_from_row(row: dict) -> RecommendationFeedbackItem:
         updatedAt=row["updated_at"],
     )
 
-# Validate that a referenced artist/event exists for feedback operations.
+# Validate that a referenced artist/promoter exists for feedback operations.
 def ensure_feedback_entity_exists(
     connection: Connection,
     *,
-    entity_type: EntityKind,
+    entity_type: str,
     entity_id: int,
 ) -> None:
     """Ensure referenced recommendation entity exists or raise 404."""
-    table_name = "artists" if entity_type == "artist" else "events"
+    table_name = "artists" if entity_type == "artist" else "promoters"
     with connection.cursor() as cursor:
         cursor.execute(f"SELECT 1 FROM {table_name} WHERE id = %s", (entity_id,))
         if cursor.fetchone() is None:
@@ -145,11 +141,6 @@ def artist_semantic_metadata(
                 FROM artist_extracted_tags
                 WHERE artist_id = ANY(%s)
                   AND confidence >= 0.6
-                  AND (
-                      tag_type <> 'style'
-                      OR extractor LIKE 'llm_artist_tags_v2:%%'
-                      OR extractor = 'canonical_style_cleanup_v1'
-                  )
                 ORDER BY tag_type ASC, tag_value ASC
                 """,
                 (artist_ids,),
@@ -157,21 +148,16 @@ def artist_semantic_metadata(
             for tag in cursor.fetchall():
                 artist_tags = extracted_tags.setdefault(tag["artist_id"], {})
                 values = artist_tags.setdefault(tag["tag_type"], [])
-                normalized_values = (
-                    canonicalize_style_tags(tag["tag_value"])
-                    if tag["tag_type"] == "style"
-                    else [tag["tag_value"].strip()]
-                )
-                for normalized in normalized_values:
-                    if normalized and normalized not in values:
-                        values.append(normalized)
+                normalized = tag["tag_value"].strip()
+                if normalized and normalized not in values:
+                    values.append(normalized)
 
     metadata = {
         row["id"]: {
             "id": row["id"],
             "name": row["name"],
             "tags": extracted_tags.get(row["id"], {}),
-            "style_tags": suppress_parent_style_tags(
+            "style_tags": sorted(
                 set(extract_style_tags(row["biography"]))
                 | set(extracted_tags.get(row["id"], {}).get("style", []))
             ),

@@ -1,13 +1,21 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { graphEntityId, type GraphNode } from '../types/graph'
 import type { PromoterRecommendationResponse } from '../types/recommendation'
+import {
+  deletePromoterFeedback,
+  getPromoterFeedback,
+  setPromoterFeedback,
+  type PromoterFeedbackValue,
+} from '../api/recommendationFeedback'
 import { DetailsPanel } from './components/DetailsPanel.tsx'
 import { RecommendationLoading } from './components/LoadingScreen.tsx'
 import { ScenegraphMapPanel } from './components/GraphPanel.tsx'
 import { SearchQueryForm } from './components/SearchQuery.tsx'
 import { useGraphSearchDetails } from './hooks/useGraphSearchDetails.ts'
 
+// TODO: replace the hardcoded artist ID once the DJ profile is linked to the user.
 const PROMOTER_RECOMMENDATIONS_API_PATH = '/api/recommendations/artists/2178/promoters'
+const RECOMMENDATION_ARTIST_ID = 2178
 const RECOMMENDATION_LOADING_MESSAGES = [
   'Finding similar artists',
   'Comparing related events',
@@ -142,6 +150,11 @@ export function ProfilePage() {
   const [expandedRecommendationId, setExpandedRecommendationId] = useState<number | null>(null)
   const [focusedRecommendationPromoterIds, setFocusedRecommendationPromoterIds] = useState<number[] | null>(null)
   const [expandedReasonItems, setExpandedReasonItems] = useState<Record<string, boolean>>({})
+  const [pendingFeedbackPromoterId, setPendingFeedbackPromoterId] = useState<number | null>(null)
+  const [localFeedbackByPromoterId, setLocalFeedbackByPromoterId] = useState<
+    Record<number, PromoterFeedbackValue | null>
+  >({})
+  const [localFeedbackIdByPromoterId, setLocalFeedbackIdByPromoterId] = useState<Record<number, number>>({})
   const recommendationThresholdInitializedRef = useRef(false)
   const recommendationListRef = useRef<HTMLElement | null>(null)
 
@@ -178,11 +191,20 @@ export function ProfilePage() {
     setFocusedRecommendationPromoterIds(null)
     setExpandedReasonItems({})
     setRecommendationGraphMode('compact')
+    setLocalFeedbackByPromoterId({})
+    setLocalFeedbackIdByPromoterId({})
 
     try {
       const requestUrl = new URL(PROMOTER_RECOMMENDATIONS_API_PATH, window.location.origin)
       requestUrl.searchParams.set('limit', '50')
-      const response = await fetch(requestUrl.toString())
+      const userId = localStorage.getItem('user_id')
+      const token = localStorage.getItem('token')
+      const response = await fetch(requestUrl.toString(), {
+        headers: {
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          ...(userId ? { 'X-User-Id': userId } : {}),
+        },
+      })
 
       if (!response.ok) {
         throw new Error(`${response.status} ${response.statusText}`)
@@ -196,6 +218,53 @@ export function ProfilePage() {
       setIsRecommendationsLoading(false)
     }
   }, [])
+
+  const handlePromoterFeedback = useCallback(async (
+    promoterId: number,
+    feedback: PromoterFeedbackValue,
+  ) => {
+    setPendingFeedbackPromoterId(promoterId)
+    setRecommendationsError(null)
+
+    const hasLocalFeedback = Object.prototype.hasOwnProperty.call(localFeedbackByPromoterId, promoterId)
+    const previousFeedback = hasLocalFeedback
+      ? localFeedbackByPromoterId[promoterId]
+      : recommendationsData?.recommendations.find((item) => item.id === promoterId)?.feedbackState
+    const isRemovingFeedback = previousFeedback === feedback
+    setLocalFeedbackByPromoterId((current) => ({
+      ...current,
+      [promoterId]: isRemovingFeedback ? null : feedback,
+    }))
+
+    try {
+      if (isRemovingFeedback) {
+        let feedbackId = localFeedbackIdByPromoterId[promoterId]
+        if (!feedbackId) {
+          const response = await getPromoterFeedback(RECOMMENDATION_ARTIST_ID, promoterId)
+          feedbackId = response.feedback[0]?.id
+        }
+        if (feedbackId) {
+          await deletePromoterFeedback(feedbackId)
+        }
+        setLocalFeedbackIdByPromoterId((current) => {
+          const next = { ...current }
+          delete next[promoterId]
+          return next
+        })
+      } else {
+        const savedFeedback = await setPromoterFeedback(RECOMMENDATION_ARTIST_ID, promoterId, feedback)
+        setLocalFeedbackIdByPromoterId((current) => ({
+          ...current,
+          [promoterId]: savedFeedback.id,
+        }))
+      }
+    } catch (error) {
+      setLocalFeedbackByPromoterId((current) => ({ ...current, [promoterId]: previousFeedback ?? null }))
+      setRecommendationsError(error instanceof Error ? error.message : 'Failed to save feedback')
+    } finally {
+      setPendingFeedbackPromoterId(null)
+    }
+  }, [localFeedbackByPromoterId, recommendationsData])
 
   const handleSelectRecommendation = useCallback((recommendationId: number) => {
     const recommendationNode = recommendationsData?.graph.nodes.find((node) => (
@@ -469,21 +538,57 @@ export function ProfilePage() {
                           key={recommendation.id}
                           id={`recommendation-card-${recommendation.id}`}
                         >
-                          <button
-                            type="button"
-                            className="recommendation-name"
-                            aria-pressed={focusedRecommendationPromoterIds?.includes(recommendation.id) ?? false}
-                            aria-expanded={expandedRecommendationId === recommendation.id}
-                            aria-controls={`recommendation-reasons-${recommendation.id}`}
-                            onClick={() => handleToggleRecommendation(recommendation.id)}
-                          >
-                            <span className="recommendation-name-label">{recommendation.name}</span>
-                            <span
-                              className={`recommendation-size-badge recommendation-size-${recommendation.promoterSizeSegment}`}
+                          <div className="recommendation-item-header">
+                            <button
+                              type="button"
+                              className="recommendation-name"
+                              aria-pressed={focusedRecommendationPromoterIds?.includes(recommendation.id) ?? false}
+                              aria-expanded={expandedRecommendationId === recommendation.id}
+                              aria-controls={`recommendation-reasons-${recommendation.id}`}
+                              onClick={() => handleToggleRecommendation(recommendation.id)}
                             >
-                              {PROMOTER_SIZE_LABELS[recommendation.promoterSizeSegment]}
-                            </span>
-                          </button>
+                              <span className="recommendation-name-label">{recommendation.name}</span>
+                              <span
+                                className={`recommendation-size-badge recommendation-size-${recommendation.promoterSizeSegment}`}
+                              >
+                                {PROMOTER_SIZE_LABELS[recommendation.promoterSizeSegment]}
+                              </span>
+                            </button>
+                            <div className="recommendation-feedback-actions" aria-label={`Feedback for ${recommendation.name}`}>
+                              <button
+                                type="button"
+                                className="recommendation-feedback-button"
+                                aria-pressed={
+                                  (
+                                    Object.prototype.hasOwnProperty.call(localFeedbackByPromoterId, recommendation.id)
+                                      ? localFeedbackByPromoterId[recommendation.id]
+                                      : recommendation.feedbackState
+                                  )
+                                  === 'positive'
+                                }
+                                disabled={pendingFeedbackPromoterId === recommendation.id}
+                                onClick={() => void handlePromoterFeedback(recommendation.id, 'positive')}
+                              >
+                                Interested
+                              </button>
+                              <button
+                                type="button"
+                                className="recommendation-feedback-button"
+                                aria-pressed={
+                                  (
+                                    Object.prototype.hasOwnProperty.call(localFeedbackByPromoterId, recommendation.id)
+                                      ? localFeedbackByPromoterId[recommendation.id]
+                                      : recommendation.feedbackState
+                                  )
+                                  === 'negative'
+                                }
+                                disabled={pendingFeedbackPromoterId === recommendation.id}
+                                onClick={() => void handlePromoterFeedback(recommendation.id, 'negative')}
+                              >
+                                Not relevant
+                              </button>
+                            </div>
+                          </div>
                           {expandedRecommendationId === recommendation.id && (
                             <ul
                               id={`recommendation-reasons-${recommendation.id}`}
