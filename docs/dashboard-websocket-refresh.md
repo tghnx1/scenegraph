@@ -159,7 +159,7 @@ const {
 
 const {
   data: dashboardStats,
-  refetch: refetchStats,
+  refetch: refetchMetrics,
 } = useApi(fetchDashboardStats, [])
 ```
 
@@ -173,10 +173,10 @@ const handleDashboardUpdate = useCallback(
     }
 
     if (areas.includes('stats')) {
-      void refetchStats()
+      void refetchMetrics()
     }
   },
-  [refetchComposition, refetchStats],
+  [refetchComposition, refetchMetrics],
 )
 
 useDashboardUpdates(handleDashboardUpdate)

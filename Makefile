@@ -1,4 +1,5 @@
 COMPOSE := docker compose
+COMPOSE_BUILD := docker compose -f docker-compose.build.yml
 ENV_FILE := .env
 ENV_EXAMPLE := .env.example
 PYTHON ?= python3
@@ -17,7 +18,7 @@ REFRESH_CDP_URL ?= http://localhost:9222
 REFRESH_PIPELINE_ARGS ?=
 CHECK_ARTIST_ID ?= 2178
 
-.PHONY: help env build up upd down stop restart logs ps health prisma-migrate prisma-studio db-shell import-events backfill-normalized-texts backfill-lineup-residual backfill-artist-biographies extract-artist-tags generate-embeddings backfill-embedding-vectors validate-import refresh-data-check refresh-data-check-bio refresh-data-check-bio-embeddings import-dump export-dump clean reset-db list fclean
+.PHONY: help env build up upd upd-build down stop restart logs ps health prisma-migrate prisma-studio db-shell import-events backfill-normalized-texts backfill-lineup-residual backfill-artist-biographies extract-artist-tags generate-embeddings backfill-embedding-vectors validate-import refresh-data-check refresh-data-check-bio refresh-data-check-bio-embeddings import-dump export-dump clean reset-db list fclean
 
 help:
 	@printf "\n"
@@ -26,7 +27,8 @@ help:
 	@printf "  make env      Create .env from .env.example if missing\n"
 	@printf "  make build    Build containers\n"
 	@printf "  make up       Start stack in foreground (runs migrations first)\n"
-	@printf "  make upd      Start stack in background (runs migrations first)\n"
+	@printf "  make upd      Start dev stack in background with Vite dev server\n"
+	@printf "  make upd-build Start build stack in background with nginx serving frontend dist\n"
 	@printf "  make down     Stop and remove containers\n"
 	@printf "  make stop     Stop running containers\n"
 	@printf "  make restart  Restart the stack in background\n"
@@ -71,6 +73,10 @@ up: env prisma-migrate
 
 upd: env prisma-migrate
 	$(COMPOSE) up --build -d
+
+upd-build: env
+	$(COMPOSE_BUILD) --profile tools run --rm --build prisma
+	$(COMPOSE_BUILD) up --build -d --remove-orphans
 
 down:
 	$(COMPOSE) down
