@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Button } from '@/shared/ui/button'
 import { cn } from '@/shared/lib/cn-utils'
+import { api } from '@/api/client'
 import { graphEntityId, type GraphNode } from '../../types/graph'
 import type { PromoterRecommendationResponse } from '../../types/recommendation'
 import { RecommendationLoading } from './LoadingScreen'
 import { ScenegraphMapPanel } from './GraphPanel'
 import { RecommendationExportMenu } from './ExportRecommendation'
 
-const PROMOTER_RECOMMENDATIONS_API_PATH = '/api/recommendations/artists'
+const PROMOTER_RECOMMENDATIONS_API_PATH = '/recommendations/artists'
 const RECOMMENDATION_LOADING_MESSAGES = [
   'Finding similar artists',
   'Comparing related events',
@@ -217,18 +218,9 @@ export function PromoterRecommendationsPanel({
     setRecommendationGraphMode('compact')
 
     try {
-      const requestUrl = new URL(
-        `${PROMOTER_RECOMMENDATIONS_API_PATH}/${recommendationArtistId}/promoters`,
-        window.location.origin,
+      const recommendationResponse = await api.get<PromoterRecommendationResponse>(
+        `${PROMOTER_RECOMMENDATIONS_API_PATH}/${recommendationArtistId}/promoters?limit=50`,
       )
-      requestUrl.searchParams.set('limit', '50')
-      const response = await fetch(requestUrl.toString())
-
-      if (!response.ok) {
-        throw new Error(`${response.status} ${response.statusText}`)
-      }
-
-      const recommendationResponse = await response.json() as PromoterRecommendationResponse
       if (recommendationRequestIdRef.current !== requestId) return
       setRecommendationsData(recommendationResponse)
     } catch (error) {
