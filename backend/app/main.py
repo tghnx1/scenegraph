@@ -11,6 +11,8 @@ from datetime import datetime, timedelta, timezone              #for JWT (JSON W
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
 
+from typing import Annotated
+
 security = HTTPBearer()         #security parse that understands jwt-encrypted headers.
 
 from app.db import get_connection, get_db
@@ -865,3 +867,133 @@ async def list_venues(connection: Connection = Depends(get_db)) -> VenuesRespons
         venues = cursor.fetchall()
 
     return VenuesResponse(venues=[Venue(**venue) for venue in venues])
+
+PUBLIC_API_KEY=os.getenv("PUBLIC_API_KEY")
+
+def require_public_api_key(api_key: str | None = Header(alias="X-API-Key"),) -> None:
+    if not PUBLIC_API_KEY or api_key != PUBLIC_API_KEY:
+        raise HTTPException(status_code=401, detail="Invalid API key")
+    
+@app.get("/api/public/venues")
+async def public_venues(
+    _: None = Depends(require_public_api_key),          # _: None is because the result is not necessary, just run it
+    connection: Connection = Depends(get_db),
+    limit: int = 20,
+    offset: int = 0,
+) -> dict:
+    check_rate_limit("public:venues", max_attempts=100, window_seconds=60)
+
+    limit = min(max(limit, 1), 100)     #for pagination
+    offset = max(offset, 0)
+
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT id, name
+            FROM venues
+            ORDER BY name ASC
+            LIMIT %s OFFSET %s
+            """,
+            (limit, offset),
+        )
+        rows = cursor.fetchall()
+
+    return {
+        "success": True,
+        "limit": limit,
+        "offset": offset,
+        "venues": rows,
+    }
+
+@app.get("/api/public/artists")
+async def public_artists(
+    _: None = Depends(require_public_api_key),         
+    connection: Connection = Depends(get_db),
+    limit: int = 20,
+    offset: int = 0,
+) -> dict:
+    check_rate_limit("public:artists", max_attempts=100, window_seconds=60)
+
+    limit = min(max(limit, 1), 100)     #for pagination
+    offset = max(offset, 0)
+
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT id, name
+            FROM artists
+            ORDER BY name ASC
+            LIMIT %s OFFSET %s
+            """,
+            (limit, offset),
+        )
+        rows = cursor.fetchall()
+
+    return {
+        "success": True,
+        "limit": limit,
+        "offset": offset,
+        "artists": rows,
+    }
+
+@app.get("/api/public/events")
+async def public_events(
+    _: None = Depends(require_public_api_key),         
+    connection: Connection = Depends(get_db),
+    limit: int = 20,
+    offset: int = 0,
+) -> dict:
+    check_rate_limit("public:events", max_attempts=100, window_seconds=60)
+
+    limit = min(max(limit, 1), 100)     #for pagination
+    offset = max(offset, 0)
+
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT id, name
+            FROM events
+            ORDER BY name ASC
+            LIMIT %s OFFSET %s
+            """,
+            (limit, offset),
+        )
+        rows = cursor.fetchall()
+
+    return {
+        "success": True,
+        "limit": limit,
+        "offset": offset,
+        "events": rows,
+    }
+
+@app.get("/api/public/promoters")
+async def public_promoters(
+    _: None = Depends(require_public_api_key),         
+    connection: Connection = Depends(get_db),
+    limit: int = 20,
+    offset: int = 0,
+) -> dict:
+    check_rate_limit("public:promoters", max_attempts=100, window_seconds=60)
+
+    limit = min(max(limit, 1), 100)     #for pagination
+    offset = max(offset, 0)
+
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT id, name
+            FROM promoters
+            ORDER BY name ASC
+            LIMIT %s OFFSET %s
+            """,
+            (limit, offset),
+        )
+        rows = cursor.fetchall()
+
+    return {
+        "success": True,
+        "limit": limit,
+        "offset": offset,
+        "promoters": rows,
+    }
