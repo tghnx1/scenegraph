@@ -4,3 +4,6 @@ psycopg[binary]==3.2.1
 openai==2.8.1
 pytest==8.4.2
 httpx==0.28.1
+passlib[bcrypt]==1.7.4
+bcrypt==4.0.1
+python-jose[cryptography]

@@ -5,30 +5,22 @@ import { DashboardPage } from './pages/DashboardPage'
 import { ProfilePage } from './pages/ProfilePage'
 import { AgencyPage } from './pages/AgencyPage'
 import { LoginPage } from './pages/LoginPage'
-import { RegisterPage } from './pages/RegisterPage'
-import { getFallbackRole, isAuthRole, type AuthRole } from './api/auth'
-import { applyTheme, getStoredTheme, type ThemeName } from './styles/colors'
+import { ChangePasswordPage } from './pages/ChangePasswordPage'
+import { AboutPage } from './pages/AboutPage'
+import { isAuthRole, logout, type AuthRole } from './api/auth'
+import { applyTheme, getStoredTheme, type ThemeName } from './shared/styles/colors'
+import { Button } from '@/shared/ui/button'
+import { cn } from '@/shared/lib/cn-utils'
 
-const colorVar = (name: string) => `var(${name})`
+const navLinkClass = ({ isActive }: { isActive: boolean }) => cn(
+  'rounded-lg border border-transparent px-2.5 py-1.5 text-sm font-semibold text-[var(--text-muted)] no-underline transition-all duration-150 hover:opacity-90',
+  isActive && 'border-[color-mix(in_srgb,var(--link-highlight)_45%,transparent)] bg-[color-mix(in_srgb,var(--link-highlight)_20%,transparent)] text-[var(--text)]',
+)
 
-function LegalPage({ section }: { section: string }) {
-  const titles: Record<string, string> = {
-    privacy: 'Privacy Policy',
-    terms: 'Terms of Service',
-    impressum: 'Impressum',
-    cookies: 'Cookie Settings',
-    contact: 'Contact',
-  }
-
-  return (
-    <div style={{ padding: '40px', maxWidth: '800px', margin: '0 auto' }}>
-      <h1>{titles[section] || 'Legal'}</h1>
-      <p style={{ color: colorVar('--text-muted'), marginTop: '20px' }}>
-        This page is a placeholder for {titles[section]?.toLowerCase() || 'legal information'}.
-      </p>
-    </div>
-  )
-}
+const footerLinkClass = ({ isActive }: { isActive: boolean }) => cn(
+  navLinkClass({ isActive }),
+  'px-2 py-1 text-xs',
+)
 
 function SearchRedirect() {
   const [searchParams] = useSearchParams()
@@ -46,11 +38,9 @@ export default function App() {
   const [authRole, setAuthRole] = useState<AuthRole | null>(() => {
     const storedToken = localStorage.getItem('token')
     const storedRole = localStorage.getItem('role')
-    const storedUsername = localStorage.getItem('username')
 
     if (!storedToken) return null
     if (isAuthRole(storedRole)) return storedRole
-    if (storedUsername) return getFallbackRole(storedUsername)
 
     return null
   })
@@ -63,12 +53,24 @@ export default function App() {
       ? <AgencyPage />
       : <GraphPage />
 
-  const handleAuthClick = () => {
+  const handleAuthClick = async () => {
     if (isAuthenticated) {
+
+      const username = localStorage.getItem('username')
+
+      if (username) {
+        try {
+          await logout(username)
+        } catch {
+          console.error('Logout logging failed')
+        }
+      }
+
       localStorage.removeItem('token')
       localStorage.removeItem('role')
       localStorage.removeItem('username')
       localStorage.removeItem('user_id')
+      localStorage.removeItem('artist_id')
       setAuthRole(null)
       return
     }
@@ -87,60 +89,74 @@ export default function App() {
   }
 
   return (
-    <div className="app-shell">
-      <nav className="app-nav">
-        <NavLink to="/graph" className="app-nav-link">
+    <div className="flex h-dvh min-h-screen flex-col bg-[var(--background)] text-[var(--text)] [background:radial-gradient(1000px_520px_at_12%_-10%,color-mix(in_srgb,var(--link-highlight)_18%,transparent),transparent_60%),radial-gradient(900px_460px_at_95%_0%,color-mix(in_srgb,var(--accent-warm)_15%,transparent),transparent_55%),var(--background)]">
+      <nav className="flex items-center gap-3 border-b border-[color-mix(in_srgb,var(--text)_18%,transparent)] bg-[color-mix(in_srgb,var(--background)_55%,transparent)] px-5 py-3 backdrop-blur-md">
+        <NavLink to="/graph" className={navLinkClass}>
           Graph
         </NavLink>
         {canOpenDashboard && (
-          <NavLink to="/dashboard" className="app-nav-link">
+          <NavLink to="/dashboard" className={navLinkClass}>
             Dashboard
           </NavLink>
         )}
-        <span className="app-nav-spacer" />
-        <button type="button" className="app-nav-button" onClick={handleThemeToggle}>
+        <span className="flex-1" />
+        {isAuthenticated && (
+          <Button type="button" size="sm" variant="outline" onClick={() => navigate('/change-password')}>
+            Change password
+          </Button>
+        )}
+        <Button type="button" size="sm" variant="outline" onClick={handleThemeToggle}>
           {themeName === 'light' ? 'Dark' : 'Light'}
-        </button>
-        <button type="button" className="app-nav-button" onClick={handleAuthClick}>
+        </Button>
+        <Button type="button" size="sm" variant="outline" onClick={handleAuthClick}>
           {isAuthenticated ? 'Logout' : 'Login'}
-        </button>
+        </Button>
       </nav>
 
-      <main className="app-main">
+      <main className="flex-1 overflow-y-auto overflow-x-hidden">
         <Routes>
           <Route path="/" element={<Navigate to="/graph" />} />
           <Route path="/graph" element={graphPage} />
           <Route path="/login" element={isAuthenticated ? <Navigate to="/graph" replace /> : <LoginPage onLogin={handleLogin} />} />
-          <Route path="/register" element={isAuthenticated ? <Navigate to="/graph" replace /> : <RegisterPage />} />
-          <Route path="/dashboard" element={canOpenDashboard ? <DashboardPage /> : <Navigate to={isAuthenticated ? '/graph' : '/login'} replace />} />
-          <Route path="/profile" element={<Navigate to="/graph" replace />} />
-          <Route path="/agency" element={<Navigate to="/graph" replace />} />
+          <Route
+            path="/change-password"
+            element={
+              isAuthenticated || localStorage.getItem('token')
+                ? <ChangePasswordPage onLogin={handleLogin} />
+                : <Navigate to="/login" replace />
+            }
+          />
+          <Route path="/dashboard" element={authRole === 'admin' ? <DashboardPage /> : <Navigate to={isAuthenticated ? '/graph' : '/login'} replace />} />
+          <Route path="/profile" element={authRole === 'artist' ? <ProfilePage /> : <Navigate to={isAuthenticated ? '/graph' : '/login'} replace />} />
           <Route path="/search" element={<SearchRedirect />} />
           <Route path="/artist/:id" element={<EntityRedirect type="artist" />} />
           <Route path="/promoter/:id" element={<EntityRedirect type="promoter" />} />
           <Route path="/event/:id" element={<EntityRedirect type="event" />} />
           <Route path="/venue/:id" element={<EntityRedirect type="venue" />} />
-          <Route path="/privacy-policy" element={<LegalPage section="privacy" />} />
-          <Route path="/terms-of-service" element={<LegalPage section="terms" />} />
-          <Route path="/impressum" element={<LegalPage section="impressum" />} />
-          <Route path="/cookie-settings" element={<LegalPage section="cookies" />} />
-          <Route path="/contact" element={<LegalPage section="contact" />} />
+          <Route path="/privacy-policy" element={<AboutPage page="privacy" />} />
+          <Route path="/terms-of-service" element={<AboutPage page="terms" />} />
+          {/* <Route path="/impressum" element={<AboutPage page="impressum" />} /> */}
+          {/* <Route path="/cookie-settings" element={<AboutPage page="cookies" />} /> */}
+          <Route path="/contact" element={<AboutPage page="contact" />} />
         </Routes>
       </main>
 
-      <footer className="app-footer">
+      <footer className="flex items-center justify-between border-t border-[color-mix(in_srgb,var(--text)_15%,transparent)] bg-[color-mix(in_srgb,var(--background)_72%,transparent)] px-5 py-3.5 text-[13px] text-[var(--text-muted)]">
         <span>© 2026 Scenegraph</span>
-        <div className="app-footer-links">
-          <NavLink to="/privacy-policy" className="app-nav-link">
+        <div className="flex gap-4">
+          <NavLink to="/privacy-policy" className={footerLinkClass}>
             Privacy Policy
           </NavLink>
-          <NavLink to="/terms-of-service" className="app-nav-link">
+          <NavLink to="/terms-of-service" className={footerLinkClass}>
             Terms
           </NavLink>
-          <NavLink to="/impressum" className="app-nav-link">
+          {/* <NavLink to="/impressum" className={footerLinkClass}>
             Impressum
-          </NavLink>
-          <NavLink to="/contact" className="app-nav-link">
+          </NavLink> */}
+          {/* <NavLink to="/cookie-settings" className={footerLinkClass}>
+            Cookies
+          </NavLink> */}
+          <NavLink to="/contact" className={footerLinkClass}>
             Contact
           </NavLink>
         </div>

@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { Button } from '@/shared/ui/button'
+import { cn } from '@/shared/lib/cn-utils'
 import { graphEntityId, type GraphNode } from '../../types/graph'
 import type { PromoterRecommendationResponse } from '../../types/recommendation'
 import { RecommendationLoading } from './LoadingScreen'
 import { ScenegraphMapPanel } from './GraphPanel'
-import { RecommendationExportMenu } from './RecommendationExport'
+import { RecommendationExportMenu } from './ExportRecommendation'
 
-const DEFAULT_PROFILE_RECOMMENDATION_ARTIST_ID = 2178
-const PROMOTER_RECOMMENDATIONS_API_BASE_URL = 'http://localhost:8080/api/recommendations/artists'
+const PROMOTER_RECOMMENDATIONS_API_PATH = '/api/recommendations/artists'
 const RECOMMENDATION_LOADING_MESSAGES = [
   'Finding similar artists',
   'Comparing related events',
@@ -22,6 +23,10 @@ const PROMOTER_SIZE_LABELS: Record<'small' | 'medium' | 'large', string> = {
   medium: 'Medium',
   large: 'Large',
 }
+
+const labelClass = 'text-xs font-semibold uppercase tracking-[0.14em] text-[var(--accent)]'
+const panelHeadingClass = 'flex items-center justify-between gap-3'
+const mutedTextClass = 'text-sm text-[var(--text-muted)]'
 
 type ReasonListKind =
   | 'relatedEvents'
@@ -42,6 +47,7 @@ export interface RecommendationTargetControls {
 
 interface PromoterRecommendationsPanelProps {
   isActive: boolean
+  artistId: number
   targetControls?: RecommendationTargetControls
   onSelectNode: (node: GraphNode | null) => void
 }
@@ -135,6 +141,7 @@ function initialStrengthThreshold(recommendations: PromoterRecommendationRespons
 
 export function PromoterRecommendationsPanel({
   isActive,
+  artistId,
   targetControls,
   onSelectNode,
 }: PromoterRecommendationsPanelProps) {
@@ -154,7 +161,7 @@ export function PromoterRecommendationsPanel({
   const recommendationRequestIdRef = useRef(0)
   const recommendationArtistId = targetControls
     ? targetControls.artistId
-    : DEFAULT_PROFILE_RECOMMENDATION_ARTIST_ID
+    : artistId
 
   useEffect(() => {
     recommendationRequestIdRef.current += 1
@@ -210,7 +217,10 @@ export function PromoterRecommendationsPanel({
     setRecommendationGraphMode('compact')
 
     try {
-      const requestUrl = new URL(`${PROMOTER_RECOMMENDATIONS_API_BASE_URL}/${recommendationArtistId}/promoters`)
+      const requestUrl = new URL(
+        `${PROMOTER_RECOMMENDATIONS_API_PATH}/${recommendationArtistId}/promoters`,
+        window.location.origin,
+      )
       requestUrl.searchParams.set('limit', '50')
       const response = await fetch(requestUrl.toString())
 
@@ -231,6 +241,20 @@ export function PromoterRecommendationsPanel({
       }
     }
   }, [recommendationArtistId, targetControls?.emptyMessage])
+
+  const handleResetRecommendations = useCallback(() => {
+    recommendationRequestIdRef.current += 1
+    recommendationThresholdInitializedRef.current = false
+    setRecommendationsData(null)
+    setRecommendationsError(null)
+    setIsRecommendationsLoading(false)
+    setRecommendationStrengthThreshold(DEFAULT_RECOMMENDATION_STRENGTH_THRESHOLD)
+    setExpandedRecommendationId(null)
+    setFocusedRecommendationPromoterIds(null)
+    setExpandedReasonItems({})
+    setRecommendationGraphMode('compact')
+    onSelectNode(null)
+  }, [onSelectNode])
 
   const handleSelectRecommendation = useCallback((recommendationId: number) => {
     const recommendationNode = recommendationsData?.graph.nodes.find((node) => (
@@ -305,7 +329,7 @@ export function PromoterRecommendationsPanel({
     if (expandedRecommendationId === null) return
     const list = recommendationListRef.current
     const card = document.getElementById(`recommendation-card-${expandedRecommendationId}`)
-    const header = card?.querySelector<HTMLElement>('.recommendation-name')
+    const header = card?.querySelector<HTMLElement>('[data-recommendation-name]')
     if (!list || !card || !header) return
 
     const animationFrame = window.requestAnimationFrame(() => {
@@ -388,41 +412,48 @@ export function PromoterRecommendationsPanel({
   return (
     <section
       id="profile-workspace-panel-recommendations"
-      className="profile-workspace-content recommendations-panel"
+      className="grid min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)] gap-4"
       role="tabpanel"
       aria-labelledby="profile-workspace-tab-recommendations"
       hidden={!isActive}
     >
-      <div className="panel-heading recommendations-panel-heading">
-        <span className="search-query-label">Promoter Recommendations</span>
-        {targetControls && (
-          <div className="recommendation-target-actions">
-            {targetControls.controls}
-            <button
+      <div className={panelHeadingClass}>
+        <span className={labelClass}>Promoter Recommendations</span>
+        {(targetControls || recommendationsData) && (
+          <div className="flex min-w-0 flex-nowrap items-center justify-end gap-2 max-[900px]:flex-wrap">
+            {targetControls?.controls}
+            <Button
               type="button"
-              onClick={() => void handleLoadRecommendations()}
+              size="sm"
+              className="shrink-0"
+              onClick={() => {
+                if (recommendationsData) {
+                  handleResetRecommendations()
+                } else {
+                  void handleLoadRecommendations()
+                }
+              }}
               disabled={isRecommendationsLoading || recommendationArtistId === null}
             >
-              {targetControls.getButtonLabel ?? 'Get rec'}
-            </button>
+              {recommendationsData ? 'Reset' : (targetControls?.getButtonLabel ?? 'Get rec')}
+            </Button>
           </div>
         )}
       </div>
       {recommendationsData === null && !isRecommendationsLoading && (
-        <div className="recommendations-start">
-          <p className={recommendationsError ? 'error' : 'recommendations-help'}>
+        <div className="grid min-h-0 place-items-center gap-3 rounded-2xl border border-[var(--surface-border-soft)] bg-[var(--surface-soft)] p-6 text-center">
+          <p className={recommendationsError ? 'm-0 text-[var(--event)]' : cn('m-0', mutedTextClass)}>
             {recommendationsError
               ?? (targetControls?.emptyMessage
                 ?? 'Click "Get Rec" to load recommendations. Loading time may be quite long. Let the wizard does its magic.')}
           </p>
           {!targetControls && (
-            <button
+            <Button
               type="button"
-              className="recommendations-load-button"
               onClick={() => void handleLoadRecommendations()}
             >
               {recommendationsError ? 'Retry' : 'Get Rec'}
-            </button>
+            </Button>
           )}
         </div>
       )}
@@ -430,12 +461,13 @@ export function PromoterRecommendationsPanel({
         <RecommendationLoading activity={RECOMMENDATION_LOADING_MESSAGES[recommendationLoadingMessageIndex]} />
       )}
       {recommendationsData !== null && (
-        <div className="recommendations-content">
-          <div className="recommendation-threshold-control" aria-label="Recommendation strength control">
-            <label htmlFor="recommendation-strength-threshold">
+        <div className="grid min-h-0 min-w-0 grid-cols-[minmax(220px,0.72fr)_minmax(0,1.28fr)] gap-3 overflow-hidden max-[1180px]:grid-cols-1">
+          <div className="col-span-full grid grid-cols-[auto_minmax(160px,1fr)_auto] items-center gap-3 rounded-2xl border border-[var(--surface-border-soft)] bg-[var(--surface-soft)] p-3 text-sm text-[var(--text-muted)] max-[700px]:grid-cols-1" aria-label="Recommendation strength control">
+            <label className="font-semibold text-[var(--text)]" htmlFor="recommendation-strength-threshold">
               Strength: {Math.round(recommendationStrengthThreshold * 100)}%
             </label>
             <input
+              className="h-2 w-full accent-[var(--selection)]"
               id="recommendation-strength-threshold"
               type="range"
               min={recommendationScoreBounds.min}
@@ -444,41 +476,47 @@ export function PromoterRecommendationsPanel({
               value={recommendationStrengthThreshold}
               onChange={(event) => handleRecommendationStrengthChange(Number(event.target.value))}
             />
-            <p>{filteredRecommendations.length} / {sortedRecommendations.length} promoters shown</p>
+            <p className="m-0">{filteredRecommendations.length} / {sortedRecommendations.length} promoters shown</p>
           </div>
           <section
             ref={recommendationListRef}
-            className="recommendation-list"
+            className="grid min-h-0 min-w-0 content-start gap-2 overflow-y-auto overflow-x-hidden pr-1"
             aria-label="Recommended promoters"
           >
             {filteredRecommendations.length === 0 && (
-              <p className="recommendation-list-empty">
+              <p className="m-0 rounded-2xl border border-[var(--surface-border-soft)] bg-[var(--surface-soft)] p-4 text-sm text-[var(--text-muted)]">
                 No promoters at this threshold. Lower the slider to include more matches.
               </p>
             )}
             {filteredRecommendations.map((recommendation) => (
               <article
-                className="recommendation-item"
+                className="min-w-0 rounded-2xl border border-[color-mix(in_srgb,var(--text)_10%,transparent)] bg-[color-mix(in_srgb,var(--background)_38%,transparent)] p-2 backdrop-blur-sm"
                 key={recommendation.id}
                 id={`recommendation-card-${recommendation.id}`}
               >
                 <button
                   type="button"
-                  className="recommendation-name"
+                  data-recommendation-name
+                  className="flex w-full min-w-0 cursor-pointer flex-wrap items-center justify-between gap-2 rounded-xl border border-transparent bg-transparent p-2 text-left text-[var(--text)] transition-colors hover:border-[var(--selection-border)] hover:bg-[var(--selection-soft)]"
                   aria-pressed={focusedRecommendationPromoterIds?.includes(recommendation.id) ?? false}
                   aria-expanded={expandedRecommendationId === recommendation.id}
                   aria-controls={`recommendation-reasons-${recommendation.id}`}
                   onClick={() => handleToggleRecommendation(recommendation.id)}
                 >
-                  <span className="recommendation-name-label">{recommendation.name}</span>
-                  <span className={`recommendation-size-badge recommendation-size-${recommendation.promoterSizeSegment}`}>
+                  <span className="min-w-0 flex-1 overflow-hidden text-sm font-semibold leading-snug [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]">{recommendation.name}</span>
+                  <span className={cn(
+                    'shrink-0 rounded-full border px-2 py-0.5 text-[0.68rem] font-semibold',
+                    recommendation.promoterSizeSegment === 'small' && 'border-[var(--promoter-border)] bg-[var(--promoter-soft)]',
+                    recommendation.promoterSizeSegment === 'medium' && 'border-[var(--info-border)] bg-[var(--info-soft)]',
+                    recommendation.promoterSizeSegment === 'large' && 'border-[var(--selection-border)] bg-[var(--selection-soft)]',
+                  )}>
                     {PROMOTER_SIZE_LABELS[recommendation.promoterSizeSegment]}
                   </span>
                 </button>
                 {expandedRecommendationId === recommendation.id && (
                   <ul
                     id={`recommendation-reasons-${recommendation.id}`}
-                    className="recommendation-reasons"
+                    className="m-0 mt-2 grid min-w-0 gap-2 pl-4 text-sm text-[var(--text-muted)]"
                   >
                     {recommendation.reasons.map((reason, index) => {
                       const reasonKey = `${recommendation.id}-${index}`
@@ -494,25 +532,25 @@ export function PromoterRecommendationsPanel({
                         : allItems
 
                       return (
-                        <li key={reasonKey}>
+                        <li className="min-w-0 overflow-hidden" key={reasonKey}>
                           {(allItems.length > 0 && prefixMatch) ? (
                             <>
-                              <span>{reasonPrefix}</span>
-                              <ul className="recommendation-reasons-inline-list">
+                              <span className="break-words">{reasonPrefix}</span>
+                              <ul className="mt-1 flex flex-wrap gap-1.5 p-0">
                                 {visibleItems.map((item) => (
-                                  <li key={`${reasonKey}-visible-${item}`}>{item}</li>
+                                  <li className="list-none rounded-full border border-[var(--control-border)] bg-[var(--control-bg)] px-2 py-0.5 text-xs" key={`${reasonKey}-visible-${item}`}>{item}</li>
                                 ))}
                               </ul>
                             </>
                           ) : (
-                            <span>{cleanReason}</span>
+                            <span className="break-words">{cleanReason}</span>
                           )}
                           {canExpand && (
                             <>
                               {!isExpanded && (
                                 <button
                                   type="button"
-                                  className="recommendation-reasons-more-button"
+                                  className="ml-2 cursor-pointer rounded-full border border-[var(--control-border)] bg-[var(--control-bg)] px-2 py-0.5 text-xs font-semibold text-[var(--text)]"
                                   aria-expanded={false}
                                   onClick={() => handleToggleReasonItems(reasonKey)}
                                 >
@@ -521,14 +559,14 @@ export function PromoterRecommendationsPanel({
                               )}
                               {isExpanded && (
                                 <>
-                                  <ul className="recommendation-reasons-more-list">
+                                  <ul className="mt-1 flex flex-wrap gap-1.5 p-0">
                                     {hiddenItems.map((item) => (
-                                      <li key={`${reasonKey}-${item}`}>{item}</li>
+                                      <li className="list-none rounded-full border border-[var(--control-border)] bg-[var(--control-bg)] px-2 py-0.5 text-xs" key={`${reasonKey}-${item}`}>{item}</li>
                                     ))}
                                   </ul>
                                   <button
                                     type="button"
-                                    className="recommendation-reasons-more-button"
+                                    className="mt-1 cursor-pointer rounded-full border border-[var(--control-border)] bg-[var(--control-bg)] px-2 py-0.5 text-xs font-semibold text-[var(--text)]"
                                     aria-expanded
                                     onClick={() => handleToggleReasonItems(reasonKey)}
                                   >
@@ -546,27 +584,29 @@ export function PromoterRecommendationsPanel({
               </article>
             ))}
           </section>
-          <section className="recommendation-graph-map" aria-label="Recommendation evidence graph">
-            <div className="panel-heading">
-              <span className="search-query-label">
+          <section className="grid min-h-[420px] min-w-0 overflow-hidden grid-rows-[auto_minmax(0,1fr)] gap-3" aria-label="Recommendation evidence graph">
+            <div className={panelHeadingClass}>
+              <span className={labelClass}>
                 {recommendationGraphMode === 'compact' ? 'Artist-only path' : 'Full analytics graph'}
               </span>
-              <div className="panel-heading-actions">
+              <div className="flex flex-wrap items-center justify-end gap-2">
                 <RecommendationExportMenu
                   recommendationsData={recommendationsData}
                   filteredRecommendations={filteredRecommendations}
                   recommendationStrengthThreshold={recommendationStrengthThreshold}
                   recommendationGraphMode={recommendationGraphMode}
                 />
-                <button
+                <Button
                   type="button"
+                  size="sm"
+                  variant="outline"
                   onClick={handleToggleRecommendationGraphMode}
                   disabled={isRecommendationsLoading}
                 >
                   {recommendationGraphMode === 'compact'
                     ? 'Show analytics graph'
                     : 'Show compact path'}
-                </button>
+                </Button>
               </div>
             </div>
             {currentRecommendationGraph && (

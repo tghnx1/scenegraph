@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { SEARCH_RESULT_LIMIT, SEARCH_RESULT_MAX_LIMIT, fetchSearch } from '../api/search'
-import { useApi } from '../hooks/useApi'
+import { useApi } from '../api/useApi'
 import type { SearchResponse, SearchResult } from '../types/search'
 import { SearchInputField } from './components/SearchInputField'
 import { useDebouncedValue } from './hooks/useDebouncedValue'
@@ -71,6 +71,7 @@ export function AgencyPage() {
 
   return (
     <ProfilePage
+      showBiography={false}
       recommendationTargetControls={{
         artistId: selectedArtist?.id ?? null,
         emptyMessage: selectedArtist
@@ -78,7 +79,7 @@ export function AgencyPage() {
           : 'Search and select an artist, then click "Get Rec" to load promoter recommendations. Loading time may be quite long.',
         getButtonLabel: 'Get Rec',
         controls: (
-          <div className="agency-artist-recommendation-search">
+          <div className="w-[clamp(240px,28vw,360px)] shrink">
             <SearchInputField
               inputId="agency-recommendation-artist-search"
               label=""

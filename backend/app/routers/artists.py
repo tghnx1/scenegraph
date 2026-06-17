@@ -32,6 +32,16 @@ class ArtistResponse(BaseModel):
     connected_artists: List[ConnectedArtist]
 
 
+class ArtistBiographyUpdate(BaseModel):
+    biography: str
+
+
+class ArtistBiographyResponse(BaseModel):
+    id: int
+    name: str
+    biography: str
+
+
 ARTIST_SQL = """
 SELECT
     a.id,
@@ -190,5 +200,35 @@ def get_artist(
         event_count=len(events),
         events=events,
         connected_artists=connected_artists,
+    )
+
+
+@router.patch("/{id}/biography", response_model=ArtistBiographyResponse)
+def update_artist_biography(
+    id: int,
+    request: ArtistBiographyUpdate,
+    db: Connection = Depends(get_db),
+):
+    biography = request.biography.strip()
+    with db.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE artists
+            SET biography = %s,
+                biography_status = 'manually_edited'
+            WHERE id = %s
+            RETURNING id, name, biography;
+            """,
+            (biography, id),
+        )
+        artist = cur.fetchone()
+
+    if not artist:
+        raise HTTPException(status_code=404, detail="Artist not found")
+
+    return ArtistBiographyResponse(
+        id=artist["id"],
+        name=artist["name"],
+        biography=artist["biography"] or "",
     )
     

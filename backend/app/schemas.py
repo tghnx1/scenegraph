@@ -66,9 +66,35 @@ class LoginResponse(BaseModel):
     message: str
     user_id: int | None = None
     username: str | None = None
+    role: str | None = None
+    artist_id: int | None = None
     access_token: str | None = None
+    must_change_password: bool | None = None
 
+class RegisterRequest(BaseModel):
+    username: str
+    email: str
+    password: str
+    password_confirm: str
+    role: str
 
+class RegisterResponse(BaseModel):
+    success: bool
+    message: str
+    user_id: int | None = None
+
+class ChangePasswordRequest(BaseModel):
+    username: str
+    current_password: str
+    new_password: str
+    new_password_confirm: str
+
+class ChangePasswordResponse(BaseModel):
+    success: bool
+    message: str
+
+class ChangeRoleRequest(BaseModel):
+    role: str
 class SimilarityItem(BaseModel):
     id: int
     type: Literal["artist", "event"]
