@@ -48,7 +48,7 @@ def test_audit_comparison_reports_added_removed_and_empty_changes():
     ]
     after = [
         {"eventId": 1, "tags": [{"type": "theme", "value": "queer"}]},
-        {"eventId": 2, "tags": [{"type": "format", "value": "live"}]},
+        {"eventId": 2, "tags": [{"type": "mood", "value": "energetic"}]},
     ]
 
     comparison = compare_records(before, after)

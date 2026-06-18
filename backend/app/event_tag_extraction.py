@@ -25,22 +25,18 @@ from app.event_tag_taxonomy import (
     EVENT_TAG_TYPE_PRIORITY,
     PER_TYPE_LIMITS,
     canonicalize_event_tag,
-    canonicalize_series,
     evidence_supports_event_tag,
     event_extraction_rules,
     extract_deterministic_event_taxonomy_matches,
     is_event_level_theme_evidence,
-    is_valid_format_evidence,
     normalize_event_taxonomy_text,
-    normalize_series_title_root,
-    repeated_series_title_roots,
 )
 from app.text_profiles import normalize_text, truncate_text
 
 
 ExtractionProvider = Literal["openai", "azure"]
 ExtractionApi = Literal["chat_completions", "responses"]
-EventTagType = Literal["style", "format", "mood", "theme", "instrumentation", "series"]
+EventTagType = Literal["style", "mood", "theme"]
 
 DEFAULT_EXTRACTION_MODEL = "gpt-4.1-mini"
 MAX_EVENT_TEXT_CHARS = 7000
@@ -48,11 +44,8 @@ MAX_TAGS_PER_EVENT = 12
 CHUNK_FALLBACK_CHARS = 800
 
 ALLOWED_EVENT_TAG_TYPES: set[str] = {
-    "format",
     "mood",
     "theme",
-    "instrumentation",
-    "series",
 }
 
 
@@ -173,7 +166,7 @@ Return JSON in this exact shape:
 {{
   "tags": [
     {{
-      "type": "format|mood|theme|instrumentation|series",
+      "type": "mood|theme",
       "value": "short normalized tag",
       "confidence": 0.0,
       "evidence": "short phrase from event text"
@@ -212,7 +205,7 @@ Return JSON in this exact shape:
       "eventId": 123,
       "tags": [
         {{
-          "type": "format|mood|theme|instrumentation|series",
+          "type": "mood|theme",
           "value": "short normalized tag",
           "confidence": 0.0,
           "evidence": "short phrase from that event text"
@@ -268,13 +261,7 @@ def parse_event_tags_response(
             evidence, "\n".join((event_title, event_text))
         ):
             continue
-        if tag_type == "series":
-            canonical_values = canonicalize_series(
-                item.get("value"),
-                title=event_title,
-                evidence=evidence,
-            )
-        elif tag_type == "theme":
+        if tag_type == "theme":
             if not is_event_level_theme_evidence(
                 evidence,
                 "\n".join((event_title, event_text)),
@@ -289,14 +276,12 @@ def parse_event_tags_response(
         else:
             canonical_values = canonicalize_event_tag(tag_type, item.get("value"))
         for tag_value in canonical_values:
-            if tag_type != "series" and not evidence_supports_event_tag(
+            if not evidence_supports_event_tag(
                 tag_type,
                 raw_value=item.get("value"),
                 canonical_value=tag_value,
                 evidence=evidence,
             ):
-                continue
-            if tag_type == "format" and not is_valid_format_evidence(tag_value, evidence):
                 continue
             tags.append(
                 EventTag(
@@ -386,7 +371,6 @@ def canonical_event_metadata_tags(
             title=sources.title,
             description=sources.description,
             lineup_text=sources.lineup_text,
-            repeated_title_root=sources.repeated_title_root,
         )
     ]
 
@@ -671,31 +655,7 @@ def fetch_event_texts(
     with connection.cursor() as cursor:
         cursor.execute(sql, params)
         events = cursor.fetchall()
-
-    repeated_roots = load_repeated_series_roots(connection)
-    for event in events:
-        title_root = normalize_series_title_root(event.get("title"))
-        event["repeated_title_root"] = title_root if title_root in repeated_roots else ""
     return events
-
-
-def load_repeated_series_roots(connection: Connection) -> set[str]:
-    with connection.cursor() as cursor:
-        cursor.execute("SELECT title FROM events WHERE NULLIF(BTRIM(title), '') IS NOT NULL")
-        titles = [row["title"] for row in cursor.fetchall()]
-        cursor.execute(
-            """
-            SELECT name FROM promoters WHERE NULLIF(BTRIM(name), '') IS NOT NULL
-            UNION
-            SELECT name FROM venues WHERE NULLIF(BTRIM(name), '') IS NOT NULL
-            """
-        )
-        blocked_names = {
-            normalize_event_taxonomy_text(row["name"])
-            for row in cursor.fetchall()
-            if row["name"]
-        }
-    return repeated_series_title_roots(titles, blocked_names=blocked_names)
 
 
 def has_current_event_tag_extraction(
