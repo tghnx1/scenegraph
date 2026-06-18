@@ -131,7 +131,7 @@ The typical local workflow is:
 make import-events
 make backfill-normalized-texts
 make extract-artist-tags
-make generate-embeddings
+make refresh-embeddings
 make validate-import
 ```
 

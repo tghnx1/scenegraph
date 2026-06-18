@@ -85,6 +85,9 @@ class PromoterRecommendationScoringConfig:
     event_similarity_shared_genre_weight: float
     event_similarity_shared_lineup_weight: float
     event_similarity_extracted_genre_weight: float
+    event_similarity_shared_format_bonus: float
+    event_similarity_shared_theme_bonus: float
+    event_similarity_shared_mood_bonus: float
     activity_event_cap: int
     existing_partner_direct_min: int
     warm_relevant_connection_min: int
@@ -181,7 +184,10 @@ DEFAULT_PROMOTER_RECOMMENDATION_SCORING = PromoterRecommendationScoringConfig(
     event_similarity_same_venue_weight=0.5,
     event_similarity_shared_genre_weight=0.1,
     event_similarity_shared_lineup_weight=0.2,
-    event_similarity_extracted_genre_weight=0.2,
+    event_similarity_extracted_genre_weight=0.3,
+    event_similarity_shared_format_bonus=0.05,
+    event_similarity_shared_theme_bonus=0.03,
+    event_similarity_shared_mood_bonus=0.02,
     activity_event_cap=25,
     existing_partner_direct_min=1,
     warm_relevant_connection_min=1,
@@ -465,6 +471,18 @@ def promoter_recommendation_scoring_from_env() -> PromoterRecommendationScoringC
             ),
         )
     )
+    event_similarity_shared_format_bonus = env_float(
+        "PROMOTER_REC_EVENT_SIMILARITY_SHARED_FORMAT_BONUS",
+        DEFAULT_PROMOTER_RECOMMENDATION_SCORING.event_similarity_shared_format_bonus,
+    )
+    event_similarity_shared_theme_bonus = env_float(
+        "PROMOTER_REC_EVENT_SIMILARITY_SHARED_THEME_BONUS",
+        DEFAULT_PROMOTER_RECOMMENDATION_SCORING.event_similarity_shared_theme_bonus,
+    )
+    event_similarity_shared_mood_bonus = env_float(
+        "PROMOTER_REC_EVENT_SIMILARITY_SHARED_MOOD_BONUS",
+        DEFAULT_PROMOTER_RECOMMENDATION_SCORING.event_similarity_shared_mood_bonus,
+    )
     activity_event_cap = env_int(
         "PROMOTER_REC_ACTIVITY_EVENT_CAP",
         DEFAULT_PROMOTER_RECOMMENDATION_SCORING.activity_event_cap,
@@ -566,6 +584,12 @@ def promoter_recommendation_scoring_from_env() -> PromoterRecommendationScoringC
         )
     if event_similarity_per_promoter_limit <= 0:
         raise ValueError("PROMOTER_REC_EVENT_SIMILARITY_PER_PROMOTER_LIMIT must be greater than zero")
+    if event_similarity_shared_format_bonus < 0:
+        raise ValueError("PROMOTER_REC_EVENT_SIMILARITY_SHARED_FORMAT_BONUS must be non-negative")
+    if event_similarity_shared_theme_bonus < 0:
+        raise ValueError("PROMOTER_REC_EVENT_SIMILARITY_SHARED_THEME_BONUS must be non-negative")
+    if event_similarity_shared_mood_bonus < 0:
+        raise ValueError("PROMOTER_REC_EVENT_SIMILARITY_SHARED_MOOD_BONUS must be non-negative")
     if activity_event_cap <= 0:
         raise ValueError("PROMOTER_REC_ACTIVITY_EVENT_CAP must be greater than zero")
     if existing_partner_direct_min <= 0:
@@ -649,6 +673,9 @@ def promoter_recommendation_scoring_from_env() -> PromoterRecommendationScoringC
         event_similarity_shared_genre_weight=event_similarity_signal_weights[1],
         event_similarity_shared_lineup_weight=event_similarity_signal_weights[2],
         event_similarity_extracted_genre_weight=event_similarity_signal_weights[3],
+        event_similarity_shared_format_bonus=event_similarity_shared_format_bonus,
+        event_similarity_shared_theme_bonus=event_similarity_shared_theme_bonus,
+        event_similarity_shared_mood_bonus=event_similarity_shared_mood_bonus,
         activity_event_cap=activity_event_cap,
         existing_partner_direct_min=existing_partner_direct_min,
         warm_relevant_connection_min=warm_relevant_connection_min,

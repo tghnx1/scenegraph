@@ -13,8 +13,11 @@ export interface PromoterRecommendation {
   manualConnectionArtists?: Array<{ id: number; name: string }>
   promoterSizeSegment: 'small' | 'medium' | 'large'
   reasonDetails?: {
-    relatedEventTitles?: string[]
     similarPromoterEventTitles?: string[]
+    sharedExtractedGenres?: string[]
+    sharedFormats?: string[]
+    sharedThemes?: string[]
+    sharedMoods?: string[]
     similarArtistNames?: string[]
     coPlayedArtistNames?: string[]
     manualArtistNames?: string[]
@@ -24,8 +27,11 @@ export interface PromoterRecommendation {
       total?: number
     }
     rawSignals?: {
-      relatedEventTitles?: string[]
       eventSimilarityEventTitles?: string[]
+      sharedExtractedGenres?: string[]
+      sharedFormats?: string[]
+      sharedThemes?: string[]
+      sharedMoods?: string[]
       matchedArtistNames?: string[]
       coPlayedConnectionArtists?: Array<{ id: number; name: string }>
       manualConnectionArtists?: Array<{ id: number; name: string }>

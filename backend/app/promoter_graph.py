@@ -409,29 +409,24 @@ def promoter_recommendation_reasons(row: dict) -> list[str]:
         else:
             reasons.append(f"{row['matched_artist_count']} similar artists connected")
     if row["event_similarity_count"] > 0:
-        event_similarity_titles = names_list(row.get("event_similarity_event_titles"))
-        if event_similarity_titles:
-            displayed_event_similarity_count = len(event_similarity_titles)
-            reasons.append(
-                list_reason(
-                    f"{displayed_event_similarity_count} similar promoter events",
-                    event_similarity_titles,
-                )
+        reasons.append(f"{row['event_similarity_count']} similar promoter events")
+    shared_extracted_genres = names_list(row.get("shared_extracted_genres"))
+    if shared_extracted_genres:
+        reasons.append(
+            list_reason(
+                f"{len(shared_extracted_genres)} shared extracted genres",
+                shared_extracted_genres,
             )
-        else:
-            reasons.append(f"{row['event_similarity_count']} similar promoter events")
-    if row["event_count"] > 0:
-        related_event_titles = names_list(row.get("related_event_titles"))
-        if related_event_titles:
-            displayed_related_event_count = len(related_event_titles)
-            reasons.append(
-                list_reason(
-                    f"{displayed_related_event_count} related promoter events",
-                    related_event_titles,
-                )
-            )
-        else:
-            reasons.append(f"{row['event_count']} related promoter events")
+        )
+    shared_formats = names_list(row.get("shared_formats"))
+    if shared_formats:
+        reasons.append(list_reason(f"{len(shared_formats)} shared formats", shared_formats))
+    shared_themes = names_list(row.get("shared_themes"))
+    if shared_themes:
+        reasons.append(list_reason(f"{len(shared_themes)} shared themes", shared_themes))
+    shared_moods = names_list(row.get("shared_moods"))
+    if shared_moods:
+        reasons.append(list_reason(f"{len(shared_moods)} shared moods", shared_moods))
     if row["latest_event_date"] is not None:
         reasons.append(f"latest related event on {row['latest_event_date']}")
     return reasons[:4]
