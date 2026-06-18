@@ -158,9 +158,9 @@ const {
 } = useApi(...)
 
 const {
-  data: dashboardStats,
+  data: dashboardMetrics,
   refetch: refetchMetrics,
-} = useApi(fetchDashboardStats, [])
+} = useApi(fetchDashboardMetrics, [])
 ```
 
 Handle update messages:

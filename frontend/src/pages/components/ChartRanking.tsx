@@ -1,5 +1,5 @@
 import {useState} from 'react'
-import type {DashboardRankingItem} from '../../types/dashboardStats'
+import type {DashboardRankingItem} from '../../types/dashboardMetrics'
 
 type DashboardRankingBarChartProps = {
   items?: DashboardRankingItem[]

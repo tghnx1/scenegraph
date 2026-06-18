@@ -28,7 +28,7 @@ export interface DashboardRanking {
   whyItMatters: string
 }
 
-export interface DashboardStats {
+export interface DashboardMetrics {
   metrics: DashboardMetric[]
   rankings: DashboardRanking[]
   timestamps?: {

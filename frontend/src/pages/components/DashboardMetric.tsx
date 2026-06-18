@@ -1,12 +1,12 @@
 import type {
   DashboardMetric,
   DashboardRanking,
-  DashboardStats,
-} from '../../types/dashboardStats'
+  DashboardMetrics,
+} from '../../types/dashboardMetrics'
 import {DashboardRankingBarChart} from './ChartRanking'
 
 type DashboardMetricPanelsProps = {
-  dashboardStats: DashboardStats | null
+  dashboardMetrics: DashboardMetrics | null
   isLoading: boolean
   hasError: boolean
 }
@@ -340,12 +340,12 @@ function MetricGroupPanel({
   )
 }
 
-export function DashboardMetricPanels({dashboardStats, isLoading, hasError}: DashboardMetricPanelsProps) {
-  const metrics = new Map(dashboardStats?.metrics.map((metric) => [metric.id, metric]))
-  const rankings = new Map(dashboardStats?.rankings.map((ranking) => [ranking.id, ranking]))
+export function DashboardMetricPanels({dashboardMetrics, isLoading, hasError}: DashboardMetricPanelsProps) {
+  const metrics = new Map(dashboardMetrics?.metrics.map((metric) => [metric.id, metric]))
+  const rankings = new Map(dashboardMetrics?.rankings.map((ranking) => [ranking.id, ranking]))
   const isUnavailable = isLoading || hasError
-  const latestSourcePayload = dashboardStats?.timestamps?.latest_source_payload
-    ?? dashboardStats?.latest_source_payload
+  const latestSourcePayload = dashboardMetrics?.timestamps?.latest_source_payload
+    ?? dashboardMetrics?.latest_source_payload
 
   return (
     <>
