@@ -1,6 +1,6 @@
 import {useCallback, useState} from 'react'
 import {fetchDashboardStatus} from '../api/dashboardComposition'
-import {fetchDashboardStats} from '../api/dashboardStats'
+import {fetchDashboardMetrics} from '../api/dashboardMetrics'
 import {useApi} from '../api/useApi'
 import type {DashboardEntity} from '../types/dashboardComposition'
 import { Button } from '@/shared/ui/button'
@@ -30,11 +30,11 @@ export function DashboardPage() {
     [include, dateFrom, dateTo]
   )
   const {
-    data: dashboardStats,
-    isLoading: areStatsLoading,
-    error: statsError,
+    data: dashboardMetrics,
+    isLoading: areMetricsLoading,
+    error: metricsError,
     refetch: refetchMetrics,
-  } = useApi(fetchDashboardStats, [])
+  } = useApi(fetchDashboardMetrics, [])
 
   const handleDashboardUpdate = useCallback(
     ({areas}: DashboardUpdate) => {
@@ -86,9 +86,9 @@ export function DashboardPage() {
           }}
         />
         <DashboardMetricPanels
-          dashboardStats={dashboardStats}
-          isLoading={areStatsLoading}
-          hasError={Boolean(statsError)}
+          dashboardMetrics={dashboardMetrics}
+          isLoading={areMetricsLoading}
+          hasError={Boolean(metricsError)}
         />
         <DashboardManagement />
       </section>

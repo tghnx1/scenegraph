@@ -30,4 +30,5 @@ src/api/mock_data/mock_larger.ts
 exclude/*
 public/*
 scripts/*
+browser-compatibility/
 
