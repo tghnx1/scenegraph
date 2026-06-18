@@ -482,6 +482,13 @@ def promoter_recommendation_item_evidence(row: dict) -> list[RecommendationEvide
                 path="Source Artist -> Similar Artist -> Event -> Promoter",
             )
         )
+    elif row.get("shared_extracted_genres"):
+        evidence.append(
+            RecommendationEvidenceItem(
+                type="semantic_bridge",
+                path="Source Artist -> Shared Styles -> Promoter",
+            )
+        )
     return evidence
 
 # Build explainability graph payload for Artist -> Promoter recommendations.

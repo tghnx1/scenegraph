@@ -1,3 +1,4 @@
+import pytest
 from fastapi.testclient import TestClient
 from app.db import get_connection
 from app.event_similarity import artist_relevant_source_event_ids
@@ -12,6 +13,38 @@ client = TestClient(app)
 client.headers.update({"X-User-Id": "1"})
 
 
+def graph_has_genre_data() -> bool:
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT
+                    EXISTS (SELECT 1 FROM event_genres)
+                    OR EXISTS (
+                        SELECT 1
+                        FROM event_extracted_tags
+                        WHERE tag_type IN ('style', 'genre')
+                    ) AS has_genre_data
+                """
+            )
+            row = cursor.fetchone()
+    return bool(row["has_genre_data"]) if row is not None else False
+
+
+def graph_has_promoter_data() -> bool:
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT
+                    EXISTS (SELECT 1 FROM promoters)
+                    AND EXISTS (SELECT 1 FROM event_promoters) AS has_promoter_data
+                """
+            )
+            row = cursor.fetchone()
+    return bool(row["has_promoter_data"]) if row is not None else False
+
+
 def test_graph_smoke():
     response = client.get("/api/graph")
     assert response.status_code == 200
@@ -24,6 +57,8 @@ def test_graph_smoke():
 
 
 def test_graph_filters_by_genre():
+    if not graph_has_genre_data():
+        pytest.skip("No genre data loaded in the test database")
     response = client.get("/api/graph", params={"genre": "techno"})
     assert response.status_code == 200
 
@@ -77,6 +112,8 @@ def test_graph_links_reference_existing_nodes():
 
 
 def test_graph_event_shape():
+    if not graph_has_genre_data():
+        pytest.skip("No genre data loaded in the test database")
     response = client.get("/api/graph", params={"genre": "techno"})
     assert response.status_code == 200
 
@@ -94,6 +131,8 @@ def test_graph_event_shape():
 
 
 def test_graph_includes_promoter_relationships():
+    if not graph_has_promoter_data():
+        pytest.skip("No promoter graph data loaded in the test database")
     response = client.get("/api/graph", params={"limit": 1000})
     assert response.status_code == 200
 
@@ -429,6 +468,7 @@ def test_artist_promoter_recommendations_include_graph_payload():
     assert set(first["reasonDetails"]) == {
         "similarPromoterEventTitles",
         "sharedExtractedGenres",
+        "sharedExtractedGenreSources",
         "sharedThemes",
         "sharedMoods",
         "similarArtistNames",

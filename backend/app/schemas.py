@@ -172,6 +172,14 @@ class RecommendationEvidenceItem(BaseModel):
     path: str
 
 
+class PromoterGenreSourceItem(BaseModel):
+    eventId: int
+    raEventId: str | None = None
+    title: str
+    eventDate: DateValue | None = None
+    sourceType: Literal["event_genres", "event_extracted_tags"]
+
+
 class WarmConnectionArtistItem(BaseModel):
     id: int
     name: str
@@ -180,6 +188,7 @@ class WarmConnectionArtistItem(BaseModel):
 class PromoterRecommendationReasonDetails(BaseModel):
     similarPromoterEventTitles: list[str] = Field(default_factory=list)
     sharedExtractedGenres: list[str] = Field(default_factory=list)
+    sharedExtractedGenreSources: dict[str, list[PromoterGenreSourceItem]] = Field(default_factory=dict)
     sharedThemes: list[str] = Field(default_factory=list)
     sharedMoods: list[str] = Field(default_factory=list)
     similarArtistNames: list[str] = Field(default_factory=list)

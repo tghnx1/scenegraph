@@ -108,6 +108,9 @@ class PromoterRecommendationScoringConfig:
     source_event_relevance_top_k: int
 
 
+PromoterRecommendationMatchingMode = Literal["legacy", "semantic_v2"]
+
+
 DEFAULT_SEMANTIC_ARTIST_SCORING = SemanticArtistScoringConfig(
     embedding_weight=0.65,
     style_weight=0.25,
@@ -161,7 +164,7 @@ DEFAULT_PROMOTER_RECOMMENDATION_SCORING = PromoterRecommendationScoringConfig(
     direct_connection_weight=0.16,
     co_played_connection_weight=0.16,
     manual_connection_weight=0.09,
-    event_similarity_weight=0.07,
+    event_similarity_weight=0.10,
     scale_fit_weight=0.08,
     activity_weight=0.02,
     recency_weight=0.01,
@@ -206,6 +209,8 @@ DEFAULT_PROMOTER_RECOMMENDATION_SCORING = PromoterRecommendationScoringConfig(
     source_event_relevance_min_embedding_score=0.45,
     source_event_relevance_top_k=6,
 )
+
+DEFAULT_PROMOTER_RECOMMENDATION_MATCHING_MODE: PromoterRecommendationMatchingMode = "semantic_v2"
 
 DEFAULT_PROMOTER_SEGMENT_QUOTA_RATIOS: dict[str, dict[str, float]] = {
     "small": {"small": 0.50, "medium": 0.35, "large": 0.15},
@@ -271,6 +276,19 @@ def env_bool(name: str, default: bool) -> bool:
     if value in {"0", "false", "no", "off"}:
         return False
     raise ValueError(f"{name} must be a boolean value")
+
+
+def promoter_recommendation_matching_mode_from_env() -> PromoterRecommendationMatchingMode:
+    raw = os.environ.get(
+        "PROMOTER_RECOMMENDATION_MATCHING_MODE",
+        DEFAULT_PROMOTER_RECOMMENDATION_MATCHING_MODE,
+    )
+    mode = raw.strip().casefold()
+    if mode not in {"legacy", "semantic_v2"}:
+        raise ValueError(
+            "PROMOTER_RECOMMENDATION_MATCHING_MODE must be one of: legacy, semantic_v2"
+        )
+    return mode  # type: ignore[return-value]
 
 # Build semantic-artist scoring config from environment variables.
 def semantic_artist_scoring_from_env() -> SemanticArtistScoringConfig:
