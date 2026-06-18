@@ -123,7 +123,7 @@ def load_event_extracted_tags_by_id(
         sorted(
             {
                 str(tag_type).strip().lower()
-                for tag_type in (tag_types or ("style", "genre", "format", "theme", "mood"))
+                for tag_type in (tag_types or ("style", "genre", "theme", "mood"))
                 if str(tag_type).strip()
             }
         )
@@ -187,9 +187,6 @@ def compose_event_text_profile(
         )
         if saved_genres:
             structured_tag_sections.append(format_section("Extracted genres", saved_genres))
-        saved_formats = unique_texts(extracted_tags.get("format", []))
-        if saved_formats:
-            structured_tag_sections.append(format_section("Extracted formats", saved_formats))
         saved_themes = unique_texts(extracted_tags.get("theme", []))
         if saved_themes:
             structured_tag_sections.append(format_section("Extracted themes", saved_themes))
@@ -206,14 +203,7 @@ def compose_event_text_profile(
         event.get("description_text", ""),
         MAX_EVENT_DESCRIPTION_CHARS,
     )
-    title_section = format_section("Event title", event.get("title", ""))
     genres_section = format_section("Genres", genre_names)
-    structured_lineup_section = format_section("Structured lineup", artist_names)
-    lineup_context_section = format_section(
-        "Lineup context",
-        event.get("lineup_residual_text") or event.get("lineup_raw", ""),
-        MAX_EVENT_LINEUP_CHARS,
-    )
     venue_section = format_section("Venue", venue_name or event.get("venue_name", ""))
     promoters_section = format_section("Promoters", promoter_names)
 
@@ -221,10 +211,7 @@ def compose_event_text_profile(
         section_order = [
             *structured_tag_sections,
             description_section,
-            title_section,
             genres_section,
-            structured_lineup_section,
-            lineup_context_section,
             venue_section,
             promoters_section,
         ]
@@ -233,20 +220,15 @@ def compose_event_text_profile(
             " ".join(
                 part
                 for part in [
-                    normalize_text(event.get("title", "")),
                     normalize_text(event.get("description_text", "")),
-                    normalize_text(event.get("lineup_residual_text") or event.get("lineup_raw", "")),
                 ]
                 if part
             )
         )
         section_order = [
             description_section,
-            title_section,
             genres_section,
             format_section("Extracted genres", extracted_genres),
-            structured_lineup_section,
-            lineup_context_section,
             venue_section,
             promoters_section,
         ]

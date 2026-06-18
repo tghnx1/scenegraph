@@ -11,7 +11,6 @@ def test_promoter_recommendation_reasons_use_displayed_titles_count_for_event_re
         "event_similarity_count": 1,
         "event_similarity_event_titles": ["A", "B"],
         "shared_extracted_genres": ["techno", "ebm"],
-        "shared_formats": ["live"],
         "shared_themes": [],
         "shared_moods": [],
         "latest_event_date": None,
@@ -22,7 +21,6 @@ def test_promoter_recommendation_reasons_use_displayed_titles_count_for_event_re
     assert reasons == [
         "1 similar promoter events",
         "2 shared extracted genres: techno, ebm",
-        "1 shared formats: live",
     ]
 
 

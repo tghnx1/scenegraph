@@ -100,10 +100,7 @@ EVENT_TAGS_SQL = """
 SELECT tag_type, tag_value, confidence
 FROM event_extracted_tags
 WHERE event_id = %s
-  AND (
-      tag_type <> 'style'
-      OR extractor LIKE 'llm_event_tags_v3:%%'
-  )
+  AND tag_type IN ('theme', 'mood')
 ORDER BY confidence DESC;
 """
 

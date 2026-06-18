@@ -42,15 +42,14 @@ def test_event_text_profile_uses_structured_and_residual_lineup():
         venue_name="Club Ost",
     )
 
-    assert "Event title: CYBERFLEX" in profile
     assert "Description: Bass-heavy electro and breaks." in profile
     assert "Genres: Techno, Electro" in profile
     assert "Extracted genres: bass, breakbeat, electro" in profile
-    assert "Structured lineup: BabaBass3000, Structured Artist" in profile
-    assert "Lineup context: Guest Artist live" in profile
-    assert "Raw lineup:" not in profile
     assert "Venue: Club Ost" in profile
     assert "Promoters: Emotional Voyage" in profile
+    assert "Event title:" not in profile
+    assert "Structured lineup:" not in profile
+    assert "Lineup context:" not in profile
 
 
 def test_event_text_profile_prioritizes_saved_event_genres_over_raw_text():
@@ -72,9 +71,7 @@ def test_event_text_profile_prioritizes_saved_event_genres_over_raw_text():
     assert profile.index("Extracted genres: dark disco, ebm") < profile.index(
         "Description: acid techno and rave in the room"
     )
-    assert profile.index("Description: acid techno and rave in the room") < profile.index(
-        "Event title: Acid Night"
-    )
+    assert "Event title:" not in profile
 
 
 def test_artist_text_profile_uses_intrinsic_artist_text_only():
@@ -276,7 +273,7 @@ def test_build_event_text_profile_uses_saved_event_genres():
     assert "Extracted genres: acid" not in profile
 
 
-def test_build_event_text_profile_includes_saved_event_format_theme_and_mood():
+def test_build_event_text_profile_includes_saved_event_theme_and_mood():
     connection = FakeConnection()
     connection.cursor_instance.event_row = {
         "id": 2,
@@ -291,7 +288,6 @@ def test_build_event_text_profile_includes_saved_event_format_theme_and_mood():
     connection.cursor_instance.genre_rows = [{"name": "Warehouse"}]
     connection.cursor_instance.extracted_genre_rows = [
         {"event_id": 2, "tag_type": "style", "tag_value": "dark disco", "confidence": 0.9},
-        {"event_id": 2, "tag_type": "format", "tag_value": "live", "confidence": 0.9},
         {"event_id": 2, "tag_type": "theme", "tag_value": "queer", "confidence": 0.9},
         {"event_id": 2, "tag_type": "mood", "tag_value": "energetic", "confidence": 0.9},
     ]
@@ -299,7 +295,6 @@ def test_build_event_text_profile_includes_saved_event_format_theme_and_mood():
     profile = build_event_text_profile(connection, 2)
 
     assert "Extracted genres: dark disco" in profile
-    assert "Extracted formats: live" in profile
     assert "Extracted themes: queer" in profile
     assert "Extracted moods: energetic" in profile
     assert profile.index("Extracted genres: dark disco") < profile.index(

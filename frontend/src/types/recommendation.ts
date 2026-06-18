@@ -15,7 +15,13 @@ export interface PromoterRecommendation {
   reasonDetails?: {
     similarPromoterEventTitles?: string[]
     sharedExtractedGenres?: string[]
-    sharedFormats?: string[]
+    sharedExtractedGenreSources?: Record<string, Array<{
+      eventId: number
+      raEventId?: string | null
+      title: string
+      eventDate?: string | null
+      sourceType: 'event_genres' | 'event_extracted_tags'
+    }>>
     sharedThemes?: string[]
     sharedMoods?: string[]
     similarArtistNames?: string[]
@@ -29,7 +35,6 @@ export interface PromoterRecommendation {
     rawSignals?: {
       eventSimilarityEventTitles?: string[]
       sharedExtractedGenres?: string[]
-      sharedFormats?: string[]
       sharedThemes?: string[]
       sharedMoods?: string[]
       matchedArtistNames?: string[]

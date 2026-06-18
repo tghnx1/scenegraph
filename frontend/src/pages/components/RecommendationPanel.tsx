@@ -37,12 +37,19 @@ const mutedTextClass = 'text-sm text-[var(--text-muted)]'
 
 type ReasonListKind =
   | 'sharedExtractedGenres'
-  | 'sharedFormats'
   | 'sharedThemes'
   | 'sharedMoods'
   | 'similarArtists'
   | 'coPlayedArtists'
   | 'manualArtists'
+
+type SharedGenreSource = {
+  eventId: number
+  raEventId?: string | null
+  title: string
+  eventDate?: string | null
+  sourceType: 'event_genres' | 'event_extracted_tags'
+}
 
 const MORE_SUFFIX_PATTERN = /,?\s*\+\d+\s+more\.?$/i
 const REASON_PREFIX_PATTERN = /^(.+?:)\s*/
@@ -81,7 +88,6 @@ function uniqueNonEmpty(values: string[]): string[] {
 
 function detectReasonListKind(reason: string): ReasonListKind | null {
   if (reason.includes('shared extracted genres:')) return 'sharedExtractedGenres'
-  if (reason.includes('shared formats:')) return 'sharedFormats'
   if (reason.includes('shared themes:')) return 'sharedThemes'
   if (reason.includes('shared moods:')) return 'sharedMoods'
   if (reason.includes('similar artists connected:')) return 'similarArtists'
@@ -99,8 +105,6 @@ function reasonListItems(recommendation: PromoterRecommendationResponse['recomme
 
   if (kind === 'sharedExtractedGenres') {
     items = recommendation.reasonDetails?.sharedExtractedGenres ?? rawSignals?.sharedExtractedGenres ?? []
-  } else if (kind === 'sharedFormats') {
-    items = recommendation.reasonDetails?.sharedFormats ?? rawSignals?.sharedFormats ?? []
   } else if (kind === 'sharedThemes') {
     items = recommendation.reasonDetails?.sharedThemes ?? rawSignals?.sharedThemes ?? []
   } else if (kind === 'sharedMoods') {
@@ -116,6 +120,21 @@ function reasonListItems(recommendation: PromoterRecommendationResponse['recomme
   }
 
   return uniqueNonEmpty(items)
+}
+
+function sharedGenreSourceGroups(
+  recommendation: PromoterRecommendationResponse['recommendations'][number],
+): Array<{ genre: string; sources: SharedGenreSource[] }> {
+  const sourceMap = recommendation.reasonDetails?.sharedExtractedGenreSources ?? {}
+  return Object.entries(sourceMap)
+    .map(([genre, sources]) => ({
+      genre,
+      sources: Array.isArray(sources)
+        ? sources.filter((source): source is SharedGenreSource => Boolean(source && source.title))
+        : [],
+    }))
+    .filter((entry) => entry.sources.length > 0)
+    .sort((left, right) => left.genre.localeCompare(right.genre))
 }
 
 function hiddenReasonItems(recommendation: PromoterRecommendationResponse['recommendations'][number], reason: string): string[] {
@@ -624,72 +643,101 @@ export function PromoterRecommendationsPanel({
                   </Button>
                 </div>
                 {expandedRecommendationId === recommendation.id && (
-                  <ul
-                    id={`recommendation-reasons-${recommendation.id}`}
-                    className="m-0 mt-2 grid min-w-0 gap-2 pl-4 text-sm text-[var(--text-muted)]"
-                  >
-                    {recommendation.reasons.map((reason, index) => {
-                      const reasonKey = `${recommendation.id}-${index}`
-                      const hiddenItems = hiddenReasonItems(recommendation, reason)
-                      const canExpand = hiddenItems.length > 0
-                      const isExpanded = Boolean(expandedReasonItems[reasonKey])
-                      const cleanReason = reason.replace(MORE_SUFFIX_PATTERN, '')
-                      const prefixMatch = cleanReason.match(REASON_PREFIX_PATTERN)
-                      const reasonPrefix = prefixMatch ? prefixMatch[1] : cleanReason
-                      const allItems = reasonListItems(recommendation, reason)
-                      const visibleItems = canExpand
-                        ? allItems.slice(0, Math.max(allItems.length - hiddenItems.length, 0))
-                        : allItems
+                  <>
+                    <ul
+                      id={`recommendation-reasons-${recommendation.id}`}
+                      className="m-0 mt-2 grid min-w-0 gap-2 pl-4 text-sm text-[var(--text-muted)]"
+                    >
+                      {recommendation.reasons.map((reason, index) => {
+                        const reasonKey = `${recommendation.id}-${index}`
+                        const hiddenItems = hiddenReasonItems(recommendation, reason)
+                        const canExpand = hiddenItems.length > 0
+                        const isExpanded = Boolean(expandedReasonItems[reasonKey])
+                        const cleanReason = reason.replace(MORE_SUFFIX_PATTERN, '')
+                        const prefixMatch = cleanReason.match(REASON_PREFIX_PATTERN)
+                        const reasonPrefix = prefixMatch ? prefixMatch[1] : cleanReason
+                        const allItems = reasonListItems(recommendation, reason)
+                        const visibleItems = canExpand
+                          ? allItems.slice(0, Math.max(allItems.length - hiddenItems.length, 0))
+                          : allItems
 
-                      return (
-                        <li className="min-w-0 overflow-hidden" key={reasonKey}>
-                          {(allItems.length > 0 && prefixMatch) ? (
-                            <>
-                              <span className="break-words">{reasonPrefix}</span>
-                              <ul className="mt-1 flex flex-wrap gap-1.5 p-0">
-                                {visibleItems.map((item) => (
-                                  <li className="list-none rounded-full border border-[var(--control-border)] bg-[var(--control-bg)] px-2 py-0.5 text-xs" key={`${reasonKey}-visible-${item}`}>{item}</li>
-                                ))}
-                              </ul>
-                            </>
-                          ) : (
-                            <span className="break-words">{cleanReason}</span>
-                          )}
-                          {canExpand && (
-                            <>
-                              {!isExpanded && (
-                                <button
-                                  type="button"
-                                  className="ml-2 cursor-pointer rounded-full border border-[var(--control-border)] bg-[var(--control-bg)] px-2 py-0.5 text-xs font-semibold text-[var(--text)]"
-                                  aria-expanded={false}
-                                  onClick={() => handleToggleReasonItems(reasonKey)}
-                                >
-                                  {`+${hiddenItems.length} more`}
-                                </button>
-                              )}
-                              {isExpanded && (
-                                <>
-                                  <ul className="mt-1 flex flex-wrap gap-1.5 p-0">
-                                    {hiddenItems.map((item) => (
-                                      <li className="list-none rounded-full border border-[var(--control-border)] bg-[var(--control-bg)] px-2 py-0.5 text-xs" key={`${reasonKey}-${item}`}>{item}</li>
-                                    ))}
-                                  </ul>
+                        return (
+                          <li className="min-w-0 overflow-hidden" key={reasonKey}>
+                            {(allItems.length > 0 && prefixMatch) ? (
+                              <>
+                                <span className="break-words">{reasonPrefix}</span>
+                                <ul className="mt-1 flex flex-wrap gap-1.5 p-0">
+                                  {visibleItems.map((item) => (
+                                    <li className="list-none rounded-full border border-[var(--control-border)] bg-[var(--control-bg)] px-2 py-0.5 text-xs" key={`${reasonKey}-visible-${item}`}>{item}</li>
+                                  ))}
+                                </ul>
+                              </>
+                            ) : (
+                              <span className="break-words">{cleanReason}</span>
+                            )}
+                            {canExpand && (
+                              <>
+                                {!isExpanded && (
                                   <button
                                     type="button"
-                                    className="mt-1 cursor-pointer rounded-full border border-[var(--control-border)] bg-[var(--control-bg)] px-2 py-0.5 text-xs font-semibold text-[var(--text)]"
-                                    aria-expanded
+                                    className="ml-2 cursor-pointer rounded-full border border-[var(--control-border)] bg-[var(--control-bg)] px-2 py-0.5 text-xs font-semibold text-[var(--text)]"
+                                    aria-expanded={false}
                                     onClick={() => handleToggleReasonItems(reasonKey)}
                                   >
-                                    Hide
+                                    {`+${hiddenItems.length} more`}
                                   </button>
-                                </>
-                              )}
-                            </>
-                          )}
-                        </li>
-                      )
-                    })}
-                  </ul>
+                                )}
+                                {isExpanded && (
+                                  <>
+                                    <ul className="mt-1 flex flex-wrap gap-1.5 p-0">
+                                      {hiddenItems.map((item) => (
+                                        <li className="list-none rounded-full border border-[var(--control-border)] bg-[var(--control-bg)] px-2 py-0.5 text-xs" key={`${reasonKey}-${item}`}>{item}</li>
+                                      ))}
+                                    </ul>
+                                    <button
+                                      type="button"
+                                      className="mt-1 cursor-pointer rounded-full border border-[var(--control-border)] bg-[var(--control-bg)] px-2 py-0.5 text-xs font-semibold text-[var(--text)]"
+                                      aria-expanded
+                                      onClick={() => handleToggleReasonItems(reasonKey)}
+                                    >
+                                      Hide
+                                    </button>
+                                  </>
+                                )}
+                              </>
+                            )}
+                          </li>
+                        )
+                      })}
+                    </ul>
+                    {sharedGenreSourceGroups(recommendation).length > 0 && (
+                      <div className="mt-3 grid min-w-0 gap-2">
+                        <span className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--accent)]">
+                          Genre sources
+                        </span>
+                        {sharedGenreSourceGroups(recommendation).map(({ genre, sources }) => (
+                          <div className="grid min-w-0 gap-1" key={`${recommendation.id}-${genre}`}>
+                            <span className="text-sm font-semibold text-[var(--text)]">{genre}</span>
+                            <ul className="m-0 flex flex-wrap gap-1.5 p-0">
+                              {sources.map((source) => (
+                                <li
+                                  className="list-none rounded-full border border-[var(--control-border)] bg-[var(--control-bg)] px-2 py-0.5 text-xs text-[var(--text-muted)]"
+                                  key={`${recommendation.id}-${genre}-${source.eventId}-${source.sourceType}`}
+                                  title={[
+                                    source.sourceType,
+                                    source.eventDate ? `event ${source.eventDate}` : null,
+                                    source.raEventId ? `RA ${source.raEventId}` : null,
+                                  ].filter(Boolean).join(' • ')}
+                                >
+                                  {source.title}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </>
                 )}
               </article>
             ))}

@@ -418,9 +418,6 @@ def promoter_recommendation_reasons(row: dict) -> list[str]:
                 shared_extracted_genres,
             )
         )
-    shared_formats = names_list(row.get("shared_formats"))
-    if shared_formats:
-        reasons.append(list_reason(f"{len(shared_formats)} shared formats", shared_formats))
     shared_themes = names_list(row.get("shared_themes"))
     if shared_themes:
         reasons.append(list_reason(f"{len(shared_themes)} shared themes", shared_themes))
@@ -483,6 +480,13 @@ def promoter_recommendation_item_evidence(row: dict) -> list[RecommendationEvide
             RecommendationEvidenceItem(
                 type="semantic_bridge",
                 path="Source Artist -> Similar Artist -> Event -> Promoter",
+            )
+        )
+    elif row.get("shared_extracted_genres"):
+        evidence.append(
+            RecommendationEvidenceItem(
+                type="semantic_bridge",
+                path="Source Artist -> Shared Styles -> Promoter",
             )
         )
     return evidence

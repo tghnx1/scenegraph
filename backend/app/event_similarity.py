@@ -101,20 +101,20 @@ def artist_similar_events_scored_rows(
         shared_extracted_genres = sorted(source_styles & candidate_styles)
         source_tags = event_tag_sets.get(int(row["source_event_id"]), {})
         candidate_tags = event_tag_sets.get(int(row["candidate_event_id"]), {})
-        shared_formats = sorted(source_tags.get("format", set()) & candidate_tags.get("format", set()))
         shared_themes = sorted(source_tags.get("theme", set()) & candidate_tags.get("theme", set()))
         shared_moods = sorted(source_tags.get("mood", set()) & candidate_tags.get("mood", set()))
         extracted_genre_score = (
             scoring_config.event_similarity_extracted_genre_weight if shared_extracted_genres else 0.0
         )
         structured_tag_bonus = 0.0
-        if shared_formats:
-            structured_tag_bonus += scoring_config.event_similarity_shared_format_bonus
         if shared_themes:
             structured_tag_bonus += scoring_config.event_similarity_shared_theme_bonus
         if shared_moods:
             structured_tag_bonus += scoring_config.event_similarity_shared_mood_bonus
-        symbolic_score = min(float(row["symbolic_score"]) + extracted_genre_score + structured_tag_bonus, 1.0)
+        symbolic_score = min(
+            float(row["symbolic_score"]) + extracted_genre_score + structured_tag_bonus,
+            1.0,
+        )
         embedding_score = float(embedding_scores.get(row["candidate_event_id"], 0.0))
         if embedding_score < scoring_config.event_similarity_min_embedding_score:
             embedding_gate_filtered_count += 1
@@ -133,7 +133,6 @@ def artist_similar_events_scored_rows(
             {
                 **row,
                 "shared_extracted_genres": shared_extracted_genres,
-                "shared_formats": shared_formats,
                 "shared_themes": shared_themes,
                 "shared_moods": shared_moods,
                 "extracted_genre_score": extracted_genre_score,
@@ -569,7 +568,7 @@ def event_extracted_tag_sets_by_id(
     extracted_tags_by_event_id = load_event_extracted_tags_by_id(
         connection,
         unique_event_ids,
-        tag_types=("format", "theme", "mood"),
+        tag_types=("theme", "mood"),
     )
     return {
         event_id: {tag_type: set(values) for tag_type, values in tag_sets.items()}
@@ -894,11 +893,6 @@ def build_artist_similar_events_response(
                 f"{len(row['shared_extracted_genres'])} shared extracted genres: "
                 f"{', '.join(row['shared_extracted_genres'][:5])}"
             )
-        if row["shared_formats"]:
-            reasons.append(
-                f"{len(row['shared_formats'])} shared formats: "
-                f"{', '.join(row['shared_formats'][:5])}"
-            )
         if row["shared_themes"]:
             reasons.append(
                 f"{len(row['shared_themes'])} shared themes: "
@@ -933,7 +927,6 @@ def build_artist_similar_events_response(
                         "sameVenueScore": row["same_venue_score"],
                         "sharedGenreCount": row["shared_genre_count"],
                         "sharedExtractedGenres": row["shared_extracted_genres"],
-                        "sharedFormats": row["shared_formats"],
                         "sharedThemes": row["shared_themes"],
                         "sharedMoods": row["shared_moods"],
                         "sharedLineupCount": row["shared_lineup_count"],
