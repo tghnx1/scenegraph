@@ -15,6 +15,13 @@ export interface PromoterRecommendation {
   reasonDetails?: {
     similarPromoterEventTitles?: string[]
     sharedExtractedGenres?: string[]
+    sharedExtractedGenreSources?: Record<string, Array<{
+      eventId: number
+      raEventId?: string | null
+      title: string
+      eventDate?: string | null
+      sourceType: 'event_genres' | 'event_extracted_tags'
+    }>>
     sharedThemes?: string[]
     sharedMoods?: string[]
     similarArtistNames?: string[]
