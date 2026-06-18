@@ -126,6 +126,40 @@ function SubpanelHeading({title, description}: {title: string; description: stri
   )
 }
 
+function MetricInfoTooltip({metric}: {metric?: DashboardMetric}) {
+  const hasDetails = Boolean(metric?.meaning || metric?.whyItMatters)
+
+  if (!hasDetails) return null
+
+  const tooltipId = `dashboard-metric-${metric?.id}-details`
+
+  return (
+    <span className="group relative z-10 inline-grid place-items-center">
+      <button
+        type="button"
+        className="grid size-5 cursor-help place-items-center rounded-full border border-[var(--surface-border)] bg-[var(--surface-panel)] p-0 text-[var(--text-muted)] opacity-90 transition-all hover:-translate-y-px hover:border-[var(--focus-border)] hover:bg-[var(--surface-strong)] hover:text-[var(--text)] hover:opacity-100 focus-visible:-translate-y-px focus-visible:border-[var(--focus-border)] focus-visible:bg-[var(--surface-strong)] focus-visible:text-[var(--text)] focus-visible:opacity-100 focus-visible:outline-none"
+        aria-label={`Explain ${metric?.label}`}
+        aria-describedby={tooltipId}
+      >
+        <span className="block size-[13px] rounded-full text-center font-serif text-[0.7rem] font-extrabold italic leading-[13px]" aria-hidden="true">i</span>
+      </button>
+      <span
+        id={tooltipId}
+        className="pointer-events-none absolute right-0 top-[calc(100%+8px)] z-[80] hidden w-[min(320px,calc(100vw-48px))] rounded-lg border border-[var(--surface-border)] bg-[var(--surface-panel)] px-3 py-2.5 text-left text-[0.82rem] leading-snug text-[var(--text)] shadow-[var(--surface-shadow)] group-hover:block group-focus-within:block"
+        role="tooltip"
+      >
+        {metric?.meaning && <span className="block font-semibold">{metric.meaning}</span>}
+        {metric?.whyItMatters && (
+          <span className="mt-2 block text-[var(--text-muted)]">
+            <span className="font-semibold text-[var(--text)]">Why it matters: </span>
+            {metric.whyItMatters}
+          </span>
+        )}
+      </span>
+    </span>
+  )
+}
+
 function MetricCard({
   metric,
   fallbackLabel,
@@ -138,14 +172,19 @@ function MetricCard({
   const cardStatus = showStatus ? metric?.status : 'neutral'
 
   return (
-    <div className={`rounded-xl border p-3 ${statusClass[cardStatus ?? 'neutral'] ?? statusClass.neutral}`}>
+    <div className={`relative z-0 rounded-xl border p-3 hover:z-40 focus-within:z-40 ${statusClass[cardStatus ?? 'neutral'] ?? statusClass.neutral}`}>
       <div className="flex items-start justify-between gap-3">
-        <span className="text-sm font-medium text-[var(--text-muted)]">{metric?.label ?? fallbackLabel}</span>
-        {showStatus && metric?.status && (
-          <span className="rounded-full border border-current px-2 py-0.5 text-[0.65rem] font-semibold uppercase tracking-wide opacity-75">
-            {metric.status}
-          </span>
-        )}
+        <span className="flex min-w-0 items-start gap-1.5">
+          <span className="text-sm font-medium text-[var(--text-muted)]">{metric?.label ?? fallbackLabel}</span>
+          <MetricInfoTooltip metric={metric} />
+        </span>
+        <span className="flex shrink-0 items-start gap-2">
+          {showStatus && metric?.status && (
+            <span className="rounded-full border border-current px-2 py-0.5 text-[0.65rem] font-semibold uppercase tracking-wide opacity-75">
+              {metric.status}
+            </span>
+          )}
+        </span>
       </div>
       <div className="mt-2 flex flex-wrap items-baseline gap-x-2 gap-y-1">
         <strong className="text-2xl text-[var(--text)]">{formatValue(metric?.value)}</strong>
@@ -156,17 +195,41 @@ function MetricCard({
           <span className="text-xs text-[var(--text-muted)]">of {formatValue(metric.total)}</span>
         )}
       </div>
-      {/* {hasDetails && (
-        <details className="mt-3 border-t border-[var(--surface-border-soft)] pt-2 text-xs text-[var(--text-muted)]">
-          <summary className="cursor-pointer font-semibold text-[var(--text)]">About this metric</summary>
-          <div className="mt-2 grid gap-2 leading-relaxed">
-            {metric?.meaning && <p className="m-0">{metric.meaning}</p>}
-            {metric?.whyItMatters && <p className="m-0"><strong>Why it matters:</strong> {metric.whyItMatters}</p>}
-            {metric?.fix && <p className="m-0"><strong>Suggested fix:</strong> {metric.fix}</p>}
-          </div>
-        </details>
-      )} */}
     </div>
+  )
+}
+
+function RankingInfoTooltip({ranking}: {ranking?: DashboardRanking}) {
+  const hasDetails = Boolean(ranking?.meaning || ranking?.whyItMatters)
+
+  if (!hasDetails) return null
+
+  const tooltipId = `dashboard-ranking-${ranking?.id}-details`
+
+  return (
+    <span className="group relative z-10 inline-grid place-items-center">
+      <button
+        type="button"
+        className="grid size-5 cursor-help place-items-center rounded-full border border-[var(--surface-border)] bg-[var(--surface-panel)] p-0 text-[var(--text-muted)] opacity-90 transition-all hover:-translate-y-px hover:border-[var(--focus-border)] hover:bg-[var(--surface-strong)] hover:text-[var(--text)] hover:opacity-100 focus-visible:-translate-y-px focus-visible:border-[var(--focus-border)] focus-visible:bg-[var(--surface-strong)] focus-visible:text-[var(--text)] focus-visible:opacity-100 focus-visible:outline-none"
+        aria-label={`Explain ${ranking?.label}`}
+        aria-describedby={tooltipId}
+      >
+        <span className="block size-[13px] rounded-full text-center font-serif text-[0.7rem] font-extrabold italic leading-[13px]" aria-hidden="true">i</span>
+      </button>
+      <span
+        id={tooltipId}
+        className="pointer-events-none absolute right-0 top-[calc(100%+8px)] z-[80] hidden w-[min(320px,calc(100vw-48px))] rounded-lg border border-[var(--surface-border)] bg-[var(--surface-panel)] px-3 py-2.5 text-left text-[0.82rem] leading-snug text-[var(--text)] shadow-[var(--surface-shadow)] group-hover:block group-focus-within:block"
+        role="tooltip"
+      >
+        {ranking?.meaning && <span className="block font-semibold">{ranking.meaning}</span>}
+        {ranking?.whyItMatters && (
+          <span className="mt-2 block text-[var(--text-muted)]">
+            <span className="font-semibold text-[var(--text)]">Why it matters: </span>
+            {ranking.whyItMatters}
+          </span>
+        )}
+      </span>
+    </span>
   )
 }
 
@@ -280,16 +343,12 @@ function RankingCard({ranking, fallbackLabel}: {ranking?: DashboardRanking; fall
   const label = ranking?.label ?? fallbackLabel
 
   return (
-    <section className="rounded-xl border border-[var(--surface-border-soft)] bg-[var(--surface-soft)] p-3">
-      <h3 className="m-0 text-sm font-semibold text-[var(--text)]">{label}</h3>
+    <section className="relative z-0 rounded-xl border border-[var(--surface-border-soft)] bg-[var(--surface-soft)] p-3 hover:z-40 focus-within:z-40">
+      <div className="flex items-start justify-between gap-3">
+        <h3 className="m-0 text-sm font-semibold text-[var(--text)]">{label}</h3>
+        <RankingInfoTooltip ranking={ranking} />
+      </div>
       <DashboardRankingBarChart items={ranking?.items} rankingLabel={label} />
-      {/* {(ranking?.meaning || ranking?.whyItMatters) && (
-        <details className="mt-3 border-t border-[var(--surface-border-soft)] pt-2 text-xs text-[var(--text-muted)]">
-          <summary className="cursor-pointer font-semibold text-[var(--text)]">About this ranking</summary>
-          {ranking.meaning && <p className="mb-0 mt-2 leading-relaxed">{ranking.meaning}</p>}
-          {ranking.whyItMatters && <p className="mb-0 mt-2 leading-relaxed"><strong>Why it matters:</strong> {ranking.whyItMatters}</p>}
-        </details>
-      )} */}
     </section>
   )
 }
@@ -310,7 +369,7 @@ function MetricGroupPanel({
   showTimestamp?: boolean
 }) {
   return (
-    <article className="rounded-3xl border border-[color-mix(in_srgb,var(--text)_10%,transparent)] bg-[color-mix(in_srgb,var(--background)_42%,transparent)] p-5 shadow-[0_10px_24px_rgba(0,0,0,0.12)] backdrop-blur-sm">
+    <article className="relative z-0 rounded-3xl border border-[color-mix(in_srgb,var(--text)_10%,transparent)] bg-[color-mix(in_srgb,var(--background)_42%,transparent)] p-5 shadow-[0_10px_24px_rgba(0,0,0,0.12)] backdrop-blur-sm hover:z-30 focus-within:z-30">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <SubpanelHeading title={group.title} description={group.description} />
         {showTimestamp && (
