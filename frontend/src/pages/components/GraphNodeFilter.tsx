@@ -7,7 +7,7 @@ const NODE_FILTER_ITEMS = [
   { type: 'venue', label: 'Venue' },
   { type: 'artist', label: 'Artist' },
   { type: 'promoter', label: 'Promoter' },
-  /* { type: 'event', label: 'Event' }, */
+  { type: 'event', label: 'Event' },
 ] satisfies Array<{ type: NodeType; label: string }>
 
 interface GraphNodeFilterProps {
