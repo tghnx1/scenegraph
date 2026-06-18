@@ -150,10 +150,7 @@ function MetricInfoTooltip({metric}: {metric?: DashboardMetric}) {
       >
         {metric?.meaning && <span className="block font-semibold">{metric.meaning}</span>}
         {metric?.whyItMatters && (
-          <span className="mt-2 block text-[var(--text-muted)]">
-            <span className="font-semibold text-[var(--text)]">Why it matters: </span>
-            {metric.whyItMatters}
-          </span>
+          <span className="mt-2 block text-[var(--text-muted)]">{metric.whyItMatters}</span>
         )}
       </span>
     </span>
@@ -223,10 +220,7 @@ function RankingInfoTooltip({ranking}: {ranking?: DashboardRanking}) {
       >
         {ranking?.meaning && <span className="block font-semibold">{ranking.meaning}</span>}
         {ranking?.whyItMatters && (
-          <span className="mt-2 block text-[var(--text-muted)]">
-            <span className="font-semibold text-[var(--text)]">Why it matters: </span>
-            {ranking.whyItMatters}
-          </span>
+          <span className="mt-2 block text-[var(--text-muted)]">{ranking.whyItMatters}</span>
         )}
       </span>
     </span>
