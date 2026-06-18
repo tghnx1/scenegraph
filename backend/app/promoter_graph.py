@@ -418,9 +418,6 @@ def promoter_recommendation_reasons(row: dict) -> list[str]:
                 shared_extracted_genres,
             )
         )
-    shared_formats = names_list(row.get("shared_formats"))
-    if shared_formats:
-        reasons.append(list_reason(f"{len(shared_formats)} shared formats", shared_formats))
     shared_themes = names_list(row.get("shared_themes"))
     if shared_themes:
         reasons.append(list_reason(f"{len(shared_themes)} shared themes", shared_themes))

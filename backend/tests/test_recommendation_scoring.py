@@ -220,7 +220,6 @@ def test_promoter_recommendation_scoring_reads_and_normalizes_env(monkeypatch):
         event_similarity_shared_genre_weight=0.10,
         event_similarity_shared_lineup_weight=0.30,
         event_similarity_extracted_genre_weight=0.20,
-        event_similarity_shared_format_bonus=0.05,
         event_similarity_shared_theme_bonus=0.03,
         event_similarity_shared_mood_bonus=0.02,
         activity_event_cap=30,

@@ -997,7 +997,6 @@ def build_artist_promoter_recommendation_response(
                 seen_event_titles.add(normalized_title)
                 event_similarity_event_titles.append(normalized_title)
         shared_extracted_genres: list[str] = []
-        shared_formats: list[str] = []
         shared_themes: list[str] = []
         shared_moods: list[str] = []
         if event_similarity_stats is not None:
@@ -1019,10 +1018,6 @@ def build_artist_promoter_recommendation_response(
                     normalized_tag = str(tag).strip()
                     if normalized_tag and normalized_tag not in shared_extracted_genres:
                         shared_extracted_genres.append(normalized_tag)
-                for tag in item.get("shared_formats", []):
-                    normalized_tag = str(tag).strip()
-                    if normalized_tag and normalized_tag not in shared_formats:
-                        shared_formats.append(normalized_tag)
                 for tag in item.get("shared_themes", []):
                     normalized_tag = str(tag).strip()
                     if normalized_tag and normalized_tag not in shared_themes:
@@ -1042,7 +1037,6 @@ def build_artist_promoter_recommendation_response(
             "matched_artist_names": matched_artist_names,
             "event_similarity_event_titles": event_similarity_event_titles,
             "shared_extracted_genres": shared_extracted_genres,
-            "shared_formats": shared_formats,
             "shared_themes": shared_themes,
             "shared_moods": shared_moods,
         }
@@ -1125,7 +1119,6 @@ def build_artist_promoter_recommendation_response(
                 reasonDetails={
                     "similarPromoterEventTitles": event_similarity_event_titles,
                     "sharedExtractedGenres": shared_extracted_genres,
-                    "sharedFormats": shared_formats,
                     "sharedThemes": shared_themes,
                     "sharedMoods": shared_moods,
                     "similarArtistNames": matched_artist_names,
@@ -1160,7 +1153,6 @@ def build_artist_promoter_recommendation_response(
                         "eventSimilarityEmbeddingScore": event_similarity_embedding_score,
                         "eventSimilarityEventTitles": event_similarity_event_titles,
                         "sharedExtractedGenres": shared_extracted_genres,
-                        "sharedFormats": shared_formats,
                         "sharedThemes": shared_themes,
                         "sharedMoods": shared_moods,
                         "matchedArtistNames": matched_artist_names,

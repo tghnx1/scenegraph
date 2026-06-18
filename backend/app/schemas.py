@@ -180,7 +180,6 @@ class WarmConnectionArtistItem(BaseModel):
 class PromoterRecommendationReasonDetails(BaseModel):
     similarPromoterEventTitles: list[str] = Field(default_factory=list)
     sharedExtractedGenres: list[str] = Field(default_factory=list)
-    sharedFormats: list[str] = Field(default_factory=list)
     sharedThemes: list[str] = Field(default_factory=list)
     sharedMoods: list[str] = Field(default_factory=list)
     similarArtistNames: list[str] = Field(default_factory=list)

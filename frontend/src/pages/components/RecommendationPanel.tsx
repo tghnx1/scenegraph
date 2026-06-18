@@ -37,7 +37,6 @@ const mutedTextClass = 'text-sm text-[var(--text-muted)]'
 
 type ReasonListKind =
   | 'sharedExtractedGenres'
-  | 'sharedFormats'
   | 'sharedThemes'
   | 'sharedMoods'
   | 'similarArtists'
@@ -81,7 +80,6 @@ function uniqueNonEmpty(values: string[]): string[] {
 
 function detectReasonListKind(reason: string): ReasonListKind | null {
   if (reason.includes('shared extracted genres:')) return 'sharedExtractedGenres'
-  if (reason.includes('shared formats:')) return 'sharedFormats'
   if (reason.includes('shared themes:')) return 'sharedThemes'
   if (reason.includes('shared moods:')) return 'sharedMoods'
   if (reason.includes('similar artists connected:')) return 'similarArtists'
@@ -99,8 +97,6 @@ function reasonListItems(recommendation: PromoterRecommendationResponse['recomme
 
   if (kind === 'sharedExtractedGenres') {
     items = recommendation.reasonDetails?.sharedExtractedGenres ?? rawSignals?.sharedExtractedGenres ?? []
-  } else if (kind === 'sharedFormats') {
-    items = recommendation.reasonDetails?.sharedFormats ?? rawSignals?.sharedFormats ?? []
   } else if (kind === 'sharedThemes') {
     items = recommendation.reasonDetails?.sharedThemes ?? rawSignals?.sharedThemes ?? []
   } else if (kind === 'sharedMoods') {

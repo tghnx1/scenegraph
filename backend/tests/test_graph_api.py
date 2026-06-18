@@ -354,7 +354,6 @@ def test_artist_similar_events_endpoint_debug_includes_component_scores():
         "sameVenueScore",
         "sharedGenreCount",
         "sharedExtractedGenres",
-        "sharedFormats",
         "sharedThemes",
         "sharedMoods",
         "sharedLineupCount",
@@ -430,7 +429,6 @@ def test_artist_promoter_recommendations_include_graph_payload():
     assert set(first["reasonDetails"]) == {
         "similarPromoterEventTitles",
         "sharedExtractedGenres",
-        "sharedFormats",
         "sharedThemes",
         "sharedMoods",
         "similarArtistNames",
