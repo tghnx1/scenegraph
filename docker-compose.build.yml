@@ -74,6 +74,9 @@ services:
     restart: unless-stopped
     ports:
       - "8080:80"
+      - "8443:443"
+    volumes:
+      - ./nginx/certs:/etc/nginx/certs:ro
     depends_on:
       backend:
         condition: service_healthy

@@ -17,6 +17,7 @@ env/
 node_modules/
 dist/
 .npm-cache/
+nginx/certs/
 
 # Scraped Data & Logs
 *.log
