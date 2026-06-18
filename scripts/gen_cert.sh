@@ -23,7 +23,7 @@ Arguments are certificate names/IPs to include in subjectAltName.
 Use the exact hostname or IP address that browsers will use.
 
 Defaults:
-  localhost 127.0.0.1 ::1
+  scenegraph localhost 127.0.0.1 ::1
 
 Environment:
   CERT_CN       Common Name. Defaults to the first name/IP argument.
@@ -53,7 +53,7 @@ is_ip_address() {
 }
 
 if [ "$#" -eq 0 ]; then
-  set -- localhost 127.0.0.1 ::1
+  set -- scenegraph localhost 127.0.0.1 ::1
 fi
 
 #CN=${CERT_CN:-"$1"}
