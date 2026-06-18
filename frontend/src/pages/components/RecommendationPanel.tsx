@@ -36,8 +36,10 @@ const panelHeadingClass = 'flex items-center justify-between gap-3'
 const mutedTextClass = 'text-sm text-[var(--text-muted)]'
 
 type ReasonListKind =
-  | 'relatedEvents'
-  | 'similarEvents'
+  | 'sharedExtractedGenres'
+  | 'sharedFormats'
+  | 'sharedThemes'
+  | 'sharedMoods'
   | 'similarArtists'
   | 'coPlayedArtists'
   | 'manualArtists'
@@ -78,8 +80,10 @@ function uniqueNonEmpty(values: string[]): string[] {
 }
 
 function detectReasonListKind(reason: string): ReasonListKind | null {
-  if (reason.includes('related promoter events:')) return 'relatedEvents'
-  if (reason.includes('similar promoter events:')) return 'similarEvents'
+  if (reason.includes('shared extracted genres:')) return 'sharedExtractedGenres'
+  if (reason.includes('shared formats:')) return 'sharedFormats'
+  if (reason.includes('shared themes:')) return 'sharedThemes'
+  if (reason.includes('shared moods:')) return 'sharedMoods'
   if (reason.includes('similar artists connected:')) return 'similarArtists'
   if (reason.includes('co-played artists connected:')) return 'coPlayedArtists'
   if (reason.includes('manually added trusted artist links:')) return 'manualArtists'
@@ -93,10 +97,14 @@ function reasonListItems(recommendation: PromoterRecommendationResponse['recomme
   const rawSignals = recommendation.debug?.rawSignals
   let items: string[] = []
 
-  if (kind === 'relatedEvents') {
-    items = recommendation.reasonDetails?.relatedEventTitles ?? rawSignals?.relatedEventTitles ?? []
-  } else if (kind === 'similarEvents') {
-    items = recommendation.reasonDetails?.similarPromoterEventTitles ?? rawSignals?.eventSimilarityEventTitles ?? []
+  if (kind === 'sharedExtractedGenres') {
+    items = recommendation.reasonDetails?.sharedExtractedGenres ?? rawSignals?.sharedExtractedGenres ?? []
+  } else if (kind === 'sharedFormats') {
+    items = recommendation.reasonDetails?.sharedFormats ?? rawSignals?.sharedFormats ?? []
+  } else if (kind === 'sharedThemes') {
+    items = recommendation.reasonDetails?.sharedThemes ?? rawSignals?.sharedThemes ?? []
+  } else if (kind === 'sharedMoods') {
+    items = recommendation.reasonDetails?.sharedMoods ?? rawSignals?.sharedMoods ?? []
   } else if (kind === 'similarArtists') {
     items = recommendation.reasonDetails?.similarArtistNames ?? rawSignals?.matchedArtistNames ?? []
   } else if (kind === 'coPlayedArtists') {

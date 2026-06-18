@@ -443,6 +443,12 @@ def build_artist_promoter_recommendation_response(
         artist_id=artist_id,
         debug=False,
     )
+    source_artist_semantic = artist_semantic_metadata(connection, [artist_id]).get(artist_id, {})
+    source_artist_confirmed_styles = {
+        str(style).strip().casefold()
+        for style in source_artist_semantic.get("style_tags", [])
+        if isinstance(style, str) and style.strip()
+    }
     source_metadata = recommendation_item_metadata(connection, "artist", [artist_id])
     source_artist = source_metadata.get(artist_id)
     if source_artist is None:
@@ -975,18 +981,6 @@ def build_artist_promoter_recommendation_response(
             if isinstance(matched_artist_names_raw, list)
             else []
         )
-        related_event_titles_raw = row.get("related_event_titles")
-        related_event_titles = (
-            sorted(
-                {
-                    title.strip()
-                    for title in related_event_titles_raw
-                    if isinstance(title, str) and title.strip()
-                }
-            )
-            if isinstance(related_event_titles_raw, list)
-            else []
-        )
         event_similarity_event_titles: list[str] = []
         if event_similarity_stats is not None:
             seen_event_titles: set[str] = set()
@@ -1002,7 +996,41 @@ def build_artist_promoter_recommendation_response(
                     continue
                 seen_event_titles.add(normalized_title)
                 event_similarity_event_titles.append(normalized_title)
-        related_event_titles = sorted(set(related_event_titles) | set(event_similarity_event_titles))
+        shared_extracted_genres: list[str] = []
+        shared_formats: list[str] = []
+        shared_themes: list[str] = []
+        shared_moods: list[str] = []
+        if event_similarity_stats is not None:
+            shared_tag_rows = sorted(
+                event_similarity_stats["rows"],
+                key=lambda item: (-item["total_similarity_score"], item["candidate_event_id"]),
+            )[:5]
+            for item in shared_tag_rows:
+                row_shared_genres = [
+                    str(tag).strip()
+                    for tag in item.get("shared_extracted_genres", [])
+                    if isinstance(tag, str) and tag.strip()
+                ]
+                if source_artist_confirmed_styles:
+                    row_shared_genres = [
+                        tag for tag in row_shared_genres if tag.casefold() in source_artist_confirmed_styles
+                    ]
+                for tag in row_shared_genres:
+                    normalized_tag = str(tag).strip()
+                    if normalized_tag and normalized_tag not in shared_extracted_genres:
+                        shared_extracted_genres.append(normalized_tag)
+                for tag in item.get("shared_formats", []):
+                    normalized_tag = str(tag).strip()
+                    if normalized_tag and normalized_tag not in shared_formats:
+                        shared_formats.append(normalized_tag)
+                for tag in item.get("shared_themes", []):
+                    normalized_tag = str(tag).strip()
+                    if normalized_tag and normalized_tag not in shared_themes:
+                        shared_themes.append(normalized_tag)
+                for tag in item.get("shared_moods", []):
+                    normalized_tag = str(tag).strip()
+                    if normalized_tag and normalized_tag not in shared_moods:
+                        shared_moods.append(normalized_tag)
         row_with_similarity = {
             **row,
             "event_similarity_count": event_similarity_count,
@@ -1013,7 +1041,10 @@ def build_artist_promoter_recommendation_response(
             "manual_warm_connection_artists": manual_connection_artists,
             "matched_artist_names": matched_artist_names,
             "event_similarity_event_titles": event_similarity_event_titles,
-            "related_event_titles": related_event_titles,
+            "shared_extracted_genres": shared_extracted_genres,
+            "shared_formats": shared_formats,
+            "shared_themes": shared_themes,
+            "shared_moods": shared_moods,
         }
         co_played_connection_score = min(
             row["warm_connection_count"] / scoring_config.warm_connection_cap,
@@ -1092,8 +1123,11 @@ def build_artist_promoter_recommendation_response(
                 directConnectionCount=row["direct_connection_count"],
                 evidence=promoter_recommendation_item_evidence(row_with_similarity),
                 reasonDetails={
-                    "relatedEventTitles": related_event_titles,
                     "similarPromoterEventTitles": event_similarity_event_titles,
+                    "sharedExtractedGenres": shared_extracted_genres,
+                    "sharedFormats": shared_formats,
+                    "sharedThemes": shared_themes,
+                    "sharedMoods": shared_moods,
                     "similarArtistNames": matched_artist_names,
                     "coPlayedArtistNames": [str(item.get("name", "")) for item in warm_connection_artists if item.get("name")],
                     "manualArtistNames": [str(item.get("name", "")) for item in manual_connection_artists if item.get("name")],
@@ -1125,7 +1159,10 @@ def build_artist_promoter_recommendation_response(
                         "eventSimilaritySymbolicScore": event_similarity_symbolic_score,
                         "eventSimilarityEmbeddingScore": event_similarity_embedding_score,
                         "eventSimilarityEventTitles": event_similarity_event_titles,
-                        "relatedEventTitles": related_event_titles,
+                        "sharedExtractedGenres": shared_extracted_genres,
+                        "sharedFormats": shared_formats,
+                        "sharedThemes": shared_themes,
+                        "sharedMoods": shared_moods,
                         "matchedArtistNames": matched_artist_names,
                         "artistScale": source_artist_scale,
                         "promoterScale": promoter_scale,

@@ -178,8 +178,11 @@ class WarmConnectionArtistItem(BaseModel):
 
 
 class PromoterRecommendationReasonDetails(BaseModel):
-    relatedEventTitles: list[str] = Field(default_factory=list)
     similarPromoterEventTitles: list[str] = Field(default_factory=list)
+    sharedExtractedGenres: list[str] = Field(default_factory=list)
+    sharedFormats: list[str] = Field(default_factory=list)
+    sharedThemes: list[str] = Field(default_factory=list)
+    sharedMoods: list[str] = Field(default_factory=list)
     similarArtistNames: list[str] = Field(default_factory=list)
     coPlayedArtistNames: list[str] = Field(default_factory=list)
     manualArtistNames: list[str] = Field(default_factory=list)

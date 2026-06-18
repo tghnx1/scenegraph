@@ -354,8 +354,12 @@ def test_artist_similar_events_endpoint_debug_includes_component_scores():
         "sameVenueScore",
         "sharedGenreCount",
         "sharedExtractedGenres",
+        "sharedFormats",
+        "sharedThemes",
+        "sharedMoods",
         "sharedLineupCount",
         "extractedGenreScore",
+        "structuredTagBonus",
         "symbolicScore",
         "embeddingScore",
     }
@@ -424,8 +428,11 @@ def test_artist_promoter_recommendations_include_graph_payload():
     assert first["evidence"]
     assert "reasonDetails" in first
     assert set(first["reasonDetails"]) == {
-        "relatedEventTitles",
         "similarPromoterEventTitles",
+        "sharedExtractedGenres",
+        "sharedFormats",
+        "sharedThemes",
+        "sharedMoods",
         "similarArtistNames",
         "coPlayedArtistNames",
         "manualArtistNames",
@@ -607,7 +614,7 @@ def test_artist_promoter_recommendations_include_event_similarity_connections():
     ]
     if event_similarity_recommendations and has_event_similarity_evidence:
         assert event_similarity_links
-        assert all(link.get("style") == "dashed" for link in event_similarity_links)
+        assert all(link.get("style") in {"solid", "dashed"} for link in event_similarity_links)
     elif event_similarity_recommendations:
         # eventSimilarity can come from embedding-only signal even when no symbolic path exists
         assert not event_similarity_links

@@ -10,16 +10,19 @@ def test_promoter_recommendation_reasons_use_displayed_titles_count_for_event_re
         "matched_artist_count": 0,
         "event_similarity_count": 1,
         "event_similarity_event_titles": ["A", "B"],
-        "event_count": 1,
-        "related_event_titles": ["A", "B", "C"],
+        "shared_extracted_genres": ["techno", "ebm"],
+        "shared_formats": ["live"],
+        "shared_themes": [],
+        "shared_moods": [],
         "latest_event_date": None,
     }
 
     reasons = promoter_recommendation_reasons(row)
 
     assert reasons == [
-        "2 similar promoter events: A, B",
-        "3 related promoter events: A, B, C",
+        "1 similar promoter events",
+        "2 shared extracted genres: techno, ebm",
+        "1 shared formats: live",
     ]
 
 
