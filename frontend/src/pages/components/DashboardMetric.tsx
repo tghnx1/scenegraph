@@ -81,7 +81,7 @@ const SEMANTIC_METRIC_GROUPS = [
 
 const statusClass: Record<string, string> = {
   good: 'border-[var(--promoter-border)] bg-[var(--promoter-soft)]',
-  warning: 'border-[var(--venue)] bg-[color-mix(in_srgb,var(--venue)_12%,transparent)]',
+  warning: 'border-[var(--selection-border-strong)] bg-[var(--selection-panel)]',
   critical: 'border-[var(--event-border-soft)] bg-[var(--event-soft)]',
   neutral: 'border-[var(--surface-border-soft)] bg-[var(--surface-soft)]',
 }
