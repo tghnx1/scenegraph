@@ -1,35 +1,64 @@
 import { AdminUsersPage } from "./AdminUsersPage"
-import { useEffect, useState } from 'react'
 import { getActivityLog, type ActivityLogItem, exportActivityLog } from "../api/auth"
-
-const overviewStats = [
-  { label: 'Events', value: '2,486', note: '+184 this import' },
-  { label: 'Artists', value: '5,621', note: '438 newly linked' },
-  { label: 'Venues', value: '312', note: '18 recently updated' },
-  { label: 'Promoters', value: '1,048', note: '76 active this month' },
-  { label: 'Genres', value: '18', note: 'Imported taxonomy' },
-  { label: 'Last import', value: '14:32', note: 'Resident Advisor' },
-]
-
-const qualityItems = [
-  { label: 'Artists missing bio', value: '400', tone: 'warning' },
-  { label: 'Venues missing address', value: '25', tone: 'warning' },
-  { label: 'Events without venues', value: '9', tone: 'danger' },
-  { label: 'Promoters without contact', value: '37', tone: 'warning' },
-  { label: 'Possible duplicate artists', value: '64', tone: 'danger' },
-  { label: 'Possible duplicate venues', value: '11', tone: 'warning' },
-]
-
-const dataStatistics = [
-  { label: 'Avg artist connectivity', value: '6.4', note: 'connections per artist' },
-  { label: 'Median artist connectivity', value: '3', note: 'typical artist degree' },
-  { label: 'Avg promoter connectivity', value: '12.8', note: 'connections per promoter' },
-  { label: 'Median promoter connectivity', value: '7', note: 'typical promoter degree' },
-  { label: 'Incomplete networks', value: '118', note: 'missing artist, event, venue, or promoter' },
-  { label: 'Complete networks', value: '1,932', note: 'all 4 entity types linked' },
-]
+import {useCallback, useEffect, useState} from 'react'
+import {fetchDashboardStatus} from '../api/dashboardComposition'
+import {fetchDashboardMetrics} from '../api/dashboardMetrics'
+import {useApi} from '../api/useApi'
+import type {DashboardEntity} from '../types/dashboardComposition'
+import { Button } from '@/shared/ui/button'
+import {DashboardExportMenu} from './components/ExportDashboard'
+import {DashboardMetricPanels} from './components/DashboardMetric'
+import {DashboardStatistics} from './components/DashboardComposition'
+import {useDashboardUpdates, type DashboardUpdate} from './hooks/useDashboardUpdates'
 
 export function DashboardPage() {
+  const [selectedEntities, setSelectedEntities] = useState<DashboardEntity[]>([
+    'events',
+    'artists',
+    'promoters',
+    'venues',
+  ])
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
+  const include = selectedEntities.join(',')
+  const {
+    data: dashboardStatus,
+    isLoading,
+    error,
+    refetch: refetchComposition,
+  } = useApi(
+    () => fetchDashboardStatus({entities: selectedEntities, dateFrom, dateTo}),
+    [include, dateFrom, dateTo]
+  )
+  const {
+    data: dashboardMetrics,
+    isLoading: areMetricsLoading,
+    error: metricsError,
+    refetch: refetchMetrics,
+  } = useApi(fetchDashboardMetrics, [])
+
+  const handleDashboardUpdate = useCallback(
+    ({areas}: DashboardUpdate) => {
+      if (areas.includes('composition')) {
+        void refetchComposition()
+      }
+
+      if (areas.includes('metrics')) {
+        void refetchMetrics()
+      }
+    },
+    [refetchComposition, refetchMetrics],
+  )
+
+  useDashboardUpdates(handleDashboardUpdate)
+
+  const toggleEntity = (entity: DashboardEntity) => {
+    setSelectedEntities((current) => current.includes(entity)
+      ? current.filter((item) => item !== entity)
+      : [...current, entity]
+    )
+  }
+
   const[activityRows, setActivityRows] = useState<ActivityLogItem[]>([])
 
   const loadActivity = async () => {
@@ -42,115 +71,97 @@ export function DashboardPage() {
   }
 
   useEffect(() => {
-    loadActivity()
+    void loadActivity()
   }, [])
 
   return (
-    <div className="dashboard-page">
-      <div className="dashboard-actions" aria-label="Dashboard actions">
-        <button type="button">Run import</button>
-        <button type="button">View logs</button>
+    <div className="mx-auto min-h-full w-full max-w-[1480px] p-4">
+      <div className="mb-4 flex justify-end gap-2" aria-label="Dashboard actions">
+        <Button type="button" size="sm">Run import</Button>
+        <DashboardExportMenu
+          dashboardStatus={dashboardStatus}
+          selectedEntities={selectedEntities}
+          dateFrom={dateFrom}
+          dateTo={dateTo}
+        />
       </div>
 
-      <section className="dashboard-overview" aria-label="SceneGraph overview">
-        {overviewStats.map((item) => (
-          <article key={item.label} className="dashboard-stat-card dashboard-mock-element">
-            <span>{item.label}</span>
-            <strong>{item.value}</strong>
-            <small>{item.note}</small>
-          </article>
-        ))}
-      </section>
+      {error && <p className="mt-5 text-[var(--event)]">Failed to load dashboard status.</p>}
 
-      <section className="dashboard-admin-grid" aria-label="Admin dashboard sections">
-        <article className="dashboard-panel dashboard-mock-element">
-          <div className="panel-heading">
-            <span className="search-query-label">Data quality</span>
-            <span className="panel-status">Missing entries</span>
-          </div>
-          <div className="quality-list">
-            {qualityItems.map((item) => (
-              <div key={item.label} className={`quality-item ${item.tone}`}>
-                <span>{item.label}</span>
-                <strong>{item.value}</strong>
-              </div>
-            ))}
-          </div>
-        </article>
+      <section className="grid gap-5" aria-label="Admin dashboard sections">
+        <DashboardStatistics
+          dashboardStatus={dashboardStatus}
+          isLoading={isLoading}
+          hasError={Boolean(error)}
+          selectedEntities={selectedEntities}
+          onToggleEntity={toggleEntity}
+          dateFrom={dateFrom}
+          dateTo={dateTo}
+          onDateRangeChange={(nextDateFrom, nextDateTo) => {
+            setDateFrom(nextDateFrom)
+            setDateTo(nextDateTo)
+          }}
+        />
+        <DashboardMetricPanels
+          dashboardMetrics={dashboardMetrics}
+          isLoading={areMetricsLoading}
+          hasError={Boolean(metricsError)}
+        />
 
-        <article className="dashboard-panel dashboard-mock-element">
-          <div className="panel-heading">
-            <span className="search-query-label">Data statistics</span>
-            <span className="panel-status">Connectivity</span>
-          </div>
-          <div className="graph-health-grid">
-            {dataStatistics.map((metric) => (
-              <div key={metric.label}>
-                <strong>{metric.value}</strong>
-                <span>{metric.label}</span>
-                <small>{metric.note}</small>
-              </div>
-            ))}
-          </div>
-        </article>
+        <div className="grid gap-6 lg:grid-cols-2">
+          <AdminUsersPage compact onActivityChanged={loadActivity} />
 
-        <article className="dashboard-panel dashboard-panel-full dashboard-mock-element">
-          <div 
-            className="dashboard-management-stack"
-            style={{
-              display: 'grid',
-              gridTemplateColumns: '1fr 1fr',
-              gap: 24,
-              alignItems: 'start',
-            }}
-          >
-            <section>
-                <AdminUsersPage compact onActivityChanged={loadActivity} />
-            </section>
-
-            <section>
-              <div
-                className="dashboard-section-heading"
-                style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, }}  
-              >
-                <span>Login, logout, and registration activity</span>
-                <button type="button" onClick={exportActivityLog}>
-                  Export activity log
-                </button>
-              </div>
-              <div 
-                className="dashboard-scroll-list"
+          <section>
+            <div
+              className="mb-3 flex items-center justify-between"
+            >
+              <span>Login, logout, and registration activity</span>
+              <button 
+                type="button"
+                onClick={exportActivityLog}
                 style={{
-                  maxHeight: 460, 
-                  overflowY: 'auto',
-                  display: 'grid',
-                  gap: 6,
-                  fontFamily: 'monospace',
-                  fontSize: 13,
-                }}
+                  padding: '8px 12px',
+                  borderRadius: 8,
+                  border: '1px solid color-mix(in srgb, var(--text) 20%, transparent)',
+                  background: 'color-mix(in srgb, var(--background) 88%, var(--text) 8%)',
+                }}                
               >
-                {activityRows.map((row) => (
-                  <div 
-                    key={row.id}
-                    style={{
-                      display: 'grid',
-                      gridTemplateColumns: '170px 120px 1fr',
-                      gap: 12,
-                      padding: '6px 0',
-                      borderBottom: '1px solid color-mix(in srgb, var(--text) 12%, transparent)',
-                    }}
-                  >
-                    <span>{new Date(row.created_at).toLocaleString()}</span>
-                    <strong>{row.event_type}</strong>
-                    <span>
-                      {row.username ?? 'unknown'} → {row.target ?? '-'}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </section>
-           </div>
-        </article>
+                Export activity log
+              </button>
+            </div>
+
+            <div
+              className="dashboard-scroll-list"
+              style={{
+                maxHeight: 460,
+                overflowY: 'auto',
+                display: 'grid',
+                gap: 6,
+                fontFamily: 'monospace',
+                fontSize: 13,
+              }}
+            >
+              {activityRows.map((row) => (
+                <div
+                  key={row.id}
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: '170px 120px 1fr',
+                    gap: 12,
+                    padding: '6px 0',
+                    borderBottom: '1px solid color-mix(in srgb, var(--text) 12%, transparent)',
+                  }}
+                >
+                  <span>{new Date(row.created_at).toLocaleString()}</span>
+                  <strong>{row.event_type}</strong>
+                  <span>
+                    {row.username ?? 'unknown'} → {row.target ?? '-'}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </section>
+        </div>
       </section>
     </div>
   )

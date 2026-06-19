@@ -1,6 +1,7 @@
 from app.text_profiles import (
     compose_artist_text_profile,
     compose_event_text_profile,
+    build_event_text_profile,
     normalize_biography_text,
     normalize_text,
     rank_recurring_names,
@@ -41,15 +42,36 @@ def test_event_text_profile_uses_structured_and_residual_lineup():
         venue_name="Club Ost",
     )
 
-    assert "Event title: CYBERFLEX" in profile
     assert "Description: Bass-heavy electro and breaks." in profile
     assert "Genres: Techno, Electro" in profile
     assert "Extracted genres: bass, breakbeat, electro" in profile
-    assert "Structured lineup: BabaBass3000, Structured Artist" in profile
-    assert "Lineup context: Guest Artist live" in profile
-    assert "Raw lineup:" not in profile
     assert "Venue: Club Ost" in profile
     assert "Promoters: Emotional Voyage" in profile
+    assert "Event title:" not in profile
+    assert "Structured lineup:" not in profile
+    assert "Lineup context:" not in profile
+
+
+def test_event_text_profile_prioritizes_saved_event_genres_over_raw_text():
+    profile = compose_event_text_profile(
+        {
+            "title": "Acid Night",
+            "description_text": "acid techno and rave in the room",
+            "lineup_raw": "DJ A",
+            "lineup_residual_text": "",
+        },
+        artist_names=["DJ A"],
+        promoter_names=["Promoter X"],
+        genre_names=["Warehouse"],
+        venue_name="Club Ost",
+        extracted_genres=["dark disco", "ebm"],
+    )
+
+    assert profile.startswith("Extracted genres: dark disco, ebm")
+    assert profile.index("Extracted genres: dark disco, ebm") < profile.index(
+        "Description: acid techno and rave in the room"
+    )
+    assert "Event title:" not in profile
 
 
 def test_artist_text_profile_uses_intrinsic_artist_text_only():
@@ -124,6 +146,21 @@ def test_artist_text_profile_includes_extracted_tags():
     assert "Residencies: Radio Night" in profile
 
 
+def test_artist_text_profile_recanonicalizes_stored_style_tags():
+    profile = compose_artist_text_profile(
+        {
+            "name": "Tagged Artist",
+            "biography": "No explicit genre.",
+            "biography_normalized": None,
+        },
+        extracted_tags={"style": ["dnb", "drum & bass", "sensual deep electric"]},
+    )
+
+    assert "Styles: drum and bass" in profile
+    assert "dnb" not in profile
+    assert "sensual deep electric" not in profile
+
+
 def test_artist_text_profile_caps_long_biography():
     profile = compose_artist_text_profile(
         {
@@ -163,3 +200,103 @@ def test_rank_recurring_names_sorts_by_frequency_then_name():
         "Club Ost",
         "about blank",
     ]
+
+
+class FakeCursor:
+    def __init__(self):
+        self.last_query = ""
+        self.last_params = None
+        self.event_row = None
+        self.artist_rows = []
+        self.promoter_rows = []
+        self.genre_rows = []
+        self.extracted_genre_rows = []
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_args):
+        return None
+
+    def execute(self, query, params=None):
+        self.last_query = " ".join(query.split())
+        self.last_params = params
+
+    def fetchone(self):
+        if "to_regclass('public.event_extracted_genres')" in self.last_query:
+            return {"table_name": "event_extracted_genres"}
+        if "FROM events e" in self.last_query:
+            return self.event_row
+        raise AssertionError(f"Unexpected fetchone query: {self.last_query}")
+
+    def fetchall(self):
+        if "JOIN event_artists ea" in self.last_query:
+            return self.artist_rows
+        if "FROM promoters p" in self.last_query:
+            return self.promoter_rows
+        if "FROM genres g" in self.last_query:
+            return self.genre_rows
+        if "FROM event_extracted_tags" in self.last_query:
+            return self.extracted_genre_rows
+        raise AssertionError(f"Unexpected fetchall query: {self.last_query}")
+
+
+class FakeConnection:
+    def __init__(self):
+        self.cursor_instance = FakeCursor()
+
+    def cursor(self):
+        return self.cursor_instance
+
+
+def test_build_event_text_profile_uses_saved_event_genres():
+    connection = FakeConnection()
+    connection.cursor_instance.event_row = {
+        "id": 1,
+        "title": "Acid Night",
+        "description_text": "acid techno and rave in the room",
+        "lineup_raw": "DJ A",
+        "lineup_residual_text": "",
+        "venue_name": "Club Ost",
+    }
+    connection.cursor_instance.artist_rows = [{"name": "DJ A"}]
+    connection.cursor_instance.promoter_rows = [{"name": "Promoter X"}]
+    connection.cursor_instance.genre_rows = [{"name": "Warehouse"}]
+    connection.cursor_instance.extracted_genre_rows = [
+        {"event_id": 1, "tag_type": "style", "tag_value": "dark disco", "confidence": 0.9},
+        {"event_id": 1, "tag_type": "style", "tag_value": "ebm", "confidence": 0.8},
+    ]
+
+    profile = build_event_text_profile(connection, 1)
+
+    assert "Extracted genres: dark disco, ebm" in profile
+    assert "Extracted genres: acid" not in profile
+
+
+def test_build_event_text_profile_includes_saved_event_theme_and_mood():
+    connection = FakeConnection()
+    connection.cursor_instance.event_row = {
+        "id": 2,
+        "title": "Safe & Queer Night",
+        "description_text": "inclusive and energetic party",
+        "lineup_raw": "DJ A",
+        "lineup_residual_text": "",
+        "venue_name": "Club Ost",
+    }
+    connection.cursor_instance.artist_rows = [{"name": "DJ A"}]
+    connection.cursor_instance.promoter_rows = [{"name": "Promoter X"}]
+    connection.cursor_instance.genre_rows = [{"name": "Warehouse"}]
+    connection.cursor_instance.extracted_genre_rows = [
+        {"event_id": 2, "tag_type": "style", "tag_value": "dark disco", "confidence": 0.9},
+        {"event_id": 2, "tag_type": "theme", "tag_value": "queer", "confidence": 0.9},
+        {"event_id": 2, "tag_type": "mood", "tag_value": "energetic", "confidence": 0.9},
+    ]
+
+    profile = build_event_text_profile(connection, 2)
+
+    assert "Extracted genres: dark disco" in profile
+    assert "Extracted themes: queer" in profile
+    assert "Extracted moods: energetic" in profile
+    assert profile.index("Extracted genres: dark disco") < profile.index(
+        "Description: inclusive and energetic party"
+    )

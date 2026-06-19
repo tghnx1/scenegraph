@@ -35,4 +35,8 @@ export const api = { //exported api object --> public interface. everything else
     request<T>(path, options),
   post: <T>(path: string, body: unknown, options: RequestInit = {}) =>
     request<T>(path, { ...options, method: 'POST', body: JSON.stringify(body) }),
+  patch: <T>(path: string, body: unknown) =>
+    request<T>(path, { method: 'PATCH', body: JSON.stringify(body) }),
+  delete: <T>(path: string) =>
+    request<T>(path, { method: 'DELETE' }),
 }

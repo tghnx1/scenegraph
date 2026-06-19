@@ -5,13 +5,25 @@ export interface PromoterRecommendation {
   type: 'promoter'
   name: string
   score?: number
+  baseScore?: number
+  feedbackBoost?: number
+  feedbackState?: 'positive' | 'negative' | null
   reasons: string[]
   warmConnectionArtists?: Array<{ id: number; name: string }>
   manualConnectionArtists?: Array<{ id: number; name: string }>
   promoterSizeSegment: 'small' | 'medium' | 'large'
   reasonDetails?: {
-    relatedEventTitles?: string[]
     similarPromoterEventTitles?: string[]
+    sharedExtractedGenres?: string[]
+    sharedExtractedGenreSources?: Record<string, Array<{
+      eventId: number
+      raEventId?: string | null
+      title: string
+      eventDate?: string | null
+      sourceType: 'event_genres' | 'event_extracted_tags'
+    }>>
+    sharedThemes?: string[]
+    sharedMoods?: string[]
     similarArtistNames?: string[]
     coPlayedArtistNames?: string[]
     manualArtistNames?: string[]
@@ -21,8 +33,10 @@ export interface PromoterRecommendation {
       total?: number
     }
     rawSignals?: {
-      relatedEventTitles?: string[]
       eventSimilarityEventTitles?: string[]
+      sharedExtractedGenres?: string[]
+      sharedThemes?: string[]
+      sharedMoods?: string[]
       matchedArtistNames?: string[]
       coPlayedConnectionArtists?: Array<{ id: number; name: string }>
       manualConnectionArtists?: Array<{ id: number; name: string }>

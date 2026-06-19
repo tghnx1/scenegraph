@@ -152,9 +152,9 @@ app.add_middleware(
 from app.routers.index import router
 app.include_router(router, prefix="/api")
 
-JWT_SECRET_KEY= os.getenv("JWT_SECRET_KEY")
-JWT_ALGORITHM=os.getenv("JWT_ALGORITHM")
-JWT_EXPIRE_MINUTES=int(os.getenv("JWT_EXPIRE_MINUTES"))
+JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY")
+JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
+JWT_EXPIRE_MINUTES = int(os.getenv("JWT_EXPIRE_MINUTES", "120"))
 if JWT_SECRET_KEY is None:
     raise RuntimeError("JWT_SECRET_KEY not configured")
 
@@ -174,8 +174,8 @@ def get_current_user(
 
         if user_id is None:
             raise HTTPException(status_code=401, detail="Invalid token")
-        
-    except JWTError:
+
+    except (JWTError, ValueError):
         raise HTTPException(status_code=401, detail="Invalid token")
 
     with connection.cursor() as cursor:
@@ -465,11 +465,11 @@ async def change_password(
     password_error = validate_password(password_data.new_password)
 
     if password_error:
-        return RegisterResponse(
+        return ChangePasswordResponse(
             success=False,
-            message="Password format error",
+            message=password_error,
         )
-    
+
     with connection.cursor() as cursor:
         cursor.execute(
             """
@@ -700,8 +700,8 @@ async def activate_user(
             connection,
             updated_user["id"],
             updated_user["username"],
-            "deactivation",
-            f"Deactivated by {admin['username']}",
+            "activation",
+            f"Activated by {admin['username']}",
         )
 
         log_activity(

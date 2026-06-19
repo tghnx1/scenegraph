@@ -67,6 +67,7 @@ class LoginResponse(BaseModel):
     user_id: int | None = None
     username: str | None = None
     role: str | None = None
+    artist_id: int | None = None
     access_token: str | None = None
     must_change_password: bool | None = None
 
@@ -171,14 +172,25 @@ class RecommendationEvidenceItem(BaseModel):
     path: str
 
 
+class PromoterGenreSourceItem(BaseModel):
+    eventId: int
+    raEventId: str | None = None
+    title: str
+    eventDate: DateValue | None = None
+    sourceType: Literal["event_genres", "event_extracted_tags"]
+
+
 class WarmConnectionArtistItem(BaseModel):
     id: int
     name: str
 
 
 class PromoterRecommendationReasonDetails(BaseModel):
-    relatedEventTitles: list[str] = Field(default_factory=list)
     similarPromoterEventTitles: list[str] = Field(default_factory=list)
+    sharedExtractedGenres: list[str] = Field(default_factory=list)
+    sharedExtractedGenreSources: dict[str, list[PromoterGenreSourceItem]] = Field(default_factory=dict)
+    sharedThemes: list[str] = Field(default_factory=list)
+    sharedMoods: list[str] = Field(default_factory=list)
     similarArtistNames: list[str] = Field(default_factory=list)
     coPlayedArtistNames: list[str] = Field(default_factory=list)
     manualArtistNames: list[str] = Field(default_factory=list)
@@ -189,6 +201,9 @@ class PromoterRecommendationItem(BaseModel):
     type: Literal["promoter"] = "promoter"
     name: str
     score: float
+    baseScore: float | None = None
+    feedbackBoost: float = 0.0
+    feedbackState: Literal["positive", "negative"] | None = None
     semanticScore: float
     strengthScore: float
     activityScore: float
@@ -272,14 +287,15 @@ class ArtistTagsResponse(BaseModel):
     tags: list[ArtistTagItem]
 
 
-EntityKind = Literal["artist", "event"]
-FeedbackValue = Literal["positive", "negative", "hidden"]
+FeedbackSourceKind = Literal["artist"]
+FeedbackCandidateKind = Literal["promoter"]
+FeedbackValue = Literal["positive", "negative"]
 
 
 class RecommendationFeedbackRequest(BaseModel):
-    sourceEntityType: EntityKind
+    sourceEntityType: FeedbackSourceKind
     sourceEntityId: int
-    candidateEntityType: EntityKind
+    candidateEntityType: FeedbackCandidateKind
     candidateEntityId: int
     feedback: FeedbackValue
     reason: str | None = None
@@ -287,9 +303,10 @@ class RecommendationFeedbackRequest(BaseModel):
 
 class RecommendationFeedbackItem(BaseModel):
     id: int
-    sourceEntityType: EntityKind
+    userId: int
+    sourceEntityType: FeedbackSourceKind
     sourceEntityId: int
-    candidateEntityType: EntityKind
+    candidateEntityType: FeedbackCandidateKind
     candidateEntityId: int
     feedback: FeedbackValue
     reason: str | None = None

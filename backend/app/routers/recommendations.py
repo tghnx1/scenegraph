@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from psycopg import Connection
 
 from app.db import get_db
+from app.auth import get_current_user_id
 from app.event_similarity import build_artist_similar_events_response
 from app.recommendation_engine import build_similarity_response
 from app.recommendation_scoring import promoter_recommendation_api_limit_max_from_env
@@ -185,6 +186,7 @@ async def recommend_promoters_for_artist(
     limit: int = Query(default=10, ge=1, le=PROMOTER_REC_API_LIMIT_MAX),
     exclude_existing: bool = Query(default=True),
     debug: bool = Query(default=False),
+    user_id: int = Depends(get_current_user_id),
     connection: Connection = Depends(get_db),
 ) -> PromoterRecommendationResponse:
     return build_artist_promoter_recommendation_response(
@@ -193,6 +195,7 @@ async def recommend_promoters_for_artist(
         limit=limit,
         exclude_existing=exclude_existing,
         debug=debug,
+        user_id=user_id,
     )
 
 

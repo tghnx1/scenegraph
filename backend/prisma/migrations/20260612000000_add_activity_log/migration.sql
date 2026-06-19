@@ -6,4 +6,3 @@ CREATE TABLE IF NOT EXISTS "activity_log" (
     "target" TEXT,
     "created_at" TIMESTAMP(6) WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
-

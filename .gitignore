@@ -17,6 +17,7 @@ env/
 node_modules/
 dist/
 .npm-cache/
+nginx/certs/
 
 # Scraped Data & Logs
 *.log
@@ -49,6 +50,4 @@ scenegraph_dump*.sql
 *.iml
 
 # intentional by H
-backend_a/
-backend_t/
-backend_m/
+browser-compatibility/

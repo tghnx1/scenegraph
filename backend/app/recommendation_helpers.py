@@ -9,7 +9,7 @@ from app.recommendation_scoring import (
     semantic_artist_scoring_from_env,
     semantic_artist_tag_scoring_from_env,
 )
-from app.schemas import EntityKind, RecommendationFeedbackItem
+from app.schemas import RecommendationFeedbackItem
 from app.style_tags import extract_style_tags, style_overlap_score
 
 # Build stable graph node ids used across graph payloads.
@@ -22,6 +22,7 @@ def feedback_item_from_row(row: dict) -> RecommendationFeedbackItem:
     """Convert raw feedback SQL rows into API DTOs."""
     return RecommendationFeedbackItem(
         id=row["id"],
+        userId=row["user_id"],
         sourceEntityType=row["source_entity_type"],
         sourceEntityId=row["source_entity_id"],
         candidateEntityType=row["candidate_entity_type"],
@@ -32,15 +33,15 @@ def feedback_item_from_row(row: dict) -> RecommendationFeedbackItem:
         updatedAt=row["updated_at"],
     )
 
-# Validate that a referenced artist/event exists for feedback operations.
+# Validate that a referenced artist/promoter exists for feedback operations.
 def ensure_feedback_entity_exists(
     connection: Connection,
     *,
-    entity_type: EntityKind,
+    entity_type: str,
     entity_id: int,
 ) -> None:
     """Ensure referenced recommendation entity exists or raise 404."""
-    table_name = "artists" if entity_type == "artist" else "events"
+    table_name = "artists" if entity_type == "artist" else "promoters"
     with connection.cursor() as cursor:
         cursor.execute(f"SELECT 1 FROM {table_name} WHERE id = %s", (entity_id,))
         if cursor.fetchone() is None:
@@ -182,6 +183,146 @@ def shared_tag_values(source_tags: list[str], candidate_tags: list[str]) -> list
         candidate_lookup[key]
         for key in ({tag.casefold() for tag in source_tags} & set(candidate_lookup.keys()))
     )
+
+
+def promoter_style_candidate_ids(
+    connection: Connection,
+    *,
+    source_style_tags: list[str],
+    limit: int,
+) -> list[int]:
+    """Return promoter ids with the strongest overlap against source artist styles."""
+    normalized_source_styles = sorted(
+        {
+            str(tag).strip().casefold()
+            for tag in source_style_tags
+            if isinstance(tag, str) and tag.strip()
+        }
+    )
+    if not normalized_source_styles or limit <= 0:
+        return []
+
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            WITH source_styles AS (
+                SELECT DISTINCT lower(btrim(style_tag)) AS style_tag
+                FROM unnest(%s::text[]) AS style_tag
+                WHERE btrim(style_tag) <> ''
+            ),
+            promoter_styles AS (
+                SELECT DISTINCT
+                    ep.promoter_id,
+                    lower(g.name) AS style_tag
+                FROM event_promoters ep
+                JOIN event_genres eg
+                    ON eg.event_id = ep.event_id
+                JOIN genres g
+                    ON g.id = eg.genre_id
+                WHERE btrim(g.name) <> ''
+                UNION
+                SELECT DISTINCT
+                    ep.promoter_id,
+                    lower(eet.tag_value) AS style_tag
+                FROM event_promoters ep
+                JOIN event_extracted_tags eet
+                    ON eet.event_id = ep.event_id
+                WHERE eet.tag_type IN ('style', 'genre')
+                  AND btrim(eet.tag_value) <> ''
+            ),
+            ranked_promoters AS (
+                SELECT
+                    ps.promoter_id,
+                    count(DISTINCT ps.style_tag)::int AS shared_style_count
+                FROM promoter_styles ps
+                JOIN source_styles ss
+                    ON ss.style_tag = ps.style_tag
+                GROUP BY ps.promoter_id
+            )
+            SELECT promoter_id
+            FROM ranked_promoters
+            ORDER BY shared_style_count DESC, promoter_id ASC
+            LIMIT %s
+            """,
+            (normalized_source_styles, limit),
+        )
+        return [int(row["promoter_id"]) for row in cursor.fetchall()]
+
+
+def load_promoter_style_sources(
+    connection: Connection,
+    promoter_ids: list[int],
+) -> dict[int, dict[str, list[dict[str, object]]]]:
+    unique_promoter_ids = sorted(set(promoter_ids))
+    if not unique_promoter_ids:
+        return {}
+
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            WITH promoter_style_sources AS (
+                SELECT DISTINCT
+                    ep.promoter_id,
+                    lower(g.name) AS genre_tag,
+                    e.id AS event_id,
+                    e.ra_event_id,
+                    e.title,
+                    e.event_date::date AS event_date,
+                    'event_genres'::text AS source_type
+                FROM event_promoters ep
+                JOIN events e
+                    ON e.id = ep.event_id
+                JOIN event_genres eg
+                    ON eg.event_id = e.id
+                JOIN genres g
+                    ON g.id = eg.genre_id
+                WHERE ep.promoter_id = ANY(%s)
+                  AND btrim(g.name) <> ''
+                UNION
+                SELECT DISTINCT
+                    ep.promoter_id,
+                    lower(eet.tag_value) AS genre_tag,
+                    e.id AS event_id,
+                    e.ra_event_id,
+                    e.title,
+                    e.event_date::date AS event_date,
+                    'event_extracted_tags'::text AS source_type
+                FROM event_promoters ep
+                JOIN events e
+                    ON e.id = ep.event_id
+                JOIN event_extracted_tags eet
+                    ON eet.event_id = e.id
+                WHERE ep.promoter_id = ANY(%s)
+                  AND eet.tag_type IN ('style', 'genre')
+                  AND btrim(eet.tag_value) <> ''
+            )
+            SELECT promoter_id, genre_tag, event_id, ra_event_id, title, event_date, source_type
+            FROM promoter_style_sources
+            ORDER BY promoter_id ASC, genre_tag ASC, event_date DESC NULLS LAST, event_id DESC
+            """,
+            (unique_promoter_ids, unique_promoter_ids),
+        )
+        rows = cursor.fetchall()
+
+    result: dict[int, dict[str, list[dict[str, object]]]] = {}
+    for row in rows:
+        promoter_id = int(row["promoter_id"])
+        genre_tag = str(row["genre_tag"]).strip()
+        if not genre_tag:
+            continue
+        promoter_sources = result.setdefault(promoter_id, {})
+        genre_sources = promoter_sources.setdefault(genre_tag, [])
+        genre_sources.append(
+            {
+                "eventId": int(row["event_id"]),
+                "raEventId": str(row["ra_event_id"]) if row["ra_event_id"] is not None else None,
+                "title": str(row["title"]),
+                "eventDate": row["event_date"],
+                "sourceType": str(row["source_type"]),
+            }
+        )
+
+    return result
 
 # Compute weighted score across extracted artist tag groups.
 def extracted_tag_score(

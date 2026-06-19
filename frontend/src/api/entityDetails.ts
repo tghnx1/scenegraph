@@ -1,6 +1,7 @@
 import { api } from './client'
 import { graphEntityId, type NodeType } from '../types/graph'
 import type { EntityDetail } from '../types/entityDetail'
+import type { ArtistDetail } from '../types/artist'
 
 const detailPathByType: Record<NodeType, string> = {
   artist: 'artist',
@@ -9,9 +10,6 @@ const detailPathByType: Record<NodeType, string> = {
   promoter: 'promoter',
 }
 
-// export const fetchEntityDetail = (type: NodeType, id: string): Promise<EntityDetail> =>
-//   api.get<EntityDetail>(`/${type}?id=${encodeURIComponent(String(graphEntityId(id, type) ?? id))}`)
-
 export const fetchEntityDetail = (type: NodeType, id: string): Promise<EntityDetail> => {
   const entityId = graphEntityId(id, type) ?? id
 
@@ -19,3 +17,18 @@ export const fetchEntityDetail = (type: NodeType, id: string): Promise<EntityDet
     `/${detailPathByType[type]}/${encodeURIComponent(String(entityId))}`
   )
 }
+
+export interface ArtistBiographyResponse {
+  id: number
+  name: string
+  biography: string
+}
+
+export const fetchArtistBiography = (artistId: number): Promise<ArtistDetail> =>
+  api.get<ArtistDetail>(`/artist/${artistId}`)
+
+export const updateArtistBiography = (
+  artistId: number,
+  biography: string,
+): Promise<ArtistBiographyResponse> =>
+  api.patch<ArtistBiographyResponse>(`/artist/${artistId}/biography`, {biography})

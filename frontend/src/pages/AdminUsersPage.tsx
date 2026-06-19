@@ -12,7 +12,11 @@ export function AdminUsersPage({ compact = false, onActivityChanged, }: AdminUse
   const [allUsers, setAllUsers] = useState<UserItem[]>([])
 
   const adminButtonStyle = {
-    width: '140px',
+    padding: '8px 12px',
+    background: 'color-mix(in srgb, var(--background) 88%, var(--text) 8%)',
+    border: '1px solid color-mix(in srgb, var(--text) 20%, transparent)',
+    borderRadius: 8,
+    cursor: 'pointer',
   }
 
   //const loadUsers = async () => {
@@ -47,7 +51,7 @@ export function AdminUsersPage({ compact = false, onActivityChanged, }: AdminUse
   const handleApprove = async (user: PendingUser) => {
     if (!confirm(`Approve ${user.username}?`)) return
 
-    const response = await approveUser(user.id)
+    await approveUser(user.id)
     //setMessage(response.message)
     await loadUsers()
     await loadAllUsers()
@@ -58,7 +62,7 @@ export function AdminUsersPage({ compact = false, onActivityChanged, }: AdminUse
   if (!confirm(`Reject ${user.username}?`))
     return
 
-    const response = await rejectUser(user.id)
+    await rejectUser(user.id)
     //setMessage(response.message)
     await loadUsers()
     await loadAllUsers()
@@ -68,7 +72,7 @@ export function AdminUsersPage({ compact = false, onActivityChanged, }: AdminUse
   const handleDeactivate = async (user: UserItem) => {
     if (!confirm(`Deactivate ${user.username}?`)) return
 
-    const response = await deactivateUser(user.id)
+    await deactivateUser(user.id)
     //setMessage(response.message)
     await loadUsers()
     await loadAllUsers()
@@ -78,7 +82,7 @@ export function AdminUsersPage({ compact = false, onActivityChanged, }: AdminUse
   const handleActivate = async (user: UserItem) => {
     if (!confirm(`Activate ${user.username}?`)) return
 
-    const response = await activateUser(user.id)
+    await activateUser(user.id)
     //setMessage(response.message)
     await loadUsers()
     await loadAllUsers()
@@ -90,7 +94,7 @@ export function AdminUsersPage({ compact = false, onActivityChanged, }: AdminUse
 
     if (!confirm(`Change ${user.username} to ${newRole}?`)) return
 
-    const response = await changeUserRole(user.id, newRole)
+    await changeUserRole(user.id, newRole)
     //setMessage(response.message)
     await loadUsers()
     await loadAllUsers()
@@ -121,17 +125,18 @@ export function AdminUsersPage({ compact = false, onActivityChanged, }: AdminUse
               display: 'grid',
               gridTemplateColumns: '1fr',
               gap: 8,
-              alignItems: 'start',
               padding: '12px 16px',
-              minHeight: 90,
+              minHeight: 120,
+              background: 'color-mix(in srgb, var(--background) 82%, var(--text) 8%)',
+              borderRadius: 12,
               border:
                 user.role === 'agent'
                   ? '2px solid var(--accent)'
-                  : undefined,
+                  : '1px solid color-mix(in srgb, var(--text) 18%, transparent)',
             }}
           >
 
-            <div style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            <div style={{ whiteSpace: 'normal', overflow: 'visible', textOverflow: 'ellipsis' }}>
               <strong>{user.username}</strong>
               <span> — {user.email}</span>
               <span> — {user.role}</span>
@@ -178,14 +183,18 @@ export function AdminUsersPage({ compact = false, onActivityChanged, }: AdminUse
               gridTemplateColumns: '1fr',
               gap: 8,
               padding: '12px 16px',
-              minHeight: 90,
+              minHeight: 120,
+
+              background: 'color-mix(in srgb, var(--background) 82%, var(--text) 8%)',
+              borderRadius: 12,
+
               border:
                 user.role === 'agent'
                   ? '2px solid var(--accent)'
-                  : undefined,
+                  : '1px solid color-mix(in srgb, var(--text) 18%, transparent)',
             }}
           >
-            <div style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            <div style={{ whiteSpace: 'normal', overflow: 'visible', textOverflow: 'ellipsis' }}>
               <strong>{user.username}</strong>
               <span> — {user.email}</span>
               <span> — {user.role}</span>

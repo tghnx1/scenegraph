@@ -1,11 +1,13 @@
 import ForceGraph2D from 'react-force-graph-2d'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
+import { Button } from '@/shared/ui/button'
+import { cn } from '@/shared/lib/cn-utils.ts'
 import { fetchEgoGraph, fetchGraph, type GraphParams } from '../../api/graph.ts'
 import { fetchGenres } from '../../api/genres.ts'
-import { useApi } from '../../hooks/useApi.ts'
-import { useGraphStore } from '../../store/graphStore.ts'
-import { getCssVar, hexToRgba } from '../../styles/colors.ts'
+import { useApi } from '../../api/useApi.ts'
+import { useGraphStore } from '../../shared/store/graphStore.ts'
+import { getCssVar, hexToRgba } from '../../shared/styles/colors.ts'
 import { graphEntityId, type GraphData, type GraphNode, type NodeType } from '../../types/graph.ts'
 import type { SearchEntityType } from '../../types/search.ts'
 import { drawNodeShape } from '../hooks/drawNode.ts'
@@ -17,9 +19,7 @@ import { GRAPH_NODE_TYPES, GraphNodeFilter } from './GraphNodeFilter.tsx'
 const MIN_GRAPH_HEIGHT = 320
 const DEFAULT_GRAPH_FILTERS: GraphParams = { limit: 100 }
 const EMPTY_GRAPH_DATA: GraphData = { nodes: [], links: [] }
-const DEFAULT_VISIBLE_NODE_TYPES = new Set<NodeType>(
-  GRAPH_NODE_TYPES.filter((nodeType) => nodeType !== 'venue'),
-)
+const DEFAULT_VISIBLE_NODE_TYPES = new Set<NodeType>(GRAPH_NODE_TYPES)
 const EGO_GRAPH_CENTER_RETRIES = 24
 const EGO_GRAPH_CENTER_RETRY_MS = 80
 const EGO_GRAPH_CENTER_DURATION_MS = 520
@@ -100,6 +100,7 @@ export function ScenegraphMapPanel({
   const selectedType = isSearchEntityType(selectedTypeParam) ? selectedTypeParam : null
   const selectedId = searchParams.get('selectedId') ?? ''
   const selectedEntityId = selectedType && selectedId ? graphEntityId(selectedId, selectedType) : null
+  const isEgoGraphMode = Boolean(!providedData && selectedType && selectedId)
 
   const { data, isLoading, error, refetch } = useApi<GraphData>(
     () => {
@@ -130,11 +131,12 @@ export function ScenegraphMapPanel({
   const hasRecommendationControls = Boolean(providedData && !showFilters)
 
   const graphData = useMemo<GraphData>(() => {
-    const visibleNodes = showNodeTypeFilter
+    const isNodeTypeFilteringEnabled = showNodeTypeFilter && !isEgoGraphMode
+    const visibleNodes = isNodeTypeFilteringEnabled
       ? rawGraphData.nodes.filter((node) => visibleNodeTypes.has(node.type))
       : rawGraphData.nodes
     const visibleNodeIds = new Set(visibleNodes.map((node) => node.id))
-    const visibleLinks = showNodeTypeFilter
+    const visibleLinks = isNodeTypeFilteringEnabled
       ? rawGraphData.links.filter((link) => (
         visibleNodeIds.has(getLinkNodeId(link.source as LinkEndpoint))
         && visibleNodeIds.has(getLinkNodeId(link.target as LinkEndpoint))
@@ -165,6 +167,7 @@ export function ScenegraphMapPanel({
     }
   }, [
     hasRecommendationControls,
+    isEgoGraphMode,
     rawGraphData,
     showNodeTypeFilter,
     visibleNodeTypes,
@@ -424,7 +427,7 @@ export function ScenegraphMapPanel({
     if (nextSelectedNode && selectedNode?.id !== nextSelectedNode.id) {
       setSelected(nextSelectedNode)
     }
-  }, [data, providedData, selectedEntityId, selectedNode?.id, selectedType, setSelected])
+  }, [data, providedData, selectedEntityId, selectedType, setSelected])
 
   useEffect(() => {
     const container = containerRef.current
@@ -472,9 +475,6 @@ export function ScenegraphMapPanel({
       if (isSameSelectedNode && !isCurrentEgoGraph) {
         nextParams.set('selectedType', nextNode.type)
         nextParams.set('selectedId', String(nextNode.entityId))
-      } else {
-        nextParams.delete('selectedType')
-        nextParams.delete('selectedId')
       }
 
       setSearchParams(nextParams, { replace: false })
@@ -520,7 +520,6 @@ export function ScenegraphMapPanel({
     })
   }, [])
 
-  const graphBackground = getCssVar('--background')
   const linkHighlight = getCssVar('--link-highlight')
   const linkDim = getCssVar('--link-dim')
   const nodeCount = recommendationPathGraphData.nodes.length
@@ -545,16 +544,22 @@ export function ScenegraphMapPanel({
 
   return (
     <section
-      className={`scenegraph-map-panel${title ? ' has-heading' : ''}${showFilters ? '' : ' without-filters'}`}
+      className={cn(
+        'grid h-full min-h-0 min-w-0 gap-3',
+        title && showFilters && 'grid-rows-[auto_auto_minmax(0,1fr)]',
+        title && !showFilters && 'grid-rows-[auto_minmax(0,1fr)]',
+        !title && showFilters && 'grid-rows-[auto_minmax(0,1fr)]',
+        !title && !showFilters && 'grid-rows-[minmax(0,1fr)]',
+      )}
       aria-label="Scenegraph database"
     >
       {title && (
-        <div className="scenegraph-map-heading">
-          <span className="search-query-label">{title}</span>
+        <div className="min-w-0">
+          <span className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--accent)]">{title}</span>
         </div>
       )}
       {showFilters && (
-        <article className="graph-filter-card scenegraph-map-filters">
+        <article className="min-w-0 rounded-[18px] border border-[color-mix(in_srgb,var(--text)_10%,transparent)] bg-[color-mix(in_srgb,var(--background)_38%,transparent)] p-4 backdrop-blur-sm">
           <GraphFilters
             filters={graphFilters}
             genres={genres ?? []}
@@ -565,20 +570,25 @@ export function ScenegraphMapPanel({
           />
         </article>
       )}
-      <div ref={containerRef} className="graph-canvas graph-canvas--large">
-        {isLoading && !data && <div className="graph-canvas-status">Loading graph...</div>}
+      <div ref={containerRef} className="relative z-[1] h-full min-h-[320px] w-full overflow-hidden rounded-3xl border border-[color-mix(in_srgb,var(--text)_9%,transparent)] bg-transparent [contain:layout_size_paint]">
+        {isLoading && !data && <div className="absolute left-4 top-4 z-[2] rounded-xl border border-[var(--control-border)] bg-[var(--surface-overlay)] px-3 py-2.5 text-sm text-[var(--text-muted)]">Loading graph...</div>}
         {error && (
-          <div className="graph-canvas-status error">
-            {error} <button onClick={refetch}>retry</button>
+          <div className="absolute left-4 top-4 z-[2] rounded-xl border border-[var(--control-border)] bg-[var(--surface-overlay)] px-3 py-2.5 text-sm text-[var(--event)]">
+            {error} <Button type="button" size="sm" variant="outline" className="ml-2 rounded-full" onClick={refetch}>retry</Button>
           </div>
         )}
-        <div className="graph-canvas-counts" aria-label={`${nodeCount} nodes and ${linkCount} links displayed`}>
+        <div className="absolute bottom-4 right-4 z-[2] inline-flex gap-2.5 rounded-full border border-[var(--control-border)] bg-[var(--surface-overlay)] px-3 py-2 text-[0.86rem] text-[var(--text-muted)] backdrop-blur-md" aria-label={`${nodeCount} nodes and ${linkCount} links displayed`}>
           <span>{nodeCount} nodes</span>
           <span>{linkCount} links</span>
         </div>
         {showNodeTypeFilter && (
-          <GraphNodeFilter visibleNodeTypes={visibleNodeTypes} onToggle={handleLegendToggle} />
+          <GraphNodeFilter
+            visibleNodeTypes={visibleNodeTypes}
+            onToggle={handleLegendToggle}
+            disabled={isEgoGraphMode}
+          />
         )}
+        <div className="absolute inset-0">
         <ForceGraph2D
           ref={graphRef}
           width={graphSize.width || undefined}
@@ -637,10 +647,11 @@ export function ScenegraphMapPanel({
               onRecommendationGraphPaneClick()
             }
           }}
-          backgroundColor={graphBackground}
+          backgroundColor="rgba(0,0,0,0)"
           warmupTicks={120}
           cooldownTicks={180}
         />
+        </div>
       </div>
     </section>
   )

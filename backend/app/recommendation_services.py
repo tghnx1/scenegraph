@@ -19,6 +19,13 @@ from app.promoter_graph import (
     project_compact_recommendation_graph,
     promoter_warm_network_evidence,
 )
+from app.promoter_feedback import (
+    apply_promoter_feedback_reranking,
+    load_promoter_feedback,
+    load_promoter_content_profiles,
+    promoter_content_similarities,
+    promoter_feedback_config_from_env,
+)
 from app.recommendation_engine import (
     apply_artist_indirect_features,
     recommendation_feature_sets,
@@ -26,7 +33,10 @@ from app.recommendation_engine import (
 from app.recommendation_helpers import (
     artist_semantic_metadata,
     build_artist_semantic_candidates,
+    load_promoter_style_sources,
+    promoter_style_candidate_ids,
     recommendation_item_metadata,
+    shared_tag_values,
 )
 from app.recommendation_scoring import (
     DEFAULT_RECOMMENDATION_SCORING,
@@ -35,8 +45,10 @@ from app.recommendation_scoring import (
     hybrid_graph_score,
     promoter_segment_quota_ratios_from_env,
     promoter_segment_warm_share_from_env,
+    promoter_recommendation_matching_mode_from_env,
     promoter_recommendation_scoring_from_env,
 )
+from app.style_tags import style_overlap_score
 from app.schemas import (
     ArtistRecommendationItem,
     ArtistRecommendationResponse,
@@ -428,6 +440,7 @@ def build_artist_promoter_recommendation_response(
     limit: int,
     exclude_existing: bool,
     debug: bool,
+    user_id: int,
 ) -> PromoterRecommendationResponse:
     """Build Artist -> Promoter recommendations with all weighted internal signals."""
     scoring_config = promoter_recommendation_scoring_from_env()
@@ -435,6 +448,27 @@ def build_artist_promoter_recommendation_response(
         connection,
         artist_id=artist_id,
         debug=False,
+    )
+    source_artist_semantic = artist_semantic_metadata(connection, [artist_id]).get(artist_id, {})
+    matching_mode = promoter_recommendation_matching_mode_from_env()
+    source_artist_confirmed_styles = {
+        str(style).strip().casefold()
+        for style in source_artist_semantic.get("style_tags", [])
+        if isinstance(style, str) and style.strip()
+    }
+    source_artist_style_tags = [
+        str(style).strip()
+        for style in source_artist_semantic.get("style_tags", [])
+        if isinstance(style, str) and style.strip()
+    ]
+    style_candidate_ids = (
+        promoter_style_candidate_ids(
+            connection,
+            source_style_tags=source_artist_style_tags,
+            limit=scoring_config.sql_candidate_limit,
+        )
+        if matching_mode == "semantic_v2"
+        else []
     )
     source_metadata = recommendation_item_metadata(connection, "artist", [artist_id])
     source_artist = source_metadata.get(artist_id)
@@ -532,6 +566,17 @@ def build_artist_promoter_recommendation_response(
                 "without manual-known-artist links. Run migrations to enable this signal."
             )
 
+        style_promoters_cte = """
+            style_promoters AS (
+                SELECT DISTINCT promoter_id
+                FROM unnest(%(style_promoter_ids)s::bigint[]) AS style_promoter_ids(promoter_id)
+            ),
+            """
+        style_promoters_union = """
+                UNION
+                SELECT promoter_id FROM style_promoters
+        """ if matching_mode == "semantic_v2" else ""
+
         cursor.execute(
             f"""
             WITH semantic_candidates AS (
@@ -545,6 +590,7 @@ def build_artist_promoter_recommendation_response(
                 WHERE artist_id = %(source_artist_id)s
             ),
             {manual_known_artists_cte}
+            {style_promoters_cte if matching_mode == "semantic_v2" else ""}
             co_played_artists AS (
                 SELECT DISTINCT
                     ea_shared.artist_id AS co_artist_id,
@@ -642,6 +688,7 @@ def build_artist_promoter_recommendation_response(
                 SELECT promoter_id FROM warm_promoters
                 UNION
                 SELECT promoter_id FROM manual_warm_promoters
+                {style_promoters_union}
             ),
             promoter_interest AS (
                 SELECT
@@ -712,116 +759,159 @@ def build_artist_promoter_recommendation_response(
                 "artist_scores": artist_scores,
                 "source_artist_id": artist_id,
                 "manual_relevant_artist_ids": sorted(manual_relevant_artist_ids),
+                "style_promoter_ids": style_candidate_ids,
                 "sql_candidate_limit": scoring_config.sql_candidate_limit,
             },
         )
         rows = cursor.fetchall()
 
-    similar_event_rows, _, similar_event_debug_counts = artist_similar_events_scored_rows(
-        connection,
-        source_artist_id=artist_id,
-        limit=max(
-            limit * scoring_config.event_similarity_overfetch_multiplier,
-            scoring_config.event_similarity_overfetch_min,
-        ),
-        exclude_same_promoter=True,
-        scoring_config=scoring_config,
-        collect_debug=debug,
-    )
+    event_similarity_event_titles: list[str] = []
     event_similarity_below_threshold_filtered = 0
-    event_similarity_embedding_gate_filtered = int(
-        similar_event_debug_counts.get("embeddingGateFiltered", 0)
-    )
+    event_similarity_embedding_gate_filtered = 0
     event_similarity_per_promoter_limit_cutoff = 0
-    event_similarity_rows_by_promoter: dict[int, list[dict]] = {}
-    for similar_row in similar_event_rows:
-        promoter_id = similar_row.get("promoter_id")
-        if promoter_id is None:
-            continue
-        if float(similar_row["total_similarity_score"]) < scoring_config.event_similarity_min_total_score:
-            event_similarity_below_threshold_filtered += 1
-            continue
-        event_similarity_rows_by_promoter.setdefault(int(promoter_id), []).append(similar_row)
-
-    filtered_similar_event_rows: list[dict] = []
-    for promoter_id, promoter_rows in event_similarity_rows_by_promoter.items():
-        ranked_rows = sorted(
-            promoter_rows,
-            key=lambda item: (-item["total_similarity_score"], item["candidate_event_id"]),
-        )
-        kept_rows = ranked_rows[: scoring_config.event_similarity_per_promoter_limit]
-        event_similarity_per_promoter_limit_cutoff += max(len(ranked_rows) - len(kept_rows), 0)
-        filtered_similar_event_rows.extend(kept_rows)
-
     event_similarity_stats_by_promoter: dict[int, dict[str, object]] = {}
-    for similar_row in filtered_similar_event_rows:
-        promoter_id = similar_row.get("promoter_id")
-        if promoter_id is None:
-            continue
-        stats = event_similarity_stats_by_promoter.setdefault(
-            int(promoter_id),
-            {
-                "count": 0,
-                "symbolic_sum": 0.0,
-                "embedding_sum": 0.0,
-                "latest_event_date": None,
-                "rows": [],
-            },
-        )
-        stats["count"] = int(stats["count"]) + 1
-        stats["symbolic_sum"] = float(stats["symbolic_sum"]) + float(similar_row["symbolic_score_final"])
-        stats["embedding_sum"] = float(stats["embedding_sum"]) + float(similar_row["embedding_score"])
-        candidate_event_date = similar_row.get("candidate_event_date")
-        latest_event_date = stats["latest_event_date"]
-        if candidate_event_date is not None and (
-            latest_event_date is None or candidate_event_date > latest_event_date
-        ):
-            stats["latest_event_date"] = candidate_event_date
-        stats["rows"].append(similar_row)
+    additional_promoter_ids: list[int] = []
+    style_shared_genres_by_promoter: dict[int, list[str]] = {}
+    style_shared_genre_sources_by_promoter: dict[int, dict[str, list[dict[str, object]]]] = {}
 
-    existing_promoter_ids = {int(row["id"]) for row in rows}
-    additional_promoter_ids = sorted(
-        promoter_id
-        for promoter_id in event_similarity_stats_by_promoter
-        if promoter_id not in existing_promoter_ids
-    )
-    if additional_promoter_ids:
-        with connection.cursor() as cursor:
-            cursor.execute(
-                """
-                SELECT
-                    p.id,
-                    p.name,
-                    COALESCE(sum(GREATEST(e.interested_count, 0)), 0)::bigint AS promoter_interested_sum
-                FROM promoters p
-                LEFT JOIN event_promoters ep
-                    ON ep.promoter_id = p.id
-                LEFT JOIN events e
-                    ON e.id = ep.event_id
-                WHERE p.id = ANY(%s)
-                GROUP BY p.id, p.name
-                """,
-                (additional_promoter_ids,),
+    if matching_mode != "semantic_v2":
+        similar_event_rows, _, similar_event_debug_counts = artist_similar_events_scored_rows(
+            connection,
+            source_artist_id=artist_id,
+            limit=max(
+                limit * scoring_config.event_similarity_overfetch_multiplier,
+                scoring_config.event_similarity_overfetch_min,
+            ),
+            exclude_same_promoter=True,
+            scoring_config=scoring_config,
+            collect_debug=debug,
+        )
+        event_similarity_below_threshold_filtered = 0
+        event_similarity_embedding_gate_filtered = int(
+            similar_event_debug_counts.get("embeddingGateFiltered", 0)
+        )
+        event_similarity_per_promoter_limit_cutoff = 0
+        event_similarity_rows_by_promoter: dict[int, list[dict]] = {}
+        for similar_row in similar_event_rows:
+            promoter_id = similar_row.get("promoter_id")
+            if promoter_id is None:
+                continue
+            if float(similar_row["total_similarity_score"]) < scoring_config.event_similarity_min_total_score:
+                event_similarity_below_threshold_filtered += 1
+                continue
+            event_similarity_rows_by_promoter.setdefault(int(promoter_id), []).append(similar_row)
+
+        filtered_similar_event_rows: list[dict] = []
+        for promoter_id, promoter_rows in event_similarity_rows_by_promoter.items():
+            ranked_rows = sorted(
+                promoter_rows,
+                key=lambda item: (-item["total_similarity_score"], item["candidate_event_id"]),
             )
-            for promoter in cursor.fetchall():
-                rows.append(
-                    {
-                        "id": promoter["id"],
-                        "name": promoter["name"],
-                        "matched_artist_count": 0,
-                        "matched_artist_names": [],
-                        "event_count": 0,
-                        "related_event_titles": [],
-                        "semantic_score": 0.0,
-                        "latest_event_date": None,
-                        "direct_connection_count": 0,
-                        "warm_connection_count": 0,
-                        "warm_connection_artists": [],
-                        "manual_warm_connection_count": 0,
-                        "manual_warm_connection_artists": [],
-                        "promoter_interested_sum": int(promoter["promoter_interested_sum"] or 0),
-                    }
+            kept_rows = ranked_rows[: scoring_config.event_similarity_per_promoter_limit]
+            event_similarity_per_promoter_limit_cutoff += max(len(ranked_rows) - len(kept_rows), 0)
+            filtered_similar_event_rows.extend(kept_rows)
+
+        for similar_row in filtered_similar_event_rows:
+            promoter_id = similar_row.get("promoter_id")
+            if promoter_id is None:
+                continue
+            stats = event_similarity_stats_by_promoter.setdefault(
+                int(promoter_id),
+                {
+                    "count": 0,
+                    "symbolic_sum": 0.0,
+                    "embedding_sum": 0.0,
+                    "latest_event_date": None,
+                    "rows": [],
+                },
+            )
+            stats["count"] = int(stats["count"]) + 1
+            stats["symbolic_sum"] = float(stats["symbolic_sum"]) + float(similar_row["symbolic_score_final"])
+            stats["embedding_sum"] = float(stats["embedding_sum"]) + float(similar_row["embedding_score"])
+            candidate_event_date = similar_row.get("candidate_event_date")
+            latest_event_date = stats["latest_event_date"]
+            if candidate_event_date is not None and (
+                latest_event_date is None or candidate_event_date > latest_event_date
+            ):
+                stats["latest_event_date"] = candidate_event_date
+            stats["rows"].append(similar_row)
+
+        existing_promoter_ids = {int(row["id"]) for row in rows}
+        additional_promoter_ids = sorted(
+            promoter_id
+            for promoter_id in event_similarity_stats_by_promoter
+            if promoter_id not in existing_promoter_ids
+        )
+        if additional_promoter_ids:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT
+                        p.id,
+                        p.name,
+                        COALESCE(sum(GREATEST(e.interested_count, 0)), 0)::bigint AS promoter_interested_sum
+                    FROM promoters p
+                    LEFT JOIN event_promoters ep
+                        ON ep.promoter_id = p.id
+                    LEFT JOIN events e
+                        ON e.id = ep.event_id
+                    WHERE p.id = ANY(%s)
+                    GROUP BY p.id, p.name
+                    """,
+                    (additional_promoter_ids,),
                 )
+                for promoter in cursor.fetchall():
+                    rows.append(
+                        {
+                            "id": promoter["id"],
+                            "name": promoter["name"],
+                            "matched_artist_count": 0,
+                            "matched_artist_names": [],
+                            "event_count": 0,
+                            "related_event_titles": [],
+                            "semantic_score": 0.0,
+                            "latest_event_date": None,
+                            "direct_connection_count": 0,
+                            "warm_connection_count": 0,
+                            "warm_connection_artists": [],
+                            "manual_warm_connection_count": 0,
+                            "manual_warm_connection_artists": [],
+                            "promoter_interested_sum": int(promoter["promoter_interested_sum"] or 0),
+                        }
+                    )
+    else:
+        similar_event_debug_counts = {
+            "embeddingGateFiltered": 0,
+            "sourceEventsTotal": 0,
+            "sourceEventsAfterRelevanceGate": 0,
+            "sourceEventsRelevanceFiltered": 0,
+            "sourceEventsMissingEmbedding": 0,
+            "samePromoterFiltered": 0,
+            "similarityLimitCutoff": 0,
+        }
+        promoter_style_profiles = load_promoter_content_profiles(
+            connection,
+            [int(row["id"]) for row in rows],
+        )
+        promoter_style_sources = load_promoter_style_sources(
+            connection,
+            [int(row["id"]) for row in rows],
+        )
+        for row in rows:
+            promoter_id = int(row["id"])
+            profile = promoter_style_profiles.get(promoter_id)
+            candidate_genres = sorted(profile.genre_tags) if profile is not None else []
+            shared_genres = shared_tag_values(source_artist_style_tags, candidate_genres)
+            if shared_genres:
+                style_shared_genres_by_promoter[promoter_id] = shared_genres
+            sources_by_genre = promoter_style_sources.get(promoter_id, {})
+            genre_sources = {
+                genre: sources_by_genre.get(genre.casefold(), [])
+                for genre in shared_genres
+                if sources_by_genre.get(genre.casefold(), [])
+            }
+            if genre_sources:
+                style_shared_genre_sources_by_promoter[promoter_id] = genre_sources
 
     promoter_interest_low_threshold, promoter_interest_high_threshold = interested_tertile_thresholds(
         [int(row.get("promoter_interested_sum", 0) or 0) for row in rows]
@@ -843,32 +933,54 @@ def build_artist_promoter_recommendation_response(
         if exclude_existing and row["direct_connection_count"] > 0:
             exclude_existing_filtered_count += 1
             continue
-        event_similarity_stats = event_similarity_stats_by_promoter.get(row["id"])
-        event_similarity_count = int(event_similarity_stats["count"]) if event_similarity_stats else 0
-        event_similarity_average_symbolic_score = (
-            float(event_similarity_stats["symbolic_sum"]) / event_similarity_count
-            if event_similarity_count > 0 and event_similarity_stats is not None
-            else 0.0
-        )
-        event_similarity_embedding_score = (
-            float(event_similarity_stats["embedding_sum"]) / event_similarity_count
-            if event_similarity_count > 0 and event_similarity_stats is not None
-            else 0.0
-        )
+        if matching_mode == "semantic_v2":
+            source_styles = source_artist_style_tags
+            shared_extracted_genres = style_shared_genres_by_promoter.get(row["id"], [])
+            shared_extracted_genre_sources = style_shared_genre_sources_by_promoter.get(row["id"], {})
+            shared_themes = []
+            shared_moods = []
+            event_similarity_count = 0
+            event_similarity_average_symbolic_score = style_overlap_score(
+                source_styles,
+                shared_extracted_genres,
+            )
+            event_similarity_embedding_score = 0.0
+            event_similarity_symbolic_score = event_similarity_average_symbolic_score
+            event_similarity_score = event_similarity_symbolic_score
+            event_similarity_event_titles = []
+            event_similarity_stats = None
+        else:
+            event_similarity_stats = event_similarity_stats_by_promoter.get(row["id"])
+            event_similarity_count = int(event_similarity_stats["count"]) if event_similarity_stats else 0
+            event_similarity_average_symbolic_score = (
+                float(event_similarity_stats["symbolic_sum"]) / event_similarity_count
+                if event_similarity_count > 0 and event_similarity_stats is not None
+                else 0.0
+            )
+            event_similarity_embedding_score = (
+                float(event_similarity_stats["embedding_sum"]) / event_similarity_count
+                if event_similarity_count > 0 and event_similarity_stats is not None
+                else 0.0
+            )
+            event_similarity_symbolic_score = (
+                min(
+                    event_similarity_count / scoring_config.event_similarity_count_cap,
+                    1.0,
+                )
+                * event_similarity_average_symbolic_score
+            )
+            event_similarity_score = (
+                scoring_config.event_similarity_symbolic_weight * event_similarity_symbolic_score
+                + scoring_config.event_similarity_embedding_weight * event_similarity_embedding_score
+            )
+            shared_extracted_genres = []
+            shared_extracted_genre_sources = {}
+            shared_themes = []
+            shared_moods = []
+            event_similarity_event_titles = []
         direct_connection_score = min(
             row["direct_connection_count"] / scoring_config.direct_connection_cap,
             1.0,
-        )
-        event_similarity_symbolic_score = (
-            min(
-                event_similarity_count / scoring_config.event_similarity_count_cap,
-                1.0,
-            )
-            * event_similarity_average_symbolic_score
-        )
-        event_similarity_score = (
-            scoring_config.event_similarity_symbolic_weight * event_similarity_symbolic_score
-            + scoring_config.event_similarity_embedding_weight * event_similarity_embedding_score
         )
         effective_event_count = max(
             min(int(row["event_count"]), scoring_config.strength_event_cap),
@@ -968,34 +1080,61 @@ def build_artist_promoter_recommendation_response(
             if isinstance(matched_artist_names_raw, list)
             else []
         )
-        related_event_titles_raw = row.get("related_event_titles")
-        related_event_titles = (
-            sorted(
-                {
-                    title.strip()
-                    for title in related_event_titles_raw
-                    if isinstance(title, str) and title.strip()
-                }
-            )
-            if isinstance(related_event_titles_raw, list)
-            else []
-        )
-        event_similarity_event_titles: list[str] = []
-        if event_similarity_stats is not None:
-            seen_event_titles: set[str] = set()
-            for item in sorted(
-                event_similarity_stats["rows"],
-                key=lambda candidate: (-candidate["total_similarity_score"], candidate["candidate_event_id"]),
-            ):
-                title = item.get("candidate_event_title")
-                if not isinstance(title, str):
-                    continue
-                normalized_title = title.strip()
-                if not normalized_title or normalized_title in seen_event_titles:
-                    continue
-                seen_event_titles.add(normalized_title)
-                event_similarity_event_titles.append(normalized_title)
-        related_event_titles = sorted(set(related_event_titles) | set(event_similarity_event_titles))
+        if matching_mode == "semantic_v2":
+            event_similarity_event_titles = []
+        else:
+            event_similarity_event_titles = []
+            if event_similarity_stats is not None:
+                seen_event_titles: set[str] = set()
+                for item in sorted(
+                    event_similarity_stats["rows"],
+                    key=lambda candidate: (-candidate["total_similarity_score"], candidate["candidate_event_id"]),
+                ):
+                    title = item.get("candidate_event_title")
+                    if not isinstance(title, str):
+                        continue
+                    normalized_title = title.strip()
+                    if not normalized_title or normalized_title in seen_event_titles:
+                        continue
+                    seen_event_titles.add(normalized_title)
+                    event_similarity_event_titles.append(normalized_title)
+        if matching_mode == "semantic_v2":
+            shared_extracted_genres = style_shared_genres_by_promoter.get(row["id"], [])
+            shared_extracted_genre_sources = style_shared_genre_sources_by_promoter.get(row["id"], {})
+            shared_themes = []
+            shared_moods = []
+        else:
+            shared_extracted_genres = []
+            shared_extracted_genre_sources = {}
+            shared_themes = []
+            shared_moods = []
+            if event_similarity_stats is not None:
+                shared_tag_rows = sorted(
+                    event_similarity_stats["rows"],
+                    key=lambda item: (-item["total_similarity_score"], item["candidate_event_id"]),
+                )[:5]
+                for item in shared_tag_rows:
+                    row_shared_genres = [
+                        str(tag).strip()
+                        for tag in item.get("shared_extracted_genres", [])
+                        if isinstance(tag, str) and tag.strip()
+                    ]
+                    if source_artist_confirmed_styles:
+                        row_shared_genres = [
+                            tag for tag in row_shared_genres if tag.casefold() in source_artist_confirmed_styles
+                        ]
+                    for tag in row_shared_genres:
+                        normalized_tag = str(tag).strip()
+                        if normalized_tag and normalized_tag not in shared_extracted_genres:
+                            shared_extracted_genres.append(normalized_tag)
+                    for tag in item.get("shared_themes", []):
+                        normalized_tag = str(tag).strip()
+                        if normalized_tag and normalized_tag not in shared_themes:
+                            shared_themes.append(normalized_tag)
+                    for tag in item.get("shared_moods", []):
+                        normalized_tag = str(tag).strip()
+                        if normalized_tag and normalized_tag not in shared_moods:
+                            shared_moods.append(normalized_tag)
         row_with_similarity = {
             **row,
             "event_similarity_count": event_similarity_count,
@@ -1006,7 +1145,10 @@ def build_artist_promoter_recommendation_response(
             "manual_warm_connection_artists": manual_connection_artists,
             "matched_artist_names": matched_artist_names,
             "event_similarity_event_titles": event_similarity_event_titles,
-            "related_event_titles": related_event_titles,
+            "shared_extracted_genres": shared_extracted_genres,
+            "shared_extracted_genre_sources": shared_extracted_genre_sources,
+            "shared_themes": shared_themes,
+            "shared_moods": shared_moods,
         }
         co_played_connection_score = min(
             row["warm_connection_count"] / scoring_config.warm_connection_cap,
@@ -1085,8 +1227,11 @@ def build_artist_promoter_recommendation_response(
                 directConnectionCount=row["direct_connection_count"],
                 evidence=promoter_recommendation_item_evidence(row_with_similarity),
                 reasonDetails={
-                    "relatedEventTitles": related_event_titles,
                     "similarPromoterEventTitles": event_similarity_event_titles,
+                    "sharedExtractedGenres": shared_extracted_genres,
+                    "sharedExtractedGenreSources": shared_extracted_genre_sources,
+                    "sharedThemes": shared_themes,
+                    "sharedMoods": shared_moods,
                     "similarArtistNames": matched_artist_names,
                     "coPlayedArtistNames": [str(item.get("name", "")) for item in warm_connection_artists if item.get("name")],
                     "manualArtistNames": [str(item.get("name", "")) for item in manual_connection_artists if item.get("name")],
@@ -1118,7 +1263,10 @@ def build_artist_promoter_recommendation_response(
                         "eventSimilaritySymbolicScore": event_similarity_symbolic_score,
                         "eventSimilarityEmbeddingScore": event_similarity_embedding_score,
                         "eventSimilarityEventTitles": event_similarity_event_titles,
-                        "relatedEventTitles": related_event_titles,
+                        "sharedExtractedGenres": shared_extracted_genres,
+                        "sharedExtractedGenreSources": shared_extracted_genre_sources,
+                        "sharedThemes": shared_themes,
+                        "sharedMoods": shared_moods,
                         "matchedArtistNames": matched_artist_names,
                         "artistScale": source_artist_scale,
                         "promoterScale": promoter_scale,
@@ -1151,6 +1299,28 @@ def build_artist_promoter_recommendation_response(
             )
         )
 
+    feedback_by_promoter_id = load_promoter_feedback(
+        connection,
+        user_id=user_id,
+        artist_id=artist_id,
+    )
+    feedback_config = promoter_feedback_config_from_env()
+    content_similarity_by_promoter_id = promoter_content_similarities(
+        connection,
+        candidate_promoter_ids=[recommendation.id for recommendation in recommendations],
+        positive_promoter_ids=[
+            promoter_id
+            for promoter_id, feedback in feedback_by_promoter_id.items()
+            if feedback == "positive"
+        ],
+        config=feedback_config,
+    )
+    recommendations = apply_promoter_feedback_reranking(
+        recommendations,
+        feedback_by_promoter_id=feedback_by_promoter_id,
+        content_similarity_by_promoter_id=content_similarity_by_promoter_id,
+        config=feedback_config,
+    )
     sorted_recommendations = sorted(
         recommendations,
         key=lambda recommendation: (-recommendation.score, recommendation.id),
@@ -1246,7 +1416,10 @@ def build_artist_promoter_recommendation_response(
             )
         recommendations.extend(backfill_pool[:remaining_slots])
 
-    recommendations = recommendations[:limit]
+    recommendations = sorted(
+        recommendations[:limit],
+        key=lambda recommendation: (-recommendation.score, recommendation.id),
+    )
     warm_recommendations = [
         recommendation
         for recommendation in recommendations
@@ -1372,42 +1545,43 @@ def build_artist_promoter_recommendation_response(
         promoter_manual_artist_ids=promoter_manual_artist_ids,
     )
     event_similarity_evidence: list[dict] = []
-    event_similarity_pairs: list[tuple[int, int]] = []
-    for promoter_id in promoter_ids:
-        similarity_stats = event_similarity_stats_by_promoter.get(promoter_id)
-        if similarity_stats is None:
-            continue
-        ranked_rows = sorted(
-            similarity_stats["rows"],
-            key=lambda item: (-item["total_similarity_score"], item["candidate_event_id"]),
-        )[:5]
-        for item in ranked_rows:
-            source_event_id = int(item["source_event_id"])
-            candidate_event_id = int(item["candidate_event_id"])
-            event_similarity_pairs.append((source_event_id, candidate_event_id))
-            event_similarity_evidence.append(
-                {
-                    "promoter_id": promoter_id,
-                    "source_event_id": source_event_id,
-                    "source_event_title": item["source_event_title"],
-                    "source_event_date": item["source_event_date"],
-                    "promoter_event_id": candidate_event_id,
-                    "promoter_event_title": item["candidate_event_title"],
-                    "promoter_event_date": item["candidate_event_date"],
-                    "promoter_venue_id": item["candidate_venue_id"],
-                    "promoter_venue_name": item["candidate_venue_name"],
-                    "path_similarity": item["symbolic_score_final"],
-                }
-            )
+    if matching_mode != "semantic_v2":
+        event_similarity_pairs: list[tuple[int, int]] = []
+        for promoter_id in promoter_ids:
+            similarity_stats = event_similarity_stats_by_promoter.get(promoter_id)
+            if similarity_stats is None:
+                continue
+            ranked_rows = sorted(
+                similarity_stats["rows"],
+                key=lambda item: (-item["total_similarity_score"], item["candidate_event_id"]),
+            )[:5]
+            for item in ranked_rows:
+                source_event_id = int(item["source_event_id"])
+                candidate_event_id = int(item["candidate_event_id"])
+                event_similarity_pairs.append((source_event_id, candidate_event_id))
+                event_similarity_evidence.append(
+                    {
+                        "promoter_id": promoter_id,
+                        "source_event_id": source_event_id,
+                        "source_event_title": item["source_event_title"],
+                        "source_event_date": item["source_event_date"],
+                        "promoter_event_id": candidate_event_id,
+                        "promoter_event_title": item["candidate_event_title"],
+                        "promoter_event_date": item["candidate_event_date"],
+                        "promoter_venue_id": item["candidate_venue_id"],
+                        "promoter_venue_name": item["candidate_venue_name"],
+                        "path_similarity": item["symbolic_score_final"],
+                    }
+                )
 
-    shared_artists_by_pair = event_similarity_shared_artists_by_pair(
-        connection,
-        source_artist_id=artist_id,
-        event_pairs=event_similarity_pairs,
-    )
-    for row in event_similarity_evidence:
-        pair_key = (int(row["source_event_id"]), int(row["promoter_event_id"]))
-        row["shared_artists"] = shared_artists_by_pair.get(pair_key, [])
+        shared_artists_by_pair = event_similarity_shared_artists_by_pair(
+            connection,
+            source_artist_id=artist_id,
+            event_pairs=event_similarity_pairs,
+        )
+        for row in event_similarity_evidence:
+            pair_key = (int(row["source_event_id"]), int(row["promoter_event_id"]))
+            row["shared_artists"] = shared_artists_by_pair.get(pair_key, [])
 
     analytics_graph = promoter_recommendation_graph(
         source_artist_id=artist_id,

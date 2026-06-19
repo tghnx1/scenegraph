@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { GraphNode } from '../types/graph'
+import type { GraphNode } from '../../types/graph'
 
 interface GraphStore {
   //state

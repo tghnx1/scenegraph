@@ -7,7 +7,8 @@ from typing import Any
 
 from psycopg import Connection
 
-from app.style_tags import extract_style_tags
+from app.event_tag_taxonomy import canonicalize_event_tag
+from app.style_tags import canonicalize_style_tags, extract_style_tags, suppress_parent_style_tags
 
 
 MAX_EVENT_CONTEXTS = 12
@@ -91,6 +92,80 @@ def rank_recurring_names(values: Iterable[Any], limit: int = MAX_RECURRING_NAMES
     return [name for name, _ in ranked[:limit]]
 
 
+def load_event_extracted_genres_by_id(
+    connection: Connection,
+    event_ids: Iterable[int],
+) -> dict[int, list[str]]:
+    extracted_tags_by_event_id = load_event_extracted_tags_by_id(
+        connection,
+        event_ids,
+        tag_types=("style", "genre"),
+    )
+    extracted_genres_by_event_id: dict[int, list[str]] = {}
+    for event_id, tag_values_by_type in extracted_tags_by_event_id.items():
+        values = tag_values_by_type.get("style", []) + tag_values_by_type.get("genre", [])
+        if values:
+            extracted_genres_by_event_id[event_id] = unique_texts(values)
+    return extracted_genres_by_event_id
+
+
+def load_event_extracted_tags_by_id(
+    connection: Connection,
+    event_ids: Iterable[int],
+    *,
+    tag_types: Iterable[str] | None = None,
+) -> dict[int, dict[str, list[str]]]:
+    unique_event_ids = sorted({int(event_id) for event_id in event_ids})
+    if not unique_event_ids:
+        return {}
+
+    requested_tag_types = tuple(
+        sorted(
+            {
+                str(tag_type).strip().lower()
+                for tag_type in (tag_types or ("style", "genre", "theme", "mood"))
+                if str(tag_type).strip()
+            }
+        )
+    )
+    if not requested_tag_types:
+        return {}
+
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT event_id, tag_type, tag_value
+            FROM event_extracted_tags
+            WHERE event_id = ANY(%s)
+              AND confidence >= 0.6
+              AND tag_type = ANY(%s)
+            ORDER BY event_id ASC, tag_type ASC, confidence DESC, tag_value ASC
+            """,
+            (unique_event_ids, list(requested_tag_types)),
+        )
+        rows = cursor.fetchall()
+
+    extracted_tags_by_event_id: dict[int, dict[str, list[str]]] = {}
+    for row in rows:
+        event_id = int(row["event_id"])
+        tag_type = str(row["tag_type"]).strip().lower()
+        if tag_type not in requested_tag_types:
+            continue
+        canonical_values = (
+            canonicalize_style_tags(row["tag_value"])
+            if tag_type in {"style", "genre"}
+            else canonicalize_event_tag(tag_type, row["tag_value"])
+        )
+        if not canonical_values:
+            continue
+        tag_values_by_type = extracted_tags_by_event_id.setdefault(event_id, {})
+        values = tag_values_by_type.setdefault(tag_type, [])
+        for canonical in canonical_values:
+            if canonical not in values:
+                values.append(canonical)
+    return extracted_tags_by_event_id
+
+
 def compose_event_text_profile(
     event: dict[str, Any],
     *,
@@ -98,39 +173,67 @@ def compose_event_text_profile(
     promoter_names: Iterable[Any] = (),
     genre_names: Iterable[Any] = (),
     venue_name: str | None = None,
+    extracted_genres: Sequence[str] | None = None,
+    extracted_tags: dict[str, Sequence[str]] | None = None,
 ) -> str:
-    extracted_genres = extract_style_tags(
-        " ".join(
-            part
-            for part in [
-                normalize_text(event.get("title", "")),
-                normalize_text(event.get("description_text", "")),
-                normalize_text(event.get("lineup_residual_text") or event.get("lineup_raw", "")),
+    structured_tag_sections: list[str] = []
+    extracted_tags = extracted_tags or {}
+    if extracted_tags:
+        saved_genres = unique_texts(
+            [
+                *extracted_tags.get("style", []),
+                *extracted_tags.get("genre", []),
             ]
-            if part
         )
-    )
+        if saved_genres:
+            structured_tag_sections.append(format_section("Extracted genres", saved_genres))
+        saved_themes = unique_texts(extracted_tags.get("theme", []))
+        if saved_themes:
+            structured_tag_sections.append(format_section("Extracted themes", saved_themes))
+        saved_moods = unique_texts(extracted_tags.get("mood", []))
+        if saved_moods:
+            structured_tag_sections.append(format_section("Extracted moods", saved_moods))
+    elif extracted_genres:
+        structured_tag_sections.append(
+            format_section("Extracted genres", suppress_parent_style_tags(unique_texts(extracted_genres)))
+        )
 
-    return join_sections(
-        [
-            format_section("Event title", event.get("title", "")),
-            format_section(
-                "Description",
-                event.get("description_text", ""),
-                MAX_EVENT_DESCRIPTION_CHARS,
-            ),
-            format_section("Genres", genre_names),
-            format_section("Extracted genres", extracted_genres),
-            format_section("Structured lineup", artist_names),
-            format_section(
-                "Lineup context",
-                event.get("lineup_residual_text") or event.get("lineup_raw", ""),
-                MAX_EVENT_LINEUP_CHARS,
-            ),
-            format_section("Venue", venue_name or event.get("venue_name", "")),
-            format_section("Promoters", promoter_names),
-        ]
+    description_section = format_section(
+        "Description",
+        event.get("description_text", ""),
+        MAX_EVENT_DESCRIPTION_CHARS,
     )
+    genres_section = format_section("Genres", genre_names)
+    venue_section = format_section("Venue", venue_name or event.get("venue_name", ""))
+    promoters_section = format_section("Promoters", promoter_names)
+
+    if structured_tag_sections:
+        section_order = [
+            *structured_tag_sections,
+            description_section,
+            genres_section,
+            venue_section,
+            promoters_section,
+        ]
+    else:
+        extracted_genres = extract_style_tags(
+            " ".join(
+                part
+                for part in [
+                    normalize_text(event.get("description_text", "")),
+                ]
+                if part
+            )
+        )
+        section_order = [
+            description_section,
+            genres_section,
+            format_section("Extracted genres", extracted_genres),
+            venue_section,
+            promoters_section,
+        ]
+
+    return join_sections(section_order)
 
 
 def compose_artist_text_profile(
@@ -146,7 +249,12 @@ def compose_artist_text_profile(
     biography = artist.get("biography_normalized") or normalize_biography_text(
         artist.get("biography", "")
     )
-    style_tags = sorted(set(extract_style_tags(biography)) | set(extracted_tags.get("style", [])))
+    stored_style_tags = {
+        canonical
+        for value in extracted_tags.get("style", [])
+        for canonical in canonicalize_style_tags(value)
+    }
+    style_tags = suppress_parent_style_tags(set(extract_style_tags(biography)) | stored_style_tags)
 
     return join_sections(
         [
@@ -226,6 +334,7 @@ def build_event_text_profile(connection: Connection, event_id: int) -> str:
             (event_id,),
         )
         genre_names = [row["name"] for row in cursor.fetchall()]
+        extracted_tags_by_event_id = load_event_extracted_tags_by_id(connection, [event_id])
 
     return compose_event_text_profile(
         event,
@@ -233,6 +342,7 @@ def build_event_text_profile(connection: Connection, event_id: int) -> str:
         promoter_names=promoter_names,
         genre_names=genre_names,
         venue_name=event["venue_name"],
+        extracted_tags=extracted_tags_by_event_id.get(int(event_id), {}),
     )
 
 
@@ -312,6 +422,11 @@ def build_artist_text_profile(connection: Connection, artist_id: int) -> str:
                 FROM artist_extracted_tags
                 WHERE artist_id = %s
                   AND confidence >= 0.6
+                  AND (
+                      tag_type <> 'style'
+                      OR extractor LIKE 'llm_artist_tags_v2:%%'
+                      OR extractor = 'canonical_style_cleanup_v1'
+                  )
                 ORDER BY tag_type ASC, tag_value ASC
                 """,
                 (artist_id,),

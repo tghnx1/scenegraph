@@ -20,25 +20,32 @@ from app.artist_tag_extraction import (
     is_content_filter_error,
     split_biography_chunks,
 )
+from app.event_style_tags import extract_event_style_matches
+from app.event_tag_taxonomy import (
+    EVENT_TAG_TYPE_PRIORITY,
+    PER_TYPE_LIMITS,
+    canonicalize_event_tag,
+    evidence_supports_event_tag,
+    event_extraction_rules,
+    extract_deterministic_event_taxonomy_matches,
+    is_event_level_theme_evidence,
+    normalize_event_taxonomy_text,
+)
 from app.text_profiles import normalize_text, truncate_text
 
 
 ExtractionProvider = Literal["openai", "azure"]
 ExtractionApi = Literal["chat_completions", "responses"]
-EventTagType = Literal["style", "format", "mood", "theme", "instrumentation", "series"]
+EventTagType = Literal["style", "mood", "theme"]
 
 DEFAULT_EXTRACTION_MODEL = "gpt-4.1-mini"
 MAX_EVENT_TEXT_CHARS = 7000
-MAX_TAGS_PER_EVENT = 28
+MAX_TAGS_PER_EVENT = 12
 CHUNK_FALLBACK_CHARS = 800
 
 ALLOWED_EVENT_TAG_TYPES: set[str] = {
-    "style",
-    "format",
     "mood",
     "theme",
-    "instrumentation",
-    "series",
 }
 
 
@@ -48,6 +55,26 @@ class EventTag:
     tag_value: str
     confidence: float
     evidence: str | None = None
+
+
+@dataclass(frozen=True)
+class EventSourceFields:
+    title: str = ""
+    description: str = ""
+    lineup_text: str = ""
+    structured_genres: tuple[str, ...] = ()
+    artist_names: tuple[str, ...] = ()
+    repeated_title_root: str = ""
+
+    @property
+    def text(self) -> str:
+        return "\n\n".join(
+            value for value in (self.description, self.lineup_text) if value
+        )
+
+    @property
+    def evidence_text(self) -> str:
+        return "\n\n".join(value for value in (self.title, self.text) if value)
 
 
 @dataclass(frozen=True)
@@ -104,13 +131,16 @@ class EventTagExtractionConfig:
             api=api,  # type: ignore[arg-type]
             azure_responses_url=azure_responses_url or None,
             max_text_chars=int(os.environ.get("EVENT_TAG_EXTRACTION_MAX_TEXT_CHARS", MAX_EVENT_TEXT_CHARS)),
-            max_tags=int(os.environ.get("EVENT_TAG_EXTRACTION_MAX_TAGS", MAX_TAGS_PER_EVENT)),
+            max_tags=min(
+                int(os.environ.get("EVENT_TAG_EXTRACTION_MAX_TAGS", MAX_TAGS_PER_EVENT)),
+                MAX_TAGS_PER_EVENT,
+            ),
             chunk_chars=int(os.environ.get("EVENT_TAG_EXTRACTION_CHUNK_CHARS", CHUNK_FALLBACK_CHARS)),
         )
 
     @property
     def extractor_key(self) -> str:
-        return f"llm_event_tags_v1:{self.provider}:{self.api}:{self.model}"
+        return f"llm_event_tags_v3:{self.provider}:{self.api}:{self.model}"
 
 
 def event_tag_extraction_text_hash(text: str) -> str:
@@ -121,7 +151,7 @@ def event_system_prompt() -> str:
     return (
         "You extract structured music-scene facts from event metadata. "
         "Return only JSON. Extract only facts clearly present in the provided event data. "
-        "Do not guess."
+        "Do not guess. Do not extract musical styles or genres."
     )
 
 
@@ -136,7 +166,7 @@ Return JSON in this exact shape:
 {{
   "tags": [
     {{
-      "type": "style|format|mood|theme|instrumentation|series",
+      "type": "mood|theme",
       "value": "short normalized tag",
       "confidence": 0.0,
       "evidence": "short phrase from event text"
@@ -145,14 +175,8 @@ Return JSON in this exact shape:
 }}
 
 Extraction rules:
-- style: sonic descriptors and genre-like terms from description/lineup context.
-- format: event format terms such as DJ set, live set, hybrid live+DJ, b2b, showcase, release party.
-- mood: adjectives that describe vibe/atmosphere (e.g. hypnotic, dark, playful, high-energy).
-- theme: conceptual framing terms (e.g. queer, feminist, community, fundraiser, ambient-focus).
-- instrumentation: explicit instrument or setup mentions (e.g. modular, drum machines, vocals, hardware live).
-- series: recurring night/series/franchise names tied to the event.
+{event_extraction_rules()}
 - Keep at most {max_tags} tags total.
-- Prefer fewer high-confidence tags over many weak tags.
 """.strip()
 
 
@@ -181,7 +205,7 @@ Return JSON in this exact shape:
       "eventId": 123,
       "tags": [
         {{
-          "type": "style|format|mood|theme|instrumentation|series",
+          "type": "mood|theme",
           "value": "short normalized tag",
           "confidence": 0.0,
           "evidence": "short phrase from that event text"
@@ -193,17 +217,9 @@ Return JSON in this exact shape:
 
 Extraction rules:
 - Extract tags independently for each event ID.
+{event_extraction_rules()}
 - Keep at most {max_tags} tags per event.
-- Prefer fewer high-confidence tags over many weak tags.
 """.strip()
-
-
-def normalize_event_tag_value(tag_type: str, value: Any) -> str:
-    text = normalize_text(value).strip(" \t\n\r,.;:|/\\")
-    if not text:
-        return ""
-    text = re.sub(r"\s+", " ", text).lower()
-    return text[:120].strip()
 
 
 def normalize_confidence(value: Any) -> float:
@@ -214,12 +230,25 @@ def normalize_confidence(value: Any) -> float:
     return max(0.0, min(confidence, 1.0))
 
 
-def parse_event_tags_response(payload: dict[str, Any], *, max_tags: int) -> list[EventTag]:
+def normalized_evidence_is_supported(evidence: str, event_text: str) -> bool:
+    normalized_evidence = re.sub(r"[^\w+&-]+", " ", normalize_text(evidence).casefold()).strip()
+    normalized_event_text = re.sub(
+        r"[^\w+&-]+", " ", normalize_text(event_text).casefold()
+    ).strip()
+    return bool(normalized_evidence and normalized_evidence in normalized_event_text)
+
+
+def parse_event_tags_response(
+    payload: dict[str, Any],
+    *,
+    max_tags: int,
+    event_title: str = "",
+    event_text: str = "",
+) -> list[EventTag]:
     raw_tags = payload.get("tags", [])
     if not isinstance(raw_tags, list):
         return []
 
-    seen: set[tuple[str, str]] = set()
     tags: list[EventTag] = []
     for item in raw_tags:
         if not isinstance(item, dict):
@@ -227,40 +256,141 @@ def parse_event_tags_response(payload: dict[str, Any], *, max_tags: int) -> list
         tag_type = normalize_text(item.get("type")).lower()
         if tag_type not in ALLOWED_EVENT_TAG_TYPES:
             continue
-        tag_value = normalize_event_tag_value(tag_type, item.get("value"))
-        if len(tag_value) < 2:
+        evidence = truncate_text(item.get("evidence", ""), 300) or None
+        if evidence is None or not normalized_evidence_is_supported(
+            evidence, "\n".join((event_title, event_text))
+        ):
             continue
-        key = (tag_type, tag_value.casefold())
-        if key in seen:
-            continue
-
-        tags.append(
-            EventTag(
-                tag_type=tag_type,  # type: ignore[arg-type]
-                tag_value=tag_value,
-                confidence=normalize_confidence(item.get("confidence")),
-                evidence=truncate_text(item.get("evidence", ""), 300) or None,
+        if tag_type == "theme":
+            if not is_event_level_theme_evidence(
+                evidence,
+                "\n".join((event_title, event_text)),
+            ):
+                continue
+            canonical_values = list(
+                dict.fromkeys(
+                    canonicalize_event_tag(tag_type, item.get("value"))
+                    + canonicalize_event_tag(tag_type, evidence)
+                )
             )
-        )
-        seen.add(key)
-        if len(tags) >= max_tags:
-            break
-    return tags
+        else:
+            canonical_values = canonicalize_event_tag(tag_type, item.get("value"))
+        for tag_value in canonical_values:
+            if not evidence_supports_event_tag(
+                tag_type,
+                raw_value=item.get("value"),
+                canonical_value=tag_value,
+                evidence=evidence,
+            ):
+                continue
+            tags.append(
+                EventTag(
+                    tag_type=tag_type,  # type: ignore[arg-type]
+                    tag_value=tag_value,
+                    confidence=normalize_confidence(item.get("confidence")),
+                    evidence=evidence,
+                )
+            )
+    return finalize_event_tags(tags, max_tags=max_tags)
+
+
+def _event_tag_priority(tag: EventTag) -> tuple[int, int, float, int, str]:
+    type_priority = EVENT_TAG_TYPE_PRIORITY.index(tag.tag_type)
+    structured_style_priority = (
+        0 if tag.tag_type == "style" and (tag.evidence or "").startswith("structured_genre:") else 1
+    )
+    return (
+        type_priority,
+        structured_style_priority,
+        -tag.confidence,
+        0 if tag.evidence else 1,
+        tag.tag_value,
+    )
+
+
+def finalize_event_tags(tags: list[EventTag], *, max_tags: int) -> list[EventTag]:
+    merged: dict[tuple[str, str], EventTag] = {}
+    for tag in tags:
+        key = (tag.tag_type, tag.tag_value.casefold())
+        existing = merged.get(key)
+        if existing is None or _event_tag_priority(tag) < _event_tag_priority(existing):
+            merged[key] = tag
+
+    retained: list[EventTag] = []
+    type_counts: dict[str, int] = {}
+    for tag in sorted(merged.values(), key=_event_tag_priority):
+        if type_counts.get(tag.tag_type, 0) >= PER_TYPE_LIMITS[tag.tag_type]:
+            continue
+        retained.append(tag)
+        type_counts[tag.tag_type] = type_counts.get(tag.tag_type, 0) + 1
+    return retained[: min(max_tags, MAX_TAGS_PER_EVENT)]
 
 
 def merge_event_tags(tag_groups: list[list[EventTag]], *, max_tags: int) -> list[EventTag]:
-    merged: dict[tuple[str, str], EventTag] = {}
-    order: list[tuple[str, str]] = []
-    for tags in tag_groups:
-        for tag in tags:
-            key = (tag.tag_type, tag.tag_value.casefold())
-            existing = merged.get(key)
-            if existing is None:
-                order.append(key)
-                merged[key] = tag
-            elif tag.confidence > existing.confidence:
-                merged[key] = tag
-    return [merged[key] for key in order[:max_tags]]
+    return finalize_event_tags(
+        [tag for tags in tag_groups for tag in tags],
+        max_tags=max_tags,
+    )
+
+
+def canonical_event_style_tags(
+    event_text: Any = "",
+    *,
+    sources: EventSourceFields | None = None,
+) -> list[EventTag]:
+    sources = sources or EventSourceFields(description=normalize_text(event_text))
+    return [
+        EventTag(
+            tag_type="style",
+            tag_value=match.value,
+            confidence=match.confidence,
+            evidence=f"{match.source}: {match.evidence}",
+        )
+        for match in extract_event_style_matches(
+            title=sources.title,
+            description=sources.description,
+            lineup_text=sources.lineup_text,
+            structured_genres=sources.structured_genres,
+            artist_names=sources.artist_names,
+        )
+    ]
+
+
+def canonical_event_metadata_tags(
+    *,
+    sources: EventSourceFields,
+) -> list[EventTag]:
+    return [
+        EventTag(
+            tag_type=match.tag_type,  # type: ignore[arg-type]
+            tag_value=match.value,
+            confidence=match.confidence,
+            evidence=f"{match.source}: {match.evidence}",
+        )
+        for match in extract_deterministic_event_taxonomy_matches(
+            title=sources.title,
+            description=sources.description,
+            lineup_text=sources.lineup_text,
+        )
+    ]
+
+
+def merge_event_styles_and_metadata(
+    event_text: Any,
+    metadata_tags: list[EventTag],
+    *,
+    max_tags: int,
+    sources: EventSourceFields | None = None,
+) -> list[EventTag]:
+    sources = sources or EventSourceFields(description=normalize_text(event_text))
+    return merge_event_tags(
+        [
+            canonical_event_style_tags(event_text, sources=sources),
+            canonical_event_metadata_tags(sources=sources),
+            metadata_tags,
+        ],
+        max_tags=max_tags,
+    )
 
 
 def parse_event_batch_response(
@@ -281,8 +411,55 @@ def parse_event_batch_response(
             continue
         if event_id not in event_ids:
             continue
-        results[event_id] = parse_event_tags_response({"tags": item.get("tags", [])}, max_tags=max_tags)
+        event = next(event for event in events if int(event["id"]) == event_id)
+        results[event_id] = parse_event_tags_response(
+            {"tags": item.get("tags", [])},
+            max_tags=max_tags,
+            event_title=event["name"],
+            event_text=event["text"],
+        )
     return results
+
+
+def event_source_fields(event: dict[str, Any]) -> EventSourceFields:
+    return EventSourceFields(
+        title=normalize_text(event.get("title") or event.get("name")),
+        description=normalize_text(event.get("description_text")),
+        lineup_text=normalize_text(
+            event.get("lineup_residual_text")
+        ),
+        structured_genres=tuple(
+            normalize_text(value)
+            for value in (event.get("structured_genres") or [])
+            if normalize_text(value)
+        ),
+        artist_names=tuple(
+            normalize_text(value)
+            for value in (event.get("artist_names") or [])
+            if normalize_text(value)
+        ),
+        repeated_title_root=normalize_text(event.get("repeated_title_root")),
+    )
+
+
+def event_extraction_hash_input(event: dict[str, Any]) -> str:
+    sources = event_source_fields(event)
+    return "\n\n".join(
+        value
+        for value in (
+            sources.title,
+            sources.description,
+            sources.lineup_text,
+            "Structured genres: " + ", ".join(sources.structured_genres)
+            if sources.structured_genres
+            else "",
+            "Known artists: " + ", ".join(sources.artist_names) if sources.artist_names else "",
+            "Repeated title root: " + sources.repeated_title_root
+            if sources.repeated_title_root
+            else "",
+        )
+        if value
+    )
 
 
 def extract_event_tags_with_llm(
@@ -291,18 +468,43 @@ def extract_event_tags_with_llm(
     event_name: str,
     event_text: str,
     config: EventTagExtractionConfig,
+    sources: EventSourceFields | None = None,
 ) -> list[EventTag]:
     normalized_text = truncate_text(normalize_text(event_text), config.max_text_chars)
     if not normalized_text:
-        return []
+        return merge_event_styles_and_metadata(
+            "",
+            [],
+            max_tags=config.max_tags,
+            sources=sources or EventSourceFields(title=event_name),
+        )
 
     prompt = event_user_prompt(event_name, normalized_text, config.max_tags)
     if config.provider == "azure" and config.api == "responses":
-        content = create_azure_responses_completion(prompt=prompt, config=config)  # type: ignore[arg-type]
+        content = create_azure_responses_completion(
+            prompt=prompt,
+            config=config,  # type: ignore[arg-type]
+            instructions=event_system_prompt(),
+        )
     else:
-        content = create_chat_completion(client, prompt=prompt, config=config)  # type: ignore[arg-type]
+        content = create_chat_completion(
+            client,
+            prompt=prompt,
+            config=config,  # type: ignore[arg-type]
+            instructions=event_system_prompt(),
+        )
     payload = extract_json_object(content)
-    return parse_event_tags_response(payload, max_tags=config.max_tags)
+    return merge_event_styles_and_metadata(
+        normalized_text,
+        parse_event_tags_response(
+            payload,
+            max_tags=config.max_tags,
+            event_title=event_name,
+            event_text=normalized_text,
+        ),
+        max_tags=config.max_tags,
+        sources=sources or EventSourceFields(title=event_name, description=normalized_text),
+    )
 
 
 def extract_event_tags_with_chunked_fallback(
@@ -311,6 +513,7 @@ def extract_event_tags_with_chunked_fallback(
     event_name: str,
     event_text: str,
     config: EventTagExtractionConfig,
+    sources: EventSourceFields | None = None,
 ) -> ChunkedEventTagExtractionResult:
     chunks = split_biography_chunks(event_text, max_chars=config.chunk_chars)
     tag_groups: list[list[EventTag]] = []
@@ -331,8 +534,16 @@ def extract_event_tags_with_chunked_fallback(
             skipped_chunks += 1
 
     processed_chunks = len(chunks) - skipped_chunks
+    merged = merge_event_tags(tag_groups, max_tags=config.max_tags)
+    if sources is not None:
+        merged = merge_event_styles_and_metadata(
+            sources.text,
+            [tag for tag in merged if tag.tag_type != "style"],
+            max_tags=config.max_tags,
+            sources=sources,
+        )
     return ChunkedEventTagExtractionResult(
-        tags=merge_event_tags(tag_groups, max_tags=config.max_tags),
+        tags=merged,
         total_chunks=len(chunks),
         processed_chunks=processed_chunks,
         skipped_chunks=skipped_chunks,
@@ -350,18 +561,36 @@ def extract_event_tag_batch_with_llm(
         normalized_text = truncate_text(normalize_text(event["text"]), config.max_text_chars)
         if not normalized_text:
             continue
-        prepared_events.append({"id": event["id"], "name": event["name"], "text": normalized_text})
+        prepared_events.append({**event, "text": normalized_text})
     if not prepared_events:
         return {}
 
     prompt = event_batch_user_prompt(prepared_events, config.max_tags)
     if config.provider == "azure" and config.api == "responses":
-        content = create_azure_responses_completion(prompt=prompt, config=config)  # type: ignore[arg-type]
+        content = create_azure_responses_completion(
+            prompt=prompt,
+            config=config,  # type: ignore[arg-type]
+            instructions=event_system_prompt(),
+        )
     else:
-        content = create_chat_completion(client, prompt=prompt, config=config)  # type: ignore[arg-type]
+        content = create_chat_completion(
+            client,
+            prompt=prompt,
+            config=config,  # type: ignore[arg-type]
+            instructions=event_system_prompt(),
+        )
 
     payload = extract_json_object(content)
-    return parse_event_batch_response(payload, events=prepared_events, max_tags=config.max_tags)
+    parsed = parse_event_batch_response(payload, events=prepared_events, max_tags=config.max_tags)
+    return {
+        int(event["id"]): merge_event_styles_and_metadata(
+            event["text"],
+            parsed.get(int(event["id"]), []),
+            max_tags=config.max_tags,
+            sources=event_source_fields(event),
+        )
+        for event in prepared_events
+    }
 
 
 def fetch_event_texts(
@@ -369,33 +598,64 @@ def fetch_event_texts(
     *,
     event_id: int | None = None,
     limit: int | None = None,
+    offset: int = 0,
+    after_id: int | None = None,
 ) -> list[dict[str, Any]]:
     params: list[Any] = []
-    where = ["COALESCE(NULLIF(BTRIM(title), ''), NULLIF(BTRIM(description_text), ''), NULL) IS NOT NULL"]
+    where = [
+        "COALESCE(NULLIF(BTRIM(e.title), ''), NULLIF(BTRIM(e.description_text), ''), NULL) IS NOT NULL"
+    ]
     if event_id is not None:
-        where.append("id = %s")
+        where.append("e.id = %s")
         params.append(event_id)
+    if after_id is not None:
+        where.append("e.id > %s")
+        params.append(after_id)
     sql = f"""
         SELECT
-            id,
-            title AS name,
+            e.id,
+            e.title AS name,
+            e.title,
+            e.description_text,
+            e.lineup_residual_text,
+            e.lineup_raw,
+            COALESCE(
+                (
+                    SELECT array_agg(DISTINCT a.name)
+                    FROM event_artists ea
+                    JOIN artists a ON a.id = ea.artist_id
+                    WHERE ea.event_id = e.id
+                      AND a.name IS NOT NULL
+                ),
+                ARRAY[]::text[]
+            ) AS artist_names,
+            COALESCE(
+                array_agg(DISTINCT g.name) FILTER (WHERE g.name IS NOT NULL),
+                ARRAY[]::text[]
+            ) AS structured_genres,
             CONCAT_WS(
                 '\n\n',
-                NULLIF(BTRIM(title), ''),
-                NULLIF(BTRIM(description_text), ''),
-                NULLIF(BTRIM(lineup_residual_text), ''),
-                NULLIF(BTRIM(lineup_raw), '')
+                NULLIF(BTRIM(e.description_text), ''),
+                NULLIF(BTRIM(e.lineup_residual_text), ''),
+                NULLIF(BTRIM(e.lineup_raw), '')
             ) AS text
-        FROM events
+        FROM events e
+        LEFT JOIN event_genres eg ON eg.event_id = e.id
+        LEFT JOIN genres g ON g.id = eg.genre_id
         WHERE {' AND '.join(where)}
-        ORDER BY id ASC
+        GROUP BY e.id, e.title, e.description_text, e.lineup_residual_text, e.lineup_raw
+        ORDER BY e.id ASC
     """
     if limit is not None:
         sql += " LIMIT %s"
         params.append(limit)
+    if offset:
+        sql += " OFFSET %s"
+        params.append(offset)
     with connection.cursor() as cursor:
         cursor.execute(sql, params)
-        return cursor.fetchall()
+        events = cursor.fetchall()
+    return events
 
 
 def has_current_event_tag_extraction(

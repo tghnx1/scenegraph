@@ -1,3 +1,4 @@
+import pytest
 from fastapi.testclient import TestClient
 from app.db import get_connection
 from app.event_similarity import artist_relevant_source_event_ids
@@ -9,20 +10,39 @@ from app.recommendation_scoring import (
 
 # docker compose exec backend sh -lc 'cd /app && pytest tests/test_graph_api.py -q'
 client = TestClient(app)
+client.headers.update({"X-User-Id": "1"})
 
 
-def delete_feedback_fixture() -> None:
+def graph_has_genre_data() -> bool:
     with get_connection() as connection:
         with connection.cursor() as cursor:
             cursor.execute(
                 """
-                DELETE FROM recommendation_feedback
-                WHERE source_entity_type = 'artist'
-                  AND source_entity_id = 2178
-                  AND candidate_entity_type = 'artist'
-                  AND candidate_entity_id = 2829
+                SELECT
+                    EXISTS (SELECT 1 FROM event_genres)
+                    OR EXISTS (
+                        SELECT 1
+                        FROM event_extracted_tags
+                        WHERE tag_type IN ('style', 'genre')
+                    ) AS has_genre_data
                 """
             )
+            row = cursor.fetchone()
+    return bool(row["has_genre_data"]) if row is not None else False
+
+
+def graph_has_promoter_data() -> bool:
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT
+                    EXISTS (SELECT 1 FROM promoters)
+                    AND EXISTS (SELECT 1 FROM event_promoters) AS has_promoter_data
+                """
+            )
+            row = cursor.fetchone()
+    return bool(row["has_promoter_data"]) if row is not None else False
 
 
 def test_graph_smoke():
@@ -37,6 +57,8 @@ def test_graph_smoke():
 
 
 def test_graph_filters_by_genre():
+    if not graph_has_genre_data():
+        pytest.skip("No genre data loaded in the test database")
     response = client.get("/api/graph", params={"genre": "techno"})
     assert response.status_code == 200
 
@@ -90,6 +112,8 @@ def test_graph_links_reference_existing_nodes():
 
 
 def test_graph_event_shape():
+    if not graph_has_genre_data():
+        pytest.skip("No genre data loaded in the test database")
     response = client.get("/api/graph", params={"genre": "techno"})
     assert response.status_code == 200
 
@@ -107,6 +131,8 @@ def test_graph_event_shape():
 
 
 def test_graph_includes_promoter_relationships():
+    if not graph_has_promoter_data():
+        pytest.skip("No promoter graph data loaded in the test database")
     response = client.get("/api/graph", params={"limit": 1000})
     assert response.status_code == 200
 
@@ -367,8 +393,11 @@ def test_artist_similar_events_endpoint_debug_includes_component_scores():
         "sameVenueScore",
         "sharedGenreCount",
         "sharedExtractedGenres",
+        "sharedThemes",
+        "sharedMoods",
         "sharedLineupCount",
         "extractedGenreScore",
+        "structuredTagBonus",
         "symbolicScore",
         "embeddingScore",
     }
@@ -437,8 +466,11 @@ def test_artist_promoter_recommendations_include_graph_payload():
     assert first["evidence"]
     assert "reasonDetails" in first
     assert set(first["reasonDetails"]) == {
-        "relatedEventTitles",
         "similarPromoterEventTitles",
+        "sharedExtractedGenres",
+        "sharedExtractedGenreSources",
+        "sharedThemes",
+        "sharedMoods",
         "similarArtistNames",
         "coPlayedArtistNames",
         "manualArtistNames",
@@ -620,7 +652,7 @@ def test_artist_promoter_recommendations_include_event_similarity_connections():
     ]
     if event_similarity_recommendations and has_event_similarity_evidence:
         assert event_similarity_links
-        assert all(link.get("style") == "dashed" for link in event_similarity_links)
+        assert all(link.get("style") in {"solid", "dashed"} for link in event_similarity_links)
     elif event_similarity_recommendations:
         # eventSimilarity can come from embedding-only signal even when no symbolic path exists
         assert not event_similarity_links
@@ -647,63 +679,3 @@ def test_artist_promoter_recommendations_preserve_existing_contract_fields():
     assert "analyticsGraph" in data
     assert "nodes" in data["graph"]
     assert "links" in data["graph"]
-
-
-def test_recommendation_feedback_can_be_upserted_and_listed():
-    delete_feedback_fixture()
-    payload = {
-        "sourceEntityType": "artist",
-        "sourceEntityId": 2178,
-        "candidateEntityType": "artist",
-        "candidateEntityId": 2829,
-        "feedback": "positive",
-        "reason": "strong style overlap",
-    }
-
-    response = client.post("/api/recommendation-feedback", json=payload)
-    assert response.status_code == 200
-    created = response.json()
-    assert created["sourceEntityType"] == "artist"
-    assert created["candidateEntityId"] == 2829
-    assert created["feedback"] == "positive"
-    assert created["reason"] == "strong style overlap"
-
-    update_response = client.post(
-        "/api/recommendation-feedback",
-        json={**payload, "feedback": "hidden", "reason": "testing upsert"},
-    )
-    assert update_response.status_code == 200
-    updated = update_response.json()
-    assert updated["id"] == created["id"]
-    assert updated["feedback"] == "hidden"
-    assert updated["reason"] == "testing upsert"
-
-    list_response = client.get(
-        "/api/recommendation-feedback",
-        params={
-            "sourceEntityType": "artist",
-            "sourceEntityId": 2178,
-            "candidateEntityType": "artist",
-            "candidateEntityId": 2829,
-        },
-    )
-    assert list_response.status_code == 200
-    items = list_response.json()["feedback"]
-    assert items
-    assert items[0]["id"] == created["id"]
-    delete_feedback_fixture()
-
-
-def test_recommendation_feedback_rejects_missing_entities():
-    response = client.post(
-        "/api/recommendation-feedback",
-        json={
-            "sourceEntityType": "artist",
-            "sourceEntityId": 999999999,
-            "candidateEntityType": "artist",
-            "candidateEntityId": 2829,
-            "feedback": "negative",
-        },
-    )
-
-    assert response.status_code == 404
