@@ -54,16 +54,11 @@ export default function App() {
 
   const handleAuthClick = async () => {
     if (isAuthenticated) {
-
-      const username = localStorage.getItem('username')
-
-      if (username) {
-        try {
-          await logout(username)
-        } catch {
-          console.error('Logout logging failed')
+      try {
+        await logout()
+      } catch {
+        console.error('Logout logging failed')
         }
-      }
 
       localStorage.removeItem('token')
       localStorage.removeItem('role')

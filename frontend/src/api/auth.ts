@@ -109,11 +109,8 @@ export const exportActivityLog = async (): Promise<void> => {
   URL.revokeObjectURL(url)
 }
 
-export const logout = (
-  username: string,
-): Promise<{ success: boolean; message: string }> =>
-  api.post('/logout', { username, password: '' })
-
+export const logout = (): Promise<{ success: boolean; message: string }> =>
+  api.post('/logout', undefined)
 export interface UserItem {
   id: number
   username: string

@@ -454,6 +454,7 @@ def validate_password(password: str) -> str | None:
 async def change_password(
     password_data: ChangePasswordRequest,           # read json request body into a ChangePasswordRequest object
     connection: Connection = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
 ) -> ChangePasswordResponse:                        # return type... this function should return a ChangePasswordResponse
     if password_data.new_password != password_data.new_password_confirm:
         return ChangePasswordResponse(
@@ -761,13 +762,13 @@ async def list_users(
 
 @app.post("/api/logout")
 async def logout(
-    logout_data: LoginRequest,
+    current_user: dict = Depends(get_current_user),
     connection: Connection = Depends(get_db),
 ) ->dict:
     log_activity(
         connection,
-        None,
-        logout_data.username,
+        current_user["id"],
+        current_user["username"],
         "logout",
         "Frontend logout",
     )
