@@ -102,7 +102,7 @@ export function AdminUsersPage({ compact = false, onActivityChanged, }: AdminUse
   }
 
   return (
-    <section style={{ display: 'grid', gap: 12}}>
+    <section className="min-w-0" style={{ display: 'grid', gap: 12}}>
       {compact ? (
         <div className="dashboard-section-heading">
           <span>Pending user registrations</span>
@@ -136,13 +136,13 @@ export function AdminUsersPage({ compact = false, onActivityChanged, }: AdminUse
             }}
           >
 
-            <div style={{ whiteSpace: 'normal', overflow: 'visible', textOverflow: 'ellipsis' }}>
+            <div className="min-w-0 break-words" style={{ whiteSpace: 'normal', overflow: 'visible', textOverflow: 'ellipsis' }}>
               <strong>{user.username}</strong>
               <span> — {user.email}</span>
               <span> — {user.role}</span>
             </div>
 
-            <div style={{display: 'flex', gap: 8}}>
+            <div style={{display: 'flex', flexWrap: 'wrap', gap: 8}}>
               <button 
                 type="button" 
                   style={{
@@ -194,7 +194,7 @@ export function AdminUsersPage({ compact = false, onActivityChanged, }: AdminUse
                   : '1px solid color-mix(in srgb, var(--text) 18%, transparent)',
             }}
           >
-            <div style={{ whiteSpace: 'normal', overflow: 'visible', textOverflow: 'ellipsis' }}>
+            <div className="min-w-0 break-words" style={{ whiteSpace: 'normal', overflow: 'visible', textOverflow: 'ellipsis' }}>
               <strong>{user.username}</strong>
               <span> — {user.email}</span>
               <span> — {user.role}</span>
@@ -202,7 +202,7 @@ export function AdminUsersPage({ compact = false, onActivityChanged, }: AdminUse
             </div>
 
             {user.role !== 'admin' && ['approved', 'deactivated', 'rejected'].includes(user.status) && (
-              <div style={{ display: 'flex', gap: 8}}>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8}}>
                 <button
                   type="button"
                   style={{

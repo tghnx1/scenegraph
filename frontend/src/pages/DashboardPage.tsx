@@ -88,7 +88,7 @@ export function DashboardPage() {
 
       {error && <p className="mt-5 text-[var(--event)]">Failed to load dashboard status.</p>}
 
-      <section className="grid gap-5" aria-label="Admin dashboard sections">
+      <section className="grid min-w-0 gap-5" aria-label="Admin dashboard sections">
         <DashboardStatistics
           dashboardStatus={dashboardStatus}
           isLoading={isLoading}
@@ -108,12 +108,12 @@ export function DashboardPage() {
           hasError={Boolean(metricsError)}
         />
 
-        <div className="grid gap-6 lg:grid-cols-2">
+        <div className="grid min-w-0 gap-6 lg:grid-cols-2">
           <AdminUsersPage compact onActivityChanged={loadActivity} />
 
-          <section>
+          <section className="min-w-0">
             <div
-              className="mb-3 flex items-center justify-between"
+              className="mb-3 flex flex-wrap items-center justify-between gap-2"
             >
               <span>Login, logout, and registration activity</span>
               <button 
@@ -144,17 +144,11 @@ export function DashboardPage() {
               {activityRows.map((row) => (
                 <div
                   key={row.id}
-                  style={{
-                    display: 'grid',
-                    gridTemplateColumns: '170px 120px 1fr',
-                    gap: 12,
-                    padding: '6px 0',
-                    borderBottom: '1px solid color-mix(in srgb, var(--text) 12%, transparent)',
-                  }}
+                  className="grid grid-cols-1 gap-3 border-b border-[color-mix(in_srgb,var(--text)_12%,transparent)] py-1.5 min-[701px]:grid-cols-[170px_120px_minmax(0,1fr)]"
                 >
-                  <span>{new Date(row.created_at).toLocaleString()}</span>
-                  <strong>{row.event_type}</strong>
-                  <span>
+                  <span className="min-w-0 break-words">{new Date(row.created_at).toLocaleString()}</span>
+                  <strong className="min-w-0 break-words">{row.event_type}</strong>
+                  <span className="min-w-0 break-words">
                     {row.username ?? 'unknown'} → {row.target ?? '-'}
                   </span>
                 </div>
