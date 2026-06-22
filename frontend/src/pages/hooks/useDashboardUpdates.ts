@@ -79,8 +79,8 @@ export function useDashboardUpdates(onUpdate: (message: DashboardUpdate) => void
         }
       }
 
-      socket.onclose = () => {
-        if (isClosed) {
+      socket.onclose = (event) => {
+        if (isClosed || event.code === 1008) {
           return
         }
 

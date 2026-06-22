@@ -2,15 +2,23 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 
-from fastapi import Depends, FastAPI, Header, HTTPException         #Header and HTTPException for the admin operations
+from fastapi import (
+    Depends,
+    FastAPI,
+    Header,
+    HTTPException,
+    WebSocket,
+    WebSocketDisconnect,
+)
 from fastapi.middleware.cors import CORSMiddleware
 from psycopg import Connection
 from fastapi.responses import PlainTextResponse
 
 from datetime import datetime, timedelta, timezone              #for JWT (JSON Web Token)
-from jose import jwt
+from jose import JWTError, jwt
 
 from app.auth import get_current_user, require_admin
+from app.dashboard_updates import broadcast_dashboard_update, dashboard_updates
 from app.db import get_connection, get_db
 from app.recommendation_helpers import extracted_tag_score
 from app.schema_preflight import check_schema_tables, schema_preflight_strict_mode
@@ -169,6 +177,79 @@ def create_access_token(data: dict) -> str:
         JWT_SECRET_KEY,
         algorithm=JWT_ALGORITHM,
     )
+
+
+def get_websocket_user(token: str) -> dict | None:
+    try:
+        payload = jwt.decode(
+            token,
+            JWT_SECRET_KEY,
+            algorithms=[JWT_ALGORITHM],
+        )
+    except (JWTError, ValueError):
+        return None
+
+    user_id = payload.get("sub")
+    if user_id is None:
+        return None
+
+    try:
+        parsed_user_id = int(user_id)
+    except (TypeError, ValueError):
+        return None
+
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id, username, role, status
+                FROM users
+                WHERE id = %s
+                """,
+                (parsed_user_id,),
+            )
+            user = cursor.fetchone()
+
+    if user is None or user["status"] != "approved":
+        return None
+
+    return user
+
+
+@app.websocket("/api/ws/dashboard")
+async def dashboard_websocket(websocket: WebSocket) -> None:
+    token = websocket.query_params.get("token")
+    if token is None:
+        await websocket.close(code=1008)
+        return
+
+    user = get_websocket_user(token)
+    if user is None or user["role"] != "admin":
+        await websocket.close(code=1008)
+        return
+
+    await dashboard_updates.connect(websocket)
+
+    try:
+        while True:
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        pass
+    finally:
+        dashboard_updates.disconnect(websocket)
+
+
+@app.post("/api/admin/dashboard-updates/simulate")
+async def simulate_dashboard_update(
+    admin: dict = Depends(require_admin),
+) -> dict:
+    await broadcast_dashboard_update(["composition", "metrics"])
+
+    return {
+        "success": True,
+        "message": "Dashboard update broadcast sent",
+        "areas": ["composition", "metrics"],
+    }
 
 @app.get("/health")
 async def health(connection: Connection = Depends(get_db)) -> dict[str, object]:
