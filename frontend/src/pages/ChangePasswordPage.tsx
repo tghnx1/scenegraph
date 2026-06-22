@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { changePassword, type AuthRole } from '../api/auth'
+import { validateChangePasswordForm } from '@/shared/lib/validation'
 
 interface ChangePasswordPageProps {
     onLogin?: (role: AuthRole) => void
@@ -35,8 +36,17 @@ export function ChangePasswordPage({ onLogin }: ChangePasswordPageProps) {
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     setMessage('')
-    setIsSubmitting(true)
+    const validationError = validateChangePasswordForm(
+      currentPassword,
+      newPassword,
+      newPasswordConfirm,
+    )
+    if (validationError) {
+      setMessage(validationError)
+      return
+    }
 
+    setIsSubmitting(true)
     try {
         const response = await changePassword(
             username,

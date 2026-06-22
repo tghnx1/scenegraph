@@ -1,6 +1,7 @@
 import {useEffect, useState, type FormEvent} from 'react'
 import {Link} from 'react-router-dom'
 import { Button } from '@/shared/ui/button'
+import { BIOGRAPHY_MAX_LENGTH, validateBiography } from '@/shared/lib/validation'
 import {fetchArtistBiography, updateArtistBiography} from '../../api/entityDetails'
 import type {ConnectedArtistItem} from '../../types/artist'
 import {ManualArtistConnections, type ManualArtistConnectionsProps} from './ManualArtistConnections'
@@ -59,6 +60,13 @@ export function BiographyPanel({artistId, manualConnections}: BiographyPanelProp
     setIsSaving(true)
     setError(null)
     setSuccess(null)
+    const validationError = validateBiography(draftBiography)
+    if (validationError) {
+      setError(validationError)
+      setIsSaving(false)
+      return
+    }
+
     try {
       const response = await updateArtistBiography(artistId, draftBiography)
       setBiography(response.biography)
@@ -100,10 +108,10 @@ export function BiographyPanel({artistId, manualConnections}: BiographyPanelProp
             onChange={(event) => setDraftBiography(event.target.value)}
             placeholder="Tell promoters and collaborators about your work, sound, and background."
             rows={10}
-            maxLength={6000}
+            maxLength={BIOGRAPHY_MAX_LENGTH}
           />
           <div className="flex items-center justify-between gap-3 text-sm text-[var(--text-muted)]">
-            <span>{draftBiography.length}/6000</span>
+            <span>{draftBiography.length}/{BIOGRAPHY_MAX_LENGTH}</span>
             <div className="flex gap-2">
               <Button
                 type="button"

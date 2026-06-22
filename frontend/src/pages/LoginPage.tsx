@@ -2,6 +2,7 @@ import { login, register, type AuthRole } from '../api/auth'
 import { type CSSProperties, useEffect, useRef, useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ChevronDown } from 'lucide-react'
+import { validateLoginForm, validateRegistrationForm } from '@/shared/lib/validation'
 
 interface LoginPageProps {
   onLogin: (role: AuthRole, redirect?: boolean) => void }
@@ -119,12 +120,20 @@ export function LoginPage({ onLogin }: LoginPageProps) {
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     setError('')
-    setIsSubmitting(true)
+    const cleanUsername = username.trim()
+    const cleanEmail = email.trim()
 
     if (isRegistering) {
+      const validationError = validateRegistrationForm(cleanUsername, cleanEmail, password, passwordConfirm)
+      if (validationError) {
+        setError(validationError)
+        return
+      }
+
+      setIsSubmitting(true)
       const response = await register(
-        username,
-        email,
+        cleanUsername,
+        cleanEmail,
         password,
         passwordConfirm,
         requestedRole,
@@ -145,9 +154,17 @@ export function LoginPage({ onLogin }: LoginPageProps) {
       return
     }
 
+    const validationError = validateLoginForm(cleanUsername, password)
+    if (validationError) {
+      setError(validationError)
+      return
+    }
+
+    setIsSubmitting(true)
+
     try {
       if (isRegistering) {
-        const response = await register(username, email, password, passwordConfirm, requestedRole)
+        const response = await register(cleanUsername, cleanEmail, password, passwordConfirm, requestedRole)
         if (!response.success) {
           setError(response.message)
           return
@@ -161,13 +178,13 @@ export function LoginPage({ onLogin }: LoginPageProps) {
         return
       }
 
-      const response = await login(username, password)
+      const response = await login(cleanUsername, password)
       if (!response.success || !response.access_token) {
         setError(response.message || 'Invalid username or password')
         return
       }
 
-      const authenticatedUsername = response.username ?? username
+      const authenticatedUsername = response.username ?? cleanUsername
       const role: AuthRole =
         response.role === 'admin' 
           ? 'admin' 

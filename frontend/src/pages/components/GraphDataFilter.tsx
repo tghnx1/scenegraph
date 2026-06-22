@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Button } from '@/shared/ui/button'
 import { cn } from '@/shared/lib/cn-utils'
+import { displayDateToIsoDate, isoDateToDisplayDate } from '@/shared/lib/validation'
 import type { GraphParams } from '../../api/graph'
 import type { GenreOption } from '../../api/genres'
 
@@ -22,33 +23,6 @@ const groupClass = 'grid gap-2'
 const labelClass = 'inline-flex items-center gap-1.5 text-[0.72rem] uppercase tracking-[0.14em] text-[var(--accent)]'
 const inputClass = 'min-h-9 min-w-0 rounded-[10px] border border-[var(--control-border)] bg-[var(--surface-input)] px-3 py-2 text-sm font-[inherit] text-[var(--text)] outline-none transition-[border-color,box-shadow] placeholder:text-[var(--text-placeholder)] focus:border-[var(--focus-border)] focus:shadow-[0_0_0_3px_var(--focus-ring)] disabled:cursor-not-allowed disabled:opacity-60'
 const filterButtonClass = 'cursor-pointer rounded-full border border-[var(--control-border)] bg-[var(--control-bg)] px-3 py-2 text-sm font-semibold text-[var(--text)] transition-colors hover:border-[var(--selection-border)] hover:bg-[var(--selection-soft)] disabled:cursor-not-allowed disabled:opacity-50'
-
-const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/
-const DISPLAY_DATE_PATTERN = /^\d{2}\.\d{2}\.\d{4}$/
-
-function isoDateToDisplayDate(value: string) {
-  if (!ISO_DATE_PATTERN.test(value)) return value
-
-  const [year, month, day] = value.split('-')
-  return `${day}.${month}.${year}`
-}
-
-function displayDateToIsoDate(value: string) {
-  if (!DISPLAY_DATE_PATTERN.test(value)) return null
-
-  const [day, month, year] = value.split('.')
-  const date = new Date(Number(year), Number(month) - 1, Number(day))
-
-  if (
-    date.getFullYear() !== Number(year) ||
-    date.getMonth() !== Number(month) - 1 ||
-    date.getDate() !== Number(day)
-  ) {
-    return null
-  }
-
-  return `${year}-${month}-${day}`
-}
 
 interface GraphFiltersProps {
   filters: GraphParams
