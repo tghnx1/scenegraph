@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
 from typing import Any, List, Optional
 from psycopg import Connection
+from app.auth import require_admin
 from app.db import get_db
 
 router = APIRouter()
@@ -57,6 +58,7 @@ def get_composition(
     include: str = Query("events,artists,promoters,venues"),
     dateFrom: Optional[str] = Query(None),
     dateTo: Optional[str] = Query(None),
+    admin: dict = Depends(require_admin),
     db: Connection = Depends(get_db),
 ):
     requested = [t.strip() for t in include.split(",") if t.strip() in LABELS]

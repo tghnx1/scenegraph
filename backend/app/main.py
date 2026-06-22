@@ -8,13 +8,9 @@ from psycopg import Connection
 from fastapi.responses import PlainTextResponse
 
 from datetime import datetime, timedelta, timezone              #for JWT (JSON Web Token)
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from jose import JWTError, jwt
+from jose import jwt
 
-from typing import Annotated
-
-security = HTTPBearer()         #security parse that understands jwt-encrypted headers.
-
+from app.auth import get_current_user, require_admin
 from app.db import get_connection, get_db
 from app.recommendation_helpers import extracted_tag_score
 from app.schema_preflight import check_schema_tables, schema_preflight_strict_mode
@@ -157,54 +153,6 @@ JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
 JWT_EXPIRE_MINUTES = int(os.getenv("JWT_EXPIRE_MINUTES", "120"))
 if JWT_SECRET_KEY is None:
     raise RuntimeError("JWT_SECRET_KEY not configured")
-
-def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(security),
-    connection: Connection = Depends(get_db),
-) -> dict:
-    token = credentials.credentials
-
-    try:
-        payload = jwt.decode(
-            token,
-            JWT_SECRET_KEY,
-            algorithms=[JWT_ALGORITHM],
-        )
-        user_id = payload.get("sub")            #in JWT the subject (the user_id)
-
-        if user_id is None:
-            raise HTTPException(status_code=401, detail="Invalid token")
-
-    except (JWTError, ValueError):
-        raise HTTPException(status_code=401, detail="Invalid token")
-
-    with connection.cursor() as cursor:
-        cursor.execute(
-            """
-            SELECT id, username, role, status
-            FROM users
-            WHERE id = %s
-            """,
-            (int(user_id),),
-        )
-        user = cursor.fetchone()
-
-    if user is None:
-        raise HTTPException(status_code=401, detail="User not found")
-
-    if user["status"] != "approved":
-        raise HTTPException(status_code=403, detail="Account is not approved")
-    
-    return user
-
-
-#admin helper for admin operations (accept, reject, check pending), before the endpoints
-def require_admin(
-    current_user: dict = Depends(get_current_user),
-) -> dict:
-    if current_user["role"] != "admin":
-        raise HTTPException(status_code=403, detail="Admin token required")
-    return current_user
 
 def create_access_token(data: dict) -> str:
     to_encode = data.copy()                 #make a copy of the user data

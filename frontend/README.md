@@ -1,6 +1,6 @@
-# Berlin Scene Graph Frontend
+# Berlin Scenegraph Frontend
 
-React and TypeScript client for exploring the Berlin Scene Graph API. The frontend renders the graph workspace, search and detail panels, artist/agent recommendation flows, admin dashboard, authentication screens, and static legal/contact pages.
+React and TypeScript client for exploring the Berlin Scenegraph API. The frontend renders the graph workspace, search and detail panels, artist/agent recommendation flows, admin dashboard, authentication screens, and static legal/contact pages.
 
 The app is built with Vite, React Router, Tailwind CSS, a small Zustand store, typed API helpers, and `react-force-graph-2d` for the graph canvas.
 
