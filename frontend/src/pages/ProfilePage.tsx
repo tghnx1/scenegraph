@@ -31,13 +31,15 @@ export function ProfilePage({ recommendationTargetControls, showBiography = true
   return (
     <div className={cn(
       'mx-auto w-full max-w-[1480px] p-4',
-      isSingleRowWorkspace ? 'h-full min-h-0 overflow-hidden' : 'min-h-full',
+      isSingleRowWorkspace
+        ? 'min-h-full min-[901px]:h-full min-[901px]:min-h-0 min-[901px]:overflow-hidden'
+        : 'min-h-full',
     )}>
       <section
         className={cn(
           'grid grid-cols-[minmax(380px,440px)_minmax(0,1fr)] gap-5 max-[900px]:grid-cols-1 max-[900px]:grid-rows-none',
           isSingleRowWorkspace
-            ? 'h-full min-h-0 grid-rows-[minmax(0,1fr)]'
+            ? 'min-[901px]:h-full min-[901px]:min-h-0 min-[901px]:grid-rows-[minmax(0,1fr)]'
             : 'grid-rows-[minmax(560px,calc(100dvh-128px))_auto]',
         )}
         aria-label="Profile overview"

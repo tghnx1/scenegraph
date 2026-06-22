@@ -32,7 +32,7 @@ const PROMOTER_SIZE_LABELS: Record<'small' | 'medium' | 'large', string> = {
 }
 
 const labelClass = 'text-xs font-semibold uppercase tracking-[0.14em] text-[var(--accent)]'
-const panelHeadingClass = 'flex items-center justify-between gap-3'
+const panelHeadingClass = 'flex items-center justify-between gap-3 max-[900px]:flex-wrap'
 const mutedTextClass = 'text-sm text-[var(--text-muted)]'
 
 type ReasonListKind =
@@ -515,7 +515,7 @@ export function PromoterRecommendationsPanel({
       <div className={panelHeadingClass}>
         <span className={labelClass}>Promoter Recommendations</span>
         {(targetControls || recommendationsData) && (
-          <div className="flex min-w-0 flex-nowrap items-center justify-end gap-2 max-[900px]:flex-wrap">
+          <div className="flex min-w-0 flex-nowrap items-center justify-end gap-2 max-[900px]:w-full max-[900px]:flex-wrap">
             {targetControls?.controls}
             <Button
               type="button"
