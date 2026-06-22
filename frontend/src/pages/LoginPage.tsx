@@ -2,6 +2,7 @@ import { login, register, type AuthRole } from '../api/auth'
 import { type CSSProperties, useEffect, useRef, useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ChevronDown } from 'lucide-react'
+// import { ChevronsUpDown } from 'lucide-react'
 import { validateLoginForm, validateRegistrationForm } from '@/shared/lib/validation'
 
 interface LoginPageProps {
@@ -52,6 +53,7 @@ function RoleSelect({value, onChange}: {value: RegistrationRole; onChange: (role
       >
         <span>{selectedRole.label}</span>
         <ChevronDown className="size-4 text-[var(--text-muted)]" aria-hidden="true" />
+        {/* <ChevronsUpDown className="size-4 text-[var(--text-muted)]" aria-hidden="true" /> */}
       </button>
       {isOpen && (
         <div
