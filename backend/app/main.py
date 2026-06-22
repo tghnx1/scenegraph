@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException         #Header and HTTPException for the admin operations
 from fastapi.middleware.cors import CORSMiddleware
 from psycopg import Connection
 from fastapi.responses import PlainTextResponse
@@ -10,6 +10,8 @@ from fastapi.responses import PlainTextResponse
 from datetime import datetime, timedelta, timezone              #for JWT (JSON Web Token)
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
+
+from typing import Annotated
 
 security = HTTPBearer()         #security parse that understands jwt-encrypted headers.
 
@@ -47,7 +49,7 @@ def create_bootstrap_admin(connection: Connection) -> None:         #like void
             SELECT id
             FROM users
             WHERE role = 'admin'
-            LIMIT 1
+            LIMIT 1     
             """                 #limit 1 is for finding at most one admin
         )
 
@@ -62,7 +64,7 @@ def create_bootstrap_admin(connection: Connection) -> None:         #like void
         ):
             print("Bootstrap admin variables missing")
             return
-
+        
         hashed_password = pwd_context.hash(BOOTSTRAP_ADMIN_PASSWORD)
 
         cursor.execute(
@@ -89,7 +91,7 @@ def create_bootstrap_admin(connection: Connection) -> None:         #like void
             (
                 BOOTSTRAP_ADMIN_USERNAME,
                 BOOTSTRAP_ADMIN_EMAIL,
-                hashed_password,
+                hashed_password,              
             )
         )
 
@@ -192,7 +194,7 @@ def get_current_user(
 
     if user["status"] != "approved":
         raise HTTPException(status_code=403, detail="Account is not approved")
-
+    
     return user
 
 
@@ -284,10 +286,10 @@ def check_rate_limit(key: str, max_attempts: int = 5, window_seconds: int = 60) 
     attempts.append(now)
     rate_limit_attempts[key] = attempts
 
-#when POST /api/login arrives, expect LoginRequest input, execute async login function, return LoginResponse output
-#response_model = LoginResponse means FastAPI should validate and document the returned JSON using LoginResponse
+#when POST /api/login arrives, expect LoginRequest input, execute async login function, return LoginResponse output 
+#response_model = LoginResponse means FastAPI should validate and document the returned JSON using LoginResponse  
 #async means this function can pause while waiting without blocking whole server
-@app.post("/api/login", response_model=LoginResponse, response_model_exclude_none=True)
+@app.post("/api/login", response_model=LoginResponse, response_model_exclude_none=True)        
 async def login(
     login_data: LoginRequest,
     connection: Connection = Depends(get_db),
@@ -310,7 +312,7 @@ async def login(
             success=False,
             message="Invalid username or password",
         )
-
+    
     if not pwd_context.verify(login_data.password, user["password_hash"]):
         return LoginResponse(
             success=False,
@@ -322,7 +324,7 @@ async def login(
             success=False,
             message="Account is not approved"
         )
-
+    
     log_activity(
         connection,
         user["id"],
@@ -331,7 +333,7 @@ async def login(
         "Login page",
     )
     connection.commit()
-
+    
     return LoginResponse(
         success=True,
         message="Login successful",
@@ -348,7 +350,7 @@ async def login(
         must_change_password=user["must_change_password"],
     )
 
-USERNAME_RE = re.compile(r"^[a-zA-Z0-9_-]{3,32}$")
+USERNAME_RE = re.compile(r"^[a-zA-Z0-9_-]{3,32}$")     
 
 def validatate_registration_input(register_data: RegisterRequest) -> str | None:
     if not USERNAME_RE.match(register_data.username):
@@ -367,27 +369,27 @@ async def register(
     connection: Connection = Depends(get_db)
 ) -> RegisterResponse:
 
-    check_rate_limit(f"register:{register_data.email}", max_attempts=3, window_seconds=300)
+    check_rate_limit(f"register:{register_data.email}, max_attempts=3, window_seconds=300")
 
     if register_data.password != register_data.password_confirm:
         return RegisterResponse(
             success=False,
             message="Passwords do not match",
         )
-
+    
     validation_error = validatate_registration_input(register_data)
     if validation_error:
         return RegisterResponse(
             success=False,
             message=validation_error,
         )
-
+    
     if register_data.role not in {"artist", "agent"}:
         return RegisterResponse(
             success=False,
             message="Invalid role",
         )
-
+    
     with connection.cursor() as cursor:
         cursor.execute(
             """
@@ -405,7 +407,7 @@ async def register(
                 success=False,
                 message="Username or email already exists",
             )
-
+        
         hashed_password = pwd_context.hash(register_data.password)
 
         cursor.execute(
@@ -432,7 +434,7 @@ async def register(
             "User account",
         )
         connection.commit() # ensure to save the changes...
-
+    
     return RegisterResponse(
         success=True,
         message="Registration successful",
@@ -452,6 +454,7 @@ def validate_password(password: str) -> str | None:
 async def change_password(
     password_data: ChangePasswordRequest,           # read json request body into a ChangePasswordRequest object
     connection: Connection = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
 ) -> ChangePasswordResponse:                        # return type... this function should return a ChangePasswordResponse
     if password_data.new_password != password_data.new_password_confirm:
         return ChangePasswordResponse(
@@ -483,25 +486,25 @@ async def change_password(
                 success=False,
                 message="Invalid username or password",
             )
-
+        
         if user["status"] != "approved":
             return ChangePasswordResponse(
                 success=False,
                 message="Account is not approved"
             )
-
+        
         if not pwd_context.verify(password_data.current_password, user["password_hash"]):
             return ChangePasswordResponse(
                 success=False,
                 message="Invalid username or password",
             )
-
+        
         if pwd_context.verify(password_data.new_password, user["password_hash"]):
             return ChangePasswordResponse(
                 success=False,
                 message="New password must be different from current password",
             )
-
+        
         new_hashed_password = pwd_context.hash(password_data.new_password)
 
         cursor.execute(
@@ -547,7 +550,7 @@ async def list_pending_users(
             """
         )
         users = cursor.fetchall()
-
+    
     return {
         "success": True,
         "users": users,
@@ -571,10 +574,10 @@ async def approve_user(
         )
         updated_user = cursor.fetchone()
         connection.commit()
-
+    
     if updated_user is None:
         raise HTTPException(status_code=404, detail="User not found")
-
+    
     log_activity(
         connection,
         admin["id"],
@@ -608,10 +611,10 @@ async def reject_user(
         )
         updated_user = cursor.fetchone()
         connection.commit()
-
+    
     if updated_user is None:
         raise HTTPException(status_code=404, detail="User not found")
-
+    
     log_activity(
         connection,
         admin["id"],
@@ -648,13 +651,13 @@ async def deactivate_user(
 
         if updated_user is None:
             raise HTTPException(status_code=404, detail="User not found")
-
+        
         log_activity(
             connection,
             updated_user["id"],
             updated_user["username"],
-            "activation",
-            f"Activated by {admin['username']}",
+            "deactivation",
+            f"Deactivated by {admin['username']}",
         )
 
         log_activity(
@@ -665,7 +668,7 @@ async def deactivate_user(
             updated_user["username"],
         )
         connection.commit()
-
+    
     return {
         "success": True,
         "message": "User deactivated",
@@ -692,13 +695,13 @@ async def activate_user(
 
         if updated_user is None:
             raise HTTPException(status_code=404, detail="User not found")
-
+        
         log_activity(
             connection,
             updated_user["id"],
             updated_user["username"],
-            "deactivation",
-            f"Deactivated by {admin['username']}",
+            "activation",
+            f"Activated by {admin['username']}",
         )
 
         log_activity(
@@ -709,7 +712,7 @@ async def activate_user(
             updated_user["username"],
         )
         connection.commit()
-
+    
     return {
         "success": True,
         "message": "User activated",
@@ -731,7 +734,7 @@ async def list_activity(
             """
         )
         rows = cursor.fetchall()
-
+    
     return {
         "success": True,
         "activity": rows,
@@ -759,13 +762,13 @@ async def list_users(
 
 @app.post("/api/logout")
 async def logout(
-    logout_data: LoginRequest,
+    current_user: dict = Depends(get_current_user),
     connection: Connection = Depends(get_db),
 ) ->dict:
     log_activity(
         connection,
-        None,
-        logout_data.username,
+        current_user["id"],
+        current_user["username"],
         "logout",
         "Frontend logout",
     )
@@ -815,7 +818,7 @@ async def change_user_role(
 ) -> dict:
     if role_data.role not in {"artist", "agent"}:
         raise HTTPException(status_code=400, detail="Invalid role")
-
+    
     with connection.cursor() as cursor:
         cursor.execute(
             """
@@ -831,7 +834,7 @@ async def change_user_role(
 
         if updated_user is None:
             raise HTTPException(status_code=404, detail="User not found or cannot change admin role")
-
+        
         log_activity(
             connection,
             admin["id"],
@@ -841,7 +844,7 @@ async def change_user_role(
         )
 
         connection.commit()
-
+    
     return {
         "success": True,
         "message": "User role changed",
@@ -865,3 +868,133 @@ async def list_venues(connection: Connection = Depends(get_db)) -> VenuesRespons
         venues = cursor.fetchall()
 
     return VenuesResponse(venues=[Venue(**venue) for venue in venues])
+
+PUBLIC_API_KEY=os.getenv("PUBLIC_API_KEY")
+
+def require_public_api_key(api_key: str | None = Header(alias="X-API-Key"),) -> None:
+    if not PUBLIC_API_KEY or api_key != PUBLIC_API_KEY:
+        raise HTTPException(status_code=401, detail="Invalid API key")
+    
+@app.get("/api/public/venues")
+async def public_venues(
+    _: None = Depends(require_public_api_key),          # _: None is because the result is not necessary, just run it
+    connection: Connection = Depends(get_db),
+    limit: int = 20,
+    offset: int = 0,
+) -> dict:
+    check_rate_limit("public:venues", max_attempts=100, window_seconds=60)
+
+    limit = min(max(limit, 1), 100)     #for pagination
+    offset = max(offset, 0)
+
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT id, name
+            FROM venues
+            ORDER BY name ASC
+            LIMIT %s OFFSET %s
+            """,
+            (limit, offset),
+        )
+        rows = cursor.fetchall()
+
+    return {
+        "success": True,
+        "limit": limit,
+        "offset": offset,
+        "venues": rows,
+    }
+
+@app.get("/api/public/artists")
+async def public_artists(
+    _: None = Depends(require_public_api_key),         
+    connection: Connection = Depends(get_db),
+    limit: int = 20,
+    offset: int = 0,
+) -> dict:
+    check_rate_limit("public:artists", max_attempts=100, window_seconds=60)
+
+    limit = min(max(limit, 1), 100)     #for pagination
+    offset = max(offset, 0)
+
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT id, name
+            FROM artists
+            ORDER BY name ASC
+            LIMIT %s OFFSET %s
+            """,
+            (limit, offset),
+        )
+        rows = cursor.fetchall()
+
+    return {
+        "success": True,
+        "limit": limit,
+        "offset": offset,
+        "artists": rows,
+    }
+
+@app.get("/api/public/events")
+async def public_events(
+    _: None = Depends(require_public_api_key),         
+    connection: Connection = Depends(get_db),
+    limit: int = 20,
+    offset: int = 0,
+) -> dict:
+    check_rate_limit("public:events", max_attempts=100, window_seconds=60)
+
+    limit = min(max(limit, 1), 100)     #for pagination
+    offset = max(offset, 0)
+
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT id, name
+            FROM events
+            ORDER BY name ASC
+            LIMIT %s OFFSET %s
+            """,
+            (limit, offset),
+        )
+        rows = cursor.fetchall()
+
+    return {
+        "success": True,
+        "limit": limit,
+        "offset": offset,
+        "events": rows,
+    }
+
+@app.get("/api/public/promoters")
+async def public_promoters(
+    _: None = Depends(require_public_api_key),         
+    connection: Connection = Depends(get_db),
+    limit: int = 20,
+    offset: int = 0,
+) -> dict:
+    check_rate_limit("public:promoters", max_attempts=100, window_seconds=60)
+
+    limit = min(max(limit, 1), 100)     #for pagination
+    offset = max(offset, 0)
+
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT id, name
+            FROM promoters
+            ORDER BY name ASC
+            LIMIT %s OFFSET %s
+            """,
+            (limit, offset),
+        )
+        rows = cursor.fetchall()
+
+    return {
+        "success": True,
+        "limit": limit,
+        "offset": offset,
+        "promoters": rows,
+    }

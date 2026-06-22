@@ -75,10 +75,10 @@ class RegisterRequest(BaseModel):
     username: str
     email: str
     password: str
-    password_confirm: str
+    password_confirm: str    
     role: str
 
-class RegisterResponse(BaseModel):
+class RegisterResponse(BaseModel): 
     success: bool
     message: str
     user_id: int | None = None

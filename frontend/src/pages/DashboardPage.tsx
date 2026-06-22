@@ -1,11 +1,12 @@
-import {useCallback, useState} from 'react'
+import { AdminUsersPage } from "./AdminUsersPage"
+import { getActivityLog, type ActivityLogItem, exportActivityLog } from "../api/auth"
+import {useCallback, useEffect, useState} from 'react'
 import {fetchDashboardStatus} from '../api/dashboardComposition'
 import {fetchDashboardMetrics} from '../api/dashboardMetrics'
 import {useApi} from '../api/useApi'
 import type {DashboardEntity} from '../types/dashboardComposition'
 import { Button } from '@/shared/ui/button'
 import {DashboardExportMenu} from './components/ExportDashboard'
-import {DashboardManagement} from './components/DashboardManagement'
 import {DashboardMetricPanels} from './components/DashboardMetric'
 import {DashboardStatistics} from './components/DashboardComposition'
 import {useDashboardUpdates, type DashboardUpdate} from './hooks/useDashboardUpdates'
@@ -58,6 +59,21 @@ export function DashboardPage() {
     )
   }
 
+  const[activityRows, setActivityRows] = useState<ActivityLogItem[]>([])
+
+  const loadActivity = async () => {
+    try {
+      const response = await getActivityLog()
+      setActivityRows(response.activity)
+    } catch (error) {
+      console.error(error)
+    }
+  }
+
+  useEffect(() => {
+    void loadActivity()
+  }, [])
+
   return (
     <div className="mx-auto min-h-full w-full max-w-[1480px] p-4">
       <div className="mb-4 flex justify-end gap-2" aria-label="Dashboard actions">
@@ -71,6 +87,7 @@ export function DashboardPage() {
       </div>
 
       {error && <p className="mt-5 text-[var(--event)]">Failed to load dashboard status.</p>}
+
       <section className="grid gap-5" aria-label="Admin dashboard sections">
         <DashboardStatistics
           dashboardStatus={dashboardStatus}
@@ -90,7 +107,61 @@ export function DashboardPage() {
           isLoading={areMetricsLoading}
           hasError={Boolean(metricsError)}
         />
-        <DashboardManagement />
+
+        <div className="grid gap-6 lg:grid-cols-2">
+          <AdminUsersPage compact onActivityChanged={loadActivity} />
+
+          <section>
+            <div
+              className="mb-3 flex items-center justify-between"
+            >
+              <span>Login, logout, and registration activity</span>
+              <button 
+                type="button"
+                onClick={exportActivityLog}
+                style={{
+                  padding: '8px 12px',
+                  borderRadius: 8,
+                  border: '1px solid color-mix(in srgb, var(--text) 20%, transparent)',
+                  background: 'color-mix(in srgb, var(--background) 88%, var(--text) 8%)',
+                }}                
+              >
+                Export activity log
+              </button>
+            </div>
+
+            <div
+              className="dashboard-scroll-list"
+              style={{
+                maxHeight: 460,
+                overflowY: 'auto',
+                display: 'grid',
+                gap: 6,
+                fontFamily: 'monospace',
+                fontSize: 13,
+              }}
+            >
+              {activityRows.map((row) => (
+                <div
+                  key={row.id}
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: '170px 120px 1fr',
+                    gap: 12,
+                    padding: '6px 0',
+                    borderBottom: '1px solid color-mix(in srgb, var(--text) 12%, transparent)',
+                  }}
+                >
+                  <span>{new Date(row.created_at).toLocaleString()}</span>
+                  <strong>{row.event_type}</strong>
+                  <span>
+                    {row.username ?? 'unknown'} → {row.target ?? '-'}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </section>
+        </div>
       </section>
     </div>
   )

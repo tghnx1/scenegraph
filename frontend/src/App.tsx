@@ -5,9 +5,9 @@ import { DashboardPage } from './pages/DashboardPage'
 import { ProfilePage } from './pages/ProfilePage'
 import { AgencyPage } from './pages/AgencyPage'
 import { LoginPage } from './pages/LoginPage'
+import { logout, type AuthRole } from './api/auth'
 import { ChangePasswordPage } from './pages/ChangePasswordPage'
 import { AboutPage } from './pages/AboutPage'
-import { isAuthRole, logout, type AuthRole } from './api/auth'
 import { applyTheme, getStoredTheme, type ThemeName } from './shared/styles/colors'
 import { Button } from '@/shared/ui/button'
 import { cn } from '@/shared/lib/cn-utils'
@@ -38,11 +38,9 @@ export default function App() {
   const [authRole, setAuthRole] = useState<AuthRole | null>(() => {
     const storedToken = localStorage.getItem('token')
     const storedRole = localStorage.getItem('role')
-
-    if (!storedToken) return null
-    if (isAuthRole(storedRole)) return storedRole
-
-    return null
+    return storedToken && storedRole && ['artist', 'agent', 'admin'].includes(storedRole) 
+      ? storedRole as AuthRole
+      : null
   })
   const [themeName, setThemeName] = useState<ThemeName>(() => getStoredTheme())
   const isAuthenticated = Boolean(authRole)
@@ -55,16 +53,11 @@ export default function App() {
 
   const handleAuthClick = async () => {
     if (isAuthenticated) {
-
-      const username = localStorage.getItem('username')
-
-      if (username) {
-        try {
-          await logout(username)
-        } catch {
-          console.error('Logout logging failed')
+      try {
+        await logout()
+      } catch {
+        console.error('Logout logging failed')
         }
-      }
 
       localStorage.removeItem('token')
       localStorage.removeItem('role')
@@ -78,8 +71,12 @@ export default function App() {
     navigate('/login')
   }
 
-  const handleLogin = (role: AuthRole, _username: string) => {
+  const handleLogin = (role: AuthRole, redirect = true) => {
     setAuthRole(role)
+
+    if (redirect) {
+      navigate(role === 'admin' ? '/dashboard' : '/profile')
+    }
   }
 
   const handleThemeToggle = () => {
@@ -118,16 +115,15 @@ export default function App() {
           <Route path="/" element={<Navigate to="/graph" />} />
           <Route path="/graph" element={graphPage} />
           <Route path="/login" element={isAuthenticated ? <Navigate to="/graph" replace /> : <LoginPage onLogin={handleLogin} />} />
-          <Route
-            path="/change-password"
+          <Route 
+            path="/change-password" 
             element={
               isAuthenticated || localStorage.getItem('token')
                 ? <ChangePasswordPage onLogin={handleLogin} />
-                : <Navigate to="/login" replace />
-            }
+                : <Navigate to="/login" replace />} 
           />
           <Route path="/dashboard" element={authRole === 'admin' ? <DashboardPage /> : <Navigate to={isAuthenticated ? '/graph' : '/login'} replace />} />
-          <Route path="/profile" element={authRole === 'artist' ? <ProfilePage /> : <Navigate to={isAuthenticated ? '/graph' : '/login'} replace />} />
+          <Route path="/profile" element={authRole === 'artist' || authRole === 'agent' ? <ProfilePage /> : <Navigate to={isAuthenticated ? '/graph' : '/login'} replace />} />
           <Route path="/search" element={<SearchRedirect />} />
           <Route path="/artist/:id" element={<EntityRedirect type="artist" />} />
           <Route path="/promoter/:id" element={<EntityRedirect type="promoter" />} />

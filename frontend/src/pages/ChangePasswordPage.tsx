@@ -1,20 +1,31 @@
 import { useState, type FormEvent } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { Button } from '@/shared/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/shared/ui/card'
-import { Input } from '@/shared/ui/input'
-import { Label } from '@/shared/ui/label'
-import { changePassword, isAuthRole, type AuthRole } from '../api/auth'
+import { changePassword, type AuthRole } from '../api/auth'
 
 interface ChangePasswordPageProps {
-  onLogin?: (role: AuthRole, username: string) => void
+    onLogin?: (role: AuthRole) => void
+}
+
+const colorVar = (name: string) => `var(${name})`
+const colorAlpha = (name: string, percent: number) => `color-mix(in srgb, var(${name}) ${percent}%, transparent)`
+
+const inputStyle = {
+  width: '100%',
+  border: `1px solid ${colorAlpha('--text', 18)}`,
+  borderRadius: 8,
+  background: colorAlpha('--background', 64),
+  color: colorVar('--text'),
+  font: 'inherit',
+  padding: '10px 12px',
+  outline: 'none',
 }
 
 export function ChangePasswordPage({ onLogin }: ChangePasswordPageProps) {
   const navigate = useNavigate()
-  const [searchParams] = useSearchParams()
   const username = localStorage.getItem('username') ?? ''
+  const [searchParams] = useSearchParams()
   const forced = searchParams.get('forced') === 'true'
+
   const [currentPassword, setCurrentPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [newPasswordConfirm, setNewPasswordConfirm] = useState('')
@@ -27,46 +38,97 @@ export function ChangePasswordPage({ onLogin }: ChangePasswordPageProps) {
     setIsSubmitting(true)
 
     try {
-      const response = await changePassword(username, currentPassword, newPassword, newPasswordConfirm)
-      setMessage(response.message)
-      if (response.success) {
-        setCurrentPassword('')
-        setNewPassword('')
-        setNewPasswordConfirm('')
+        const response = await changePassword(
+            username,
+            currentPassword,
+            newPassword,
+            newPasswordConfirm,
+        )
 
-        if (forced) {
-          const storedRole = localStorage.getItem('role')
-          if (isAuthRole(storedRole)) {
-            onLogin?.(storedRole, username)
-            navigate(storedRole === 'admin' ? '/dashboard' : '/graph')
-          }
+        setMessage(response.message)
+
+        if (response.success) {
+            setCurrentPassword('')
+            setNewPassword('')
+            setNewPasswordConfirm('')
+
+            if (forced) {
+                const role = localStorage.getItem('role') as AuthRole | null
+                if (role) {
+                    onLogin?.(role)
+                    navigate(role === 'admin' ? '/dashboard' : '/profile')
+                }
+            }
         }
-      }
     } catch {
-      setMessage('Password change failed. Please try again.')
+        setMessage('Password change failed. Please try again')
     } finally {
-      setIsSubmitting(false)
+        setIsSubmitting(false)
     }
-  }
-
+}
   return (
-    <div className="grid min-h-full place-items-center p-6">
-      <Card className="w-full max-w-[420px] bg-[color-mix(in_srgb,var(--background)_72%,transparent)]">
-        <CardHeader>
-          <span className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--accent)]">Account</span>
-          <CardTitle className="mt-2 text-[32px]">{forced ? 'Change password before continuing' : 'Change password'}</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSubmit} className="grid gap-3.5">
-            <Label>Current password<Input type="password" value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} required /></Label>
-            <Label>New password<Input type="password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} required /></Label>
-            <Label>Confirm new password<Input type="password" value={newPasswordConfirm} onChange={(event) => setNewPasswordConfirm(event.target.value)} required /></Label>
-            {message && <p className="m-0 text-sm text-[var(--text-muted)]">{message}</p>}
-            <Button type="submit" disabled={isSubmitting}>{isSubmitting ? 'Changing password...' : 'Change password'}</Button>
-            {!forced && <Button type="button" variant="secondary" onClick={() => navigate(-1)}>Back</Button>}
-          </form>
-        </CardContent>
-      </Card>
+    <div style={{ minHeight: '100%', display: 'grid', placeItems: 'center', padding: 24 }}>
+      <section
+        style={{
+          width: 'min(420px, 100%)',
+          padding: 24,
+          borderRadius: 8,
+          background: colorAlpha('--background', 72),
+          border: `1px solid ${colorAlpha('--text', 18)}`,
+          boxShadow: 'var(--surface-shadow)',
+        }}
+      >
+        <span className="search-query-label">Account</span>
+        <h1 style={{ marginTop: 8, fontSize: 32 }}>
+            {forced ? 'Change password before continuing' : 'Change password'}
+        </h1>
+
+        <form onSubmit={handleSubmit} style={{ display: 'grid', gap: 14, marginTop: 24 }}>
+          <label>
+            Current password
+            <input
+              style={inputStyle}
+              type="password"
+              value={currentPassword}
+              onChange={(event) => setCurrentPassword(event.target.value)}
+              required
+            />
+          </label>
+
+          <label>
+            New password
+            <input
+              style={inputStyle}
+              type="password"
+              value={newPassword}
+              onChange={(event) => setNewPassword(event.target.value)}
+              required
+            />
+          </label>
+
+          <label>
+            Confirm new password
+            <input
+              style={inputStyle}
+              type="password"
+              value={newPasswordConfirm}
+              onChange={(event) => setNewPasswordConfirm(event.target.value)}
+              required
+            />
+          </label>
+
+          {message && <p>{message}</p>}
+
+          <button type="submit" disabled={isSubmitting}>
+            {isSubmitting ? 'Changing password...' : 'Change password'}
+          </button>
+          {!forced && (
+            <button type="button" onClick={() => navigate(-1)}>
+                Back
+            </button>
+          )}
+        </form>
+      </section>
     </div>
   )
 }

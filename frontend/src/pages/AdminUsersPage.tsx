@@ -1,31 +1,32 @@
 import { useEffect, useState } from 'react'
-import { Button } from '@/shared/ui/button'
-import { Badge } from '@/shared/ui/badge'
-import {
-  activateUser,
-  approveUser,
-  changeUserRole,
-  deactivateUser,
-  getPendingUsers,
-  getUsers,
-  rejectUser,
-  type PendingUser,
-  type UserItem,
-} from '../api/auth'
+import { changeUserRole, approveUser, rejectUser, getPendingUsers, getUsers, deactivateUser, activateUser, type PendingUser, type UserItem, } from '../api/auth'
 
-interface AdminUsersPageProps {
+interface AdminUsersPageProps { 
   compact?: boolean
-  onActivityChanged?: () => void | Promise<void>
-}
+  onActivityChanged?: () => Promise<void>       //to update directly the log, the child adminuserpage has to ask the dashboardpage.
+}  
 
-export function AdminUsersPage({ compact = false, onActivityChanged }: AdminUsersPageProps) {
+export function AdminUsersPage({ compact = false, onActivityChanged, }: AdminUsersPageProps) {
   const [users, setUsers] = useState<PendingUser[]>([])
   const [message, setMessage] = useState('')
   const [allUsers, setAllUsers] = useState<UserItem[]>([])
 
+  const adminButtonStyle = {
+    padding: '8px 12px',
+    background: 'color-mix(in srgb, var(--background) 88%, var(--text) 8%)',
+    border: '1px solid color-mix(in srgb, var(--text) 20%, transparent)',
+    borderRadius: 8,
+    cursor: 'pointer',
+  }
+
+  //const loadUsers = async () => {
+    //const response = await getPendingUsers()
+    //setUsers(response.users)
+  //}
   const loadUsers = async () => {
     try {
-      setUsers((await getPendingUsers()).users)
+      const response = await getPendingUsers()
+      setUsers(response.users)
     } catch (error) {
       console.error(error)
       setMessage('Could not load pending users')
@@ -34,93 +35,202 @@ export function AdminUsersPage({ compact = false, onActivityChanged }: AdminUser
 
   const loadAllUsers = async () => {
     try {
-      setAllUsers((await getUsers()).users)
+      const response = await getUsers()
+      setAllUsers(response.users)
     } catch (error) {
       console.error(error)
       setMessage('Could not load users')
     }
   }
 
-  const refresh = async (nextMessage: string) => {
-    setMessage(nextMessage)
-    await Promise.all([loadUsers(), loadAllUsers(), onActivityChanged?.()])
-  }
-
   useEffect(() => {
-    void loadUsers()
-    void loadAllUsers()
+    loadUsers()
+    loadAllUsers()
   }, [])
 
   const handleApprove = async (user: PendingUser) => {
     if (!confirm(`Approve ${user.username}?`)) return
-    const response = await approveUser(user.id)
-    await refresh(response.message)
+
+    await approveUser(user.id)
+    //setMessage(response.message)
+    await loadUsers()
+    await loadAllUsers()
+    await onActivityChanged?.()
   }
 
   const handleReject = async (user: PendingUser) => {
-    if (!confirm(`Reject ${user.username}?`)) return
-    const response = await rejectUser(user.id)
-    await refresh(response.message)
+  if (!confirm(`Reject ${user.username}?`))
+    return
+
+    await rejectUser(user.id)
+    //setMessage(response.message)
+    await loadUsers()
+    await loadAllUsers()
+    await onActivityChanged?.()
   }
 
-  const handleActivation = async (user: UserItem) => {
-    const activating = user.status !== 'approved'
-    if (!confirm(`${activating ? 'Activate' : 'Deactivate'} ${user.username}?`)) return
-    const response = activating ? await activateUser(user.id) : await deactivateUser(user.id)
-    await refresh(response.message)
+  const handleDeactivate = async (user: UserItem) => {
+    if (!confirm(`Deactivate ${user.username}?`)) return
+
+    await deactivateUser(user.id)
+    //setMessage(response.message)
+    await loadUsers()
+    await loadAllUsers()
+    await onActivityChanged?.()
+  }
+
+  const handleActivate = async (user: UserItem) => {
+    if (!confirm(`Activate ${user.username}?`)) return
+
+    await activateUser(user.id)
+    //setMessage(response.message)
+    await loadUsers()
+    await loadAllUsers()
+    await onActivityChanged?.()
   }
 
   const handleChangeRole = async (user: UserItem) => {
-    const role = user.role === 'artist' ? 'agent' : 'artist'
-    if (!confirm(`Change ${user.username} to ${role}?`)) return
-    const response = await changeUserRole(user.id, role)
-    await refresh(response.message)
+    const newRole = user.role === 'artist' ? 'agent' : 'artist'
+
+    if (!confirm(`Change ${user.username} to ${newRole}?`)) return
+
+    await changeUserRole(user.id, newRole)
+    //setMessage(response.message)
+    await loadUsers()
+    await loadAllUsers()
+    await onActivityChanged?.()
   }
 
   return (
-    <section className="grid gap-3">
+    <section style={{ display: 'grid', gap: 12}}>
       {compact ? (
-        <div className="flex items-center justify-between gap-3 border-b border-[var(--surface-border-soft)] pb-2 text-sm font-semibold text-[var(--text)]">
+        <div className="dashboard-section-heading">
           <span>Pending user registrations</span>
         </div>
-      ) : <h1 className="text-[32px]">Pending users</h1>}
+      ) : (
+      <h1 style={{ fontSize: 32 }}>Pending users</h1>)}
 
-      {message && <p className="text-sm text-[var(--text-muted)]">{message}</p>}
-      <div className="grid max-h-32 gap-3 overflow-y-auto pr-1">
+      {message && <p>{message}</p>}
+
+      <div
+        className="dashboard-scroll-list"
+        style={{ maxHeight: 120, overflowY: 'auto', display: 'grid', gap: 12 }}
+      >
+
         {users.map((user) => (
-          <div key={user.id} className="grid gap-2.5 rounded-xl border border-[var(--surface-border-soft)] bg-[var(--surface-soft)] p-3">
-            <div className="flex min-w-0 flex-wrap items-center gap-2 text-sm">
-              <strong className="truncate">{user.username}</strong>
-              <span className="truncate text-[var(--text-muted)]">{user.email}</span>
-              <Badge variant="outline">{user.role}</Badge>
+          <div 
+            key={user.id}
+            className="dashboard-table-row"
+            style={{
+              display: 'grid',
+              gridTemplateColumns: '1fr',
+              gap: 8,
+              padding: '12px 16px',
+              minHeight: 120,
+              background: 'color-mix(in srgb, var(--background) 82%, var(--text) 8%)',
+              borderRadius: 12,
+              border:
+                user.role === 'agent'
+                  ? '2px solid var(--accent)'
+                  : '1px solid color-mix(in srgb, var(--text) 18%, transparent)',
+            }}
+          >
+
+            <div style={{ whiteSpace: 'normal', overflow: 'visible', textOverflow: 'ellipsis' }}>
+              <strong>{user.username}</strong>
+              <span> — {user.email}</span>
+              <span> — {user.role}</span>
             </div>
-            <div className="flex gap-2">
-              <Button type="button" size="sm" onClick={() => handleApprove(user)}>Approve</Button>
-              <Button type="button" size="sm" variant="destructive" onClick={() => handleReject(user)}>Reject</Button>
+
+            <div style={{display: 'flex', gap: 8}}>
+              <button 
+                type="button" 
+                  style={{
+                    ...adminButtonStyle, 
+                    width: 110, 
+                    alignSelf: 'start',
+                  }}
+                onClick={() => handleApprove(user)}>Approve
+              </button>
+              <button
+                type="button"
+                  style={{
+                    ...adminButtonStyle,
+                    width: 110, 
+                    alignSelf: 'start',
+                  }}
+                onClick={() => handleReject(user)}>Reject
+              </button>
             </div>
           </div>
         ))}
       </div>
 
-      <div className="mt-4 border-b border-[var(--surface-border-soft)] pb-2 text-sm font-semibold">List of users</div>
-      <div className="grid max-h-[300px] gap-3 overflow-y-auto pr-1">
+      <div className="dashboard-section-heading" style={{ marginTop: 16 }}>
+        <span>List of users</span>
+      </div>
+
+      <div 
+        className="dashboard-scroll-list" 
+        style={{ maxHeight: 300, overflowY: 'auto', display: 'grid', gap: 12 }}
+      >
         {allUsers.map((user) => (
-          <div key={user.id} className="grid gap-2.5 rounded-xl border border-[var(--surface-border-soft)] bg-[var(--surface-soft)] p-3">
-            <div className="flex min-w-0 flex-wrap items-center gap-2 text-sm">
-              <strong className="truncate">{user.username}</strong>
-              <span className="truncate text-[var(--text-muted)]">{user.email}</span>
-              <Badge variant="outline">{user.role}</Badge>
-              <Badge variant="secondary">{user.status}</Badge>
+          <div
+            key={user.id}
+            className="dashboard-table-row"
+            style={{
+              display: 'grid',
+              gridTemplateColumns: '1fr',
+              gap: 8,
+              padding: '12px 16px',
+              minHeight: 120,
+
+              background: 'color-mix(in srgb, var(--background) 82%, var(--text) 8%)',
+              borderRadius: 12,
+
+              border:
+                user.role === 'agent'
+                  ? '2px solid var(--accent)'
+                  : '1px solid color-mix(in srgb, var(--text) 18%, transparent)',
+            }}
+          >
+            <div style={{ whiteSpace: 'normal', overflow: 'visible', textOverflow: 'ellipsis' }}>
+              <strong>{user.username}</strong>
+              <span> — {user.email}</span>
+              <span> — {user.role}</span>
+              <span> — {user.status}</span>
             </div>
+
             {user.role !== 'admin' && ['approved', 'deactivated', 'rejected'].includes(user.status) && (
-              <div className="flex flex-wrap gap-2">
-                <Button type="button" size="sm" variant="outline" onClick={() => handleActivation(user)}>
+              <div style={{ display: 'flex', gap: 8}}>
+                <button
+                  type="button"
+                  style={{
+                    ...adminButtonStyle,
+                    width: 110,
+                    alignSelf: 'start',
+                  }}
+                  onClick={() =>
+                    user.status === 'approved'
+                      ? handleDeactivate(user)
+                      : handleActivate(user)
+                  }
+                >
                   {user.status === 'approved' ? 'Deactivate' : 'Activate'}
-                </Button>
-                {(user.role === 'artist' || user.role === 'agent') && (
-                  <Button type="button" size="sm" variant="secondary" onClick={() => handleChangeRole(user)}>
-                    Change to {user.role === 'artist' ? 'agent' : 'artist'}
-                  </Button>
+                </button>
+
+                {['artist', 'agent'].includes(user.role) && (
+                  <button
+                    type="button"
+                    style={{
+                      ...adminButtonStyle,
+                      width: 180,
+                      alignSelf: 'start',
+                    }}
+                    onClick={() => handleChangeRole(user)}
+                  >
+                    {user.role === 'artist' ? 'Change to agent' : 'Change to artist'}
+                  </button>
                 )}
               </div>
             )}
