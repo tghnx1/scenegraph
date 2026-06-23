@@ -14,7 +14,7 @@ from jose import JWTError, jwt
 
 security = HTTPBearer()         #security parse that understands jwt-encrypted headers.
 
-from app.db import get_connection, get_db
+from app.db import close_connection_pool, get_connection, get_db, get_connection_pool
 from app.recommendation_helpers import extracted_tag_score
 from app.schema_preflight import check_schema_tables, schema_preflight_strict_mode
 from app.recommendation_job_events import listen_for_recommendation_job_updates
@@ -200,6 +200,8 @@ async def lifespan(app_instance: FastAPI):
         schema_report = check_schema_tables(connection)
         create_bootstrap_admin(connection)
         create_bootstrap_user(connection)
+    # Open the shared pool during startup so connection issues fail fast.
+    get_connection_pool()
     app_instance.state.schema_preflight = schema_report
 
     if schema_preflight_strict_mode() and schema_report["missingRequiredTables"]:
@@ -219,6 +221,7 @@ async def lifespan(app_instance: FastAPI):
         recommendation_job_listener.cancel()
         with suppress(asyncio.CancelledError):
             await recommendation_job_listener
+        close_connection_pool()
 
 
 app = FastAPI(title="Berlin Scene Graph API", lifespan=lifespan)
