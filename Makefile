@@ -18,8 +18,11 @@ REFRESH_CDP_URL ?= http://localhost:9222
 REFRESH_PIPELINE_ARGS ?=
 CHECK_ARTIST_ID ?= 2178
 RECOMMENDATION_WORKER ?= 1
+NGINX_CERT_DIR ?= nginx/certs
+NGINX_CERT_KEY ?= $(NGINX_CERT_DIR)/privkey.pem
+NGINX_CERT_FILE ?= $(NGINX_CERT_DIR)/fullchain.pem
 
-.PHONY: help env build up upd upd-build down stop restart logs ps health prisma-migrate prisma-studio db-shell import-events backfill-normalized-texts backfill-lineup-residual backfill-artist-biographies extract-artist-tags refresh-embeddings validate-import refresh-data-check refresh-data-check-bio refresh-data-check-bio-embeddings import-dump export-dump clean reset-db list fclean
+.PHONY: help env build up upd upd-build down stop restart logs ps health ensure-ssl-certs prisma-migrate prisma-studio db-shell import-events backfill-normalized-texts backfill-lineup-residual backfill-artist-biographies extract-artist-tags refresh-embeddings validate-import refresh-data-check refresh-data-check-bio refresh-data-check-bio-embeddings import-dump export-dump clean reset-db list fclean
 
 help:
 	@printf "\n"
@@ -51,6 +54,7 @@ help:
 	@printf "  make refresh-data-check-bio-embeddings Same as refresh-data-check-bio + incremental embeddings for check DB\n"
 	@printf "  make import-dump   Import local/remote dump with interactive safety prompts\n"
 	@printf "  make export-dump   Export DB_NAME or .env/explicit DATABASE_URL dump; supports OUT=... FORMAT=sql|custom\n"
+	@printf "  make up/upd/upd-build auto-generate nginx SSL certs if nginx/certs is missing them\n"
 	@printf "  make clean    Stop stack and remove containers (keeps DB volumes)\n"
 	@printf "  make reset-db DANGEROUS: remove containers and DB volumes (requires RESET_DB=yes)\n"
 	@printf "  make list     List Docker resources\n"
@@ -68,13 +72,21 @@ env:
 build: env
 	$(COMPOSE) build
 
-up: env prisma-migrate
+ensure-ssl-certs:
+	@if [ ! -f "$(NGINX_CERT_KEY)" ] || [ ! -f "$(NGINX_CERT_FILE)" ]; then \
+		echo "Missing nginx SSL certs; generating self-signed certificate..."; \
+		./scripts/gen_cert.sh; \
+	else \
+		echo "nginx SSL certs already exist"; \
+	fi
+
+up: env ensure-ssl-certs prisma-migrate
 	$(COMPOSE) up --build --scale recommendation-worker=$(RECOMMENDATION_WORKER)
 
-upd: env prisma-migrate
+upd: env ensure-ssl-certs prisma-migrate
 	$(COMPOSE) up --build -d --scale recommendation-worker=$(RECOMMENDATION_WORKER)
 
-upd-build: env
+upd-build: env ensure-ssl-certs
 	$(COMPOSE_BUILD) --profile tools run --rm --build prisma
 	$(COMPOSE_BUILD) up --build -d --remove-orphans
 
