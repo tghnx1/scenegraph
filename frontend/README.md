@@ -18,14 +18,15 @@ Then open:
 https://localhost:8443
 ```
 
-For frontend-only development inside `frontend/`:
+<!-- For frontend-only development inside `frontend/`:
 
 ```bash
 npm install
 npm run dev
 ```
+The Vite dev server runs on port `5173` inside the frontend container.  -->
 
-The Vite dev server runs on port `5173` inside the frontend container. In the Docker stack, NGINX exposes the app through `https://localhost:8443` (redirects `http://localhost:8080` to HTTPS), and forwards backend requests under `/api`.
+In the Docker stack, NGINX exposes the app through `https://localhost:8443` (redirects `http://localhost:8080` to HTTPS), and forwards backend requests under `/api`.
 
 ## Frontend Simplified Flow
 
@@ -34,7 +35,7 @@ flowchart TD
     Browser["Browser"] --> Main["src/main.tsx"]
     Main --> App["src/App.tsx"]
     
-		App --> |anonymous| Graph["Graph Page"]
+		App --> |anonymous/public| Graph["Graph Page"]
 		App --> Login["Login Page"]
 		
 		Login --> Role{"User role"} 
@@ -113,3 +114,21 @@ In the display, `react-force-graph-2d` draws and manages the graph component whi
 Global styles are in `src/shared/styles/base.css`. Theme helpers are in `src/shared/styles/colors.ts`, and the selected theme is stored in `localStorage` as `scenegraph-theme`.
 
 Reusable UI primitives live in `src/shared/ui/`.
+
+<!-- lucide-react: icons
+tailwindcss and @tailwindcss/vite: utility CSS build integration
+clsx and tailwind-merge: safe class name composition through cn()
+class-variance-authority: reusable UI variants, mainly in shared UI primitives
+@radix-ui/react-slot: asChild composition support for shared controls -->
+
+## Dashboard
+
+The dashboard gives admins a quick overview of the database status/content and user-management tools:
+- graph composition counts for events, artists, promoters, and venues (with filters)
+- dashboard metric panels
+- pending user registrations that can be approved or rejected
+- existing users that can be activated, deactivated, or moved between artist and agent roles
+- login, logout, and registration activity logs
+- exporting displayed data
+
+`DashboardPage` loads the dashboard data, listens for live dashboard update events, and embeds `AdminUsersPage` for user administration.
