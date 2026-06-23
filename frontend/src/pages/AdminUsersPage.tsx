@@ -71,9 +71,8 @@ export function AdminUsersPage({ compact = false, onActivityChanged }: AdminUser
   }
 
   const handleChangeRole = async (user: UserItem) => {
-    const role = user.role === 'user' ? 'contributor' : 'user'
-    const label = role === 'user' ? 'User' : 'Agent'
-    if (!confirm(`Change ${user.username} to ${label}?`)) return
+    const role = user.role === 'artist' ? 'agent' : 'artist'
+    if (!confirm(`Change ${user.username} to ${role}?`)) return
     const response = await changeUserRole(user.id, role)
     await refresh(response.message)
   }
@@ -118,9 +117,9 @@ export function AdminUsersPage({ compact = false, onActivityChanged }: AdminUser
                 <Button type="button" size="sm" variant="outline" onClick={() => handleActivation(user)}>
                   {user.status === 'approved' ? 'Deactivate' : 'Activate'}
                 </Button>
-                {(user.role === 'user' || user.role === 'contributor') && (
+                {(user.role === 'artist' || user.role === 'agent') && (
                   <Button type="button" size="sm" variant="secondary" onClick={() => handleChangeRole(user)}>
-                    Change to {user.role === 'user' ? 'Agent' : 'User'}
+                    Change to {user.role === 'artist' ? 'agent' : 'artist'}
                   </Button>
                 )}
               </div>

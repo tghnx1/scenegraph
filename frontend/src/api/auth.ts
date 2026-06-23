@@ -1,9 +1,9 @@
 import { api } from './client'
 
-export type AuthRole = 'user' | 'contributor' | 'admin'
+export type AuthRole = 'artist' | 'agent' | 'admin'
 
 export const isAuthRole = (value: unknown): value is AuthRole =>
-  value === 'user' || value === 'contributor' || value === 'admin'
+  value === 'artist' || value === 'agent' || value === 'admin'
 
 export interface LoginResponse {
   success: boolean
@@ -67,7 +67,7 @@ export const register = (
   email: string,
   password: string,
   password_confirm: string,
-  role: 'user' | 'contributor',
+  role: 'artist' | 'agent',
 ): Promise<RegisterResponse> =>
   api.post<RegisterResponse>('/register', {
     username,
@@ -133,6 +133,6 @@ export const activateUser = (
 
 export const changeUserRole = (
   userId: number,
-  role: 'user' | 'contributor',
+  role: 'artist' | 'agent',
 ): Promise<{ success: boolean; message: string }> =>
   api.post(`/admin/users/${userId}/role`, { role })
