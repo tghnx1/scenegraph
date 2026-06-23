@@ -269,7 +269,7 @@ model User {
   email               String    @unique
   passwordHash        String    @map("password_hash")
   createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-  role                String    @default("artist")
+  role                String    @default("user")
   status              String    @default("pending")
   mustChangePassword  Boolean   @default(false) @map("must_change_password")
   recommendationJobs RecommendationJob[]
