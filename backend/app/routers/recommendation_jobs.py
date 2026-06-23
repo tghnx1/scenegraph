@@ -76,7 +76,7 @@ def create_artist_promoter_job(
         artist_id=artist_id,
         params=params.model_dump(mode="json"),
     )
-    return RecommendationJobCreatedResponse(jobId=str(row["id"]), status=str(row["status"]))
+    return RecommendationJobCreatedResponse(jobId=str(row["id"]), status="queued")
 
 
 # Return job status and result only to its authenticated owner.
