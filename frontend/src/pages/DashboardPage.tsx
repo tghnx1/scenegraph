@@ -80,6 +80,7 @@ export function DashboardPage() {
         <Button type="button" size="sm">Run import</Button>
         <DashboardExportMenu
           dashboardStatus={dashboardStatus}
+          dashboardMetrics={dashboardMetrics}
           selectedEntities={selectedEntities}
           dateFrom={dateFrom}
           dateTo={dateTo}
