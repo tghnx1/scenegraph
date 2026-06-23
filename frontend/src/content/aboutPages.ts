@@ -80,7 +80,7 @@ export const aboutPages: Record<AboutPageKey, AboutPageContent> = {
       {
         heading: 'Accounts',
         paragraphs: [
-          'Some features require an account and may be limited by user, contributor, or administrator roles. You are responsible for keeping your credentials secure and must not share access with unauthorized people.',
+          'Some features require an account and may be limited by artist, agent, or administrator roles. You are responsible for keeping your credentials secure and must not share access with unauthorized people.',
         ],
       },
       {
