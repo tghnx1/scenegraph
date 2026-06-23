@@ -10,11 +10,9 @@ from app.recommendation_engine import build_similarity_response
 from app.recommendation_scoring import promoter_recommendation_api_limit_max_from_env
 from app.recommendation_services import (
     build_artist_promoter_recommendation_response,
-    build_artist_recommendation_response,
     build_artist_semantic_response,
 )
 from app.schemas import (
-    ArtistRecommendationResponse,
     ArtistSimilarEventsResponse,
     ArtistTagItem,
     ArtistTagsResponse,
@@ -198,20 +196,3 @@ async def recommend_promoters_for_artist(
         user_id=user_id,
     )
 
-
-# Return hybrid artist recommendations (legacy artist-to-artist endpoint).
-@router.get(
-    "/recommendations/artists/{artist_id}",
-    response_model=ArtistRecommendationResponse,
-    response_model_exclude_none=True,
-)
-async def recommend_artists(
-    artist_id: int,
-    limit: int = Query(default=10, ge=1, le=100),
-    connection: Connection = Depends(get_db),
-) -> ArtistRecommendationResponse:
-    return build_artist_recommendation_response(
-        connection,
-        artist_id=artist_id,
-        limit=limit,
-    )

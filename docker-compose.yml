@@ -1,7 +1,6 @@
 services:
   db:
     image: pgvector/pgvector:pg16
-    container_name: scenegraph-db
     restart: unless-stopped
     environment:
       POSTGRES_DB: ${POSTGRES_DB}
@@ -23,7 +22,6 @@ services:
     build:
       context: ./backend
       dockerfile: prisma/Dockerfile
-    container_name: scenegraph-prisma
     profiles:
       - tools
     env_file:
@@ -37,7 +35,6 @@ services:
   backend:
     build:
       context: ./backend
-    container_name: scenegraph-backend
     restart: unless-stopped
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "3000", "--reload"]
     env_file:
@@ -84,7 +81,6 @@ services:
   frontend:
     build:
       context: ./frontend
-    container_name: scenegraph-frontend
     restart: unless-stopped
     env_file:
       - .env
@@ -101,11 +97,10 @@ services:
 
   nginx:
     image: nginx:1.27-alpine
-    container_name: scenegraph-nginx
     restart: unless-stopped
     ports:
-      - "8080:80" #from 80:80
-      - "8443:443"
+      - "${NGINX_HTTP_PORT:-8080}:80" #from 80:80
+      - "${NGINX_HTTPS_PORT:-8443}:443"
     volumes:
       - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
       - ./nginx/certs:/etc/nginx/certs:ro

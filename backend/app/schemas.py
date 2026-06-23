@@ -142,31 +142,6 @@ class SemanticArtistResponse(BaseModel):
     similar: list[SemanticArtistItem]
 
 
-class ArtistRecommendationItem(BaseModel):
-    id: int
-    type: Literal["artist"] = "artist"
-    name: str
-    score: float
-    semanticScore: float
-    graphScore: float
-    embeddingScore: float
-    styleScore: float
-    tagScore: float = 0.0
-    scoreBreakdown: dict[str, float] = Field(default_factory=dict)
-    semanticBreakdown: dict[str, float] = Field(default_factory=dict)
-    reasons: list[str] = Field(default_factory=list)
-    sharedStyles: list[str] = Field(default_factory=list)
-    sharedTags: dict[str, list[str]] = Field(default_factory=dict)
-
-
-class ArtistRecommendationResponse(BaseModel):
-    entityId: int
-    entityType: Literal["artist"] = "artist"
-    model: str
-    dimensions: int
-    recommendations: list[ArtistRecommendationItem]
-
-
 class RecommendationEvidenceItem(BaseModel):
     type: Literal["semantic_bridge", "direct_connection", "warm_network", "manual_connection", "event_similarity"]
     path: str

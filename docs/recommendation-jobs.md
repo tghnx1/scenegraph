@@ -45,5 +45,5 @@ docker compose up -d --build
 
 ## Compatibility
 
-`GET /api/recommendations/artists/{artist_id}/promoters` remains available as the synchronous
-compatibility and debugging endpoint. The recommendation UI uses the job endpoints.
+The recommendation UI uses the job endpoints. The legacy artist-only recommendation endpoint
+has been removed.

@@ -50,8 +50,6 @@ from app.recommendation_scoring import (
 )
 from app.style_tags import style_overlap_score
 from app.schemas import (
-    ArtistRecommendationItem,
-    ArtistRecommendationResponse,
     GraphResponse,
     PromoterRecommendationItem,
     PromoterRecommendationResponse,
@@ -355,81 +353,6 @@ def build_artist_semantic_response(
         model=source["model"],
         dimensions=source["dimensions"],
         similar=similar,
-    )
-
-# Build hybrid artist recommendations (semantic + graph).
-def build_artist_recommendation_response(
-    connection: Connection,
-    *,
-    artist_id: int,
-    limit: int,
-) -> ArtistRecommendationResponse:
-    """Build hybrid artist recommendations (semantic + graph) for an artist source."""
-    min_semantic_score = artist_recommendation_min_semantic_score_from_env()
-    source, semantic_candidates = build_artist_semantic_candidates(
-        connection,
-        artist_id=artist_id,
-        debug=False,
-    )
-    semantic_candidates = [
-        item
-        for item in semantic_candidates
-        if item["score"] >= min_semantic_score
-    ]
-    candidate_ids = [item["entity_id"] for item in semantic_candidates]
-    features = recommendation_feature_sets(connection, "artist", [artist_id, *candidate_ids])
-    features = apply_artist_indirect_features(
-        connection,
-        entity_type="artist",
-        entity_id=artist_id,
-        candidate_ids=candidate_ids,
-        features=features,
-    )
-    source_features = features.get(artist_id, {})
-
-    recommendations = []
-    for item in semantic_candidates:
-        candidate_features = features.get(item["entity_id"], {})
-        graph_score, graph_reasons = hybrid_graph_score("artist", source_features, candidate_features)
-        final_score = final_recommendation_score(
-            item["score"],
-            graph_score,
-            DEFAULT_RECOMMENDATION_SCORING,
-        )
-        score_breakdown = {
-            "semantic": DEFAULT_RECOMMENDATION_SCORING.semantic_weight * item["score"],
-            "graph": DEFAULT_RECOMMENDATION_SCORING.graph_weight * graph_score,
-        }
-        reasons = [
-            *semantic_artist_reasons(item),
-            *graph_reasons,
-        ][:5]
-        recommendations.append(
-            ArtistRecommendationItem(
-                id=item["entity_id"],
-                name=item["name"],
-                score=final_score,
-                semanticScore=item["score"],
-                graphScore=graph_score,
-                embeddingScore=item["embedding_score"],
-                styleScore=item["style_score"],
-                tagScore=item["tag_score"],
-                scoreBreakdown=score_breakdown,
-                semanticBreakdown=item["score_breakdown"],
-                reasons=reasons,
-                sharedStyles=item["shared_styles"],
-                sharedTags=item["shared_tags"],
-            )
-        )
-
-    return ArtistRecommendationResponse(
-        entityId=artist_id,
-        model=source["model"],
-        dimensions=source["dimensions"],
-        recommendations=sorted(
-            recommendations,
-            key=lambda recommendation: (-recommendation.score, recommendation.id),
-        )[:limit],
     )
 
 # Build the main Artist -> Promoter recommendation response.
