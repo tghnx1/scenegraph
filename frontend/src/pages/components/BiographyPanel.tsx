@@ -48,7 +48,10 @@ export function BiographyPanel({artistId, manualConnections, canEditBiography}: 
       })
       .catch((requestError) => {
         if (!isCurrent) return
-        setError(requestError instanceof Error ? requestError.message : 'Failed to load biography.')
+        const message = requestError instanceof Error
+          ? requestError.message.replace(/^400:\s*/, '').replace(/^409:\s*/, '')
+          : 'Failed to load biography.'
+        setError(message)
       })
       .finally(() => {
         if (isCurrent) setIsLoading(false)
@@ -71,7 +74,10 @@ export function BiographyPanel({artistId, manualConnections, canEditBiography}: 
       setIsEditing(false)
       setSuccess('Biography saved.')
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : 'Failed to save biography.')
+      const message = requestError instanceof Error
+        ? requestError.message.replace(/^400:\s*/, '').replace(/^409:\s*/, '')
+      : 'Failed to save biography.'
+      setError(message)
     } finally {
       setIsSaving(false)
     }
@@ -95,7 +101,10 @@ export function BiographyPanel({artistId, manualConnections, canEditBiography}: 
       setClaimMessage('Claim sent. An admin will review it.')
       setClaimReason('')
     } catch (requestError) {
-      setClaimError(requestError instanceof Error ? requestError.message : 'Failed to send claim.')
+      const message = requestError instanceof Error
+        ? requestError.message.replace(/^400:\s*/, '').replace(/^409:\s*/, '')
+        : 'Failed to send claim.'
+      setClaimError(message)
     } finally {
       setIsClaiming(false)
     }

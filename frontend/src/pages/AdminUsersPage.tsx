@@ -22,10 +22,6 @@ export function AdminUsersPage({ compact = false, onActivityChanged, }: AdminUse
     cursor: 'pointer',
   }
 
-  //const loadUsers = async () => {
-    //const response = await getPendingUsers()
-    //setUsers(response.users)
-  //}
   const loadUsers = async () => {
     try {
       const response = await getPendingUsers()
@@ -118,7 +114,7 @@ export function AdminUsersPage({ compact = false, onActivityChanged, }: AdminUse
 
   const handleApproveClaim = async (claim: ArtistClaim) => {
     await approveArtistClaim(claim.id)
-    setMessage(`Claim approved for ${claim.artist_name}`)
+    //setMessage(`Claim approved for ${claim.artist_name}`)
     await loadClaims()
     await loadUsers()
     await onActivityChanged?.()
@@ -128,7 +124,7 @@ export function AdminUsersPage({ compact = false, onActivityChanged, }: AdminUse
     if (!window.confirm(`Reject claim for ${claim.artist_name}?`)) return
 
     await rejectArtistClaim(claim.id)
-    setMessage(`Claim rejected for ${claim.artist_name}`)
+    //setMessage(`Claim rejected for ${claim.artist_name}`)
     await loadClaims()
     await onActivityChanged?.()
   }
@@ -197,7 +193,6 @@ export function AdminUsersPage({ compact = false, onActivityChanged, }: AdminUse
             </div>
           </div>
         ))}
-      </div>
 
         {claims.map((claim) => (
           <div
@@ -210,9 +205,9 @@ export function AdminUsersPage({ compact = false, onActivityChanged, }: AdminUse
               padding: '12px 16px',
               minHeight: 120,
               alignItems: 'start',
-              background: 'color-mix(in srgb, var(--background) 82%, var(--text) 8%)',
+              background: 'color-mix(in srgb, var(--accent) 10%, var(--background) 90%)',
               borderRadius: 12,
-              border: '2px solid color-mix(in srgb, var(--accent) 65%, var(--text) 20%)',
+              border: '2px solid color-mix(in srgb, var(--accent) 65%, var(--background) 35%)',
             }}
           >
             <div style={{ whiteSpace: 'normal', overflow: 'visible' }}>
@@ -253,6 +248,7 @@ export function AdminUsersPage({ compact = false, onActivityChanged, }: AdminUse
             </div>
           </div>
         ))}
+      </div>
 
       <div className="dashboard-section-heading" style={{ marginTop: 8, marginBottom: 4 }}>
         <span>List of users</span>

@@ -1039,11 +1039,32 @@ async def claim_artist_profile(
     reason = claim_data.reason.strip()
     if len(reason) < 6:
         raise HTTPException(status_code=400, detail="Reason must be at least 6 characters")
+    if len(reason) > 80:
+        raise HTTPException(status_code=400, detail="Reason must be more concise")
+
 
     with connection.cursor() as cursor:
         cursor.execute("SELECT id FROM artists WHERE id = %s", (artist_id,))
         if cursor.fetchone() is None:
             raise HTTPException(status_code=404, detail="Artist not found")
+
+        cursor.execute(
+            """
+            SELECT id, status
+            FROM artist_claims
+            WHERE user_id = %s
+            AND artist_id = %s
+            AND status = 'pending'
+            """,
+            (current_user["id"], artist_id),
+        )
+        existing_claim = cursor.fetchone()
+
+        if existing_claim is not None:
+            raise HTTPException(
+                status_code=409,
+                detail="You already have a pending claim for this artist profile.",
+            )
 
         cursor.execute(
             """
@@ -1054,6 +1075,15 @@ async def claim_artist_profile(
             (current_user["id"], artist_id, reason),
         )
         claim = cursor.fetchone()
+        connection.commit()
+
+        log_activity(
+            connection,
+            current_user["id"],
+            current_user["username"],
+            "artist claim submitted",
+            f"artist {artist_id}",
+        )
         connection.commit()
 
     return {"success": True, "message": "Claim submitted", "claim_id": claim["id"]}
@@ -1094,9 +1124,17 @@ async def approve_artist_claim(
     with connection.cursor() as cursor:
         cursor.execute(
             """
-            SELECT id, user_id, artist_id, status
+            SELECT 
+                artist_claims.id,
+                artist_claims.user_id,
+                artist_claims.artist_id,
+                artist_claims.status,
+                users.username,
+                artists.name AS artist_name
             FROM artist_claims
-            WHERE id = %s
+            JOIN users ON users.id = artist_claims.user_id
+            JOIN artists ON artists.id = artist_claims.artist_id
+            WHERE artist_claims.id = %s
             """,
             (claim_id,),
         )
@@ -1130,6 +1168,15 @@ async def approve_artist_claim(
 
         connection.commit()
 
+        log_activity(
+            connection,
+            admin["id"],
+            admin["username"],
+            "artist claim approved",
+            f"{claim['username']} → {claim['artist_name']}",
+        )
+        connection.commit()
+
     return {"success": True, "message": "Artist claim approved"}
 
 @app.post("/api/admin/artist-claims/{claim_id}/reject")
@@ -1139,6 +1186,30 @@ async def reject_artist_claim(
     connection: Connection = Depends(get_db),
 ) -> dict:
     with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT 
+                artist_claims.id,
+                artist_claims.user_id,
+                artist_claims.artist_id,
+                artist_claims.status,
+                users.username,
+                artists.name AS artist_name
+            FROM artist_claims
+            JOIN users ON users.id = artist_claims.user_id
+            JOIN artists ON artists.id = artist_claims.artist_id
+            WHERE artist_claims.id = %s
+            """,
+            (claim_id,),
+        )
+        updated_claim = cursor.fetchone()
+
+        if updated_claim is None:
+            raise HTTPException(status_code=404, detail="Claim not found")
+
+        if updated_claim["status"] != "pending":
+            raise HTTPException(status_code=400, detail="Claim already decided")
+
         cursor.execute(
             """
             UPDATE artist_claims
@@ -1153,9 +1224,15 @@ async def reject_artist_claim(
         )
         claim = cursor.fetchone()
 
-        if claim is None:
-            raise HTTPException(status_code=404, detail="Pending claim not found")
+        connection.commit()
 
+        log_activity(
+            connection,
+            admin["id"],
+            admin["username"],
+            "artist claim rejected",
+            f"{claim['username']} → {claim['artist_name']}",
+        )
         connection.commit()
 
     return {"success": True, "message": "Artist claim rejected"}
