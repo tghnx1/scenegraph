@@ -44,35 +44,11 @@ BOOTSTRAP_ADMIN_PASSWORD = os.getenv("BOOTSTRAP_ADMIN_PASSWORD")
 BOOTSTRAP_USER_USERNAME = os.getenv("BOOTSTRAP_USER_USERNAME")
 BOOTSTRAP_USER_EMAIL = os.getenv("BOOTSTRAP_USER_EMAIL")
 BOOTSTRAP_USER_PASSWORD = os.getenv("BOOTSTRAP_USER_PASSWORD")
-BOOTSTRAP_USER_ROLE = os.getenv("BOOTSTRAP_USER_ROLE", "user")
+BOOTSTRAP_USER_ROLE = os.getenv("BOOTSTRAP_USER_ROLE", "artist")
 BOOTSTRAP_USER_UPDATE_EXISTING = os.getenv(
     "BOOTSTRAP_USER_UPDATE_EXISTING",
     "false",
 ).strip().lower() in {"1", "true", "yes", "on"}
-
-ROLE_ALIASES = {
-    "artist": "user",
-    "agent": "contributor",
-}
-
-ALLOWED_BOOTSTRAP_ROLES = {"artist", "agent", "user", "contributor"}
-ALLOWED_PUBLIC_ROLES = {"artist", "agent", "user", "contributor", "admin"}
-
-
-def normalize_role(role: str) -> str:
-    return ROLE_ALIASES.get(role, role)
-
-
-def public_role(role: str) -> str:
-    if role == "user":
-        return "artist"
-    if role == "contributor":
-        return "agent"
-    return role
-
-
-def public_user_row(row: dict[str, Any]) -> dict[str, Any]:
-    return {**row, "role": public_role(row["role"])}
 
 def create_bootstrap_admin(connection: Connection) -> None:         #like void
     with connection.cursor() as cursor:
@@ -138,11 +114,8 @@ def create_bootstrap_user(connection: Connection) -> None:
         or not BOOTSTRAP_USER_PASSWORD
     ):
         return
-    if BOOTSTRAP_USER_ROLE not in ALLOWED_BOOTSTRAP_ROLES:
-        raise RuntimeError("BOOTSTRAP_USER_ROLE must be artist, agent, user, or contributor")
-    bootstrap_role = normalize_role(BOOTSTRAP_USER_ROLE)
-    if bootstrap_role not in {"user", "contributor"}:
-        raise RuntimeError("BOOTSTRAP_USER_ROLE must map to user or contributor")
+    if BOOTSTRAP_USER_ROLE not in {"artist", "agent"}:
+        raise RuntimeError("BOOTSTRAP_USER_ROLE must be artist or agent")
 
     with connection.cursor() as cursor:
         cursor.execute(
@@ -168,7 +141,7 @@ def create_bootstrap_user(connection: Connection) -> None:
                 (
                     BOOTSTRAP_USER_EMAIL,
                     password_hash,
-                    bootstrap_role,
+                    BOOTSTRAP_USER_ROLE,
                     existing_user["id"],
                 ),
             )
@@ -191,7 +164,7 @@ def create_bootstrap_user(connection: Connection) -> None:
                 BOOTSTRAP_USER_USERNAME,
                 BOOTSTRAP_USER_EMAIL,
                 password_hash,
-                bootstrap_role,
+                BOOTSTRAP_USER_ROLE,
             ),
         )
     connection.commit()
@@ -451,12 +424,12 @@ async def login(
         message="Login successful",
         user_id=user["id"],
         username=user["username"],
-        role=public_role(user["role"]),
+        role=user["role"],
         access_token=create_access_token(
             {
                 "sub": str(user["id"]),
                 "username": user["username"],
-                "role": public_role(user["role"]),
+                "role": user["role"],
             }
         ),
         must_change_password=user["must_change_password"],
@@ -496,13 +469,7 @@ async def register(
             message=validation_error,
         )
 
-    if register_data.role not in ALLOWED_BOOTSTRAP_ROLES:
-        return RegisterResponse(
-            success=False,
-            message="Invalid role",
-        )
-    normalized_role = normalize_role(register_data.role)
-    if normalized_role not in {"user", "contributor"}:
+    if register_data.role not in {"artist", "agent"}:
         return RegisterResponse(
             success=False,
             message="Invalid role",
@@ -538,7 +505,7 @@ async def register(
                 register_data.username,
                 register_data.email,
                 hashed_password,
-                normalized_role,
+                register_data.role,
             ),
         )
 
@@ -670,7 +637,7 @@ async def list_pending_users(
 
     return {
         "success": True,
-        "users": [public_user_row(user) for user in users],
+        "users": users,
     }
 
 @app.post("/api/admin/users/{user_id}/approve")
@@ -707,7 +674,7 @@ async def approve_user(
     return {
         "success": True,
         "message": "User approved",
-        "user": public_user_row(updated_user),
+        "user": updated_user,
     }
 
 @app.post("/api/admin/users/{user_id}/reject")
@@ -744,7 +711,7 @@ async def reject_user(
     return {
         "success": True,
         "message": "User rejected",
-        "user": public_user_row(updated_user),
+        "user": updated_user,
     }
 
 
@@ -789,7 +756,7 @@ async def deactivate_user(
     return {
         "success": True,
         "message": "User deactivated",
-        "user": public_user_row(updated_user),
+        "user": updated_user,
     }
 
 @app.post("/api/admin/users/{user_id}/activate")
@@ -833,7 +800,7 @@ async def activate_user(
     return {
         "success": True,
         "message": "User activated",
-        "user": public_user_row(updated_user),
+        "user": updated_user,
     }
 
 @app.get("/api/admin/activity")
@@ -933,10 +900,7 @@ async def change_user_role(
     admin: dict = Depends(require_admin),
     connection: Connection = Depends(get_db),
 ) -> dict:
-    if role_data.role not in ALLOWED_PUBLIC_ROLES:
-        raise HTTPException(status_code=400, detail="Invalid role")
-    normalized_role = normalize_role(role_data.role)
-    if normalized_role not in {"user", "contributor"}:
+    if role_data.role not in {"artist", "agent"}:
         raise HTTPException(status_code=400, detail="Invalid role")
 
     with connection.cursor() as cursor:
@@ -948,7 +912,7 @@ async def change_user_role(
                 AND role != 'admin'
             RETURNING id, username, email, role, status
             """,
-            (normalized_role, user_id),
+            (role_data.role, user_id),
         )
         updated_user = cursor.fetchone()
 
@@ -968,7 +932,7 @@ async def change_user_role(
     return {
         "success": True,
         "message": "User role changed",
-        "user": public_user_row(updated_user),
+        "user": updated_user,
     }
 
 @app.get("/api/venues", response_model=VenuesResponse)
