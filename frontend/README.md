@@ -51,6 +51,19 @@ flowchart TD
 		Client --> Backend["FastAPI backend via /api"]
 ```
 
+## Main Modules
+
+```text
+src/main.tsx                 React/Vite entry point
+src/App.tsx                  Routes, layout, auth state, and navigation
+src/api/                     Backend request helpers
+src/pages/                   Page-level screens
+src/pages/components/        Components used by pages
+src/pages/hooks/             Page-specific React hooks
+src/shared/                  Shared store, styles, UI, and utilities
+src/types/                   TypeScript types for API data
+```
+
 ## Runtime Behavior
 
 `src/main.tsx` starts the React app, applies the saved theme, and enables React Router.
@@ -64,18 +77,9 @@ flowchart TD
 
 Search and selected graph entities are stored in the URL when possible. For example, `/graph?selectedType=artist&selectedId=2178` opens an artist ego graph.
 
-## Main Modules
+`LoginPage` handles login and registration. After login, the token, role, username, and related IDs are stored in `localStorage`.
 
-```text
-src/main.tsx                 React/Vite entry point
-src/App.tsx                  Routes, layout, auth state, and navigation
-src/api/                     Backend request helpers
-src/pages/                   Page-level screens
-src/pages/components/        Components used by pages
-src/pages/hooks/             Page-specific React hooks
-src/shared/                  Shared store, styles, UI, and utilities
-src/types/                   TypeScript types for API data
-```
+`ProfilePage` is the artist workspace. `AgencyPage` reuses much of the profile experience for agents. `DashboardPage` is admin-only and shows platform metrics, users, registrations, and activity logs.
 
 ## API Layer
 
@@ -102,43 +106,11 @@ The public graph page is built from three main parts:
 
 `useGraphSearchDetails()` coordinates search, selected entity details, and URL query parameters.
 
-`ScenegraphMapPanel` renders the graph, loads either the full graph or an ego graph, manages filters, and shares selected node state through the Zustand graph store.
+`ScenegraphMapPanel` renders the graph, loads either the full graph or an ego graph, manages filters, and shares selected node state through the Zustand graph store (A small state-management library to let separate components read and update shared graph state without passing that state through every parent component.).
 
-## Auth, Profile, Agency, And Admin Flow
-
-`LoginPage` handles login and registration. After login, the token, role, username, and related IDs are stored in `localStorage`.
-
-`ProfilePage` is the artist workspace. `AgencyPage` reuses much of the profile experience for agents. `DashboardPage` is admin-only and shows platform metrics, users, registrations, and activity logs.
-
-<!-- ## Imports
-
-The frontend uses relative imports for nearby files and `@/` imports for shared modules.
-
-The `@` alias points to `src/`. It is configured in both `vite.config.ts` and `tsconfig.app.json`. -->
 
 ## Styling
 
 Global styles are in `src/shared/styles/base.css`. Theme helpers are in `src/shared/styles/colors.ts`, and the selected theme is stored in `localStorage` as `scenegraph-theme`.
 
 Reusable UI primitives live in `src/shared/ui/`.
-
-<!-- ## Local Data Setup
-
-To load a local database dump:
-
-```bash
-make upd
-docker compose exec -T db sh -lc 'PGPASSWORD="$POSTGRES_PASSWORD" psql -U "$POSTGRES_USER" -d postgres -c "CREATE ROLE postgres WITH SUPERUSER CREATEDB CREATEROLE LOGIN;"'
-RESET_DB=1 make import-dump DUMP=./backend/data/scenegraph_dump.sql
-make upd
-```
-
-Then open `https://localhost:8443`.
-
-## Useful Frontend Commands
-
-```bash
-npm run dev      # start Vite dev server
-npm run build    # type-check and build production assets
-npm run preview  # serve the built assets locally
-``` -->
