@@ -2,7 +2,7 @@
 
 React and TypeScript client for exploring the Berlin Scenegraph API. The frontend renders the graph workspace, search and detail panels, artist/agent recommendation flows, admin dashboard, authentication screens, and static legal/contact pages.
 
-The app is built with Vite, React Router, Tailwind CSS, a small Zustand store, typed API helpers, and `react-force-graph-2d` for the graph canvas.
+The app is built with Vite, React Router, Tailwind CSS, a Zustand store, typed API helpers, and `react-force-graph-2d` for the graph canvas.
 
 ## Quick Start
 
@@ -25,179 +25,106 @@ npm install
 npm run dev
 ```
 
-The Vite dev server runs on port `5173` inside the frontend container. In the Docker stack, NGINX exposes the app through `https://localhost:8443`, redirects `http://localhost:8080` to HTTPS, and forwards backend requests under `/api`.
+The Vite dev server runs on port `5173` inside the frontend container. In the Docker stack, NGINX exposes the app through `https://localhost:8443` (redirects `http://localhost:8080` to HTTPS), and forwards backend requests under `/api`.
 
-## Frontend Detail Flow
+## Frontend Simplified Flow
 
 ```mermaid
 flowchart TD
     Browser["Browser"] --> Main["src/main.tsx"]
-    Main --> Theme["applyStoredTheme()"]
-    Main --> Router["BrowserRouter"]
-    Router --> App["src/App.tsx"]
+    Main --> App["src/App.tsx"]
+    
+		App --> |anonymous| Graph["Graph Page"]
+		App --> Login["Login Page"]
+		
+		Login --> Role{"User role"} 
+		Role --> |artist| Profile["Profile Page"]
+		Role --> |agents| Agency["Agency Page"]
+		Role --> |admins| Dashboard["Dashboard Page"]
 
-    App --> Nav["Navigation + auth/theme controls"]
-    App --> Routes["React Router routes"]
-
-    Routes --> GraphRoute["/graph"]
-    Routes --> LoginRoute["/login"]
-    Routes --> DashboardRoute["/dashboard"]
-    Routes --> ProfileRoute["/profile"]
-    Routes --> AboutRoutes["privacy / terms / contact"]
-
-    LoginRoute --> AuthApi["api/auth.ts"]
-    AuthApi --> LocalStorage["token, role, username in localStorage"]
-    LocalStorage --> App
-
-    GraphRoute --> RoleSwitch{"Current role?"}
-    RoleSwitch -->|not logged in| GraphPage["GraphPage"]
-    RoleSwitch -->|artist| ProfilePage["ProfilePage"]
-    RoleSwitch -->|agent or admin| AgencyPage["AgencyPage"]
-    ProfileRoute -->|artist or agent| ProfilePage
-
-    GraphPage --> GraphSearchHook["useGraphSearchDetails()"]
-    ProfilePage --> GraphSearchHook
-    AgencyPage --> ProfilePage
-
-    GraphSearchHook --> SearchApi["api/search.ts"]
-    GraphSearchHook --> DetailApi["api/entityDetails.ts"]
-    GraphSearchHook --> GraphStore["shared/store/graphStore.ts"]
-
-    GraphPage --> GraphPanel["ScenegraphMapPanel"]
-    ProfilePage --> GraphPanel
-    GraphPanel --> GraphApi["api/graph.ts"]
-    GraphPanel --> GenresApi["api/genres.ts"]
-    GraphPanel --> ForceGraph["react-force-graph-2d canvas"]
-    GraphPanel --> GraphStore
-
-    DashboardRoute -->|admin| DashboardPage["DashboardPage"]
-    DashboardPage --> DashboardApis["dashboardComposition + dashboardMetrics + admin auth APIs"]
-
-    SearchApi --> Client["api/client.ts"]
-    DetailApi --> Client
-    GraphApi --> Client
-    GenresApi --> Client
-    DashboardApis --> Client
-    Client --> Backend["FastAPI backend via /api"]
+		Graph --> Interface["Graph, details, search, etc"]
+		Profile --> Interface
+		Agency --> Interface
+		Dashboard --> Interface
+		Interface --> ApiFiles["typed API helpers"]
+		ApiFiles --> Client["api/client.ts"]
+		Client --> Backend["FastAPI backend via /api"]
 ```
 
 ## Runtime Behavior
 
-`src/main.tsx` is the browser entry point. It applies the stored light/dark theme, mounts React into `index.html`, and wraps the app in `BrowserRouter`.
+`src/main.tsx` starts the React app, applies the saved theme, and enables React Router.
 
-`src/App.tsx` owns top-level layout, navigation, route protection, theme toggling, and the lightweight auth state. It reads `token` and `role` from `localStorage` on startup. The `/graph` route changes by role:
+`src/App.tsx` owns the main layout, navigation, auth state, theme toggle, and route protection. It reads the saved `token` and `role` from `localStorage` and sends each user to the right workspace:
 
-- anonymous users see the public `GraphPage`
-- artists see `ProfilePage`
-- agents and admins see `AgencyPage`
-- admins can also open `DashboardPage`
+- anonymous users use the public graph page
+- artists use the profile workspace
+- agents use the agency workspace
+- admins can use the agency workspace and dashboard
 
-Search and selected entity state is URL-driven where possible. For example, `/graph?selectedType=artist&selectedId=2178` opens an ego graph for that artist, while `/search?q=...` redirects to `/graph?q=...`.
+Search and selected graph entities are stored in the URL when possible. For example, `/graph?selectedType=artist&selectedId=2178` opens an artist ego graph.
 
 ## Main Modules
 
 ```text
 src/main.tsx                 React/Vite entry point
-src/App.tsx                  App shell, routes, auth state, nav, footer
-src/api/                     Typed request helpers for backend endpoints
-src/pages/                   Route-level pages
-src/pages/components/        Feature components used by pages
-src/pages/hooks/             Page-specific hooks for graph/search/dashboard behavior
-src/shared/lib/              Small shared utilities
-src/shared/store/            Zustand stores
-src/shared/styles/           Global CSS and theme helpers
-src/shared/ui/               Reusable UI primitives
-src/types/                   TypeScript DTOs and domain types
+src/App.tsx                  Routes, layout, auth state, and navigation
+src/api/                     Backend request helpers
+src/pages/                   Page-level screens
+src/pages/components/        Components used by pages
+src/pages/hooks/             Page-specific React hooks
+src/shared/                  Shared store, styles, UI, and utilities
+src/types/                   TypeScript types for API data
 ```
 
 ## API Layer
 
-All regular backend calls go through `src/api/client.ts`.
+All backend requests go through `src/api/client.ts`. It wraps `fetch`, adds the `/api` prefix, sends the auth token when one exists, parses JSON, handles errors, and redirects to `/login` on `401`.
 
-The shared `api` object wraps browser `fetch` and provides:
+Endpoint files such as `api/auth.ts`, `api/graph.ts`, `api/search.ts`, and `api/entityDetails.ts` keep the request paths and response types near the feature that uses them.
 
-- `api.get<T>(path)`
-- `api.post<T>(path, body)`
-- `api.patch<T>(path, body)`
-- `api.delete<T>(path)`
+Plainly, `client.ts` is the shared request engine, and the other `api/*.ts` files are organized wrappers for specific backend features.
 
-It prefixes requests with `/api`, attaches `Authorization: Bearer <token>` when a token exists, parses JSON responses, throws errors for non-2xx responses, and redirects to `/login` on `401`.
-
-Endpoint-specific files keep request paths and response types close together:
-
-- `api/auth.ts`: login, logout, registration, password changes, admin user actions, activity log export
-- `api/graph.ts`: full graph and ego graph requests
-- `api/search.ts`: global search with type/sort/limit parameters
-- `api/entityDetails.ts`: artist, event, venue, and promoter details
-- `api/dashboardComposition.ts`: dashboard composition counts
-- `api/dashboardMetrics.ts`: dashboard metric panels
-- `api/genres.ts`: genre filter options
-- `api/recommendationFeedback.ts`: feedback on recommendations
-- `api/manualArtistConnections.ts`: manually curated artist links
-
-`api/useApi.ts` is a generic React hook for request state. Components pass it a fetcher and dependency list; it returns `data`, `isLoading`, `error`, and `refetch`.
+```
+components/pages
+    call feature API files like api/search.ts
+        which call src/api/client.ts
+            which calls the FastAPI backend
+```
 
 ## Graph And Search Flow
 
-`GraphPage` is composed from three pieces:
+The public graph page is built from three main parts:
 
-- `SearchInputField` for search input and dropdown results
-- `DetailsPanel` for selected/search result details
-- `ScenegraphMapPanel` for the force graph canvas
+- search input
+- details panel
+- force graph canvas
 
-`useGraphSearchDetails()` coordinates the sidebar. It reads URL search params, debounces dropdown search input, fetches submitted search results, fetches detail data for the selected entity, and exposes props for the search and details components.
+`useGraphSearchDetails()` coordinates search, selected entity details, and URL query parameters.
 
-`ScenegraphMapPanel` coordinates the canvas. It decides whether to fetch:
-
-- `fetchGraph()` for the general graph
-- `fetchEgoGraph()` when `selectedType` and `selectedId` are present in the URL
-- provided graph data when another feature, such as recommendations, supplies a graph directly
-
-It also owns graph filters, visible node-type filters, graph sizing, path highlighting, click handling, and `react-force-graph-2d` rendering. Graph node selection is shared through `shared/store/graphStore.ts`.
+`ScenegraphMapPanel` renders the graph, loads either the full graph or an ego graph, manages filters, and shares selected node state through the Zustand graph store.
 
 ## Auth, Profile, Agency, And Admin Flow
 
-`LoginPage` supports login and registration. Successful login stores the access token, role, username, and optional IDs in `localStorage`, then lets `App` route the user to the correct workspace.
+`LoginPage` handles login and registration. After login, the token, role, username, and related IDs are stored in `localStorage`.
 
-`ProfilePage` is the artist workspace. It combines graph exploration, promoter recommendations, artist biography editing, and manual artist connections.
+`ProfilePage` is the artist workspace. `AgencyPage` reuses much of the profile experience for agents. `DashboardPage` is admin-only and shows platform metrics, users, registrations, and activity logs.
 
-`AgencyPage` reuses `ProfilePage` with biography editing disabled and adds an artist search control so agents can request recommendations for a selected artist.
+<!-- ## Imports
 
-`DashboardPage` is admin-only. It fetches composition data, metric panels, users, pending registrations, and activity logs. It also listens for dashboard update events through `useDashboardUpdates()`.
+The frontend uses relative imports for nearby files and `@/` imports for shared modules.
 
-## Imports And Libraries
-
-The frontend uses two import styles:
-
-- relative imports such as `../../api/graph.ts` for nearby feature files
-- alias imports such as `@/shared/ui/button` for shared modules
-
-The `@` alias points to `src/`. It is configured in both `vite.config.ts` and `tsconfig.app.json`.
-
-Core library imports:
-
-- `react` and `react-dom`: component rendering and hooks
-- `react-router-dom`: browser routing, route redirects, URL params, and navigation
-- `zustand`: global store for selected graph node state
-- `react-force-graph-2d`: canvas force graph renderer
-- `d3-force`: force simulation types/helpers used by graph physics code
-- `lucide-react`: icons
-- `tailwindcss` and `@tailwindcss/vite`: utility CSS build integration
-- `clsx` and `tailwind-merge`: safe class name composition through `cn()`
-- `class-variance-authority`: reusable UI variants, mainly in shared UI primitives
-- `@radix-ui/react-slot`: `asChild` composition support for shared controls
+The `@` alias points to `src/`. It is configured in both `vite.config.ts` and `tsconfig.app.json`. -->
 
 ## Styling
 
-`src/shared/styles/base.css` contains global styles, Tailwind imports, layout defaults, component-specific utility classes, and CSS custom properties.
+Global styles are in `src/shared/styles/base.css`. Theme helpers are in `src/shared/styles/colors.ts`, and the selected theme is stored in `localStorage` as `scenegraph-theme`.
 
-`src/shared/styles/colors.ts` manages theme persistence and exposes helpers for reading CSS variables. The active theme is stored as `scenegraph-theme` in `localStorage` and applied to `document.documentElement.dataset.theme`.
+Reusable UI primitives live in `src/shared/ui/`.
 
-Reusable controls live in `src/shared/ui/`. They are intentionally small wrappers around regular HTML elements and Tailwind classes.
+<!-- ## Local Data Setup
 
-## Local Data Setup
-
-When using a database dump for local development, the current manual workflow is:
+To load a local database dump:
 
 ```bash
 make upd
@@ -214,4 +141,4 @@ Then open `https://localhost:8443`.
 npm run dev      # start Vite dev server
 npm run build    # type-check and build production assets
 npm run preview  # serve the built assets locally
-```
+``` -->
