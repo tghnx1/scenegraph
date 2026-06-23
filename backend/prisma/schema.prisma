@@ -282,6 +282,7 @@ model RecommendationJob {
   userId       BigInt    @map("user_id")
   artistId     BigInt    @map("artist_id")
   jobType      String    @default("artist_promoters") @map("job_type")
+  paramsHash   String    @map("params_hash")
   paramsJson   Json      @map("params_json")
   status       String    @default("queued")
   resultJson   Json?     @map("result_json")

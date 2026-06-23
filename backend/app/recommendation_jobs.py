@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import uuid
 from typing import Any
@@ -11,6 +12,13 @@ from psycopg.types.json import Jsonb
 JOB_CREATED_CHANNEL = "scenegraph_recommendation_job_created"
 JOB_UPDATED_CHANNEL = "scenegraph_recommendation_job_updated"
 ARTIST_PROMOTERS_JOB_TYPE = "artist_promoters"
+
+
+# Build a stable signature for the stored parameters without deduplicating jobs.
+def _params_hash(params: dict[str, Any]) -> str:
+    """Return a deterministic fingerprint for the recommendation job parameters."""
+    payload = json.dumps(params, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    return hashlib.md5(payload.encode("utf-8")).hexdigest()
 
 
 # Build the compact event used to route a status update to the owning user.
@@ -43,6 +51,7 @@ def create_recommendation_job(
     params: dict[str, Any],
 ) -> dict[str, Any]:
     """Persist a queued Artist -> Promoters job and wake sleeping workers after commit."""
+    params_hash = _params_hash(params)
     job_id = uuid.uuid4()
     with connection.transaction():
         with connection.cursor() as cursor:
@@ -53,10 +62,11 @@ def create_recommendation_job(
                     user_id,
                     artist_id,
                     job_type,
+                    params_hash,
                     params_json,
                     status
                 )
-                VALUES (%s, %s, %s, %s, %s, 'queued')
+                VALUES (%s, %s, %s, %s, %s, %s, 'queued')
                 RETURNING *
                 """,
                 (
@@ -64,6 +74,7 @@ def create_recommendation_job(
                     user_id,
                     artist_id,
                     ARTIST_PROMOTERS_JOB_TYPE,
+                    params_hash,
                     Jsonb(params),
                 ),
             )
