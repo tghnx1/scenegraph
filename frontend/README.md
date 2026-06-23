@@ -83,9 +83,7 @@ Search and selected graph entities are stored in the URL when possible. For exam
 
 ## API Layer
 
-All backend requests go through `src/api/client.ts`. It wraps `fetch`, adds the `/api` prefix, sends the auth token when one exists, parses JSON, handles errors, and redirects to `/login` on `401`.
-
-Endpoint files such as `api/auth.ts`, `api/graph.ts`, `api/search.ts`, and `api/entityDetails.ts` keep the request paths and response types near the feature that uses them.
+All backend requests go through `src/api/client.ts`. It wraps `fetch`, adds the `/api` prefix, sends the auth token when one exists, parses JSON, handles errors, and redirects to `/login` on `401`. Endpoint files such as `api/auth.ts`, `api/graph.ts`, `api/search.ts`, and `api/entityDetails.ts` keep the request paths and response types similar the feature that uses them.
 
 Plainly, `client.ts` is the shared request engine, and the other `api/*.ts` files are organized wrappers for specific backend features.
 
@@ -108,6 +106,7 @@ The public graph page is built from three main parts:
 
 `ScenegraphMapPanel` renders the graph, loads either the full graph or an ego graph, manages filters, and shares selected node state through the Zustand graph store (A small state-management library to let separate components read and update shared graph state without passing that state through every parent component.).
 
+In the display, `react-force-graph-2d` draws and manages the graph component while `d3-force` controls the physics behavior of the nodes.
 
 ## Styling
 
