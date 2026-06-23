@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import uuid
 from typing import Any
@@ -11,6 +12,13 @@ from psycopg.types.json import Jsonb
 JOB_CREATED_CHANNEL = "scenegraph_recommendation_job_created"
 JOB_UPDATED_CHANNEL = "scenegraph_recommendation_job_updated"
 ARTIST_PROMOTERS_JOB_TYPE = "artist_promoters"
+
+
+# Canonicalize a job parameter payload so identical requests hash to the same signature.
+def _params_hash(params: dict[str, Any]) -> str:
+    """Return a stable fingerprint for a recommendation job parameter payload."""
+    payload = json.dumps(params, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    return hashlib.md5(payload.encode("utf-8")).hexdigest()
 
 
 # Build the compact event used to route a status update to the owning user.
@@ -43,7 +51,9 @@ def create_recommendation_job(
     params: dict[str, Any],
 ) -> dict[str, Any]:
     """Persist a queued Artist -> Promoters job and wake sleeping workers after commit."""
+    params_hash = _params_hash(params)
     job_id = uuid.uuid4()
+    inserted = False
     with connection.transaction():
         with connection.cursor() as cursor:
             cursor.execute(
@@ -53,10 +63,12 @@ def create_recommendation_job(
                     user_id,
                     artist_id,
                     job_type,
+                    params_hash,
                     params_json,
                     status
                 )
-                VALUES (%s, %s, %s, %s, %s, 'queued')
+                VALUES (%s, %s, %s, %s, %s, %s, 'queued')
+                ON CONFLICT (user_id, artist_id, job_type, params_hash) DO NOTHING
                 RETURNING *
                 """,
                 (
@@ -64,17 +76,34 @@ def create_recommendation_job(
                     user_id,
                     artist_id,
                     ARTIST_PROMOTERS_JOB_TYPE,
+                    params_hash,
                     Jsonb(params),
                 ),
             )
             row = cursor.fetchone()
+            inserted = row is not None
         if row is None:
-            raise RuntimeError("Failed to create recommendation job")
-        _notify(
-            connection,
-            JOB_CREATED_CHANNEL,
-            json.dumps({"jobId": str(job_id)}, separators=(",", ":")),
-        )
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT *
+                    FROM recommendation_jobs
+                    WHERE user_id = %s
+                      AND artist_id = %s
+                      AND job_type = %s
+                      AND params_hash = %s
+                    """,
+                    (user_id, artist_id, ARTIST_PROMOTERS_JOB_TYPE, params_hash),
+                )
+                row = cursor.fetchone()
+        if row is None:
+            raise RuntimeError("Failed to create or reuse recommendation job")
+        if inserted:
+            _notify(
+                connection,
+                JOB_CREATED_CHANNEL,
+                json.dumps({"jobId": str(row["id"])}, separators=(",", ":")),
+            )
     return row
 
 
