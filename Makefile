@@ -17,6 +17,7 @@ REFRESH_EXISTING_ARTIST_IDS_FILE ?= backend/data/existing_ra_artist_ids.txt
 REFRESH_CDP_URL ?= http://localhost:9222
 REFRESH_PIPELINE_ARGS ?=
 CHECK_ARTIST_ID ?= 2178
+RECOMMENDATION_WORKER ?= 1
 
 .PHONY: help env build up upd upd-build down stop restart logs ps health prisma-migrate prisma-studio db-shell import-events backfill-normalized-texts backfill-lineup-residual backfill-artist-biographies extract-artist-tags refresh-embeddings validate-import refresh-data-check refresh-data-check-bio refresh-data-check-bio-embeddings import-dump export-dump clean reset-db list fclean
 
@@ -26,8 +27,8 @@ help:
 	@printf "\n"
 	@printf "  make env      Create .env from .env.example if missing\n"
 	@printf "  make build    Build containers\n"
-	@printf "  make up       Start stack in foreground (runs migrations first)\n"
-	@printf "  make upd      Start dev stack in background with Vite dev server\n"
+	@printf "  make up       Start stack with 1 recommendation worker in foreground (runs migrations first)\n"
+	@printf "  make upd      Start dev stack with 1 recommendation worker in background\n"
 	@printf "  make upd-build Start build stack in background with nginx serving frontend dist\n"
 	@printf "  make down     Stop and remove containers\n"
 	@printf "  make stop     Stop running containers\n"
@@ -68,10 +69,10 @@ build: env
 	$(COMPOSE) build
 
 up: env prisma-migrate
-	$(COMPOSE) up --build
+	$(COMPOSE) up --build --scale recommendation-worker=$(RECOMMENDATION_WORKER)
 
 upd: env prisma-migrate
-	$(COMPOSE) up --build -d
+	$(COMPOSE) up --build -d --scale recommendation-worker=$(RECOMMENDATION_WORKER)
 
 upd-build: env
 	$(COMPOSE_BUILD) --profile tools run --rm --build prisma

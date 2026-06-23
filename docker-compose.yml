@@ -66,6 +66,21 @@ services:
       - ./backend/scripts:/app/scripts
       - ./backend/tests:/app/tests
 
+  recommendation-worker:
+    build:
+      context: ./backend
+    restart: unless-stopped
+    command: ["python", "-m", "app.recommendation_worker"]
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./backend/app:/app/app
+
   frontend:
     build:
       context: ./frontend

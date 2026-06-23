@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from contextlib import asynccontextmanager
+import asyncio
+from contextlib import asynccontextmanager, suppress
 
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -16,6 +17,7 @@ security = HTTPBearer()         #security parse that understands jwt-encrypted h
 from app.db import get_connection, get_db
 from app.recommendation_helpers import extracted_tag_score
 from app.schema_preflight import check_schema_tables, schema_preflight_strict_mode
+from app.recommendation_job_events import listen_for_recommendation_job_updates
 from app.schemas import (
     LoginRequest,
     LoginResponse,
@@ -39,6 +41,14 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 BOOTSTRAP_ADMIN_USERNAME = os.getenv("BOOTSTRAP_ADMIN_USERNAME")
 BOOTSTRAP_ADMIN_EMAIL = os.getenv("BOOTSTRAP_ADMIN_EMAIL")
 BOOTSTRAP_ADMIN_PASSWORD = os.getenv("BOOTSTRAP_ADMIN_PASSWORD")
+BOOTSTRAP_USER_USERNAME = os.getenv("BOOTSTRAP_USER_USERNAME")
+BOOTSTRAP_USER_EMAIL = os.getenv("BOOTSTRAP_USER_EMAIL")
+BOOTSTRAP_USER_PASSWORD = os.getenv("BOOTSTRAP_USER_PASSWORD")
+BOOTSTRAP_USER_ROLE = os.getenv("BOOTSTRAP_USER_ROLE", "artist")
+BOOTSTRAP_USER_UPDATE_EXISTING = os.getenv(
+    "BOOTSTRAP_USER_UPDATE_EXISTING",
+    "false",
+).strip().lower() in {"1", "true", "yes", "on"}
 
 def create_bootstrap_admin(connection: Connection) -> None:         #like void
     with connection.cursor() as cursor:
@@ -95,6 +105,70 @@ def create_bootstrap_admin(connection: Connection) -> None:         #like void
 
         connection.commit()
 
+
+# Create the configured approved non-admin account once without overwriting existing credentials.
+def create_bootstrap_user(connection: Connection) -> None:
+    if (
+        not BOOTSTRAP_USER_USERNAME
+        or not BOOTSTRAP_USER_EMAIL
+        or not BOOTSTRAP_USER_PASSWORD
+    ):
+        return
+    if BOOTSTRAP_USER_ROLE not in {"artist", "agent"}:
+        raise RuntimeError("BOOTSTRAP_USER_ROLE must be artist or agent")
+
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT id FROM users WHERE username = %s",
+            (BOOTSTRAP_USER_USERNAME,),
+        )
+        existing_user = cursor.fetchone()
+        password_hash = pwd_context.hash(BOOTSTRAP_USER_PASSWORD)
+
+        if existing_user is not None:
+            if not BOOTSTRAP_USER_UPDATE_EXISTING:
+                return
+            cursor.execute(
+                """
+                UPDATE users
+                SET email = %s,
+                    password_hash = %s,
+                    role = %s,
+                    status = 'approved',
+                    must_change_password = FALSE
+                WHERE id = %s
+                """,
+                (
+                    BOOTSTRAP_USER_EMAIL,
+                    password_hash,
+                    BOOTSTRAP_USER_ROLE,
+                    existing_user["id"],
+                ),
+            )
+            connection.commit()
+            return
+
+        cursor.execute(
+            """
+            INSERT INTO users (
+                username,
+                email,
+                password_hash,
+                role,
+                status,
+                must_change_password
+            )
+            VALUES (%s, %s, %s, %s, 'approved', FALSE)
+            """,
+            (
+                BOOTSTRAP_USER_USERNAME,
+                BOOTSTRAP_USER_EMAIL,
+                password_hash,
+                BOOTSTRAP_USER_ROLE,
+            ),
+        )
+    connection.commit()
+
 def log_activity(
         connection: Connection,
         user_id: int | None,
@@ -125,6 +199,7 @@ async def lifespan(app_instance: FastAPI):
     with get_connection() as connection:
         schema_report = check_schema_tables(connection)
         create_bootstrap_admin(connection)
+        create_bootstrap_user(connection)
     app_instance.state.schema_preflight = schema_report
 
     if schema_preflight_strict_mode() and schema_report["missingRequiredTables"]:
@@ -134,7 +209,16 @@ async def lifespan(app_instance: FastAPI):
             f"{missing}. Run migrations before starting the API."
         )
 
-    yield
+    recommendation_job_listener = asyncio.create_task(
+        listen_for_recommendation_job_updates(),
+        name="recommendation-job-updates",
+    )
+    try:
+        yield
+    finally:
+        recommendation_job_listener.cancel()
+        with suppress(asyncio.CancelledError):
+            await recommendation_job_listener
 
 
 app = FastAPI(title="Berlin Scene Graph API", lifespan=lifespan)

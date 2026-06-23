@@ -246,6 +246,34 @@ class PromoterRecommendationResponse(BaseModel):
     debug: dict[str, object] | None = None
 
 
+RecommendationJobStatus = Literal["queued", "running", "completed", "failed"]
+
+
+class RecommendationJobParams(BaseModel):
+    limit: int = Field(default=50, ge=1)
+    excludeExisting: bool = True
+    debug: bool = False
+
+
+class RecommendationJobCreatedResponse(BaseModel):
+    jobId: str
+    status: RecommendationJobStatus
+
+
+class RecommendationJobResponse(BaseModel):
+    jobId: str
+    jobType: Literal["artist_promoters"]
+    artistId: int
+    params: RecommendationJobParams
+    status: RecommendationJobStatus
+    result: PromoterRecommendationResponse | None = None
+    errorMessage: str | None = None
+    createdAt: datetime
+    startedAt: datetime | None = None
+    finishedAt: datetime | None = None
+    updatedAt: datetime
+
+
 class ArtistSimilarEventItem(BaseModel):
     id: int
     type: Literal["event"] = "event"
