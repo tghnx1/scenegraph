@@ -47,9 +47,9 @@ export default function App() {
   const [themeName, setThemeName] = useState<ThemeName>(() => getStoredTheme())
   const isAuthenticated = Boolean(authRole)
   const canOpenDashboard = authRole === 'admin'
-  const graphPage = authRole === 'artist'
+  const graphPage = authRole === 'user'
     ? <ProfilePage />
-    : authRole === 'agent' || authRole === 'admin'
+    : authRole === 'contributor' || authRole === 'admin'
       ? <AgencyPage />
       : <GraphPage />
 
@@ -127,7 +127,7 @@ export default function App() {
             }
           />
           <Route path="/dashboard" element={authRole === 'admin' ? <DashboardPage /> : <Navigate to={isAuthenticated ? '/graph' : '/login'} replace />} />
-          <Route path="/profile" element={authRole === 'artist' ? <ProfilePage /> : <Navigate to={isAuthenticated ? '/graph' : '/login'} replace />} />
+          <Route path="/profile" element={authRole === 'user' ? <ProfilePage /> : <Navigate to={isAuthenticated ? '/graph' : '/login'} replace />} />
           <Route path="/search" element={<SearchRedirect />} />
           <Route path="/artist/:id" element={<EntityRedirect type="artist" />} />
           <Route path="/promoter/:id" element={<EntityRedirect type="promoter" />} />

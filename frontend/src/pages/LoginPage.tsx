@@ -12,8 +12,8 @@ interface LoginPageProps {
 }
 
 const REGISTRATION_ROLES = [
-  {value: 'artist', label: 'Artist'},
-  {value: 'agent', label: 'Agent'},
+  {value: 'user', label: 'User'},
+  {value: 'contributor', label: 'Agent'},
 ] as const
 
 type RegistrationRole = (typeof REGISTRATION_ROLES)[number]['value']
@@ -89,7 +89,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
   const [isRegistering, setIsRegistering] = useState(false)
   const [email, setEmail] = useState('')
   const [passwordConfirm, setPasswordConfirm] = useState('')
-  const [requestedRole, setRequestedRole] = useState<RegistrationRole>('artist')
+  const [requestedRole, setRequestedRole] = useState<RegistrationRole>('user')
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -119,7 +119,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
       }
 
       const authenticatedUsername = response.username ?? username
-      const role: AuthRole = isAuthRole(response.role) ? response.role : 'artist'
+      const role: AuthRole = isAuthRole(response.role) ? response.role : 'user'
       localStorage.setItem('token', response.access_token)
       localStorage.setItem('role', role)
       localStorage.setItem('username', authenticatedUsername)

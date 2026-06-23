@@ -44,7 +44,7 @@ BOOTSTRAP_ADMIN_PASSWORD = os.getenv("BOOTSTRAP_ADMIN_PASSWORD")
 BOOTSTRAP_USER_USERNAME = os.getenv("BOOTSTRAP_USER_USERNAME")
 BOOTSTRAP_USER_EMAIL = os.getenv("BOOTSTRAP_USER_EMAIL")
 BOOTSTRAP_USER_PASSWORD = os.getenv("BOOTSTRAP_USER_PASSWORD")
-BOOTSTRAP_USER_ROLE = os.getenv("BOOTSTRAP_USER_ROLE", "artist")
+BOOTSTRAP_USER_ROLE = os.getenv("BOOTSTRAP_USER_ROLE", "user")
 BOOTSTRAP_USER_UPDATE_EXISTING = os.getenv(
     "BOOTSTRAP_USER_UPDATE_EXISTING",
     "false",
@@ -114,8 +114,8 @@ def create_bootstrap_user(connection: Connection) -> None:
         or not BOOTSTRAP_USER_PASSWORD
     ):
         return
-    if BOOTSTRAP_USER_ROLE not in {"artist", "agent"}:
-        raise RuntimeError("BOOTSTRAP_USER_ROLE must be artist or agent")
+    if BOOTSTRAP_USER_ROLE not in {"user", "contributor"}:
+        raise RuntimeError("BOOTSTRAP_USER_ROLE must be user or contributor")
 
     with connection.cursor() as cursor:
         cursor.execute(
@@ -469,7 +469,7 @@ async def register(
             message=validation_error,
         )
 
-    if register_data.role not in {"artist", "agent"}:
+    if register_data.role not in {"user", "contributor"}:
         return RegisterResponse(
             success=False,
             message="Invalid role",
@@ -900,7 +900,7 @@ async def change_user_role(
     admin: dict = Depends(require_admin),
     connection: Connection = Depends(get_db),
 ) -> dict:
-    if role_data.role not in {"artist", "agent"}:
+    if role_data.role not in {"user", "contributor"}:
         raise HTTPException(status_code=400, detail="Invalid role")
 
     with connection.cursor() as cursor:
