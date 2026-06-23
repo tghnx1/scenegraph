@@ -114,8 +114,8 @@ def create_bootstrap_user(connection: Connection) -> None:
         or not BOOTSTRAP_USER_PASSWORD
     ):
         return
-    if BOOTSTRAP_USER_ROLE not in {"artist", "agent"}:
-        raise RuntimeError("BOOTSTRAP_USER_ROLE must be artist or agent")
+    if BOOTSTRAP_USER_ROLE not in {"artist", "agent", "admin"}:
+        raise RuntimeError("BOOTSTRAP_USER_ROLE must be one of: artist, agent, admin")
 
     with connection.cursor() as cursor:
         cursor.execute(
