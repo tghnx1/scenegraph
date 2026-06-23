@@ -95,6 +95,8 @@ class ChangePasswordResponse(BaseModel):
 
 class ChangeRoleRequest(BaseModel):
     role: str
+class ArtistClaimRequest(BaseModel):
+    reason: str
 class SimilarityItem(BaseModel):
     id: int
     type: Literal["artist", "event"]

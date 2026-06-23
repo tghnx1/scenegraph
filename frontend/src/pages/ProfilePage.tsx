@@ -114,6 +114,7 @@ export function ProfilePage({ recommendationTargetControls, showBiography = true
           <div className="col-span-2 max-[900px]:col-span-1">
             <BiographyPanel
               artistId={artistId}
+              canEditBiography={true}
               manualConnections={{
                 connections: manualConnections.connections,
                 isLoading: manualConnections.isLoading,

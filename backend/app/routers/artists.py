@@ -4,6 +4,7 @@ from typing import List, Optional
 from psycopg import Connection
 from app.db import get_db
 from app.style_tags import canonicalize_style_tags, extract_style_tags
+from app.auth import get_current_user_id
 
 router = APIRouter()
 
@@ -204,11 +205,32 @@ def get_artist(
 
 
 @router.patch("/{id}/biography", response_model=ArtistBiographyResponse)
-def update_artist_biography(
+async def update_artist_biography(
     id: int,
     request: ArtistBiographyUpdate,
     db: Connection = Depends(get_db),
+    current_user: dict = Depends(get_current_user_id),
 ):
+    with db.cursor() as cur:
+        cur.execute(
+            """
+            SELECT artist_id
+            FROM users
+            WHERE id = %s
+            """,
+            (current_user["id"],)
+        )
+        user_row = cur.fetchone()
+
+    if not user_row:
+        raise HTTPException(status_code=403, detail="User not found")
+    
+    if not user_row["role"] != "admin" and user_row["artist_id"] != id:
+        raise HTTPException(
+            status_code=403,
+            detail="You can only edit your own artist profile"
+        )
+    
     biography = request.biography.strip()
     with db.cursor() as cur:
         cur.execute(

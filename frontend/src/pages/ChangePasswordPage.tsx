@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react'
+import { useState, type FormEvent, type CSSProperties} from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { changePassword, type AuthRole } from '../api/auth'
 
@@ -18,6 +18,14 @@ const inputStyle = {
   font: 'inherit',
   padding: '10px 12px',
   outline: 'none',
+}
+
+const buttonStyle: CSSProperties = {
+  ...inputStyle,
+  cursor: 'pointer',
+  textAlign: 'center',
+  background: 'color-mix(in srgb, var(--background) 82%, var(--text) 8%)',
+  border: '1px solid color-mix(in srgb, var(--text) 22%, transparent)',
 }
 
 export function ChangePasswordPage({ onLogin }: ChangePasswordPageProps) {
@@ -119,11 +127,11 @@ export function ChangePasswordPage({ onLogin }: ChangePasswordPageProps) {
 
           {message && <p>{message}</p>}
 
-          <button type="submit" disabled={isSubmitting}>
+          <button type="submit" disabled={isSubmitting} style={buttonStyle}>
             {isSubmitting ? 'Changing password...' : 'Change password'}
           </button>
           {!forced && (
-            <button type="button" onClick={() => navigate(-1)}>
+            <button type="button" onClick={() => navigate(-1)} style={buttonStyle}>
                 Back
             </button>
           )}

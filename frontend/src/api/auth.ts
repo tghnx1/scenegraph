@@ -64,7 +64,7 @@ export const register = (
   email: string,
   password: string,
   password_confirm: string,
-  role: 'artist' | 'agent',
+  role: AuthRole,
 ): Promise<RegisterResponse> =>
   api.post<RegisterResponse>('/register', {
     username,
@@ -139,3 +139,27 @@ export const changeUserRole = (
   role: 'artist' | 'agent',
 ): Promise<{ success: boolean; message: string }> =>
   api.post(`/admin/users/${userId}/role`, { role })
+
+export interface ArtistClaim {
+  id: number
+  status: 'pending' | 'approved' | 'rejected'
+  reason: string
+  created_at: string
+  username: string
+  email: string
+  artist_name: string
+  artist_id: number
+}
+
+export const getArtistClaims = (): Promise<{ success: boolean; claims: ArtistClaim[] }> =>
+  api.get('/admin/artist-claims')
+
+export const approveArtistClaim = (
+  claimId: number,
+): Promise<{ success: boolean; message: string }> =>
+  api.post(`/admin/artist-claims/${claimId}/approve`, undefined)
+
+export const rejectArtistClaim = (
+  claimId: number,
+): Promise<{ success: boolean; message: string }> =>
+  api.post(`/admin/artist-claims/${claimId}/reject`, undefined)

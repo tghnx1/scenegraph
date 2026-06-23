@@ -13,6 +13,7 @@ const colorAlpha = (name: string, percent: number) =>
 const REGISTRATION_ROLES = [
   {value: 'artist', label: 'Artist'},
   {value: 'agent', label: 'Agent'},
+  {value: 'admin', label: 'Admin'},
 ] as const
 
 type RegistrationRole = (typeof REGISTRATION_ROLES)[number]['value']
