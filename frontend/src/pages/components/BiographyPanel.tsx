@@ -108,6 +108,20 @@ export function BiographyPanel({artistId, manualConnections, canEditBiography}: 
           <span className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--accent)]">Biography</span>
           <h2>{artistName}</h2>
         </div>
+        {canEditBiography && artistId !== null && !isLoading && !isEditing && (
+          <Button
+            type="button"
+            size="sm"
+            onClick={() => {
+              setDraftBiography(biography)
+              setError(null)
+              setSuccess(null)
+              setIsEditing(true)
+            }}
+          >
+            Edit biography
+          </Button>
+        )}
         {!canEditBiography && artistId !== null && !isLoading && (
           <div className="grid gap-2">
             <textarea

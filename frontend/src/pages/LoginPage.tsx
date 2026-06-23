@@ -184,7 +184,13 @@ export function LoginPage({ onLogin }: LoginPageProps) {
       if (response.user_id !== undefined) {
         localStorage.setItem('user_id', String(response.user_id))
       }
-      
+
+      if (response.artist_id) {
+         localStorage.setItem('artist_id', String(response.artist_id))
+      } else {
+         localStorage.removeItem('artist_id')
+      }
+
       //console.log('must_change_password:', response.must_change_password)
       if (response.must_change_password)
       {

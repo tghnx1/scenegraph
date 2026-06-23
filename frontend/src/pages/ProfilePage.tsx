@@ -21,10 +21,18 @@ interface ProfilePageProps {
 export function ProfilePage({ recommendationTargetControls, showBiography = true }: ProfilePageProps = {}) {
   const { detailsPanelProps, searchFormProps, setSelected } = useGraphSearchDetails()
   const [activeWorkspaceTab, setActiveWorkspaceTab] = useState<ProfileWorkspaceTab>('graph')
+
   const storedArtistId = Number(localStorage.getItem('artist_id'))
-  const artistId = Number.isInteger(storedArtistId) && storedArtistId > 0
+
+  const hasAssignedArtist =
+    Number.isInteger(storedArtistId) && storedArtistId > 0
+
+  const artistId = hasAssignedArtist
     ? storedArtistId
     : DEFAULT_PROFILE_ARTIST_ID
+
+  const canEditBiography = hasAssignedArtist
+
   const manualConnections = useManualArtistConnections(showBiography ? artistId : null)
   const isSingleRowWorkspace = !showBiography
 
@@ -114,7 +122,7 @@ export function ProfilePage({ recommendationTargetControls, showBiography = true
           <div className="col-span-2 max-[900px]:col-span-1">
             <BiographyPanel
               artistId={artistId}
-              canEditBiography={true}
+              canEditBiography={canEditBiography}
               manualConnections={{
                 connections: manualConnections.connections,
                 isLoading: manualConnections.isLoading,
