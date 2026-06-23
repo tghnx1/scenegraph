@@ -115,11 +115,10 @@ Global styles are in `src/shared/styles/base.css`. Theme helpers are in `src/sha
 
 Reusable UI primitives live in `src/shared/ui/`.
 
-<!-- lucide-react: icons
-tailwindcss and @tailwindcss/vite: utility CSS build integration
-clsx and tailwind-merge: safe class name composition through cn()
-class-variance-authority: reusable UI variants, mainly in shared UI primitives
-@radix-ui/react-slot: asChild composition support for shared controls -->
+Other components:
+- `lucide-react`: icon components
+- `tailwindcss` : styling system
+- `@radix-ui/react-slot`: `asChild` composition support for shared controls
 
 ## Dashboard
 
