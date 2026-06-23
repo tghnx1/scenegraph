@@ -17,7 +17,6 @@ REFRESH_EXISTING_ARTIST_IDS_FILE ?= backend/data/existing_ra_artist_ids.txt
 REFRESH_CDP_URL ?= http://localhost:9222
 REFRESH_PIPELINE_ARGS ?=
 CHECK_ARTIST_ID ?= 2178
-RECOMMENDATION_WORKER ?= 1
 NGINX_CERT_DIR ?= nginx/certs
 NGINX_CERT_KEY ?= $(NGINX_CERT_DIR)/privkey.pem
 NGINX_CERT_FILE ?= $(NGINX_CERT_DIR)/fullchain.pem
@@ -30,8 +29,8 @@ help:
 	@printf "\n"
 	@printf "  make env      Create .env from .env.example if missing\n"
 	@printf "  make build    Build containers\n"
-	@printf "  make up       Start stack with 1 recommendation worker in foreground (runs migrations first)\n"
-	@printf "  make upd      Start dev stack with 1 recommendation worker in background\n"
+	@printf "  make up       Start stack with recommendation-worker count from .env (fallback: 1)\n"
+	@printf "  make upd      Start dev stack with recommendation-worker count from .env (fallback: 1)\n"
 	@printf "  make upd-build Start build stack in background with nginx serving frontend dist\n"
 	@printf "  make down     Stop and remove containers\n"
 	@printf "  make stop     Stop running containers\n"
@@ -81,10 +80,12 @@ ensure-ssl-certs:
 	fi
 
 up: env ensure-ssl-certs prisma-migrate
-	$(COMPOSE) up --build --scale recommendation-worker=$(RECOMMENDATION_WORKER)
+	@set -a; [ -f .env ] && . ./.env; set +a; \
+	$(COMPOSE) up --build --scale recommendation-worker="$${RECOMMENDATION_WORKER:-1}"
 
 upd: env ensure-ssl-certs prisma-migrate
-	$(COMPOSE) up --build -d --scale recommendation-worker=$(RECOMMENDATION_WORKER)
+	@set -a; [ -f .env ] && . ./.env; set +a; \
+	$(COMPOSE) up --build -d --scale recommendation-worker="$${RECOMMENDATION_WORKER:-1}"
 
 upd-build: env ensure-ssl-certs
 	$(COMPOSE_BUILD) --profile tools run --rm --build prisma
