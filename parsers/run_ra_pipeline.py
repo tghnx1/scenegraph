@@ -245,6 +245,12 @@ def parse_args() -> argparse.Namespace:
         help="Oldest event date to crawl in parse_past_events.py, format YYYY-MM-DD",
     )
     parser.add_argument(
+        "--events-max-date",
+        type=str,
+        default=None,
+        help="Newest event date to crawl in parse_past_events.py, format YYYY-MM-DD. Defaults to today.",
+    )
+    parser.add_argument(
         "--bio-checkpoint-every",
         type=int,
         default=DEFAULT_BIO_CHECKPOINT_EVERY,
@@ -294,8 +300,16 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--dedup-with-db",
+        dest="dedup_with_db",
         action="store_true",
-        help="Use database-backed dedup for events and artists to avoid reprocessing existing records.",
+        default=True,
+        help="Use database-backed dedup for events and artists to avoid reprocessing existing records (default).",
+    )
+    parser.add_argument(
+        "--no-dedup-with-db",
+        dest="dedup_with_db",
+        action="store_false",
+        help="Disable database-backed dedup and rely only on local checkpoint/file dedup.",
     )
     parser.add_argument(
         "--dedup-db-url",
@@ -375,6 +389,8 @@ def start_parse_process(args: argparse.Namespace) -> subprocess.Popen:
         "--min-date",
         args.events_min_date,
     ]
+    if args.events_max_date:
+        cmd.extend(["--max-date", args.events_max_date])
     if args.dedup_with_db:
         cmd.append("--dedup-db")
         if args.dedup_db_url:

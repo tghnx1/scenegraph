@@ -29,6 +29,23 @@ DATABASE_URL = os.environ["DATABASE_URL"]
 SOURCE = "biography"
 
 
+def load_id_file(path: Path | None) -> list[int] | None:
+    if path is None:
+        return None
+    if not path.exists():
+        raise SystemExit(f"ID file not found: {path}")
+    ids: list[int] = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        raw = line.strip()
+        if not raw:
+            continue
+        try:
+            ids.append(int(raw))
+        except ValueError as exc:
+            raise SystemExit(f"Invalid integer id in {path}: {raw}") from exc
+    return ids
+
+
 # Formats one extracted artist for compact progress logs.
 def artist_log_label(artist: dict) -> str:
     name = str(artist.get("name") or "").replace("\n", " ").strip()
@@ -80,6 +97,12 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Continue after one artist fails instead of stopping the run.",
     )
+    parser.add_argument(
+        "--artist-ids-file",
+        type=Path,
+        default=None,
+        help="Optional newline-delimited list of artist ids to process.",
+    )
     return parser.parse_args()
 
 
@@ -115,10 +138,12 @@ def main() -> None:
     processed = 0
     skipped = 0
     failed = 0
+    artist_ids = load_id_file(args.artist_ids_file)
 
     with psycopg.connect(DATABASE_URL, row_factory=dict_row) as connection:
         artists = fetch_artist_biographies(
             connection,
+            artist_ids=artist_ids,
             artist_id=args.artist_id,
             limit=args.limit,
             after_id=args.after_id,
