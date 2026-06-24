@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import uuid
 from typing import Any
 
@@ -12,6 +13,9 @@ from psycopg.types.json import Jsonb
 JOB_CREATED_CHANNEL = "scenegraph_recommendation_job_created"
 JOB_UPDATED_CHANNEL = "scenegraph_recommendation_job_updated"
 ARTIST_PROMOTERS_JOB_TYPE = "artist_promoters"
+RUNNING_JOB_RECLAIM_AFTER_SECONDS = int(
+    os.getenv("RECOMMENDATION_JOB_RUNNING_RECLAIM_AFTER_SECONDS", "600")
+)
 
 
 # Build a stable signature for the stored parameters without deduplicating jobs.
@@ -147,6 +151,33 @@ def claim_next_recommendation_job(connection: Connection) -> dict[str, Any] | No
             raise RuntimeError("Claimed recommendation job disappeared")
         _notify(connection, JOB_UPDATED_CHANNEL, _notification_payload(row))
     return row
+
+
+# Requeue running jobs that outlived their claim window so a restarted worker can pick them up.
+def requeue_stale_running_jobs(connection: Connection) -> list[dict[str, Any]]:
+    """Move stale running jobs back to queued so another worker can safely retry them."""
+    with connection.transaction():
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE recommendation_jobs
+                SET status = 'queued',
+                    started_at = NULL,
+                    finished_at = NULL,
+                    result_json = NULL,
+                    error_message = NULL,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE status = 'running'
+                  AND started_at IS NOT NULL
+                  AND started_at < CURRENT_TIMESTAMP - (%s || ' seconds')::interval
+                RETURNING *
+                """,
+                (RUNNING_JOB_RECLAIM_AFTER_SECONDS,),
+            )
+            rows = cursor.fetchall()
+        for row in rows:
+            _notify(connection, JOB_UPDATED_CHANNEL, _notification_payload(row))
+    return rows
 
 
 # Persist a completed result and emit its status after commit.

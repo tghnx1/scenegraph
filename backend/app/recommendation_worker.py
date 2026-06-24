@@ -12,6 +12,7 @@ from app.recommendation_jobs import (
     claim_next_recommendation_job,
     complete_recommendation_job,
     fail_recommendation_job,
+    requeue_stale_running_jobs,
 )
 from app.recommendation_services import build_artist_promoter_recommendation_response
 from app.schemas import RecommendationJobParams
@@ -78,9 +79,15 @@ def run_worker() -> None:
                 listener.execute(f"LISTEN {JOB_CREATED_CHANNEL}")
                 logger.info("Recommendation worker listening on %s", JOB_CREATED_CHANNEL)
 
+                # Recover stale in-flight jobs left behind by a previously crashed worker.
+                with get_connection() as connection:
+                    requeue_stale_running_jobs(connection)
+
                 # Jobs are durable, so process anything created while this worker was offline.
                 _drain_queued_jobs()
                 for _notification in listener.notifies():
+                    with get_connection() as connection:
+                        requeue_stale_running_jobs(connection)
                     _drain_queued_jobs()
         except KeyboardInterrupt:
             logger.info("Recommendation worker stopped")
