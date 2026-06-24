@@ -39,7 +39,10 @@ event_genre_counts AS (
 )
 SELECT
     -- dataset overview:
-    (SELECT MAX(fetched_at) FROM event_source_payloads)::date::text AS latest_source_payload,
+    to_char(
+        (SELECT MAX(fetched_at) FROM event_source_payloads),
+        'YYYY-MM-DD HH24:MI:SS'
+    ) AS latest_source_payload,
     (SELECT COUNT(*) FROM event_artists)                      AS event_artist_links,
     (SELECT COUNT(*) FROM event_promoters)                    AS event_promoter_links,
     (SELECT COUNT(*) FROM events WHERE venue_id IS NOT NULL)  AS event_venue_links,

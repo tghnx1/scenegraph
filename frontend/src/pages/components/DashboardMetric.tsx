@@ -98,8 +98,19 @@ function formatValue(value: number | string | null | undefined, maximumFractionD
 function formatTimestamp(value: string | null | undefined) {
   if (!value) return '-'
 
-  const date = new Date(value)
-  return Number.isNaN(date.getTime()) ? value : date.toLocaleString()
+  const normalizedValue = value.includes(' ') ? value.replace(' ', 'T') : value
+  const date = new Date(normalizedValue)
+  return Number.isNaN(date.getTime())
+    ? value
+    : date.toLocaleString('de-DE', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false,
+    })
 }
 
 function SubpanelHeading({title, description}: {title: string; description: string}) {

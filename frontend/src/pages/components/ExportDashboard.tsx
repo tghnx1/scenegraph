@@ -161,5 +161,5 @@ export function DashboardExportMenu({
     `)
   }, [dashboardMetrics, dashboardStatus])
 
-  return <ExportMenu enabled={Boolean(dashboardStatus || dashboardMetrics)} label="Export dashboard report" onJson={handleExportJson} onCsv={handleExportCsv} onPdf={handleExportPdf} />
+  return <ExportMenu enabled={Boolean(dashboardStatus || dashboardMetrics)} label="Run export" onJson={handleExportJson} onCsv={handleExportCsv} onPdf={handleExportPdf} />
 }
