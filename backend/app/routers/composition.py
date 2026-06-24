@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
 from typing import Any, List, Optional
 from psycopg import Connection
-from app.auth import require_admin
+from app.main import require_admin
 from app.db import get_db
 
 router = APIRouter()

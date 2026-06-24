@@ -8,9 +8,11 @@ from psycopg import Connection
 from fastapi.responses import PlainTextResponse
 
 from datetime import datetime, timedelta, timezone              #for JWT (JSON Web Token)
-from jose import jwt
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from jose import JWTError, jwt
 
-from app.auth import get_current_user, require_admin
+security = HTTPBearer()         #security parse that understands jwt-encrypted headers.
+
 from app.db import get_connection, get_db
 from app.recommendation_helpers import extracted_tag_score
 from app.schema_preflight import check_schema_tables, schema_preflight_strict_mode
@@ -149,9 +151,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-from app.routers.index import router
-app.include_router(router, prefix="/api")
-
 JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY")
 JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
 JWT_EXPIRE_MINUTES = int(os.getenv("JWT_EXPIRE_MINUTES", "120"))
@@ -205,6 +204,10 @@ def require_admin(
     if current_user["role"] != "admin":
         raise HTTPException(status_code=403, detail="Admin token required")
     return current_user
+
+
+from app.routers.index import router
+app.include_router(router, prefix="/api")
 
 def create_access_token(data: dict) -> str:
     to_encode = data.copy()                 #make a copy of the user data

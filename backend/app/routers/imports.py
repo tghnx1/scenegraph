@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from psycopg import Connection
 
-from app.auth import require_admin
+from app.main import require_admin
 from app.db import get_db
 
 router = APIRouter()

@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from typing import List, Optional
-from app.auth import require_admin
+from app.main import require_admin
 from app.db import get_db
 from psycopg import Connection
 from .metrics_integrity import get_integrity, IntegrityItem
