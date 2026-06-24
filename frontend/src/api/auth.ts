@@ -2,9 +2,6 @@ import { api } from './client'
 
 export type AuthRole = 'artist' | 'agent' | 'admin'
 
-export const isAuthRole = (value: unknown): value is AuthRole =>
-  value === 'artist' || value === 'agent' || value === 'admin'
-
 export interface LoginResponse {
   success: boolean
   message: string
@@ -67,7 +64,7 @@ export const register = (
   email: string,
   password: string,
   password_confirm: string,
-  role: 'artist' | 'agent',
+  role: AuthRole,
 ): Promise<RegisterResponse> =>
   api.post<RegisterResponse>('/register', {
     username,
@@ -90,25 +87,31 @@ export const getActivityLog = (): Promise<{ success: boolean; activity: Activity
 
 export const exportActivityLog = async (): Promise<void> => {
   const token = localStorage.getItem('token')
+
   const response = await fetch('/api/admin/activity/export', {
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
   })
 
-  if (!response.ok) throw new Error('Export failed')
+  if (!response.ok) {
+    throw new Error('Export failed')
+  }
 
-  const url = URL.createObjectURL(await response.blob())
+  const text = await response.text()
+  const blob = new Blob([text], { type: 'text/plain' })
+  const url = URL.createObjectURL(blob)
+
   const link = document.createElement('a')
   link.href = url
   link.download = 'activity_log.txt'
   link.click()
+
   URL.revokeObjectURL(url)
 }
 
-export const logout = (
-  username: string,
-): Promise<{ success: boolean; message: string }> =>
-  api.post('/logout', { username, password: '' })
-
+export const logout = (): Promise<{ success: boolean; message: string }> =>
+  api.post('/logout', undefined)
 export interface UserItem {
   id: number
   username: string
@@ -136,3 +139,27 @@ export const changeUserRole = (
   role: 'artist' | 'agent',
 ): Promise<{ success: boolean; message: string }> =>
   api.post(`/admin/users/${userId}/role`, { role })
+
+export interface ArtistClaim {
+  id: number
+  status: 'pending' | 'approved' | 'rejected'
+  reason: string
+  created_at: string
+  username: string
+  email: string
+  artist_name: string
+  artist_id: number
+}
+
+export const getArtistClaims = (): Promise<{ success: boolean; claims: ArtistClaim[] }> =>
+  api.get('/admin/artist-claims')
+
+export const approveArtistClaim = (
+  claimId: number,
+): Promise<{ success: boolean; message: string }> =>
+  api.post(`/admin/artist-claims/${claimId}/approve`, undefined)
+
+export const rejectArtistClaim = (
+  claimId: number,
+): Promise<{ success: boolean; message: string }> =>
+  api.post(`/admin/artist-claims/${claimId}/reject`, undefined)

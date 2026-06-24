@@ -21,23 +21,45 @@ interface ProfilePageProps {
 export function ProfilePage({ recommendationTargetControls, showBiography = true }: ProfilePageProps = {}) {
   const { detailsPanelProps, searchFormProps, setSelected } = useGraphSearchDetails()
   const [activeWorkspaceTab, setActiveWorkspaceTab] = useState<ProfileWorkspaceTab>('graph')
+
+  const searchParams = new URLSearchParams(window.location.search)
+  const selectedType = searchParams.get('selectedType')
+  const selectedId = Number(searchParams.get('selectedId'))
+
+  const hasSelectedArtist =
+    selectedType === 'artist' &&
+    Number.isInteger(selectedId) &&
+    selectedId > 0
+
   const storedArtistId = Number(localStorage.getItem('artist_id'))
-  const artistId = Number.isInteger(storedArtistId) && storedArtistId > 0
-    ? storedArtistId
-    : DEFAULT_PROFILE_ARTIST_ID
+
+  const hasAssignedArtist =
+    Number.isInteger(storedArtistId) && storedArtistId > 0
+
+  const artistId = hasSelectedArtist
+    ? selectedId
+    : hasAssignedArtist
+      ? storedArtistId
+      : DEFAULT_PROFILE_ARTIST_ID
+
+  const canEditBiography = 
+    hasAssignedArtist && storedArtistId == artistId
+
   const manualConnections = useManualArtistConnections(showBiography ? artistId : null)
   const isSingleRowWorkspace = !showBiography
 
   return (
     <div className={cn(
       'mx-auto w-full max-w-[1480px] p-4',
-      isSingleRowWorkspace ? 'h-full min-h-0 overflow-hidden' : 'min-h-full',
+      isSingleRowWorkspace
+        ? 'min-h-full min-[901px]:h-full min-[901px]:min-h-0 min-[901px]:overflow-hidden'
+        : 'min-h-full',
     )}>
       <section
         className={cn(
           'grid grid-cols-[minmax(380px,440px)_minmax(0,1fr)] gap-5 max-[900px]:grid-cols-1 max-[900px]:grid-rows-none',
           isSingleRowWorkspace
-            ? 'h-full min-h-0 grid-rows-[minmax(0,1fr)]'
+            ? 'min-[901px]:h-full min-[901px]:min-h-0 min-[901px]:grid-rows-[minmax(0,1fr)]'
             : 'grid-rows-[minmax(560px,calc(100dvh-128px))_auto]',
         )}
         aria-label="Profile overview"
@@ -114,6 +136,7 @@ export function ProfilePage({ recommendationTargetControls, showBiography = true
           <div className="col-span-2 max-[900px]:col-span-1">
             <BiographyPanel
               artistId={artistId}
+              canEditBiography={canEditBiography}
               manualConnections={{
                 connections: manualConnections.connections,
                 isLoading: manualConnections.isLoading,

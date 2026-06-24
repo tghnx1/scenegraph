@@ -45,6 +45,7 @@ backend/data/existing_ra_artist_ids.txt
 scenegraph_dump*.sql
 *_dump.sql
 !backend/data/.gitkeep
+backend/data/single*
 
 # IDEs
 .idea/

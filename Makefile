@@ -30,14 +30,16 @@ CHECK_ARTIST_ID ?= 2178
 NGINX_CERT_DIR ?= nginx/certs
 NGINX_CERT_KEY ?= $(NGINX_CERT_DIR)/privkey.pem
 NGINX_CERT_FILE ?= $(NGINX_CERT_DIR)/fullchain.pem
+CERT_NAMES ?=
 
-.PHONY: help env build up upd upd-build down stop restart logs ps health ensure-ssl-certs prisma-migrate prisma-studio db-shell import-events backfill-normalized-texts backfill-lineup-residual backfill-artist-biographies extract-artist-tags refresh-embeddings validate-import refresh-data-check refresh-data-check-bio refresh-data-check-bio-embeddings full-pipeline import-dump export-dump clean reset-db list fclean
+.PHONY: help env cert build up upd upd-build down stop restart logs ps health ensure-ssl-certs prisma-migrate prisma-studio db-shell import-events backfill-normalized-texts backfill-lineup-residual backfill-artist-biographies extract-artist-tags refresh-embeddings validate-import refresh-data-check refresh-data-check-bio refresh-data-check-bio-embeddings full-pipeline import-dump export-dump clean reset-db list fclean
 
 help:
 	@printf "\n"
 	@printf "Scene Graph docker helpers\n"
 	@printf "\n"
 	@printf "  make env      Create .env from .env.example if missing\n"
+	@printf "  make cert     Generate nginx self-signed TLS certificate\n"
 	@printf "  make build    Build containers\n"
 	@printf "  make up       Start stack with recommendation-worker count from .env (fallback: 1)\n"
 	@printf "  make upd      Start dev stack with recommendation-worker count from .env (fallback: 1)\n"
@@ -78,6 +80,9 @@ env:
 	else \
 		echo "$(ENV_FILE) already exists"; \
 	fi
+
+cert:
+	./scripts/gen_cert.sh $(CERT_NAMES)
 
 build: env
 	$(COMPOSE) build

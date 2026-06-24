@@ -62,7 +62,9 @@
   --chart-warm: rgba(245, 125, 38, 0.34);
   --background-glow: rgba(53, 167, 124, 0.18);
 
+  /* fall back fonts one after another */
   font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  /* font-family: Arial, system-ui, sans-serif; */
   color: var(--text);
   background:
     radial-gradient(circle at top left, var(--background-glow), transparent 30%),

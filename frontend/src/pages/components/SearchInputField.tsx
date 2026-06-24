@@ -196,9 +196,11 @@ export function SearchInputField({
       return
     }
 
-    if (event.key === 'Enter' && shouldShowDropdown && activeResult) {
+    if (event.key === 'Enter') {
       event.preventDefault()
-      selectResult(activeResult)
+      if (shouldShowDropdown && activeResult) {
+        selectResult(activeResult)
+      }
     }
   }
 

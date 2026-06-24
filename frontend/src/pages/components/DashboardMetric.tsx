@@ -1,3 +1,4 @@
+import {useState} from 'react'
 import type {
   DashboardMetric,
   DashboardRanking,
@@ -97,26 +98,43 @@ function formatValue(value: number | string | null | undefined, maximumFractionD
 function formatTimestamp(value: string | null | undefined) {
   if (!value) return '-'
 
-  const date = new Date(value)
-  return Number.isNaN(date.getTime()) ? value : date.toLocaleString()
+  const normalizedValue = value.includes(' ') ? value.replace(' ', 'T') : value
+  const date = new Date(normalizedValue)
+  return Number.isNaN(date.getTime())
+    ? value
+    : date.toLocaleString('de-DE', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false,
+    })
 }
 
 function SubpanelHeading({title, description}: {title: string; description: string}) {
+  const [isTooltipOpen, setIsTooltipOpen] = useState(false)
+  const tooltipId = `dashboard-subpanel-${title.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}`
+
   return (
-    <div className="flex items-center gap-1.5">
-      <h2 className="m-0 text-xs font-semibold uppercase tracking-[0.14em] text-[var(--accent)]">{title}</h2>
+    <div className="flex min-w-0 items-center gap-1.5">
+      <h2 className="m-0 min-w-0 break-words text-xs font-semibold uppercase tracking-[0.14em] text-[var(--accent)]">{title}</h2>
       <span className="group relative inline-grid place-items-center normal-case tracking-normal">
         <button
           type="button"
           className="grid size-5 cursor-help place-items-center rounded-full border border-[var(--surface-border)] bg-[var(--surface-panel)] p-0 text-[var(--text-muted)] opacity-90 transition-all hover:-translate-y-px hover:border-[var(--focus-border)] hover:bg-[var(--surface-strong)] hover:text-[var(--text)] hover:opacity-100 focus-visible:-translate-y-px focus-visible:border-[var(--focus-border)] focus-visible:bg-[var(--surface-strong)] focus-visible:text-[var(--text)] focus-visible:opacity-100 focus-visible:outline-none"
           aria-label={`Explain ${title}`}
-          aria-describedby={`dashboard-subpanel-${title.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}`}
+          aria-describedby={tooltipId}
+          aria-expanded={isTooltipOpen}
+          onClick={() => setIsTooltipOpen((isOpen) => !isOpen)}
+          onBlur={() => setIsTooltipOpen(false)}
         >
           <span className="block size-[13px] rounded-full text-center font-serif text-[0.7rem] font-extrabold italic leading-[13px]" aria-hidden="true">i</span>
         </button>
         <span
-          id={`dashboard-subpanel-${title.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}`}
-          className="pointer-events-none absolute left-0 top-[calc(100%+8px)] z-20 hidden w-[min(300px,calc(100vw-48px))] rounded-lg border border-[var(--surface-border)] bg-[var(--surface-panel)] px-3 py-2.5 text-left text-[0.82rem] font-semibold leading-snug text-[var(--text)] shadow-[var(--surface-shadow)] group-hover:block group-focus-within:block"
+          id={tooltipId}
+          className={`pointer-events-none absolute left-0 top-[calc(100%+8px)] z-20 w-[min(300px,calc(100vw-48px))] rounded-lg border border-[var(--surface-border)] bg-[var(--surface-panel)] px-3 py-2.5 text-left text-[0.82rem] font-semibold leading-snug text-[var(--text)] shadow-[var(--surface-shadow)] min-[701px]:group-hover:block max-[700px]:left-1/2 max-[700px]:right-auto max-[700px]:top-auto max-[700px]:bottom-[calc(100%+8px)] max-[700px]:z-[120] max-[700px]:max-h-[45dvh] max-[700px]:w-[min(300px,calc(100vw-32px))] max-[700px]:-translate-x-1/2 max-[700px]:translate-y-0 max-[700px]:overflow-y-auto ${isTooltipOpen ? 'block' : 'hidden'}`}
           role="tooltip"
         >
           {description}
@@ -127,6 +145,7 @@ function SubpanelHeading({title, description}: {title: string; description: stri
 }
 
 function MetricInfoTooltip({metric}: {metric?: DashboardMetric}) {
+  const [isTooltipOpen, setIsTooltipOpen] = useState(false)
   const hasDetails = Boolean(metric?.meaning || metric?.whyItMatters)
 
   if (!hasDetails) return null
@@ -140,12 +159,15 @@ function MetricInfoTooltip({metric}: {metric?: DashboardMetric}) {
         className="grid size-5 cursor-help place-items-center rounded-full border border-[var(--surface-border)] bg-[var(--surface-panel)] p-0 text-[var(--text-muted)] opacity-90 transition-all hover:-translate-y-px hover:border-[var(--focus-border)] hover:bg-[var(--surface-strong)] hover:text-[var(--text)] hover:opacity-100 focus-visible:-translate-y-px focus-visible:border-[var(--focus-border)] focus-visible:bg-[var(--surface-strong)] focus-visible:text-[var(--text)] focus-visible:opacity-100 focus-visible:outline-none"
         aria-label={`Explain ${metric?.label}`}
         aria-describedby={tooltipId}
+        aria-expanded={isTooltipOpen}
+        onClick={() => setIsTooltipOpen((isOpen) => !isOpen)}
+        onBlur={() => setIsTooltipOpen(false)}
       >
         <span className="block size-[13px] rounded-full text-center font-serif text-[0.7rem] font-extrabold italic leading-[13px]" aria-hidden="true">i</span>
       </button>
       <span
         id={tooltipId}
-        className="pointer-events-none absolute right-0 top-[calc(100%+8px)] z-[80] hidden w-[min(320px,calc(100vw-48px))] rounded-lg border border-[var(--surface-border)] bg-[var(--surface-panel)] px-3 py-2.5 text-left text-[0.82rem] leading-snug text-[var(--text)] shadow-[var(--surface-shadow)] group-hover:block group-focus-within:block"
+        className={`pointer-events-none absolute right-0 top-[calc(100%+8px)] z-[80] w-[min(320px,calc(100vw-48px))] rounded-lg border border-[var(--surface-border)] bg-[var(--surface-panel)] px-3 py-2.5 text-left text-[0.82rem] leading-snug text-[var(--text)] shadow-[var(--surface-shadow)] min-[701px]:group-hover:block max-[700px]:left-1/2 max-[700px]:right-auto max-[700px]:top-auto max-[700px]:bottom-[calc(100%+8px)] max-[700px]:z-[120] max-[700px]:max-h-[45dvh] max-[700px]:w-[min(300px,calc(100vw-32px))] max-[700px]:-translate-x-1/2 max-[700px]:translate-y-0 max-[700px]:overflow-y-auto ${isTooltipOpen ? 'block' : 'hidden'}`}
         role="tooltip"
       >
         {metric?.meaning && <span className="block font-semibold">{metric.meaning}</span>}
@@ -172,7 +194,7 @@ function MetricCard({
     <div className={`relative z-0 rounded-xl border p-3 hover:z-40 focus-within:z-40 ${statusClass[cardStatus ?? 'neutral'] ?? statusClass.neutral}`}>
       <div className="flex items-start justify-between gap-3">
         <span className="flex min-w-0 items-start gap-1.5">
-          <span className="text-sm font-medium text-[var(--text-muted)]">{metric?.label ?? fallbackLabel}</span>
+          <span className="min-w-0 break-words text-sm font-medium text-[var(--text-muted)]">{metric?.label ?? fallbackLabel}</span>
           <MetricInfoTooltip metric={metric} />
         </span>
         <span className="flex shrink-0 items-start gap-2">
@@ -197,6 +219,7 @@ function MetricCard({
 }
 
 function RankingInfoTooltip({ranking}: {ranking?: DashboardRanking}) {
+  const [isTooltipOpen, setIsTooltipOpen] = useState(false)
   const hasDetails = Boolean(ranking?.meaning || ranking?.whyItMatters)
 
   if (!hasDetails) return null
@@ -210,12 +233,15 @@ function RankingInfoTooltip({ranking}: {ranking?: DashboardRanking}) {
         className="grid size-5 cursor-help place-items-center rounded-full border border-[var(--surface-border)] bg-[var(--surface-panel)] p-0 text-[var(--text-muted)] opacity-90 transition-all hover:-translate-y-px hover:border-[var(--focus-border)] hover:bg-[var(--surface-strong)] hover:text-[var(--text)] hover:opacity-100 focus-visible:-translate-y-px focus-visible:border-[var(--focus-border)] focus-visible:bg-[var(--surface-strong)] focus-visible:text-[var(--text)] focus-visible:opacity-100 focus-visible:outline-none"
         aria-label={`Explain ${ranking?.label}`}
         aria-describedby={tooltipId}
+        aria-expanded={isTooltipOpen}
+        onClick={() => setIsTooltipOpen((isOpen) => !isOpen)}
+        onBlur={() => setIsTooltipOpen(false)}
       >
         <span className="block size-[13px] rounded-full text-center font-serif text-[0.7rem] font-extrabold italic leading-[13px]" aria-hidden="true">i</span>
       </button>
       <span
         id={tooltipId}
-        className="pointer-events-none absolute right-0 top-[calc(100%+8px)] z-[80] hidden w-[min(320px,calc(100vw-48px))] rounded-lg border border-[var(--surface-border)] bg-[var(--surface-panel)] px-3 py-2.5 text-left text-[0.82rem] leading-snug text-[var(--text)] shadow-[var(--surface-shadow)] group-hover:block group-focus-within:block"
+        className={`pointer-events-none absolute right-0 top-[calc(100%+8px)] z-[80] w-[min(320px,calc(100vw-48px))] rounded-lg border border-[var(--surface-border)] bg-[var(--surface-panel)] px-3 py-2.5 text-left text-[0.82rem] leading-snug text-[var(--text)] shadow-[var(--surface-shadow)] min-[701px]:group-hover:block max-[700px]:left-1/2 max-[700px]:right-auto max-[700px]:top-auto max-[700px]:bottom-[calc(100%+8px)] max-[700px]:z-[120] max-[700px]:max-h-[45dvh] max-[700px]:w-[min(300px,calc(100vw-32px))] max-[700px]:-translate-x-1/2 max-[700px]:translate-y-0 max-[700px]:overflow-y-auto ${isTooltipOpen ? 'block' : 'hidden'}`}
         role="tooltip"
       >
         {ranking?.meaning && <span className="block font-semibold">{ranking.meaning}</span>}
@@ -241,7 +267,7 @@ function MetricCluster({
   showStatus?: boolean
 }) {
   return (
-    <section className="rounded-2xl border border-[var(--surface-border-soft)] bg-[color-mix(in_srgb,var(--surface-soft)_65%,transparent)] p-3">
+    <section className="min-w-0 rounded-2xl border border-[var(--surface-border-soft)] bg-[color-mix(in_srgb,var(--surface-soft)_65%,transparent)] p-3">
       <div className="grid gap-3">
         {ids.map((id) => {
           const definition = definitions.get(id)
@@ -279,7 +305,7 @@ function GroupedMetricGrid({
   )
 
   return (
-    <div className={`mt-4 grid gap-3 ${className}`}>
+    <div className={`mt-4 grid min-w-0 gap-3 ${className}`}>
       {metricGroups.map((metricGroup) => (
         <MetricCluster
           key={metricGroup[0]}
@@ -308,7 +334,7 @@ function NetworkMetricGrid({
   const unpairedMetrics = group.metrics.filter((metric) => !pairedIds.has(metric.id as (typeof NETWORK_METRIC_PAIRS)[number][number]))
 
   return (
-    <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+    <div className="mt-4 grid min-w-0 gap-3 md:grid-cols-2 xl:grid-cols-3">
       {NETWORK_METRIC_PAIRS.map((pair) => (
         <MetricCluster
           key={pair[0]}
@@ -337,9 +363,9 @@ function RankingCard({ranking, fallbackLabel}: {ranking?: DashboardRanking; fall
   const label = ranking?.label ?? fallbackLabel
 
   return (
-    <section className="relative z-0 rounded-xl border border-[var(--surface-border-soft)] bg-[var(--surface-soft)] p-3 hover:z-40 focus-within:z-40">
+    <section className="relative z-0 min-w-0 rounded-xl border border-[var(--surface-border-soft)] bg-[var(--surface-soft)] p-3 hover:z-40 focus-within:z-40">
       <div className="flex items-start justify-between gap-3">
-        <h3 className="m-0 text-sm font-semibold text-[var(--text)]">{label}</h3>
+        <h3 className="m-0 min-w-0 break-words text-sm font-semibold text-[var(--text)]">{label}</h3>
         <RankingInfoTooltip ranking={ranking} />
       </div>
       <DashboardRankingBarChart items={ranking?.items} rankingLabel={label} />
@@ -363,7 +389,7 @@ function MetricGroupPanel({
   showTimestamp?: boolean
 }) {
   return (
-    <article className="relative z-0 rounded-3xl border border-[color-mix(in_srgb,var(--text)_10%,transparent)] bg-[color-mix(in_srgb,var(--background)_42%,transparent)] p-5 shadow-[0_10px_24px_rgba(0,0,0,0.12)] backdrop-blur-sm hover:z-30 focus-within:z-30">
+    <article className="relative z-0 min-w-0 rounded-3xl border border-[color-mix(in_srgb,var(--text)_10%,transparent)] bg-[color-mix(in_srgb,var(--background)_42%,transparent)] p-5 shadow-[0_10px_24px_rgba(0,0,0,0.12)] backdrop-blur-sm hover:z-30 focus-within:z-30">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <SubpanelHeading title={group.title} description={group.description} />
         {showTimestamp && (
@@ -419,9 +445,9 @@ export function DashboardMetricPanels({dashboardMetrics, isLoading, hasError}: D
         />
       ))}
 
-      <article className="rounded-3xl border border-[color-mix(in_srgb,var(--text)_10%,transparent)] bg-[color-mix(in_srgb,var(--background)_42%,transparent)] p-5 shadow-[0_10px_24px_rgba(0,0,0,0.12)] backdrop-blur-sm">
+      <article className="min-w-0 rounded-3xl border border-[color-mix(in_srgb,var(--text)_10%,transparent)] bg-[color-mix(in_srgb,var(--background)_42%,transparent)] p-5 shadow-[0_10px_24px_rgba(0,0,0,0.12)] backdrop-blur-sm">
         <SubpanelHeading title="Top List" description="Most represented entities and genres in the dataset" />
-        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-6">
+        <div className="mt-4 grid min-w-0 gap-3 md:grid-cols-2 xl:grid-cols-6">
           {RANKINGS.map((ranking, index) => (
             <div key={ranking.id} className={`xl:col-span-2 ${index === 3 ? 'xl:col-start-2' : ''}`}>
               <RankingCard

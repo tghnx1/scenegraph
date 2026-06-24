@@ -71,6 +71,7 @@ class LoginResponse(BaseModel):
     access_token: str | None = None
     must_change_password: bool | None = None
 
+
 class RegisterRequest(BaseModel):
     username: str
     email: str
@@ -95,6 +96,11 @@ class ChangePasswordResponse(BaseModel):
 
 class ChangeRoleRequest(BaseModel):
     role: Literal["artist", "agent"]
+
+
+class ArtistClaimRequest(BaseModel):
+    reason: str
+
 class SimilarityItem(BaseModel):
     id: int
     type: Literal["artist", "event"]

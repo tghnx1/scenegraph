@@ -68,7 +68,7 @@ export function DashboardRankingBarChart({items, rankingLabel}: DashboardRanking
               {isActive && (
                 <span
                   id={`${chartId}-${index}-tooltip`}
-                  className="pointer-events-none absolute bottom-[calc(100%+6px)] left-0 z-20 w-max max-w-[min(220px,calc(100vw-48px))] rounded-lg border border-[var(--surface-border)] bg-[var(--surface-dropdown)] px-2.5 py-1.5 text-xs font-semibold leading-snug text-[var(--text)] shadow-[var(--surface-shadow)]"
+                  className="pointer-events-none absolute bottom-[calc(100%+6px)] left-0 z-20 w-max max-w-[min(220px,calc(100vw-48px))] rounded-lg border border-[var(--surface-border)] bg-[var(--surface-dropdown)] px-2.5 py-1.5 text-xs font-semibold leading-snug text-[var(--text)] shadow-[var(--surface-shadow)] max-[700px]:left-1/2 max-[700px]:right-auto max-[700px]:top-auto max-[700px]:bottom-[calc(100%+8px)] max-[700px]:z-[120] max-[700px]:max-h-[45dvh] max-[700px]:w-[min(260px,calc(100vw-32px))] max-[700px]:max-w-none max-[700px]:-translate-x-1/2 max-[700px]:translate-y-0 max-[700px]:overflow-y-auto"
                   role="tooltip"
                 >
                   {entry.label}

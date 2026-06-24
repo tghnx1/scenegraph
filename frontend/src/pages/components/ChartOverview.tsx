@@ -222,13 +222,13 @@ export function OverviewChart({
   )
 
   return (
-    <div className="grid grid-cols-[140px_minmax(0,1fr)_220px] items-stretch gap-4 max-[1050px]:grid-cols-1">
-      <aside className="grid content-start gap-2 max-[1050px]:grid-cols-[auto_1fr]">
+    <div className="grid min-w-0 grid-cols-1 items-stretch gap-4 min-[1051px]:grid-cols-[140px_minmax(0,1fr)_220px]">
+      <aside className="grid min-w-0 content-start gap-2">
         <span className="inline-flex items-center gap-1.5 text-[0.72rem] uppercase tracking-[0.14em] text-[var(--accent)] max-[1050px]:self-center">Chart Options</span>
         {chartModeControls}
       </aside>
       <div className={cn(
-        'relative grid min-h-[260px] place-items-center rounded-2xl border border-[var(--surface-border-soft)] bg-[var(--surface-soft)] p-4',
+        'relative grid min-h-[260px] min-w-0 place-items-center rounded-2xl border border-[var(--surface-border-soft)] bg-[var(--surface-soft)] p-4',
         chartMode === 'stackedbar' && 'min-h-[180px]',
       )}>
         {chartMode === 'donut' ? (
@@ -237,7 +237,7 @@ export function OverviewChart({
               className="size-[min(300px,100%)]"
               viewBox={`0 0 ${chartSize} ${chartSize}`}
               role="img"
-              aria-label={`Dataset overview distribution, ${centerValue} total nodes`}
+              aria-label={`Dataset overview distribution, ${centerValue} total linked nodes`}
             >
               <circle className="fill-none stroke-[var(--control-bg)] [stroke-width:16]" cx={center} cy={center} r={ringRadius} />
               {total > 0 && resolvedItems.map((item) => {
@@ -282,7 +282,7 @@ export function OverviewChart({
             </svg>
             <div className="absolute grid place-items-center text-center">
               <strong>{centerValue}</strong>
-              <span className="text-xs text-[var(--text-muted)]">Total nodes</span>
+              <span className="text-xs text-[var(--text-muted)]">Total linked nodes</span>
             </div>
           </>
         ) : chartMode === 'waffle' ? (
@@ -290,7 +290,7 @@ export function OverviewChart({
             <div
               className="grid grid-cols-10 gap-1"
               role="img"
-              aria-label={`Dataset overview waffle chart, ${centerValue} total nodes`}
+              aria-label={`Dataset overview waffle chart, ${centerValue} total linked nodes`}
             >
               {waffleCells.map((item, index) => (
                 <span
@@ -308,18 +308,18 @@ export function OverviewChart({
             </div>
             <div className="grid place-items-center text-center">
               <strong>{centerValue}</strong>
-              <span className="text-xs text-[var(--text-muted)]">Total nodes</span>
+              <span className="text-xs text-[var(--text-muted)]">Total linked nodes</span>
             </div>
           </div>
         ) : (
           <div
             className="grid w-full gap-4"
             role="img"
-            aria-label={`Dataset overview stacked bar chart, ${centerValue} total nodes`}
+            aria-label={`Dataset overview stacked bar chart, ${centerValue} total linked nodes`}
           >
             <div className="grid place-items-center text-center">
               <strong>{centerValue}</strong>
-              <span className="text-xs text-[var(--text-muted)]">Total nodes</span>
+              <span className="text-xs text-[var(--text-muted)]">Total linked nodes</span>
             </div>
             <div className="flex h-8 w-full overflow-hidden rounded-full border border-[var(--surface-border)] bg-[var(--control-bg)]">
               {total > 0 ? resolvedItems.map((item) => {
@@ -346,13 +346,13 @@ export function OverviewChart({
           </div>
         )}
         {activeStat && (
-          <div className="absolute right-4 top-4 rounded-xl border border-[var(--surface-border)] bg-[var(--surface-dropdown)] px-3 py-2 text-sm shadow-[var(--surface-shadow)]" role="tooltip">
+          <div className="absolute right-4 top-4 grid gap-0.5 rounded-xl border border-[var(--surface-border)] bg-[var(--surface-dropdown)] px-3 py-2 text-sm shadow-[var(--surface-shadow)] max-[700px]:left-1/2 max-[700px]:right-auto max-[700px]:top-auto max-[700px]:bottom-[calc(100%+8px)] max-[700px]:z-[120] max-[700px]:max-h-[45dvh] max-[700px]:-translate-x-1/2 max-[700px]:translate-y-0 max-[700px]:overflow-y-auto" role="tooltip">
             <span>{activeStat}</span>
             <strong>{formatValue(items.find((item) => item.label === activeStat)?.value)}</strong>
           </div>
         )}
       </div>
-      <aside className="grid content-start gap-4">
+      <aside className="grid min-w-0 content-start gap-4">
         {entityFilters}
         {dateFilter}
       </aside>
