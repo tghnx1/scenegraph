@@ -2,16 +2,17 @@ import {useEffect, useState, type FormEvent} from 'react'
 import {Link} from 'react-router-dom'
 import { Button } from '@/shared/ui/button'
 import { BIOGRAPHY_MAX_LENGTH, validateBiography } from '@/shared/lib/validation'
-import {fetchArtistBiography, updateArtistBiography} from '../../api/entityDetails'
+import {fetchArtistBiography, updateArtistBiography, claimArtistProfile, } from '../../api/entityDetails'
 import type {ConnectedArtistItem} from '../../types/artist'
 import {ManualArtistConnections, type ManualArtistConnectionsProps} from './ManualArtistConnections'
 
 interface BiographyPanelProps {
   artistId: number | null
   manualConnections: ManualArtistConnectionsProps
+  canEditBiography: boolean
 }
 
-export function BiographyPanel({artistId, manualConnections}: BiographyPanelProps) {
+export function BiographyPanel({artistId, manualConnections, canEditBiography}: BiographyPanelProps) {
   const [artistName, setArtistName] = useState('Artist profile')
   const [biography, setBiography] = useState('')
   const [draftBiography, setDraftBiography] = useState('')
@@ -21,6 +22,10 @@ export function BiographyPanel({artistId, manualConnections}: BiographyPanelProp
   const [isSaving, setIsSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
+  const [claimReason, setClaimReason] = useState('')
+  const [claimMessage, setClaimMessage] = useState('')
+  const [claimError, setClaimError] = useState('')
+  const [isClaiming, setIsClaiming] = useState(false)
 
   useEffect(() => {
     let isCurrent = true
@@ -44,7 +49,10 @@ export function BiographyPanel({artistId, manualConnections}: BiographyPanelProp
       })
       .catch((requestError) => {
         if (!isCurrent) return
-        setError(requestError instanceof Error ? requestError.message : 'Failed to load biography.')
+        const message = requestError instanceof Error
+          ? requestError.message.replace(/^400:\s*/, '').replace(/^409:\s*/, '')
+          : 'Failed to load biography.'
+        setError(message)
       })
       .finally(() => {
         if (isCurrent) setIsLoading(false)
@@ -74,9 +82,39 @@ export function BiographyPanel({artistId, manualConnections}: BiographyPanelProp
       setIsEditing(false)
       setSuccess('Biography saved.')
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : 'Failed to save biography.')
+      const message = requestError instanceof Error
+        ? requestError.message.replace(/^400:\s*/, '').replace(/^409:\s*/, '')
+      : 'Failed to save biography.'
+      setError(message)
     } finally {
       setIsSaving(false)
+    }
+  }
+
+  const handleClaimProfile = async () => {
+    if (artistId === null) return
+
+    const reason = claimReason.trim()
+    if (reason.length < 6) {
+      setClaimError('Please explain your claim in at least 6 characters.')
+      return
+    }
+
+    setIsClaiming(true)
+    setClaimError('')
+    setClaimMessage('')
+
+    try {
+      await claimArtistProfile(artistId, reason)
+      setClaimMessage('Claim sent. An admin will review it.')
+      setClaimReason('')
+    } catch (requestError) {
+      const message = requestError instanceof Error
+        ? requestError.message.replace(/^400:\s*/, '').replace(/^409:\s*/, '')
+        : 'Failed to send claim.'
+      setClaimError(message)
+    } finally {
+      setIsClaiming(false)
     }
   }
 
@@ -87,14 +125,41 @@ export function BiographyPanel({artistId, manualConnections}: BiographyPanelProp
           <span className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--accent)]">Biography</span>
           <h2>{artistName}</h2>
         </div>
-        {!isEditing && artistId !== null && !isLoading && (
-          <Button type="button" size="sm" onClick={() => {
-            setDraftBiography(biography)
-            setSuccess(null)
-            setIsEditing(true)
-          }}>
-            Edit Biography
+        {canEditBiography && artistId !== null && !isLoading && !isEditing && (
+          <Button
+            type="button"
+            size="sm"
+            onClick={() => {
+              setDraftBiography(biography)
+              setError(null)
+              setSuccess(null)
+              setIsEditing(true)
+            }}
+          >
+            Edit biography
           </Button>
+        )}
+        {!canEditBiography && artistId !== null && !isLoading && (
+          <div className="grid gap-2">
+            <textarea
+              value={claimReason}
+              onChange={(event) => setClaimReason(event.target.value)}
+              placeholder="Explain why this is your artist profile."
+              className="min-h-24 w-full rounded-xl border border-[var(--control-border)] bg-[var(--surface-input)] p-3 text-sm"
+            />
+
+            {claimError && <p style={{ color: 'var(--danger, #d94848)' }}>{claimError}</p>}
+            {claimMessage && <p>{claimMessage}</p>}
+
+            <Button
+              type="button"
+              size="sm"
+              disabled={isClaiming}
+              onClick={handleClaimProfile}
+            >
+              {isClaiming ? 'Sending claim...' : 'Claim biography'}
+            </Button>
+          </div>
         )}
       </div>
 

@@ -21,10 +21,30 @@ interface ProfilePageProps {
 export function ProfilePage({ recommendationTargetControls, showBiography = true }: ProfilePageProps = {}) {
   const { detailsPanelProps, searchFormProps, setSelected } = useGraphSearchDetails()
   const [activeWorkspaceTab, setActiveWorkspaceTab] = useState<ProfileWorkspaceTab>('graph')
+
+  const searchParams = new URLSearchParams(window.location.search)
+  const selectedType = searchParams.get('selectedType')
+  const selectedId = Number(searchParams.get('selectedId'))
+
+  const hasSelectedArtist =
+    selectedType === 'artist' &&
+    Number.isInteger(selectedId) &&
+    selectedId > 0
+
   const storedArtistId = Number(localStorage.getItem('artist_id'))
-  const artistId = Number.isInteger(storedArtistId) && storedArtistId > 0
-    ? storedArtistId
-    : DEFAULT_PROFILE_ARTIST_ID
+
+  const hasAssignedArtist =
+    Number.isInteger(storedArtistId) && storedArtistId > 0
+
+  const artistId = hasSelectedArtist
+    ? selectedId
+    : hasAssignedArtist
+      ? storedArtistId
+      : DEFAULT_PROFILE_ARTIST_ID
+
+  const canEditBiography = 
+    hasAssignedArtist && storedArtistId == artistId
+
   const manualConnections = useManualArtistConnections(showBiography ? artistId : null)
   const isSingleRowWorkspace = !showBiography
 
@@ -116,6 +136,7 @@ export function ProfilePage({ recommendationTargetControls, showBiography = true
           <div className="col-span-2 max-[900px]:col-span-1">
             <BiographyPanel
               artistId={artistId}
+              canEditBiography={canEditBiography}
               manualConnections={{
                 connections: manualConnections.connections,
                 isLoading: manualConnections.isLoading,

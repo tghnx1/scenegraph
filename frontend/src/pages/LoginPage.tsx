@@ -15,6 +15,7 @@ const colorAlpha = (name: string, percent: number) =>
 const REGISTRATION_ROLES = [
   {value: 'artist', label: 'Artist'},
   {value: 'agent', label: 'Agent'},
+  {value: 'admin', label: 'Admin'},
 ] as const
 
 type RegistrationRole = (typeof REGISTRATION_ROLES)[number]['value']
@@ -198,11 +199,18 @@ export function LoginPage({ onLogin }: LoginPageProps) {
       localStorage.setItem('role', role)
       localStorage.setItem('username', authenticatedUsername)
       localStorage.setItem('last_username', authenticatedUsername)
+      localStorage.setItem('artist_id', String(response.artist_id))
 
       if (response.user_id !== undefined) {
         localStorage.setItem('user_id', String(response.user_id))
       }
-      
+
+      if (response.artist_id) {
+         localStorage.setItem('artist_id', String(response.artist_id))
+      } else {
+         localStorage.removeItem('artist_id')
+      }
+
       //console.log('must_change_password:', response.must_change_password)
       if (response.must_change_password)
       {

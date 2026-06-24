@@ -24,6 +24,7 @@ from app.schemas import (
     Venue,
     VenuesResponse,
     ChangeRoleRequest,
+    ArtistClaimRequest,
 )
 
 import os
@@ -157,6 +158,54 @@ JWT_EXPIRE_MINUTES = int(os.getenv("JWT_EXPIRE_MINUTES", "120"))
 if JWT_SECRET_KEY is None:
     raise RuntimeError("JWT_SECRET_KEY not configured")
 
+def get_current_user(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    connection: Connection = Depends(get_db),
+) -> dict:
+    token = credentials.credentials
+
+    try:
+        payload = jwt.decode(
+            token,
+            JWT_SECRET_KEY,
+            algorithms=[JWT_ALGORITHM],
+        )
+        user_id = payload.get("sub")            #in JWT the subject (the user_id)
+
+        if user_id is None:
+            raise HTTPException(status_code=401, detail="Invalid token")
+
+    except (JWTError, ValueError):
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT id, username, role, status, artist_id
+            FROM users
+            WHERE id = %s
+            """,
+            (int(user_id),),
+        )
+        user = cursor.fetchone()
+
+    if user is None:
+        raise HTTPException(status_code=401, detail="User not found")
+
+    if user["status"] != "approved":
+        raise HTTPException(status_code=403, detail="Account is not approved")
+    
+    return user
+
+
+#admin helper for admin operations (accept, reject, check pending), before the endpoints
+def require_admin(
+    current_user: dict = Depends(get_current_user),
+) -> dict:
+    if current_user["role"] != "admin":
+        raise HTTPException(status_code=403, detail="Admin token required")
+    return current_user
+
 def create_access_token(data: dict) -> str:
     to_encode = data.copy()                 #make a copy of the user data
 
@@ -250,7 +299,7 @@ async def login(
     with connection.cursor() as cursor:
         cursor.execute(
             """
-            SELECT id, username, password_hash, role, status, must_change_password
+            SELECT id, username, password_hash, role, status, must_change_password, artist_id
             FROM users
             WHERE username = %s
             """,
@@ -299,6 +348,7 @@ async def login(
             }
         ),
         must_change_password=user["must_change_password"],
+        artist_id=user["artist_id"],
     )
 
 USERNAME_RE = re.compile(r"^[a-zA-Z0-9_-]{3,32}$")     
@@ -335,7 +385,7 @@ async def register(
             message=validation_error,
         )
     
-    if register_data.role not in {"artist", "agent"}:
+    if register_data.role not in {"artist", "agent", "admin"}:
         return RegisterResponse(
             success=False,
             message="Invalid role",
@@ -949,3 +999,243 @@ async def public_promoters(
         "offset": offset,
         "promoters": rows,
     }
+
+@app.get("/api/public/genres")
+async def get_public_genres(
+    _: None = Depends(require_public_api_key),
+    connection: Connection = Depends(get_db),
+    limit: int = 20,
+    offset: int = 0,
+) -> dict:
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT id, name
+            FROM genres
+            ORDER BY name ASC
+            LIMIT %s OFFSET %s
+            """,
+            (limit, offset),
+        )
+        rows = cursor.fetchall()
+
+    return {
+        "success": True,
+        "limit": limit,
+        "offset": offset,
+        "genres": rows,
+    }
+
+@app.post("/api/artists/{artist_id}/claim")
+async def claim_artist_profile(
+    artist_id: int,
+    claim_data: ArtistClaimRequest,
+    current_user: dict = Depends(get_current_user),
+    connection: Connection = Depends(get_db),
+) -> dict:
+    if current_user["role"] != "artist":
+        raise HTTPException(status_code=403, detail="Only artists can claim profiles")
+
+    reason = claim_data.reason.strip()
+    if len(reason) < 6:
+        raise HTTPException(status_code=400, detail="Reason must be at least 6 characters")
+    if len(reason) > 80:
+        raise HTTPException(status_code=400, detail="Reason must be more concise")
+
+
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT id FROM artists WHERE id = %s", (artist_id,))
+        if cursor.fetchone() is None:
+            raise HTTPException(status_code=404, detail="Artist not found")
+
+        cursor.execute(
+            """
+            SELECT id, status
+            FROM artist_claims
+            WHERE user_id = %s
+            AND artist_id = %s
+            AND status = 'pending'
+            """,
+            (current_user["id"], artist_id),
+        )
+        existing_claim = cursor.fetchone()
+
+        if existing_claim is not None:
+            raise HTTPException(
+                status_code=409,
+                detail="You already have a pending claim for this artist profile.",
+            )
+
+        cursor.execute(
+            """
+            INSERT INTO artist_claims (user_id, artist_id, reason)
+            VALUES (%s, %s, %s)
+            RETURNING id
+            """,
+            (current_user["id"], artist_id, reason),
+        )
+        claim = cursor.fetchone()
+        connection.commit()
+
+        log_activity(
+            connection,
+            current_user["id"],
+            current_user["username"],
+            "artist claim submitted",
+            f"artist {artist_id}",
+        )
+        connection.commit()
+
+    return {"success": True, "message": "Claim submitted", "claim_id": claim["id"]}
+
+@app.get("/api/admin/artist-claims")
+async def get_artist_claims(
+    admin: dict = Depends(require_admin),
+    connection: Connection = Depends(get_db),
+) -> dict:
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT
+                artist_claims.id,
+                artist_claims.status,
+                artist_claims.reason,
+                artist_claims.created_at,
+                users.username,
+                users.email,
+                artists.name AS artist_name,
+                artist_claims.artist_id
+            FROM artist_claims
+            JOIN users ON users.id = artist_claims.user_id
+            JOIN artists ON artists.id = artist_claims.artist_id
+            ORDER BY artist_claims.created_at DESC
+            """
+        )
+        claims = cursor.fetchall()
+
+    return {"success": True, "claims": claims}
+
+@app.post("/api/admin/artist-claims/{claim_id}/approve")
+async def approve_artist_claim(
+    claim_id: int,
+    admin: dict = Depends(require_admin),
+    connection: Connection = Depends(get_db),
+) -> dict:
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT 
+                artist_claims.id,
+                artist_claims.user_id,
+                artist_claims.artist_id,
+                artist_claims.status,
+                users.username,
+                artists.name AS artist_name
+            FROM artist_claims
+            JOIN users ON users.id = artist_claims.user_id
+            JOIN artists ON artists.id = artist_claims.artist_id
+            WHERE artist_claims.id = %s
+            """,
+            (claim_id,),
+        )
+        claim = cursor.fetchone()
+
+        if claim is None:
+            raise HTTPException(status_code=404, detail="Claim not found")
+
+        if claim["status"] != "pending":
+            raise HTTPException(status_code=400, detail="Claim already decided")
+
+        cursor.execute(
+            """
+            UPDATE users
+            SET artist_id = %s
+            WHERE id = %s
+            """,
+            (claim["artist_id"], claim["user_id"]),
+        )
+
+        cursor.execute(
+            """
+            UPDATE artist_claims
+            SET status = 'approved',
+                decided_at = CURRENT_TIMESTAMP,
+                decided_by = %s
+            WHERE id = %s
+            """,
+            (admin["id"], claim_id),
+        )
+
+        connection.commit()
+
+        log_activity(
+            connection,
+            admin["id"],
+            admin["username"],
+            "artist claim approved",
+            f"{claim['username']} → {claim['artist_name']}",
+        )
+        connection.commit()
+
+    return {"success": True, "message": "Artist claim approved"}
+
+@app.post("/api/admin/artist-claims/{claim_id}/reject")
+async def reject_artist_claim(
+    claim_id: int,
+    admin: dict = Depends(require_admin),
+    connection: Connection = Depends(get_db),
+) -> dict:
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT 
+                artist_claims.id,
+                artist_claims.user_id,
+                artist_claims.artist_id,
+                artist_claims.status,
+                users.username,
+                artists.name AS artist_name
+            FROM artist_claims
+            JOIN users ON users.id = artist_claims.user_id
+            JOIN artists ON artists.id = artist_claims.artist_id
+            WHERE artist_claims.id = %s
+            """,
+            (claim_id,),
+        )
+        claim = cursor.fetchone()
+
+        if claim is None:
+            raise HTTPException(status_code=404, detail="Claim not found")
+
+        if claim["status"] != "pending":
+            raise HTTPException(status_code=400, detail="Claim already decided")
+
+        cursor.execute(
+            """
+            UPDATE artist_claims
+            SET status = 'rejected',
+                decided_at = CURRENT_TIMESTAMP,
+                decided_by = %s
+            WHERE id = %s
+              AND status = 'pending'
+            RETURNING id
+            """,
+            (admin["id"], claim_id),
+        )
+        updated_claim = cursor.fetchone()
+
+        if updated_claim is None:
+            raise HTTPException(status_code=400, detail="Claim already decided")
+        
+        connection.commit()
+
+        log_activity(
+            connection,
+            admin["id"],
+            admin["username"],
+            "artist claim rejected",
+            f"{claim['username']} → {claim['artist_name']}",
+        )
+        connection.commit()
+
+    return {"success": True, "message": "Artist claim rejected"}

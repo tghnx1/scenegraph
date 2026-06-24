@@ -85,6 +85,8 @@ export default function App() {
     setThemeName(nextTheme)
   }
 
+  const username = localStorage.getItem('username')
+
   return (
     <div className="flex h-dvh min-h-screen flex-col bg-[var(--background)] text-[var(--text)] [background:radial-gradient(1000px_520px_at_12%_-10%,color-mix(in_srgb,var(--link-highlight)_18%,transparent),transparent_60%),radial-gradient(900px_460px_at_95%_0%,color-mix(in_srgb,var(--accent-warm)_15%,transparent),transparent_55%),var(--background)]">
       <nav className="flex flex-wrap items-center gap-2 border-b border-[color-mix(in_srgb,var(--text)_18%,transparent)] bg-[color-mix(in_srgb,var(--background)_55%,transparent)] px-3 py-3 backdrop-blur-md sm:gap-3 sm:px-5">
@@ -96,19 +98,24 @@ export default function App() {
             Dashboard
           </NavLink>
         )}
-        <div className="ml-auto flex flex-wrap justify-end gap-2">
-          {isAuthenticated && (
-            <Button type="button" size="sm" variant="outline" onClick={() => navigate('/change-password')}>
-              Change password
-            </Button>
-          )}
-          <Button type="button" size="sm" variant="outline" onClick={handleThemeToggle}>
-            {themeName === 'light' ? 'Dark' : 'Light'}
+        
+        <span className="flex-1" />
+        {username && (
+          <span className="text-sm text-[var(--text-muted)]">
+            Logged in as {username}
+          </span>
+        )}
+        {isAuthenticated && (
+          <Button type="button" size="sm" variant="outline" onClick={() => navigate('/change-password')}>
+            Change password
           </Button>
-          <Button type="button" size="sm" variant="outline" onClick={handleAuthClick}>
-            {isAuthenticated ? 'Logout' : 'Login'}
-          </Button>
-        </div>
+        )}
+        <Button type="button" size="sm" variant="outline" onClick={handleThemeToggle}>
+          {themeName === 'light' ? 'Dark' : 'Light'}
+        </Button>
+        <Button type="button" size="sm" variant="outline" onClick={handleAuthClick}>
+          {isAuthenticated ? 'Logout' : 'Login'}
+        </Button>
       </nav>
 
       <main className="flex-1 overflow-y-auto overflow-x-hidden">

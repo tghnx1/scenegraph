@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
-import { changeUserRole, approveUser, rejectUser, getPendingUsers, getUsers, deactivateUser, activateUser, type PendingUser, type UserItem, } from '../api/auth'
+import { changeUserRole, approveUser, rejectUser, getPendingUsers, getUsers, 
+  deactivateUser, activateUser, type PendingUser, type UserItem, 
+  getArtistClaims, approveArtistClaim, rejectArtistClaim, type ArtistClaim, } from '../api/auth'
 
 interface AdminUsersPageProps { 
   compact?: boolean
@@ -10,6 +12,7 @@ export function AdminUsersPage({ compact = false, onActivityChanged, }: AdminUse
   const [users, setUsers] = useState<PendingUser[]>([])
   const [message, setMessage] = useState('')
   const [allUsers, setAllUsers] = useState<UserItem[]>([])
+  const [claims, setClaims] = useState<ArtistClaim[]>([])
 
   const adminButtonStyle = {
     padding: '8px 12px',
@@ -19,10 +22,6 @@ export function AdminUsersPage({ compact = false, onActivityChanged, }: AdminUse
     cursor: 'pointer',
   }
 
-  //const loadUsers = async () => {
-    //const response = await getPendingUsers()
-    //setUsers(response.users)
-  //}
   const loadUsers = async () => {
     try {
       const response = await getPendingUsers()
@@ -43,13 +42,25 @@ export function AdminUsersPage({ compact = false, onActivityChanged, }: AdminUse
     }
   }
 
+  const loadClaims = async () => {
+    try {
+      const response = await getArtistClaims()
+      setClaims(response.claims.filter((claim) => claim.status === 'pending'))
+    } catch (error) {
+      console.error(error)
+    }
+  }
+
   useEffect(() => {
     loadUsers()
     loadAllUsers()
+    loadClaims()
   }, [])
 
+
+
   const handleApprove = async (user: PendingUser) => {
-    if (!confirm(`Approve ${user.username}?`)) return
+    //if (!confirm(`Approve ${user.username}?`)) return
 
     await approveUser(user.id)
     //setMessage(response.message)
@@ -80,7 +91,7 @@ export function AdminUsersPage({ compact = false, onActivityChanged, }: AdminUse
   }
 
   const handleActivate = async (user: UserItem) => {
-    if (!confirm(`Activate ${user.username}?`)) return
+    //if (!confirm(`Activate ${user.username}?`)) return
 
     await activateUser(user.id)
     //setMessage(response.message)
@@ -92,7 +103,7 @@ export function AdminUsersPage({ compact = false, onActivityChanged, }: AdminUse
   const handleChangeRole = async (user: UserItem) => {
     const newRole = user.role === 'artist' ? 'agent' : 'artist'
 
-    if (!confirm(`Change ${user.username} to ${newRole}?`)) return
+    //if (!confirm(`Change ${user.username} to ${newRole}?`)) return
 
     await changeUserRole(user.id, newRole)
     //setMessage(response.message)
@@ -101,11 +112,44 @@ export function AdminUsersPage({ compact = false, onActivityChanged, }: AdminUse
     await onActivityChanged?.()
   }
 
+  const handleApproveClaim = async (claim: ArtistClaim) => {
+    await approveArtistClaim(claim.id)
+    //setMessage(`Claim approved for ${claim.artist_name}`)
+    await loadClaims()
+    await loadUsers()
+    await onActivityChanged?.()
+  }
+
+  const handleRejectClaim = async (claim: ArtistClaim) => {
+    if (!window.confirm(`Reject claim for ${claim.artist_name}?`)) return
+
+    await rejectArtistClaim(claim.id)
+    //setMessage(`Claim rejected for ${claim.artist_name}`)
+    await loadClaims()
+    await onActivityChanged?.()
+  }
+
+  const pendingItems = [
+    ...users.map((user) => ({
+      type: 'user' as const,
+      created_at: user.created_at,
+      item: user,
+    })),
+    ...claims.map((claim) => ({
+      type: 'claim' as const,
+      created_at: claim.created_at,
+      item: claim,
+    })),
+  ].sort(
+    (a, b) =>
+      new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+  )
+
   return (
     <section className="min-w-0" style={{ display: 'grid', gap: 12}}>
       {compact ? (
         <div className="dashboard-section-heading">
-          <span>Pending user registrations</span>
+          <span>Pending user registrations and artist claims</span>
         </div>
       ) : (
       <h1 style={{ fontSize: 32 }}>Pending users</h1>)}
@@ -114,65 +158,128 @@ export function AdminUsersPage({ compact = false, onActivityChanged, }: AdminUse
 
       <div
         className="dashboard-scroll-list"
-        style={{ maxHeight: 120, overflowY: 'auto', display: 'grid', gap: 12 }}
+        style={{ maxHeight: 130, overflowY: 'auto', display: 'grid', gap: 12, paddingRight: 16, paddingTop: 4 }}
       >
+        {pendingItems.map((entry) => {
+          if (entry.type === 'user') {
+            const user = entry.item 
 
-        {users.map((user) => (
-          <div 
-            key={user.id}
-            className="dashboard-table-row"
-            style={{
-              display: 'grid',
-              gridTemplateColumns: '1fr',
-              gap: 8,
-              padding: '12px 16px',
-              minHeight: 120,
-              background: 'color-mix(in srgb, var(--background) 82%, var(--text) 8%)',
-              borderRadius: 12,
-              border:
-                user.role === 'agent'
-                  ? '2px solid var(--accent)'
-                  : '1px solid color-mix(in srgb, var(--text) 18%, transparent)',
-            }}
-          >
+            return (
+              <div 
+                key={`user-${user.id}`}
+                className="dashboard-table-row"
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: '1fr',
+                  gap: 8,
+                  padding: '12px 16px',
+                  minHeight: 120,
+                  background: 'color-mix(in srgb, var(--background) 82%, var(--text) 8%)',
+                  borderRadius: 12,
+                  paddingRight: 12,
+                  border:
+                    user.role === 'agent'
+                      ? '2px solid var(--accent)'
+                      : '1px solid color-mix(in srgb, var(--text) 18%, transparent)',
+                }}
+              >
 
-            <div className="min-w-0 break-words" style={{ whiteSpace: 'normal', overflow: 'visible', textOverflow: 'ellipsis' }}>
-              <strong>{user.username}</strong>
-              <span> — {user.email}</span>
-              <span> — {user.role}</span>
-            </div>
+                <div style={{ whiteSpace: 'normal', overflow: 'visible', textOverflow: 'ellipsis' }}>
+                  <strong>{user.username}</strong>
+                  <span> — {user.email}</span>
+                  <span> — {user.role}</span>
+                </div>
 
-            <div style={{display: 'flex', flexWrap: 'wrap', gap: 8}}>
-              <button 
-                type="button" 
-                  style={{
-                    ...adminButtonStyle, 
-                    width: 110, 
-                    alignSelf: 'start',
-                  }}
-                onClick={() => handleApprove(user)}>Approve
-              </button>
-              <button
-                type="button"
+                <div style={{display: 'flex', gap: 8}}>
+                  <button 
+                    type="button" 
+                      style={{
+                        ...adminButtonStyle, 
+                        width: 110, 
+                        alignSelf: 'start',
+                      }}
+                    onClick={() => handleApprove(user)}>Approve
+                  </button>
+                  <button
+                    type="button"
+                      style={{
+                        ...adminButtonStyle,
+                        width: 110, 
+                        alignSelf: 'start',
+                      }}
+                    onClick={() => handleReject(user)}>Reject
+                  </button>
+                </div>
+              </div>
+            )
+          }
+            
+          const claim = entry.item
+
+          return (
+            <div
+              key={`claim-${claim.id}`}
+              className="dashboard-table-row"
+              style={{
+                display: 'grid',
+                gridTemplateColumns: '1fr',
+                gap: 8,
+                padding: '12px 16px',
+                minHeight: 120,
+                alignItems: 'start',
+                background: 'color-mix(in srgb, var(--accent) 10%, var(--background) 90%)',
+                borderRadius: 12,
+                border: '2px solid color-mix(in srgb, var(--accent) 65%, var(--background) 35%)',
+              }}
+            >
+              <div style={{ whiteSpace: 'normal', overflow: 'visible' }}>
+                <strong>Artist claim</strong>
+                <span> — {claim.username}</span>
+                <span> — {claim.email}</span>
+                <span> — claims: {claim.artist_name}</span>
+              </div>
+
+              <p style={{ margin: 0, fontSize: 13, color: 'var(--text-muted)' }}>
+                Reason: {claim.reason}
+              </p>
+
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button
+                  type="button"
                   style={{
                     ...adminButtonStyle,
-                    width: 110, 
+                    width: 110,
                     alignSelf: 'start',
                   }}
-                onClick={() => handleReject(user)}>Reject
-              </button>
+                  onClick={() => handleApproveClaim(claim)}
+                >
+                  Approve
+                </button>
+
+                <button
+                  type="button"
+                  style={{
+                    ...adminButtonStyle,
+                    width: 110,
+                    alignSelf: 'start',
+                  }}
+                  onClick={() => handleRejectClaim(claim)}
+                >
+                  Reject
+                </button>
+              </div>
             </div>
-          </div>
-        ))}
+          )
+        })}
       </div>
 
-      <div className="dashboard-section-heading" style={{ marginTop: 16 }}>
+      <div className="dashboard-section-heading" style={{ marginTop: 8, marginBottom: 4 }}>
         <span>List of users</span>
       </div>
 
       <div 
         className="dashboard-scroll-list" 
-        style={{ maxHeight: 300, overflowY: 'auto', display: 'grid', gap: 12 }}
+        style={{ maxHeight: 300, overflowY: 'auto', display: 'grid', gap: 12, paddingRight: 16, paddingTop: 4 }}
       >
         {allUsers.map((user) => (
           <div
@@ -184,7 +291,7 @@ export function AdminUsersPage({ compact = false, onActivityChanged, }: AdminUse
               gap: 8,
               padding: '12px 16px',
               minHeight: 120,
-
+              paddingRight: 12,
               background: 'color-mix(in srgb, var(--background) 82%, var(--text) 8%)',
               borderRadius: 12,
 
@@ -201,8 +308,8 @@ export function AdminUsersPage({ compact = false, onActivityChanged, }: AdminUse
               <span> — {user.status}</span>
             </div>
 
-            {user.role !== 'admin' && ['approved', 'deactivated', 'rejected'].includes(user.status) && (
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8}}>
+            {['approved', 'deactivated', 'rejected'].includes(user.status) && (
+              <div style={{ display: 'flex', gap: 8}}>
                 <button
                   type="button"
                   style={{
