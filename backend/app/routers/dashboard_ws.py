@@ -1,96 +1,133 @@
-from __future__ import annotations
-
 import asyncio
 import json
 import logging
-from contextlib import suppress
-from typing import Any
+from typing import Annotated
 
 import psycopg
-from fastapi import APIRouter, WebSocket
-from psycopg import sql
-from starlette.websockets import WebSocketState
+import psycopg.rows
+from fastapi import APIRouter, HTTPException, Query, WebSocket, WebSocketDisconnect
+from app.auth import _user_id_from_jwt
+from app.db import DATABASE_URL, get_connection
 
-from app.db import DATABASE_URL
-
-
-router = APIRouter()
 logger = logging.getLogger(__name__)
+router = APIRouter()
 
-DASHBOARD_REFRESH_CHANNEL = "scenegraph_dashboard_refresh"
-DASHBOARD_REFRESH_TYPE = "dashboard_refresh_required"
-
-
-def dashboard_message_from_payload(payload: str) -> dict[str, Any]:
-    message: dict[str, Any] = {
-        "type": DASHBOARD_REFRESH_TYPE,
-        "reason": "database_changed",
-    }
-    if not payload:
-        return message
-
-    try:
-        data = json.loads(payload)
-    except json.JSONDecodeError:
-        message["reason"] = payload
-        return message
-
-    if isinstance(data, dict):
-        message.update(data)
-
-    if not isinstance(message.get("type"), str):
-        message["type"] = DASHBOARD_REFRESH_TYPE
-    if not isinstance(message.get("reason"), str):
-        message["reason"] = "database_changed"
-    return message
-
-
-async def relay_dashboard_notifications(websocket: WebSocket) -> None:
-    async with await psycopg.AsyncConnection.connect(
-        DATABASE_URL,
-        autocommit=True,
-    ) as connection:
-        await connection.execute(
-            sql.SQL("LISTEN {}").format(sql.Identifier(DASHBOARD_REFRESH_CHANNEL))
-        )
-
-        async for notify in connection.notifies():
-            await websocket.send_json(dashboard_message_from_payload(notify.payload))
-
-
-async def wait_for_client_disconnect(websocket: WebSocket) -> None:
-    while True:
-        message = await websocket.receive()
-        if message["type"] == "websocket.disconnect":
-            return
+NOTIFY_CHANNEL = "scenegraph_dashboard_refresh"
+ALL_AREAS = ["composition", "metrics"]
+PING_INTERVAL = 30
 
 
 @router.websocket("/dashboard")
-async def dashboard_websocket(websocket: WebSocket) -> None:
+async def dashboard_ws(
+    websocket: WebSocket,
+    token: Annotated[str | None, Query()] = None,
+):
+    if not token:
+        await websocket.close(code=1008)
+        return
+
+    try:
+        with get_connection() as auth_conn:
+            _user_id_from_jwt(token, auth_conn)
+    except HTTPException:
+        await websocket.close(code=1008)
+        return
+
     await websocket.accept()
 
-    listener_task = asyncio.create_task(relay_dashboard_notifications(websocket))
-    disconnect_task = asyncio.create_task(wait_for_client_disconnect(websocket))
+    try:
+        async with await psycopg.AsyncConnection.connect(
+            DATABASE_URL,
+            autocommit=True,
+            row_factory=psycopg.rows.dict_row,
+        ) as conn:
+            await conn.execute(f"LISTEN {NOTIFY_CHANNEL}")
 
-    done, pending = await asyncio.wait(
-        {listener_task, disconnect_task},
-        return_when=asyncio.FIRST_COMPLETED,
-    )
+            stop_event = asyncio.Event()
 
-    for task in pending:
-        task.cancel()
-    await asyncio.gather(*pending, return_exceptions=True)
+            async def notify_task():
+                try:
+                    pending_areas: set[str] = set()
+                    debounce_task: asyncio.Task | None = None
 
-    for task in done:
-        if task.cancelled():
-            continue
-        exception = task.exception()
-        if exception is not None:
-            logger.error(
-                "Dashboard WebSocket closed after listener failure",
-                exc_info=(type(exception), exception, exception.__traceback__),
-            )
+                    async def flush():
+                        nonlocal debounce_task
+                        await asyncio.sleep(0.5)
+                        if pending_areas:
+                            await websocket.send_text(json.dumps({
+                                "type": "dashboard.updated",
+                                "areas": list(pending_areas),
+                            }))
+                            pending_areas.clear()
+                        debounce_task = None
 
-    if websocket.client_state != WebSocketState.DISCONNECTED:
-        with suppress(RuntimeError):
-            await websocket.close()
+                    async for notify in conn.notifies():
+                        if stop_event.is_set():
+                            break
+
+                        payload = json.loads(notify.payload)
+                        table = payload.get("table", "")
+                        pending_areas.update(ALL_AREAS)
+                        if table == "users":
+                            pending_areas.add("users")
+                        elif "users" in table:
+                            pending_areas.update(ALL_AREAS)
+                            pending_areas.add("users")
+                        else:
+                            pending_areas.update(ALL_AREAS)
+
+                        if debounce_task is not None:
+                            debounce_task.cancel()
+                        debounce_task = asyncio.create_task(flush())
+                        # await websocket.send_text(json.dumps({
+                        #     "type": "dashboard.updated",
+                        #     "areas": areas,
+                        # }))
+                except Exception as e:
+                    logger.error("Fatal error in the database listener: %s", e, exc_info=True)
+                finally:
+                    if debounce_task is not None:
+                        debounce_task.cancel()
+                    stop_event.set()
+
+            async def keepalive_task():
+                try:
+                    while not stop_event.is_set():
+                        await asyncio.sleep(PING_INTERVAL)
+                        if stop_event.is_set():
+                            break
+                        await websocket.send_text('{"type":"ping"}')
+                except Exception as e:
+                    pass
+                finally:
+                    stop_event.set()
+
+            async def ws_receive_task():
+                try:
+                    while not stop_event.is_set():
+                        await websocket.receive_text()
+                except WebSocketDisconnect:
+                    pass
+                except Exception as e:
+                    logger.error("Unexpected error receiving WS messages: %s", e, exc_info=True)
+                finally:
+                    stop_event.set()
+
+            tasks = [
+                asyncio.create_task(notify_task()),
+                asyncio.create_task(keepalive_task()),
+                asyncio.create_task(ws_receive_task()),
+            ]
+
+            await stop_event.wait()
+
+            for task in tasks:
+                task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+
+    except Exception as e:
+        logger.exception("Critical error in the WebSocket lifecycle")
+        try:
+            await websocket.close(code=1011)
+        except Exception:
+            pass

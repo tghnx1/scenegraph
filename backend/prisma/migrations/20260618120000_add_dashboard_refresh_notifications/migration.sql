@@ -37,7 +37,8 @@ BEGIN
         'artist_extracted_tags',
         'artist_tag_extraction_runs',
         'event_extracted_tags',
-        'event_tag_extraction_runs'
+        'event_tag_extraction_runs',
+        'users'
     ]
     LOOP
         IF to_regclass(format('public.%I', table_name)) IS NOT NULL THEN
