@@ -22,6 +22,8 @@ async def dashboard_ws(
     websocket: WebSocket,
     token: Annotated[str | None, Query()] = None,
 ):
+    await websocket.accept()
+
     if not token:
         await websocket.close(code=1008)
         return
@@ -32,8 +34,6 @@ async def dashboard_ws(
     except HTTPException:
         await websocket.close(code=1008)
         return
-
-    await websocket.accept()
 
     try:
         async with await psycopg.AsyncConnection.connect(

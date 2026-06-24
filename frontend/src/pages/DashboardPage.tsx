@@ -60,7 +60,21 @@ export function DashboardPage() {
     [refetchComposition, refetchMetrics],
   )
 
-  useDashboardUpdates(handleDashboardUpdate)
+  const dashboardConnectionStatus = useDashboardUpdates(handleDashboardUpdate)
+  const dashboardConnectionMessage = (() => {
+    switch (dashboardConnectionStatus) {
+      case 'connecting':
+        return 'Connecting live dashboard updates...'
+      case 'reconnecting':
+      case 'error':
+        return 'Live dashboard updates are reconnecting.'
+      case 'auth-error':
+        return 'Live dashboard updates stopped because your session could not be validated.'
+      case 'connected':
+      default:
+        return ''
+    }
+  })()
 
   const toggleEntity = (entity: DashboardEntity) => {
     setSelectedEntities((current) => current.includes(entity)
@@ -87,6 +101,11 @@ export function DashboardPage() {
       </div>
 
       {error && <p className="mt-5 text-[var(--event)]">Failed to load dashboard status.</p>}
+      {dashboardConnectionMessage && (
+        <p className="mt-3 text-sm text-[color-mix(in_srgb,var(--text)_70%,transparent)]">
+          {dashboardConnectionMessage}
+        </p>
+      )}
 
       <section className="grid min-w-0 gap-5" aria-label="Admin dashboard sections">
         <DashboardStatistics
