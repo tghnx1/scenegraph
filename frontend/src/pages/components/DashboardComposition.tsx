@@ -20,7 +20,7 @@ const ENTITY_OPTIONS: Array<{id: DashboardEntity; label: string; color: string}>
   {id: 'venues', label: 'Venues', color: 'var(--venue)'},
 ]
 
-const DATASET_OVERVIEW_DESCRIPTION = 'Total events, artists, promoters, and venues in the current dataset.'
+const DATASET_OVERVIEW_DESCRIPTION = 'Total (linked) events, artists, promoters, and venues in the current dataset.'
 
 function formatNumber(value: number | string | null | undefined) {
   return typeof value === 'number' ? value.toLocaleString() : value ?? '-'

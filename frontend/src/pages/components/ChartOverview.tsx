@@ -237,7 +237,7 @@ export function OverviewChart({
               className="size-[min(300px,100%)]"
               viewBox={`0 0 ${chartSize} ${chartSize}`}
               role="img"
-              aria-label={`Dataset overview distribution, ${centerValue} total nodes`}
+              aria-label={`Dataset overview distribution, ${centerValue} total linked nodes`}
             >
               <circle className="fill-none stroke-[var(--control-bg)] [stroke-width:16]" cx={center} cy={center} r={ringRadius} />
               {total > 0 && resolvedItems.map((item) => {
@@ -282,7 +282,7 @@ export function OverviewChart({
             </svg>
             <div className="absolute grid place-items-center text-center">
               <strong>{centerValue}</strong>
-              <span className="text-xs text-[var(--text-muted)]">Total nodes</span>
+              <span className="text-xs text-[var(--text-muted)]">Total linked nodes</span>
             </div>
           </>
         ) : chartMode === 'waffle' ? (
@@ -290,7 +290,7 @@ export function OverviewChart({
             <div
               className="grid grid-cols-10 gap-1"
               role="img"
-              aria-label={`Dataset overview waffle chart, ${centerValue} total nodes`}
+              aria-label={`Dataset overview waffle chart, ${centerValue} total linked nodes`}
             >
               {waffleCells.map((item, index) => (
                 <span
@@ -308,18 +308,18 @@ export function OverviewChart({
             </div>
             <div className="grid place-items-center text-center">
               <strong>{centerValue}</strong>
-              <span className="text-xs text-[var(--text-muted)]">Total nodes</span>
+              <span className="text-xs text-[var(--text-muted)]">Total linked nodes</span>
             </div>
           </div>
         ) : (
           <div
             className="grid w-full gap-4"
             role="img"
-            aria-label={`Dataset overview stacked bar chart, ${centerValue} total nodes`}
+            aria-label={`Dataset overview stacked bar chart, ${centerValue} total linked nodes`}
           >
             <div className="grid place-items-center text-center">
               <strong>{centerValue}</strong>
-              <span className="text-xs text-[var(--text-muted)]">Total nodes</span>
+              <span className="text-xs text-[var(--text-muted)]">Total linked nodes</span>
             </div>
             <div className="flex h-8 w-full overflow-hidden rounded-full border border-[var(--surface-border)] bg-[var(--control-bg)]">
               {total > 0 ? resolvedItems.map((item) => {
