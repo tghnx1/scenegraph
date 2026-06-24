@@ -16,6 +16,8 @@ FULL_PIPELINE_DEDUP_WITH_DB ?= yes
 FULL_PIPELINE_SKIP_BIO ?= no
 FULL_PIPELINE_SKIP_TAGS ?= no
 FULL_PIPELINE_SKIP_EMBEDDINGS ?= no
+FULL_PIPELINE_EVENTS_JSON ?=
+FULL_PIPELINE_ARTIFACTS_DIR ?= backend/data/import_runs
 REFRESH_EVENTS_JSON ?= backend/data/ra_berlin_past_events_2026.json
 REFRESH_EVENTS_JSON_IN_CONTAINER ?= /app/data/ra_berlin_past_events_2026.json
 REFRESH_ARTISTS_JSON ?= backend/data/artists.json
@@ -178,7 +180,9 @@ full-pipeline: env
 	$(COMPOSE) --profile tools run --rm --build tools python backend/scripts/full_pipeline.py \
 		--min-date "$(FULL_PIPELINE_MIN_DATE)" \
 		--max-date "$(FULL_PIPELINE_MAX_DATE)" \
+		--artifacts-dir "$(FULL_PIPELINE_ARTIFACTS_DIR)" \
 		--cdp-url "$(FULL_PIPELINE_CDP_URL)" \
+		$$(test -n "$(FULL_PIPELINE_EVENTS_JSON)" && printf '%s %s' '--events-json' "$(FULL_PIPELINE_EVENTS_JSON)" || true) \
 		$$(test "$(FULL_PIPELINE_DEDUP_WITH_DB)" = "no" && printf '%s' '--no-dedup-with-db' || true) \
 		$$(test "$(FULL_PIPELINE_SKIP_BIO)" = "yes" && printf '%s' '--skip-bio' || true) \
 		$$(test "$(FULL_PIPELINE_SKIP_TAGS)" = "yes" && printf '%s' '--skip-tags' || true) \

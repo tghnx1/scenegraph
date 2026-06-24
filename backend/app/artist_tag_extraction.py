@@ -793,8 +793,8 @@ def fetch_artist_biographies(
     if artist_ids is not None:
         if not artist_ids:
             return []
-        where.append("id = ANY(%s)")
-        params.append(artist_ids)
+        where.append("ra_artist_id = ANY(%s)")
+        params.append([str(artist_id) for artist_id in artist_ids])
     if artist_id is not None:
         where.append("id = %s")
         params.append(artist_id)

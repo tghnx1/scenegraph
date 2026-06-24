@@ -609,8 +609,8 @@ def fetch_event_texts(
     if event_ids is not None:
         if not event_ids:
             return []
-        where.append("e.id = ANY(%s)")
-        params.append(event_ids)
+        where.append("e.ra_event_id = ANY(%s)")
+        params.append([str(event_id) for event_id in event_ids])
     if event_id is not None:
         where.append("e.id = %s")
         params.append(event_id)

@@ -59,7 +59,15 @@ def fetch_scalar(connection: psycopg.Connection, query: str, params: tuple = ())
     return int(value if value is not None else 0)
 
 
-def fetch_id_count(
+def fetch_count(
+    connection: psycopg.Connection,
+    query: str,
+    params: tuple = (),
+) -> int:
+    return fetch_scalar(connection, query, params)
+
+
+def fetch_table_count(
     connection: psycopg.Connection,
     table: str,
     ids: list[int] | None,
@@ -69,10 +77,15 @@ def fetch_id_count(
         return fetch_scalar(connection, f"SELECT COUNT(*) FROM {table}")
     if not ids:
         return 0
+    params: tuple[object, ...]
+    if column.startswith("ra_"):
+        params = ([str(entity_id) for entity_id in ids],)
+    else:
+        params = (ids,)
     return fetch_scalar(
         connection,
         f"SELECT COUNT(*) FROM {table} WHERE {column} = ANY(%s)",
-        (ids,),
+        params,
     )
 
 
@@ -80,6 +93,10 @@ def run_checks(connection: psycopg.Connection, args: argparse.Namespace) -> list
     results: list[CheckResult] = []
     event_ids = load_id_file(args.event_ids_file)
     artist_ids = load_id_file(args.artist_ids_file)
+    unique_event_ids = sorted(set(event_ids)) if event_ids is not None else None
+    unique_artist_ids = sorted(set(artist_ids)) if artist_ids is not None else None
+    event_ids_text = [str(event_id) for event_id in event_ids] if event_ids is not None else None
+    artist_ids_text = [str(artist_id) for artist_id in artist_ids] if artist_ids is not None else None
 
     if args.biographies_path:
         bio_path = Path(args.biographies_path)
@@ -98,22 +115,114 @@ def run_checks(connection: psycopg.Connection, args: argparse.Namespace) -> list
                 results.append(CheckResult("biography-file-items", False, f"path={bio_path}, error={exc}"))
 
     counts = {
-        "events": fetch_id_count(connection, "events", event_ids),
-        "artists": fetch_id_count(connection, "artists", artist_ids),
-        "event_artists": fetch_id_count(connection, "event_artists", event_ids, "event_id"),
-        "event_promoters": fetch_id_count(connection, "event_promoters", event_ids, "event_id"),
-        "event_genres": fetch_id_count(connection, "event_genres", event_ids, "event_id"),
-        "event_payloads": fetch_id_count(connection, "event_source_payloads", event_ids, "event_id"),
-        "entity_embeddings": fetch_scalar(
-            connection,
-            """
-            SELECT COUNT(*)
-            FROM entity_embeddings
-            WHERE
-                (entity_type = 'event' AND (%s::int[] IS NULL OR entity_id = ANY(%s)))
-                OR (entity_type = 'artist' AND (%s::int[] IS NULL OR entity_id = ANY(%s)))
-            """,
-            (event_ids, event_ids or [], artist_ids, artist_ids or []),
+        "events": fetch_table_count(connection, "events", event_ids, "ra_event_id"),
+        "artists": fetch_table_count(connection, "artists", artist_ids, "ra_artist_id"),
+        "event_artists": (
+            fetch_count(
+                connection,
+                """
+                SELECT COUNT(*)
+                FROM event_artists ea
+                JOIN events e ON e.id = ea.event_id
+                WHERE e.ra_event_id = ANY(%s)
+                """,
+                (event_ids_text,),
+            )
+            if event_ids
+            else fetch_scalar(connection, "SELECT COUNT(*) FROM event_artists")
+            if event_ids is None
+            else 0
+        ),
+        "event_promoters": (
+            fetch_count(
+                connection,
+                """
+                SELECT COUNT(*)
+                FROM event_promoters ep
+                JOIN events e ON e.id = ep.event_id
+                WHERE e.ra_event_id = ANY(%s)
+                """,
+                (event_ids_text,),
+            )
+            if event_ids
+            else fetch_scalar(connection, "SELECT COUNT(*) FROM event_promoters")
+            if event_ids is None
+            else 0
+        ),
+        "event_genres": (
+            fetch_count(
+                connection,
+                """
+                SELECT COUNT(*)
+                FROM event_genres eg
+                JOIN events e ON e.id = eg.event_id
+                WHERE e.ra_event_id = ANY(%s)
+                """,
+                (event_ids_text,),
+            )
+            if event_ids
+            else fetch_scalar(connection, "SELECT COUNT(*) FROM event_genres")
+            if event_ids is None
+            else 0
+        ),
+        "event_payloads": (
+            fetch_count(
+                connection,
+                """
+                SELECT COUNT(*)
+                FROM event_source_payloads esp
+                JOIN events e ON e.id = esp.event_id
+                WHERE e.ra_event_id = ANY(%s)
+                """,
+                (event_ids_text,),
+            )
+            if event_ids
+            else fetch_scalar(connection, "SELECT COUNT(*) FROM event_source_payloads")
+            if event_ids is None
+            else 0
+        ),
+        "entity_embeddings": (
+            (
+                fetch_count(
+                    connection,
+                    """
+                    SELECT COUNT(*)
+                    FROM entity_embeddings ee
+                    JOIN events e ON e.id = ee.entity_id
+                    WHERE ee.entity_type = 'event'
+                      AND e.ra_event_id = ANY(%s)
+                    """,
+                    (event_ids_text,),
+                )
+                if event_ids
+                else fetch_scalar(
+                    connection,
+                    "SELECT COUNT(*) FROM entity_embeddings WHERE entity_type = 'event'",
+                )
+                if event_ids is None
+                else 0
+            )
+            +
+            (
+                fetch_count(
+                    connection,
+                    """
+                    SELECT COUNT(*)
+                    FROM entity_embeddings ee
+                    JOIN artists a ON a.id = ee.entity_id
+                    WHERE ee.entity_type = 'artist'
+                      AND a.ra_artist_id = ANY(%s)
+                    """,
+                    (artist_ids_text,),
+                )
+                if artist_ids
+                else fetch_scalar(
+                    connection,
+                    "SELECT COUNT(*) FROM entity_embeddings WHERE entity_type = 'artist'",
+                )
+                if artist_ids is None
+                else 0
+            )
         ),
     }
     results.append(
@@ -132,28 +241,28 @@ def run_checks(connection: psycopg.Connection, args: argparse.Namespace) -> list
         )
     )
 
-    if event_ids is not None and event_ids:
+    if event_ids is not None and unique_event_ids:
         results.append(
             CheckResult(
                 "events-present",
-                counts["events"] == len(set(event_ids)),
-                f"expected={len(set(event_ids))}, actual={counts['events']}",
+                counts["events"] == len(unique_event_ids),
+                f"expected={len(unique_event_ids)}, actual={counts['events']}",
             )
         )
         results.append(
             CheckResult(
                 "event-payloads-present",
-                counts["event_payloads"] == len(set(event_ids)),
-                f"expected={len(set(event_ids))}, actual={counts['event_payloads']}",
+                counts["event_payloads"] == len(unique_event_ids),
+                f"expected={len(unique_event_ids)}, actual={counts['event_payloads']}",
             )
         )
 
-    if artist_ids is not None and artist_ids:
+    if artist_ids is not None and unique_artist_ids:
         results.append(
             CheckResult(
                 "artists-present",
-                counts["artists"] == len(set(artist_ids)),
-                f"expected={len(set(artist_ids))}, actual={counts['artists']}",
+                counts["artists"] == len(unique_artist_ids),
+                f"expected={len(unique_artist_ids)}, actual={counts['artists']}",
             )
         )
 
@@ -166,12 +275,12 @@ def run_checks(connection: psycopg.Connection, args: argparse.Namespace) -> list
                 SELECT COUNT(*) FROM (
                     SELECT ra_event_id
                     FROM events
-                    WHERE (%s::int[] IS NULL OR id = ANY(%s))
+                    WHERE (%s::int[] IS NULL OR ra_event_id = ANY(%s))
                     GROUP BY ra_event_id
                     HAVING COUNT(*) > 1
                 ) d
                 """,
-                (event_ids, event_ids or []),
+                (event_ids, event_ids_text or []),
             )
             == 0,
             "slice-scoped",
@@ -186,12 +295,12 @@ def run_checks(connection: psycopg.Connection, args: argparse.Namespace) -> list
                 SELECT COUNT(*) FROM (
                     SELECT ra_artist_id
                     FROM artists
-                    WHERE (%s::int[] IS NULL OR id = ANY(%s))
+                    WHERE (%s::int[] IS NULL OR ra_artist_id = ANY(%s))
                     GROUP BY ra_artist_id
                     HAVING COUNT(*) > 1
                 ) d
                 """,
-                (artist_ids, artist_ids or []),
+                (artist_ids, artist_ids_text or []),
             )
             == 0,
             "slice-scoped",
@@ -240,12 +349,17 @@ def run_checks(connection: psycopg.Connection, args: argparse.Namespace) -> list
                 """
                 SELECT MAX(date_updated) AS max_event_updated, MAX(date_posted) AS max_event_posted
                 FROM events
-                WHERE id = ANY(%s)
+                WHERE ra_event_id = ANY(%s)
                 """,
-                (event_ids,),
+                (event_ids_text,),
             )
-            cursor2_query = "SELECT MAX(fetched_at) AS max_payload_fetched FROM event_source_payloads WHERE event_id = ANY(%s)"
-            cursor2_params = (event_ids,)
+            cursor2_query = """
+                SELECT MAX(esp.fetched_at) AS max_payload_fetched
+                FROM event_source_payloads esp
+                JOIN events e ON e.id = esp.event_id
+                WHERE e.ra_event_id = ANY(%s)
+            """
+            cursor2_params = (event_ids_text,)
         else:
             cursor.execute(
                 "SELECT NULL::timestamptz AS max_event_updated, NULL::timestamptz AS max_event_posted"

@@ -2,10 +2,15 @@ from __future__ import annotations
 
 import argparse
 import os
+import sys
 from pathlib import Path
 
 import psycopg
 from psycopg.rows import dict_row
+
+sys.path.append(str(Path(__file__).resolve().parents[1]))
+
+from app.embeddings import fetch_entity_ids
 
 DATABASE_URL = os.environ["DATABASE_URL"]
 
@@ -106,16 +111,18 @@ def main() -> None:
                 """
             )
 
+        event_entity_ids = fetch_entity_ids(connection, "event", ids=event_ids)
+        artist_entity_ids = fetch_entity_ids(connection, "artist", ids=artist_ids)
         event_updated, event_missing = update_entity_vectors(
             connection,
             entity_type="event",
-            entity_ids=event_ids,
+            entity_ids=event_entity_ids,
             configured_dimensions=configured_dimensions,
         )
         artist_updated, artist_missing = update_entity_vectors(
             connection,
             entity_type="artist",
-            entity_ids=artist_ids,
+            entity_ids=artist_entity_ids,
             configured_dimensions=configured_dimensions,
         )
         updated_rows = event_updated + artist_updated

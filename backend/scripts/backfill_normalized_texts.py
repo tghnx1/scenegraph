@@ -67,8 +67,8 @@ def backfill_lineups(
         if event_ids is not None:
             if not event_ids:
                 return 0, 0
-            where.append("id = ANY(%s)")
-            params.append(event_ids)
+            where.append("ra_event_id = ANY(%s)")
+            params.append([str(event_id) for event_id in event_ids])
         cursor.execute(
             f"SELECT id, lineup_raw, lineup_residual_text FROM events WHERE {' AND '.join(where)} ORDER BY id ASC",
             params,
@@ -122,8 +122,8 @@ def backfill_biographies(
         if artist_ids is not None:
             if not artist_ids:
                 return 0, 0
-            where.append("id = ANY(%s)")
-            params.append(artist_ids)
+            where.append("ra_artist_id = ANY(%s)")
+            params.append([str(artist_id) for artist_id in artist_ids])
         cursor.execute(
             f"SELECT id, biography, biography_normalized FROM artists WHERE {' AND '.join(where)} ORDER BY id ASC",
             params,

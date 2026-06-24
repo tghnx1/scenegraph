@@ -7,7 +7,7 @@ import shlex
 import subprocess
 import sys
 import time
-from datetime import date as date_class
+from datetime import date as date_class, datetime
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -21,17 +21,23 @@ sys.path.append(str(Path(__file__).resolve().parents[1]))
 from app.artist_tag_extraction import TagExtractionConfig
 from app.embeddings import EmbeddingConfig
 from app.event_tag_extraction import EventTagExtractionConfig
+from app.import_run_logger import ImportRunLogger
 from app.schema_preflight import check_schema_tables, schema_preflight_strict_mode
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_EVENTS_JSON = REPO_ROOT / "backend" / "data" / "ra_berlin_past_events_2026.json"
 DEFAULT_ARTISTS_JSON = REPO_ROOT / "backend" / "data" / "artists.json"
 DEFAULT_BIO_JSON = REPO_ROOT / "backend" / "data" / "artist_biographies.json"
-STAGE_ARTIFACTS_DIR = Path("/tmp/scenegraph_full_pipeline")
+DEFAULT_IMPORT_RUNS_DIR = Path(
+    os.environ.get(
+        "FULL_PIPELINE_ARTIFACTS_DIR",
+        str(REPO_ROOT / "backend" / "data" / "import_runs"),
+    )
+).expanduser()
 DEFAULT_CDP_URL = os.environ.get("SCENEGRAPH_CDP_URL", "http://127.0.0.1:9222")
 DEFAULT_MIN_DATE = "2021-01-01"
 DEFAULT_MAX_DATE = ""
+ACTIVE_IMPORT_LOGGER = ImportRunLogger.disabled()
 
 
 def parse_iso_date(value: str) -> tuple[int, int, int]:
@@ -91,6 +97,27 @@ def extract_artist_ids(events: list[dict[str, object]]) -> list[int]:
     return ids
 
 
+def safe_path_part(value: str) -> str:
+    return "".join(char if char.isalnum() or char in {"-", "_"} else "_" for char in value).strip("_")
+
+
+def build_run_artifacts(
+    *,
+    artifacts_dir: Path,
+    min_date: str,
+    max_date: str,
+) -> tuple[Path, Path, Path, Path]:
+    date_slug = f"{safe_path_part(min_date)}_to_{safe_path_part(max_date)}"
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    run_dir = artifacts_dir.expanduser().resolve() / f"{date_slug}_{timestamp}"
+    return (
+        run_dir / "events.json",
+        run_dir / "artists.json",
+        run_dir / "artist_biographies.json",
+        run_dir,
+    )
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run the full Scenegraph ingestion pipeline in Docker.")
     parser.add_argument("--min-date", default=DEFAULT_MIN_DATE, help="Oldest event date to crawl (YYYY-MM-DD).")
@@ -107,8 +134,17 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--events-json",
         type=Path,
-        default=DEFAULT_EVENTS_JSON,
-        help="Path to the scraped events JSON artifact.",
+        default=None,
+        help=(
+            "Path to the scraped events JSON artifact. If omitted, full-pipeline creates "
+            "a fresh backend/data/import_runs/<date-range>_<timestamp>/ artifact directory."
+        ),
+    )
+    parser.add_argument(
+        "--artifacts-dir",
+        type=Path,
+        default=DEFAULT_IMPORT_RUNS_DIR,
+        help="Directory for per-run artifacts when --events-json is omitted.",
     )
     parser.add_argument(
         "--artists-json",
@@ -185,9 +221,13 @@ def print_stage(name: str, command: list[str]) -> None:
 
 def run_stage(name: str, command: list[str], *, cwd: Path | None = None, env: dict[str, str] | None = None) -> None:
     print_stage(name, command)
+    stage_id, started_at = ACTIVE_IMPORT_LOGGER.start_stage(name, command)
     completed = subprocess.run(command, cwd=str(cwd or REPO_ROOT), env=env)
     if completed.returncode != 0:
-        raise SystemExit(f"{name} failed with exit code {completed.returncode}")
+        error = f"{name} failed with exit code {completed.returncode}"
+        ACTIVE_IMPORT_LOGGER.finish_stage(stage_id, status="failed", started_at=started_at, error=error)
+        raise SystemExit(error)
+    ACTIVE_IMPORT_LOGGER.finish_stage(stage_id, status="succeeded", started_at=started_at)
 
 
 def ensure_writable_parent(path: Path) -> None:
@@ -287,19 +327,31 @@ def ensure_db_ready() -> None:
 
 
 def main() -> int:
+    global ACTIVE_IMPORT_LOGGER
     args = parse_args()
 
     if not args.parse_python.exists():
         raise SystemExit(f"parse-python executable not found: {args.parse_python}")
 
-    events_json = args.events_json.expanduser().resolve()
-    artists_json = args.artists_json.expanduser().resolve()
-    bio_json = args.bio_json.expanduser().resolve()
+    min_date = args.min_date or DEFAULT_MIN_DATE
+    max_date = args.max_date or date_class.today().isoformat()
+
+    if args.events_json is None:
+        events_json, artists_json, bio_json, run_artifacts_dir = build_run_artifacts(
+            artifacts_dir=args.artifacts_dir,
+            min_date=min_date,
+            max_date=max_date,
+        )
+    else:
+        events_json = args.events_json.expanduser().resolve()
+        artists_json = args.artists_json.expanduser().resolve()
+        bio_json = args.bio_json.expanduser().resolve()
+        run_artifacts_dir = events_json.parent
 
     ensure_writable_parent(events_json)
     ensure_writable_parent(artists_json)
     ensure_writable_parent(bio_json)
-    STAGE_ARTIFACTS_DIR.mkdir(parents=True, exist_ok=True)
+    run_artifacts_dir.mkdir(parents=True, exist_ok=True)
     ensure_db_ready()
     chrome_proc: subprocess.Popen[bytes] | None = None
     if not args.skip_bio:
@@ -323,140 +375,181 @@ def main() -> int:
                     time.sleep(1.0)
     ensure_provider_env(args.skip_tags, args.skip_embeddings)
 
-    events_payload = json.loads(events_json.read_text(encoding="utf-8"))
-    if not isinstance(events_payload, list):
-        raise SystemExit(f"Expected a JSON list in {events_json}")
+    event_ids_file = run_artifacts_dir / "event_ids.txt"
+    artist_ids_file = run_artifacts_dir / "artist_ids.txt"
+    ACTIVE_IMPORT_LOGGER = ImportRunLogger.start(
+        min_date=min_date,
+        max_date=max_date,
+        events_json=events_json,
+        event_ids_file=event_ids_file,
+        artist_ids_file=artist_ids_file,
+        metadata={
+            "skipBio": args.skip_bio,
+            "skipTags": args.skip_tags,
+            "skipEmbeddings": args.skip_embeddings,
+            "dedupWithDb": args.dedup_with_db,
+            "cdpUrl": args.cdp_url,
+        },
+    )
 
-    import_events_json = events_json
-    event_ids_file = STAGE_ARTIFACTS_DIR / f"{events_json.stem}.event_ids.txt"
-    artist_ids_file = STAGE_ARTIFACTS_DIR / f"{events_json.stem}.artist_ids.txt"
-    if args.min_date or args.max_date:
-        min_date = args.min_date or DEFAULT_MIN_DATE
-        max_date = args.max_date or date_class.today().isoformat()
-        import_events_json = events_json.with_name(
-            f"{events_json.stem}.{min_date}_to_{max_date}.import.json"
-        )
-        filtered_events = [event for event in events_payload if isinstance(event, dict) and event_in_date_range(event, min_date, max_date)]
-        import_events_json.write_text(json.dumps(filtered_events, ensure_ascii=False, indent=2), encoding="utf-8")
-        write_id_file(event_ids_file, extract_event_ids(filtered_events))
-        write_id_file(artist_ids_file, extract_artist_ids(filtered_events))
-        print(f"[pipeline] Filtered {len(filtered_events)} events for import into {import_events_json}")
-    else:
-        write_id_file(event_ids_file, extract_event_ids(events_payload))
-        write_id_file(artist_ids_file, extract_artist_ids(events_payload))
-
-    parse_cmd = [
-        str(args.parse_python),
-        str(REPO_ROOT / "parsers" / "run_ra_pipeline.py"),
-        "--parse-python",
-        str(args.parse_python),
-        "--events-json",
-        str(events_json),
-        "--artists-json",
-        str(artists_json),
-        "--bio-json",
-        str(bio_json),
-        "--cdp-url",
-        args.cdp_url,
-        "--events-min-date",
-        args.min_date,
-        "--events-max-date",
-        args.max_date,
-    ]
-    if args.dedup_with_db:
-        parse_cmd.append("--dedup-with-db")
-    else:
-        parse_cmd.append("--no-dedup-with-db")
-    if args.skip_bio:
-        parse_cmd.append("--skip-bio")
-
-    run_stage("scrape-and-parse", parse_cmd)
-
-    import_cmd = [
-        str(args.parse_python),
-        str(REPO_ROOT / "backend" / "scripts" / "import_events.py"),
-        str(import_events_json),
-    ]
-    if not args.skip_bio:
-        import_cmd.extend(["--biographies-path", str(bio_json)])
-    run_stage("import-to-db", import_cmd)
-
-    run_stage(
-        "backfill-normalized-texts",
-        [
+    try:
+        parse_cmd = [
             str(args.parse_python),
-            str(REPO_ROOT / "backend" / "scripts" / "backfill_normalized_texts.py"),
+            str(REPO_ROOT / "parsers" / "run_ra_pipeline.py"),
+            "--parse-python",
+            str(args.parse_python),
+            "--events-json",
+            str(events_json),
+            "--artists-json",
+            str(artists_json),
+            "--bio-json",
+            str(bio_json),
+            "--cdp-url",
+            args.cdp_url,
+            "--events-min-date",
+            min_date,
+            "--events-max-date",
+            max_date,
+        ]
+        if args.dedup_with_db:
+            parse_cmd.append("--dedup-with-db")
+        else:
+            parse_cmd.append("--no-dedup-with-db")
+        if args.skip_bio:
+            parse_cmd.append("--skip-bio")
+
+        run_stage("scrape-and-parse", parse_cmd)
+
+        events_payload = json.loads(events_json.read_text(encoding="utf-8"))
+        if not isinstance(events_payload, list):
+            raise SystemExit(f"Expected a JSON list in {events_json}")
+
+        import_events_json = events_json
+        if args.min_date or args.max_date:
+            import_events_json = run_artifacts_dir / "import.json"
+            filtered_events = [
+                event
+                for event in events_payload
+                if isinstance(event, dict) and event_in_date_range(event, min_date, max_date)
+            ]
+            import_events_json.write_text(json.dumps(filtered_events, ensure_ascii=False, indent=2), encoding="utf-8")
+            event_ids = extract_event_ids(filtered_events)
+            artist_ids = extract_artist_ids(filtered_events)
+            write_id_file(event_ids_file, event_ids)
+            write_id_file(artist_ids_file, artist_ids)
+            print(f"[pipeline] Filtered {len(filtered_events)} events for import into {import_events_json}")
+        else:
+            event_ids = extract_event_ids(events_payload)
+            artist_ids = extract_artist_ids(events_payload)
+            write_id_file(event_ids_file, event_ids)
+            write_id_file(artist_ids_file, artist_ids)
+
+        ACTIVE_IMPORT_LOGGER.update(
+            import_json=import_events_json,
+            metrics={
+                "event_count": len(set(event_ids)),
+                "artist_count": len(set(artist_ids)),
+            },
+        )
+
+        if not event_ids:
+            print("[pipeline] No events matched the requested date range after dedup/filtering; nothing to import.")
+            ACTIVE_IMPORT_LOGGER.update(status="succeeded")
+            print("\nFull pipeline completed successfully.")
+            return 0
+
+        import_cmd = [
+            str(args.parse_python),
+            str(REPO_ROOT / "backend" / "scripts" / "import_events.py"),
+            str(import_events_json),
+        ]
+        if not args.skip_bio:
+            import_cmd.extend(["--biographies-path", str(bio_json)])
+        run_stage("import-to-db", import_cmd)
+
+        run_stage(
+            "backfill-normalized-texts",
+            [
+                str(args.parse_python),
+                str(REPO_ROOT / "backend" / "scripts" / "backfill_normalized_texts.py"),
+                "--event-ids-file",
+                str(event_ids_file),
+                "--artist-ids-file",
+                str(artist_ids_file),
+            ],
+        )
+
+        if not args.skip_tags:
+            run_stage(
+                "extract-event-tags",
+                [
+                    str(args.parse_python),
+                    str(REPO_ROOT / "backend" / "scripts" / "extract_event_tags.py"),
+                    "--event-ids-file",
+                    str(event_ids_file),
+                ],
+            )
+            run_stage(
+                "extract-artist-tags",
+                [
+                    str(args.parse_python),
+                    str(REPO_ROOT / "backend" / "scripts" / "extract_artist_tags.py"),
+                    "--artist-ids-file",
+                    str(artist_ids_file),
+                ],
+            )
+
+        if not args.skip_embeddings:
+            run_stage(
+                "generate-embeddings",
+                [
+                    str(args.parse_python),
+                    str(REPO_ROOT / "backend" / "scripts" / "generate_embeddings.py"),
+                    "--event-ids-file",
+                    str(event_ids_file),
+                    "--artist-ids-file",
+                    str(artist_ids_file),
+                ],
+            )
+            run_stage(
+                "backfill-embedding-vectors",
+                [
+                    str(args.parse_python),
+                    str(REPO_ROOT / "backend" / "scripts" / "backfill_embedding_vectors.py"),
+                    "--event-ids-file",
+                    str(event_ids_file),
+                    "--artist-ids-file",
+                    str(artist_ids_file),
+                ],
+            )
+
+        validate_cmd = [
+            str(args.parse_python),
+            str(REPO_ROOT / "backend" / "scripts" / "validate_import.py"),
             "--event-ids-file",
             str(event_ids_file),
             "--artist-ids-file",
             str(artist_ids_file),
-        ],
-    )
+        ]
+        if not args.skip_embeddings:
+            validate_cmd.append("--require-embeddings")
+        if args.validate_artist_id is not None:
+            validate_cmd.extend(["--check-artist-id", str(args.validate_artist_id)])
+        if not args.skip_bio:
+            validate_cmd.extend(["--biographies-path", str(bio_json)])
+        run_stage("validate-import", validate_cmd)
 
-    if not args.skip_tags:
-        run_stage(
-            "extract-event-tags",
-            [
-                str(args.parse_python),
-                str(REPO_ROOT / "backend" / "scripts" / "extract_event_tags.py"),
-                "--event-ids-file",
-                str(event_ids_file),
-            ],
-        )
-        run_stage(
-            "extract-artist-tags",
-            [
-                str(args.parse_python),
-                str(REPO_ROOT / "backend" / "scripts" / "extract_artist_tags.py"),
-                "--artist-ids-file",
-                str(artist_ids_file),
-            ],
-        )
-
-    if not args.skip_embeddings:
-        run_stage(
-            "backfill-embedding-vectors",
-            [
-                str(args.parse_python),
-                str(REPO_ROOT / "backend" / "scripts" / "backfill_embedding_vectors.py"),
-                "--event-ids-file",
-                str(event_ids_file),
-                "--artist-ids-file",
-                str(artist_ids_file),
-            ],
-        )
-        run_stage(
-            "generate-embeddings",
-            [
-                str(args.parse_python),
-                str(REPO_ROOT / "backend" / "scripts" / "generate_embeddings.py"),
-                "--event-ids-file",
-                str(event_ids_file),
-                "--artist-ids-file",
-                str(artist_ids_file),
-            ],
-        )
-
-    validate_cmd = [
-        str(args.parse_python),
-        str(REPO_ROOT / "backend" / "scripts" / "validate_import.py"),
-        "--event-ids-file",
-        str(event_ids_file),
-        "--artist-ids-file",
-        str(artist_ids_file),
-    ]
-    if not args.skip_embeddings:
-        validate_cmd.append("--require-embeddings")
-    if args.validate_artist_id is not None:
-        validate_cmd.extend(["--check-artist-id", str(args.validate_artist_id)])
-    if not args.skip_bio:
-        validate_cmd.extend(["--biographies-path", str(bio_json)])
-    run_stage("validate-import", validate_cmd)
-
-    print("\nFull pipeline completed successfully.")
-    if chrome_proc is not None and chrome_proc.poll() is None:
-        chrome_proc.terminate()
-    return 0
+        final_metrics = ACTIVE_IMPORT_LOGGER.collect_metrics(event_ids, artist_ids) if ACTIVE_IMPORT_LOGGER.enabled else {}
+        ACTIVE_IMPORT_LOGGER.update(status="succeeded", metrics=final_metrics)
+        print("\nFull pipeline completed successfully.")
+        return 0
+    except BaseException as exc:
+        ACTIVE_IMPORT_LOGGER.update(status="failed", error=exc)
+        raise
+    finally:
+        ACTIVE_IMPORT_LOGGER = ImportRunLogger.disabled()
+        if chrome_proc is not None and chrome_proc.poll() is None:
+            chrome_proc.terminate()
 
 
 if __name__ == "__main__":

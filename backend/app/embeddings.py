@@ -171,8 +171,9 @@ def fetch_entity_ids(
     if ids is not None:
         if not ids:
             return []
-        where.append("id = ANY(%s)")
-        params.append(ids)
+        ra_column = "ra_event_id" if entity_type == "event" else "ra_artist_id"
+        where.append(f"{ra_column} = ANY(%s)")
+        params.append([str(entity_id) for entity_id in ids])
 
     if where:
         sql += " WHERE " + " AND ".join(where)
