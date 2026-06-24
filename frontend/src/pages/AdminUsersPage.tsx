@@ -129,6 +129,22 @@ export function AdminUsersPage({ compact = false, onActivityChanged, }: AdminUse
     await onActivityChanged?.()
   }
 
+  const pendingItems = [
+    ...users.map((user) => ({
+      type: 'user' as const,
+      created_at: user.created_at,
+      item: user,
+    })),
+    ...claims.map((claim) => ({
+      type: 'claim' as const,
+      created_at: claim.created_at,
+      item: claim,
+    })),
+  ].sort(
+    (a, b) =>
+      new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+  )
+
   return (
     <section style={{ display: 'grid', gap: 12}}>
       {compact ? (
@@ -144,110 +160,117 @@ export function AdminUsersPage({ compact = false, onActivityChanged, }: AdminUse
         className="dashboard-scroll-list"
         style={{ maxHeight: 130, overflowY: 'auto', display: 'grid', gap: 12, paddingRight: 16, paddingTop: 4 }}
       >
+        {pendingItems.map((entry) => {
+          if (entry.type === 'user') {
+            const user = entry.item 
 
-        {users.map((user) => (
-          <div 
-            key={user.id}
-            className="dashboard-table-row"
-            style={{
-              display: 'grid',
-              gridTemplateColumns: '1fr',
-              gap: 8,
-              padding: '12px 16px',
-              minHeight: 120,
-              background: 'color-mix(in srgb, var(--background) 82%, var(--text) 8%)',
-              borderRadius: 12,
-              paddingRight: 12,
-              border:
-                user.role === 'agent'
-                  ? '2px solid var(--accent)'
-                  : '1px solid color-mix(in srgb, var(--text) 18%, transparent)',
-            }}
-          >
+            return (
+              <div 
+                key={`user-${user.id}`}
+                className="dashboard-table-row"
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: '1fr',
+                  gap: 8,
+                  padding: '12px 16px',
+                  minHeight: 120,
+                  background: 'color-mix(in srgb, var(--background) 82%, var(--text) 8%)',
+                  borderRadius: 12,
+                  paddingRight: 12,
+                  border:
+                    user.role === 'agent'
+                      ? '2px solid var(--accent)'
+                      : '1px solid color-mix(in srgb, var(--text) 18%, transparent)',
+                }}
+              >
 
-            <div style={{ whiteSpace: 'normal', overflow: 'visible', textOverflow: 'ellipsis' }}>
-              <strong>{user.username}</strong>
-              <span> — {user.email}</span>
-              <span> — {user.role}</span>
-            </div>
+                <div style={{ whiteSpace: 'normal', overflow: 'visible', textOverflow: 'ellipsis' }}>
+                  <strong>{user.username}</strong>
+                  <span> — {user.email}</span>
+                  <span> — {user.role}</span>
+                </div>
 
-            <div style={{display: 'flex', gap: 8}}>
-              <button 
-                type="button" 
-                  style={{
-                    ...adminButtonStyle, 
-                    width: 110, 
-                    alignSelf: 'start',
-                  }}
-                onClick={() => handleApprove(user)}>Approve
-              </button>
-              <button
-                type="button"
+                <div style={{display: 'flex', gap: 8}}>
+                  <button 
+                    type="button" 
+                      style={{
+                        ...adminButtonStyle, 
+                        width: 110, 
+                        alignSelf: 'start',
+                      }}
+                    onClick={() => handleApprove(user)}>Approve
+                  </button>
+                  <button
+                    type="button"
+                      style={{
+                        ...adminButtonStyle,
+                        width: 110, 
+                        alignSelf: 'start',
+                      }}
+                    onClick={() => handleReject(user)}>Reject
+                  </button>
+                </div>
+              </div>
+            )
+          }
+            
+          const claim = entry.item
+
+          return (
+            <div
+              key={`claim-${claim.id}`}
+              className="dashboard-table-row"
+              style={{
+                display: 'grid',
+                gridTemplateColumns: '1fr',
+                gap: 8,
+                padding: '12px 16px',
+                minHeight: 120,
+                alignItems: 'start',
+                background: 'color-mix(in srgb, var(--accent) 10%, var(--background) 90%)',
+                borderRadius: 12,
+                border: '2px solid color-mix(in srgb, var(--accent) 65%, var(--background) 35%)',
+              }}
+            >
+              <div style={{ whiteSpace: 'normal', overflow: 'visible' }}>
+                <strong>Artist claim</strong>
+                <span> — {claim.username}</span>
+                <span> — {claim.email}</span>
+                <span> — claims: {claim.artist_name}</span>
+              </div>
+
+              <p style={{ margin: 0, fontSize: 13, color: 'var(--text-muted)' }}>
+                Reason: {claim.reason}
+              </p>
+
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button
+                  type="button"
                   style={{
                     ...adminButtonStyle,
-                    width: 110, 
+                    width: 110,
                     alignSelf: 'start',
                   }}
-                onClick={() => handleReject(user)}>Reject
-              </button>
+                  onClick={() => handleApproveClaim(claim)}
+                >
+                  Approve
+                </button>
+
+                <button
+                  type="button"
+                  style={{
+                    ...adminButtonStyle,
+                    width: 110,
+                    alignSelf: 'start',
+                  }}
+                  onClick={() => handleRejectClaim(claim)}
+                >
+                  Reject
+                </button>
+              </div>
             </div>
-          </div>
-        ))}
-
-        {claims.map((claim) => (
-          <div
-            key={`claim-${claim.id}`}
-            className="dashboard-table-row"
-            style={{
-              display: 'grid',
-              gridTemplateColumns: '1fr',
-              gap: 8,
-              padding: '12px 16px',
-              minHeight: 120,
-              alignItems: 'start',
-              background: 'color-mix(in srgb, var(--accent) 10%, var(--background) 90%)',
-              borderRadius: 12,
-              border: '2px solid color-mix(in srgb, var(--accent) 65%, var(--background) 35%)',
-            }}
-          >
-            <div style={{ whiteSpace: 'normal', overflow: 'visible' }}>
-              <strong>Artist claim</strong>
-              <span> — {claim.username}</span>
-              <span> — {claim.email}</span>
-              <span> — claims: {claim.artist_name}</span>
-            </div>
-
-            <p style={{ margin: 0, fontSize: 13, color: 'var(--text-muted)' }}>
-              Reason: {claim.reason}
-            </p>
-
-            <div style={{ display: 'flex', gap: 8 }}>
-              <button
-                type="button"
-                style={{
-                  ...adminButtonStyle,
-                  width: 110,
-                  alignSelf: 'start',
-                }}
-                onClick={() => handleApproveClaim(claim)}
-              >
-                Approve
-              </button>
-
-              <button
-                type="button"
-                style={{
-                  ...adminButtonStyle,
-                  width: 110,
-                  alignSelf: 'start',
-                }}
-                onClick={() => handleRejectClaim(claim)}
-              >
-                Reject
-              </button>
-            </div>
-          </div>
-        ))}
+          )
+        })}
       </div>
 
       <div className="dashboard-section-heading" style={{ marginTop: 8, marginBottom: 4 }}>

@@ -209,23 +209,23 @@ async def update_artist_biography(
     id: int,
     request: ArtistBiographyUpdate,
     db: Connection = Depends(get_db),
-    current_user: dict = Depends(get_current_user_id),
+    current_user_id: dict = Depends(get_current_user_id),
 ):
     with db.cursor() as cur:
         cur.execute(
             """
-            SELECT artist_id
+            SELECT role, artist_id
             FROM users
             WHERE id = %s
             """,
-            (current_user["id"],)
+            (current_user_id,)
         )
         user_row = cur.fetchone()
 
     if not user_row:
         raise HTTPException(status_code=403, detail="User not found")
     
-    if not user_row["role"] != "admin" and user_row["artist_id"] != id:
+    if user_row["role"] != "admin" and user_row["artist_id"] != id:
         raise HTTPException(
             status_code=403,
             detail="You can only edit your own artist profile"

@@ -180,6 +180,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
       localStorage.setItem('role', role)
       localStorage.setItem('username', authenticatedUsername)
       localStorage.setItem('last_username', authenticatedUsername)
+      localStorage.setItem('artist_id', String(response.artist_id))
 
       if (response.user_id !== undefined) {
         localStorage.setItem('user_id', String(response.user_id))

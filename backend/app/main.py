@@ -182,7 +182,7 @@ def get_current_user(
     with connection.cursor() as cursor:
         cursor.execute(
             """
-            SELECT id, username, role, status
+            SELECT id, username, role, status, artist_id
             FROM users
             WHERE id = %s
             """,
@@ -300,7 +300,7 @@ async def login(
     with connection.cursor() as cursor:
         cursor.execute(
             """
-            SELECT id, username, password_hash, role, status, must_change_password
+            SELECT id, username, password_hash, role, status, must_change_password, artist_id
             FROM users
             WHERE username = %s
             """,
@@ -349,6 +349,7 @@ async def login(
             }
         ),
         must_change_password=user["must_change_password"],
+        artist_id=user["artist_id"],
     )
 
 USERNAME_RE = re.compile(r"^[a-zA-Z0-9_-]{3,32}$")     
@@ -1202,12 +1203,12 @@ async def reject_artist_claim(
             """,
             (claim_id,),
         )
-        updated_claim = cursor.fetchone()
+        claim = cursor.fetchone()
 
-        if updated_claim is None:
+        if claim is None:
             raise HTTPException(status_code=404, detail="Claim not found")
 
-        if updated_claim["status"] != "pending":
+        if claim["status"] != "pending":
             raise HTTPException(status_code=400, detail="Claim already decided")
 
         cursor.execute(
@@ -1222,8 +1223,11 @@ async def reject_artist_claim(
             """,
             (admin["id"], claim_id),
         )
-        claim = cursor.fetchone()
+        updated_claim = cursor.fetchone()
 
+        if updated_claim is None:
+            raise HTTPException(status_code=400, detail="Claim already decided")
+        
         connection.commit()
 
         log_activity(
