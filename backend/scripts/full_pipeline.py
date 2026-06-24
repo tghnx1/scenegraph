@@ -28,6 +28,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_EVENTS_JSON = REPO_ROOT / "backend" / "data" / "ra_berlin_past_events_2026.json"
 DEFAULT_ARTISTS_JSON = REPO_ROOT / "backend" / "data" / "artists.json"
 DEFAULT_BIO_JSON = REPO_ROOT / "backend" / "data" / "artist_biographies.json"
+STAGE_ARTIFACTS_DIR = Path("/tmp/scenegraph_full_pipeline")
 DEFAULT_CDP_URL = os.environ.get("SCENEGRAPH_CDP_URL", "http://127.0.0.1:9222")
 DEFAULT_MIN_DATE = "2021-01-01"
 DEFAULT_MAX_DATE = ""
@@ -298,6 +299,7 @@ def main() -> int:
     ensure_writable_parent(events_json)
     ensure_writable_parent(artists_json)
     ensure_writable_parent(bio_json)
+    STAGE_ARTIFACTS_DIR.mkdir(parents=True, exist_ok=True)
     ensure_db_ready()
     chrome_proc: subprocess.Popen[bytes] | None = None
     if not args.skip_bio:
@@ -326,8 +328,8 @@ def main() -> int:
         raise SystemExit(f"Expected a JSON list in {events_json}")
 
     import_events_json = events_json
-    event_ids_file = events_json.with_name(f"{events_json.stem}.event_ids.txt")
-    artist_ids_file = events_json.with_name(f"{events_json.stem}.artist_ids.txt")
+    event_ids_file = STAGE_ARTIFACTS_DIR / f"{events_json.stem}.event_ids.txt"
+    artist_ids_file = STAGE_ARTIFACTS_DIR / f"{events_json.stem}.artist_ids.txt"
     if args.min_date or args.max_date:
         min_date = args.min_date or DEFAULT_MIN_DATE
         max_date = args.max_date or date_class.today().isoformat()
