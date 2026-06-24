@@ -47,16 +47,47 @@ async def dashboard_ws(
 
             async def notify_task():
                 try:
+                    pending_areas: set[str] = set()
+                    debounce_task: asyncio.Task | None = None
+
+                    async def flush():
+                        nonlocal debounce_task
+                        await asyncio.sleep(0.5)
+                        if pending_areas:
+                            await websocket.send_text(json.dumps({
+                                "type": "dashboard.updated",
+                                "areas": list(pending_areas),
+                            }))
+                            pending_areas.clear()
+                        debounce_task = None
+
                     async for notify in conn.notifies():
                         if stop_event.is_set():
                             break
-                        await websocket.send_text(json.dumps({
-                            "type": "dashboard.updated",
-                            "areas": ALL_AREAS,
-                        }))
+
+                        payload = json.loads(notify.payload)
+                        table = payload.get("table", "")
+                        pending_areas.update(ALL_AREAS)
+                        if table == "users":
+                            pending_areas.add("users")
+                        elif "users" in table:
+                            pending_areas.update(ALL_AREAS)
+                            pending_areas.add("users")
+                        else:
+                            pending_areas.update(ALL_AREAS)
+
+                        if debounce_task is not None:
+                            debounce_task.cancel()
+                        debounce_task = asyncio.create_task(flush())
+                        # await websocket.send_text(json.dumps({
+                        #     "type": "dashboard.updated",
+                        #     "areas": areas,
+                        # }))
                 except Exception as e:
                     logger.error("Fatal error in the database listener: %s", e, exc_info=True)
                 finally:
+                    if debounce_task is not None:
+                        debounce_task.cancel()
                     stop_event.set()
 
             async def keepalive_task():
