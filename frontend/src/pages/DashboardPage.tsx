@@ -5,8 +5,8 @@ import {fetchDashboardStatus} from '../api/dashboardComposition'
 import {fetchDashboardMetrics} from '../api/dashboardMetrics'
 import {useApi} from '../api/useApi'
 import type {DashboardEntity} from '../types/dashboardComposition'
-import { Button } from '@/shared/ui/button'
 import {DashboardExportMenu} from './components/ExportDashboard'
+import {DashboardImportButton} from './components/ImportDashboard'
 import {DashboardMetricPanels} from './components/DashboardMetric'
 import {DashboardStatistics} from './components/DashboardComposition'
 import {useDashboardUpdates, type DashboardUpdate} from './hooks/useDashboardUpdates'
@@ -20,6 +20,7 @@ export function DashboardPage() {
   ])
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
+  const [activityRows, setActivityRows] = useState<ActivityLogItem[]>([])
   const include = selectedEntities.join(',')
   const {
     data: dashboardStatus,
@@ -36,6 +37,15 @@ export function DashboardPage() {
     error: metricsError,
     refetch: refetchMetrics,
   } = useApi(fetchDashboardMetrics, [])
+
+  const loadActivity = useCallback(async () => {
+    try {
+      const response = await getActivityLog()
+      setActivityRows(response.activity)
+    } catch (error) {
+      console.error(error)
+    }
+  }, [])
 
   const handleDashboardUpdate = useCallback(
     ({areas}: DashboardUpdate) => {
@@ -59,25 +69,14 @@ export function DashboardPage() {
     )
   }
 
-  const[activityRows, setActivityRows] = useState<ActivityLogItem[]>([])
-
-  const loadActivity = async () => {
-    try {
-      const response = await getActivityLog()
-      setActivityRows(response.activity)
-    } catch (error) {
-      console.error(error)
-    }
-  }
-
   useEffect(() => {
     void loadActivity()
   }, [])
 
   return (
     <div className="mx-auto min-h-full w-full max-w-[1480px] p-4">
-      <div className="mb-4 flex justify-end gap-2" aria-label="Dashboard actions">
-        <Button type="button" size="sm">Run import</Button>
+      <div className="mb-4 flex flex-wrap items-center justify-end gap-2" aria-label="Dashboard actions">
+        <DashboardImportButton />
         <DashboardExportMenu
           dashboardStatus={dashboardStatus}
           dashboardMetrics={dashboardMetrics}
