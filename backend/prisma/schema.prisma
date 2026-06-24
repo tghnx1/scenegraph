@@ -21,6 +21,7 @@ model Artist {
   manuallyKnownByArtists ArtistManualConnection[] @relation("manual_known_connected")
   extractedTags       ArtistExtractedTag[]
   tagExtractionRuns   ArtistTagExtractionRun[]
+  recommendationJobs  RecommendationJob[]
 
   @@map("artists")
 }
@@ -267,10 +268,84 @@ model User {
   username            String    @unique
   email               String    @unique
   passwordHash        String    @map("password_hash")
-  createdAt           DateTime  @default(now()) @map("created at") @db.Timestamptz(6)
+  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   role                String    @default("artist")
   status              String    @default("pending")
-  mustChangePassword  Boolean   @default("false") @map("must_change_password")
+  mustChangePassword  Boolean   @default(false) @map("must_change_password")
+  recommendationJobs RecommendationJob[]
 
   @@map("users")
+}
+
+model RecommendationJob {
+  id           String    @id @db.Uuid
+  userId       BigInt    @map("user_id")
+  artistId     BigInt    @map("artist_id")
+  jobType      String    @default("artist_promoters") @map("job_type")
+  paramsHash   String    @map("params_hash")
+  paramsJson   Json      @map("params_json")
+  status       String    @default("queued")
+  resultJson   Json?     @map("result_json")
+  errorMessage String?   @map("error_message")
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  startedAt    DateTime? @map("started_at") @db.Timestamptz(6)
+  finishedAt   DateTime? @map("finished_at") @db.Timestamptz(6)
+  updatedAt    DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  artist       Artist    @relation(fields: [artistId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([status, createdAt])
+  @@index([userId, createdAt])
+  @@map("recommendation_jobs")
+}
+
+model ImportRun {
+  id               BigInt    @id @default(autoincrement())
+  pipelineName     String    @default("full-pipeline") @map("pipeline_name")
+  status           String    @default("running")
+  minDate          DateTime? @map("min_date") @db.Date
+  maxDate          DateTime? @map("max_date") @db.Date
+  eventsJson       String?   @map("events_json")
+  importJson       String?   @map("import_json")
+  eventIdsFile     String?   @map("event_ids_file")
+  artistIdsFile    String?   @map("artist_ids_file")
+  eventCount       Int       @default(0) @map("event_count")
+  artistCount      Int       @default(0) @map("artist_count")
+  eventsImported   Int       @default(0) @map("events_imported")
+  artistsImported  Int       @default(0) @map("artists_imported")
+  eventPayloads    Int       @default(0) @map("event_payloads")
+  eventTags        Int       @default(0) @map("event_tags")
+  artistTags       Int       @default(0) @map("artist_tags")
+  eventEmbeddings  Int       @default(0) @map("event_embeddings")
+  artistEmbeddings Int       @default(0) @map("artist_embeddings")
+  metadata         Json      @default("{}")
+  error            String?
+  startedAt        DateTime  @default(now()) @map("started_at") @db.Timestamptz(6)
+  finishedAt       DateTime? @map("finished_at") @db.Timestamptz(6)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  stages           ImportRunStage[]
+
+  @@index([startedAt])
+  @@index([status, startedAt])
+  @@map("import_runs")
+}
+
+model ImportRunStage {
+  id          BigInt    @id @default(autoincrement())
+  importRunId BigInt    @map("import_run_id")
+  stageName   String    @map("stage_name")
+  status      String    @default("running")
+  command     String?
+  durationMs  Int?      @map("duration_ms")
+  metadata    Json      @default("{}")
+  error       String?
+  startedAt   DateTime  @default(now()) @map("started_at") @db.Timestamptz(6)
+  finishedAt  DateTime? @map("finished_at") @db.Timestamptz(6)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  importRun   ImportRun @relation(fields: [importRunId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([importRunId, stageName])
+  @@map("import_run_stages")
 }

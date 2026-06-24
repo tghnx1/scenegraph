@@ -13,7 +13,7 @@ export interface ManualArtistConnectionControl {
   onToggle: (artistId: number) => Promise<void>
 }
 
-const sidebarContentClass = 'grid min-h-0 min-w-0 gap-3.5 overflow-y-auto'
+const sidebarContentClass = 'grid min-h-0 min-w-0 gap-3.5 overflow-y-auto max-[900px]:min-h-[clamp(340px,46dvh,500px)]'
 const resultTypeClass = 'text-xs font-semibold uppercase tracking-[0.14em] text-[var(--accent)]'
 const resultMetaClass = 'mt-1 text-sm text-[var(--text-muted)]'
 const emptyStateClass = 'rounded-[18px] border border-[var(--surface-border-soft)] bg-[var(--surface-soft)] p-5 text-sm text-[var(--text-muted)]'

@@ -30,6 +30,23 @@ DATABASE_URL = os.environ["DATABASE_URL"]
 SOURCE = "description"
 
 
+def load_id_file(path: Path | None) -> list[int] | None:
+    if path is None:
+        return None
+    if not path.exists():
+        raise SystemExit(f"ID file not found: {path}")
+    ids: list[int] = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        raw = line.strip()
+        if not raw:
+            continue
+        try:
+            ids.append(int(raw))
+        except ValueError as exc:
+            raise SystemExit(f"Invalid integer id in {path}: {raw}") from exc
+    return ids
+
+
 # Formats one extracted event for compact progress logs.
 def event_log_label(event: dict) -> str:
     name = str(event.get("name") or "").replace("\n", " ").strip()
@@ -129,6 +146,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--dry-run", action="store_true", help="Print extracted tags without writing to DB.")
     parser.add_argument("--no-chunk-fallback", action="store_true", help="Disable chunk fallback on content filter.")
     parser.add_argument("--continue-on-error", action="store_true", help="Continue when one event fails.")
+    parser.add_argument(
+        "--event-ids-file",
+        type=Path,
+        default=None,
+        help="Optional newline-delimited list of event ids to process.",
+    )
     return parser.parse_args()
 
 
@@ -165,10 +188,12 @@ def main() -> None:
     processed = 0
     skipped = 0
     failed = 0
+    event_ids = load_id_file(args.event_ids_file)
 
     with psycopg.connect(DATABASE_URL, row_factory=dict_row) as connection:
         events = fetch_event_texts(
             connection,
+            event_ids=event_ids,
             event_id=args.event_id,
             limit=args.limit,
             offset=args.offset,

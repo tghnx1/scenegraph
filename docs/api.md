@@ -46,34 +46,6 @@ curl -s http://localhost:8080/api/genres
 
 ## Artist recommendations
 
-Hybrid artist recommendations combine semantic and graph signals:
-
-```bash
-curl -s "http://localhost:8080/api/recommendations/artists/2178?limit=5"
-```
-
-Abbreviated response:
-
-```json
-{
-  "entityId": 2178,
-  "entityType": "artist",
-  "model": "configured-embedding-model",
-  "dimensions": 1536,
-  "recommendations": [
-    {
-      "id": 123,
-      "type": "artist",
-      "name": "Example Artist",
-      "score": 0.82,
-      "semanticScore": 0.79,
-      "graphScore": 0.87,
-      "reasons": ["shared promoter history"]
-    }
-  ]
-}
-```
-
 Inspect semantic-only artist similarity:
 
 ```bash

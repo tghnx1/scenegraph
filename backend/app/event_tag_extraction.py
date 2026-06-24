@@ -596,6 +596,7 @@ def extract_event_tag_batch_with_llm(
 def fetch_event_texts(
     connection: Connection,
     *,
+    event_ids: list[int] | None = None,
     event_id: int | None = None,
     limit: int | None = None,
     offset: int = 0,
@@ -605,6 +606,11 @@ def fetch_event_texts(
     where = [
         "COALESCE(NULLIF(BTRIM(e.title), ''), NULLIF(BTRIM(e.description_text), ''), NULL) IS NOT NULL"
     ]
+    if event_ids is not None:
+        if not event_ids:
+            return []
+        where.append("e.ra_event_id = ANY(%s)")
+        params.append([str(event_id) for event_id in event_ids])
     if event_id is not None:
         where.append("e.id = %s")
         params.append(event_id)

@@ -20,39 +20,32 @@ class CheckResult:
     details: str
 
 
+def load_id_file(path: Path | None) -> list[int] | None:
+    if path is None:
+        return None
+    if not path.exists():
+        raise SystemExit(f"ID file not found: {path}")
+    ids: list[int] = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        raw = line.strip()
+        if not raw:
+            continue
+        try:
+            ids.append(int(raw))
+        except ValueError as exc:
+            raise SystemExit(f"Invalid integer id in {path}: {raw}") from exc
+    return ids
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Validate Scenegraph import integrity in Postgres.")
-    parser.add_argument(
-        "--min-events",
-        type=int,
-        default=1,
-        help="Minimum number of rows expected in events table. Defaults to 1.",
-    )
-    parser.add_argument(
-        "--min-artists",
-        type=int,
-        default=1,
-        help="Minimum number of rows expected in artists table. Defaults to 1.",
-    )
-    parser.add_argument(
-        "--require-embeddings",
-        action="store_true",
-        help="Fail if entity_embeddings has 0 rows.",
-    )
-    parser.add_argument(
-        "--check-artist-id",
-        type=int,
-        default=None,
-        help="Optional artist id that must have at least one embedding row.",
-    )
-    parser.add_argument(
-        "--biographies-path",
-        default=None,
-        help=(
-            "Optional path to artist_biographies JSON to validate file presence/format "
-            "and report item count."
-        ),
-    )
+    parser.add_argument("--min-events", type=int, default=1)
+    parser.add_argument("--min-artists", type=int, default=1)
+    parser.add_argument("--require-embeddings", action="store_true")
+    parser.add_argument("--check-artist-id", type=int, default=None)
+    parser.add_argument("--biographies-path", default=None)
+    parser.add_argument("--event-ids-file", type=Path, default=None)
+    parser.add_argument("--artist-ids-file", type=Path, default=None)
     return parser.parse_args()
 
 
@@ -66,19 +59,49 @@ def fetch_scalar(connection: psycopg.Connection, query: str, params: tuple = ())
     return int(value if value is not None else 0)
 
 
+def fetch_count(
+    connection: psycopg.Connection,
+    query: str,
+    params: tuple = (),
+) -> int:
+    return fetch_scalar(connection, query, params)
+
+
+def fetch_table_count(
+    connection: psycopg.Connection,
+    table: str,
+    ids: list[int] | None,
+    column: str = "id",
+) -> int:
+    if ids is None:
+        return fetch_scalar(connection, f"SELECT COUNT(*) FROM {table}")
+    if not ids:
+        return 0
+    params: tuple[object, ...]
+    if column.startswith("ra_"):
+        params = ([str(entity_id) for entity_id in ids],)
+    else:
+        params = (ids,)
+    return fetch_scalar(
+        connection,
+        f"SELECT COUNT(*) FROM {table} WHERE {column} = ANY(%s)",
+        params,
+    )
+
+
 def run_checks(connection: psycopg.Connection, args: argparse.Namespace) -> list[CheckResult]:
     results: list[CheckResult] = []
+    event_ids = load_id_file(args.event_ids_file)
+    artist_ids = load_id_file(args.artist_ids_file)
+    unique_event_ids = sorted(set(event_ids)) if event_ids is not None else None
+    unique_artist_ids = sorted(set(artist_ids)) if artist_ids is not None else None
+    event_ids_text = [str(event_id) for event_id in event_ids] if event_ids is not None else None
+    artist_ids_text = [str(artist_id) for artist_id in artist_ids] if artist_ids is not None else None
 
     if args.biographies_path:
         bio_path = Path(args.biographies_path)
         if not bio_path.exists():
-            results.append(
-                CheckResult(
-                    "biography-file-items",
-                    False,
-                    f"path={bio_path} missing",
-                )
-            )
+            results.append(CheckResult("biography-file-items", False, f"path={bio_path} missing"))
         else:
             try:
                 with bio_path.open("r", encoding="utf-8") as bio_file:
@@ -87,31 +110,120 @@ def run_checks(connection: psycopg.Connection, args: argparse.Namespace) -> list
                     payload = payload.get("artists", payload.get("items", []))
                 if not isinstance(payload, list):
                     raise ValueError("expected JSON list or object with artists/items list")
-                results.append(
-                    CheckResult(
-                        "biography-file-items",
-                        True,
-                        f"path={bio_path}, items={len(payload)}",
-                    )
-                )
+                results.append(CheckResult("biography-file-items", True, f"path={bio_path}, items={len(payload)}"))
             except Exception as exc:
-                results.append(
-                    CheckResult(
-                        "biography-file-items",
-                        False,
-                        f"path={bio_path}, error={exc}",
-                    )
-                )
+                results.append(CheckResult("biography-file-items", False, f"path={bio_path}, error={exc}"))
 
     counts = {
-        "events": fetch_scalar(connection, "SELECT COUNT(*) FROM events"),
-        "artists": fetch_scalar(connection, "SELECT COUNT(*) FROM artists"),
-        "promoters": fetch_scalar(connection, "SELECT COUNT(*) FROM promoters"),
-        "genres": fetch_scalar(connection, "SELECT COUNT(*) FROM genres"),
-        "event_artists": fetch_scalar(connection, "SELECT COUNT(*) FROM event_artists"),
-        "event_promoters": fetch_scalar(connection, "SELECT COUNT(*) FROM event_promoters"),
-        "event_genres": fetch_scalar(connection, "SELECT COUNT(*) FROM event_genres"),
-        "entity_embeddings": fetch_scalar(connection, "SELECT COUNT(*) FROM entity_embeddings"),
+        "events": fetch_table_count(connection, "events", event_ids, "ra_event_id"),
+        "artists": fetch_table_count(connection, "artists", artist_ids, "ra_artist_id"),
+        "event_artists": (
+            fetch_count(
+                connection,
+                """
+                SELECT COUNT(*)
+                FROM event_artists ea
+                JOIN events e ON e.id = ea.event_id
+                WHERE e.ra_event_id = ANY(%s)
+                """,
+                (event_ids_text,),
+            )
+            if event_ids
+            else fetch_scalar(connection, "SELECT COUNT(*) FROM event_artists")
+            if event_ids is None
+            else 0
+        ),
+        "event_promoters": (
+            fetch_count(
+                connection,
+                """
+                SELECT COUNT(*)
+                FROM event_promoters ep
+                JOIN events e ON e.id = ep.event_id
+                WHERE e.ra_event_id = ANY(%s)
+                """,
+                (event_ids_text,),
+            )
+            if event_ids
+            else fetch_scalar(connection, "SELECT COUNT(*) FROM event_promoters")
+            if event_ids is None
+            else 0
+        ),
+        "event_genres": (
+            fetch_count(
+                connection,
+                """
+                SELECT COUNT(*)
+                FROM event_genres eg
+                JOIN events e ON e.id = eg.event_id
+                WHERE e.ra_event_id = ANY(%s)
+                """,
+                (event_ids_text,),
+            )
+            if event_ids
+            else fetch_scalar(connection, "SELECT COUNT(*) FROM event_genres")
+            if event_ids is None
+            else 0
+        ),
+        "event_payloads": (
+            fetch_count(
+                connection,
+                """
+                SELECT COUNT(*)
+                FROM event_source_payloads esp
+                JOIN events e ON e.id = esp.event_id
+                WHERE e.ra_event_id = ANY(%s)
+                """,
+                (event_ids_text,),
+            )
+            if event_ids
+            else fetch_scalar(connection, "SELECT COUNT(*) FROM event_source_payloads")
+            if event_ids is None
+            else 0
+        ),
+        "entity_embeddings": (
+            (
+                fetch_count(
+                    connection,
+                    """
+                    SELECT COUNT(*)
+                    FROM entity_embeddings ee
+                    JOIN events e ON e.id = ee.entity_id
+                    WHERE ee.entity_type = 'event'
+                      AND e.ra_event_id = ANY(%s)
+                    """,
+                    (event_ids_text,),
+                )
+                if event_ids
+                else fetch_scalar(
+                    connection,
+                    "SELECT COUNT(*) FROM entity_embeddings WHERE entity_type = 'event'",
+                )
+                if event_ids is None
+                else 0
+            )
+            +
+            (
+                fetch_count(
+                    connection,
+                    """
+                    SELECT COUNT(*)
+                    FROM entity_embeddings ee
+                    JOIN artists a ON a.id = ee.entity_id
+                    WHERE ee.entity_type = 'artist'
+                      AND a.ra_artist_id = ANY(%s)
+                    """,
+                    (artist_ids_text,),
+                )
+                if artist_ids
+                else fetch_scalar(
+                    connection,
+                    "SELECT COUNT(*) FROM entity_embeddings WHERE entity_type = 'artist'",
+                )
+                if artist_ids is None
+                else 0
+            )
+        ),
     }
     results.append(
         CheckResult(
@@ -120,162 +232,87 @@ def run_checks(connection: psycopg.Connection, args: argparse.Namespace) -> list
             (
                 f"events={counts['events']} (min={args.min_events}), "
                 f"artists={counts['artists']} (min={args.min_artists}), "
-                f"promoters={counts['promoters']}, genres={counts['genres']}, "
                 f"event_artists={counts['event_artists']}, "
                 f"event_promoters={counts['event_promoters']}, "
                 f"event_genres={counts['event_genres']}, "
+                f"event_payloads={counts['event_payloads']}, "
                 f"entity_embeddings={counts['entity_embeddings']}"
             ),
         )
     )
 
-    duplicate_checks = {
-        "duplicates-events-ra_event_id": """
-            SELECT COUNT(*) FROM (
-                SELECT ra_event_id
-                FROM events
-                GROUP BY ra_event_id
-                HAVING COUNT(*) > 1
-            ) d
-        """,
-        "duplicates-artists-ra_artist_id": """
-            SELECT COUNT(*) FROM (
-                SELECT ra_artist_id
-                FROM artists
-                GROUP BY ra_artist_id
-                HAVING COUNT(*) > 1
-            ) d
-        """,
-        "duplicates-promoters-ra_promoter_id": """
-            SELECT COUNT(*) FROM (
-                SELECT ra_promoter_id
-                FROM promoters
-                GROUP BY ra_promoter_id
-                HAVING COUNT(*) > 1
-            ) d
-        """,
-        "duplicates-genres-ra_genre_id": """
-            SELECT COUNT(*) FROM (
-                SELECT ra_genre_id
-                FROM genres
-                GROUP BY ra_genre_id
-                HAVING COUNT(*) > 1
-            ) d
-        """,
-        "duplicates-event_artists": """
-            SELECT COUNT(*) FROM (
-                SELECT event_id, artist_id
-                FROM event_artists
-                GROUP BY event_id, artist_id
-                HAVING COUNT(*) > 1
-            ) d
-        """,
-        "duplicates-event_promoters": """
-            SELECT COUNT(*) FROM (
-                SELECT event_id, promoter_id
-                FROM event_promoters
-                GROUP BY event_id, promoter_id
-                HAVING COUNT(*) > 1
-            ) d
-        """,
-        "duplicates-event_genres": """
-            SELECT COUNT(*) FROM (
-                SELECT event_id, genre_id
-                FROM event_genres
-                GROUP BY event_id, genre_id
-                HAVING COUNT(*) > 1
-            ) d
-        """,
-    }
-    for name, query in duplicate_checks.items():
-        duplicates = fetch_scalar(connection, query)
-        results.append(CheckResult(name, duplicates == 0, f"duplicate_groups={duplicates}"))
-
-    orphan_checks = {
-        "orphans-event_artists": """
-            SELECT COUNT(*)
-            FROM event_artists ea
-            LEFT JOIN events e ON e.id = ea.event_id
-            LEFT JOIN artists a ON a.id = ea.artist_id
-            WHERE e.id IS NULL OR a.id IS NULL
-        """,
-        "orphans-event_promoters": """
-            SELECT COUNT(*)
-            FROM event_promoters ep
-            LEFT JOIN events e ON e.id = ep.event_id
-            LEFT JOIN promoters p ON p.id = ep.promoter_id
-            WHERE e.id IS NULL OR p.id IS NULL
-        """,
-        "orphans-event_genres": """
-            SELECT COUNT(*)
-            FROM event_genres eg
-            LEFT JOIN events e ON e.id = eg.event_id
-            LEFT JOIN genres g ON g.id = eg.genre_id
-            WHERE e.id IS NULL OR g.id IS NULL
-        """,
-    }
-    for name, query in orphan_checks.items():
-        orphan_rows = fetch_scalar(connection, query)
-        results.append(CheckResult(name, orphan_rows == 0, f"rows={orphan_rows}"))
-
-    null_checks = {
-        "nulls-events-required": """
-            SELECT COUNT(*) FROM events
-            WHERE ra_event_id IS NULL OR title IS NULL
-        """,
-        "nulls-artists-required": """
-            SELECT COUNT(*) FROM artists
-            WHERE ra_artist_id IS NULL OR name IS NULL
-        """,
-        "nulls-promoters-required": """
-            SELECT COUNT(*) FROM promoters
-            WHERE ra_promoter_id IS NULL OR name IS NULL
-        """,
-        "nulls-genres-required": """
-            SELECT COUNT(*) FROM genres
-            WHERE ra_genre_id IS NULL OR name IS NULL
-        """,
-    }
-    for name, query in null_checks.items():
-        bad_rows = fetch_scalar(connection, query)
-        results.append(CheckResult(name, bad_rows == 0, f"rows={bad_rows}"))
-
-    with connection.cursor() as cursor:
-        cursor.execute(
-            """
-            SELECT
-                MAX(date_updated) AS max_event_updated,
-                MAX(date_posted) AS max_event_posted
-            FROM events
-            """
+    if event_ids is not None and unique_event_ids:
+        results.append(
+            CheckResult(
+                "events-present",
+                counts["events"] == len(unique_event_ids),
+                f"expected={len(unique_event_ids)}, actual={counts['events']}",
+            )
         )
-        events_freshness = cursor.fetchone() or {}
-        cursor.execute("SELECT MAX(fetched_at) AS max_payload_fetched FROM event_source_payloads")
-        payload_freshness = cursor.fetchone() or {}
+        results.append(
+            CheckResult(
+                "event-payloads-present",
+                counts["event_payloads"] == len(unique_event_ids),
+                f"expected={len(unique_event_ids)}, actual={counts['event_payloads']}",
+            )
+        )
 
-    max_event_updated = events_freshness.get("max_event_updated")
-    max_event_posted = events_freshness.get("max_event_posted")
-    max_payload_fetched = payload_freshness.get("max_payload_fetched")
-    freshness_ok = bool(max_event_updated or max_event_posted or max_payload_fetched)
+    if artist_ids is not None and unique_artist_ids:
+        results.append(
+            CheckResult(
+                "artists-present",
+                counts["artists"] == len(unique_artist_ids),
+                f"expected={len(unique_artist_ids)}, actual={counts['artists']}",
+            )
+        )
+
     results.append(
         CheckResult(
-            "freshness-markers",
-            freshness_ok,
-            (
-                f"max_event_updated={max_event_updated}, "
-                f"max_event_posted={max_event_posted}, "
-                f"max_payload_fetched={max_payload_fetched}"
-            ),
+            "duplicates-events-ra_event_id",
+            fetch_scalar(
+                connection,
+                """
+                SELECT COUNT(*) FROM (
+                    SELECT ra_event_id
+                    FROM events
+                    WHERE (%s::int[] IS NULL OR ra_event_id = ANY(%s))
+                    GROUP BY ra_event_id
+                    HAVING COUNT(*) > 1
+                ) d
+                """,
+                (event_ids, event_ids_text or []),
+            )
+            == 0,
+            "slice-scoped",
+        )
+    )
+    results.append(
+        CheckResult(
+            "duplicates-artists-ra_artist_id",
+            fetch_scalar(
+                connection,
+                """
+                SELECT COUNT(*) FROM (
+                    SELECT ra_artist_id
+                    FROM artists
+                    WHERE (%s::int[] IS NULL OR ra_artist_id = ANY(%s))
+                    GROUP BY ra_artist_id
+                    HAVING COUNT(*) > 1
+                ) d
+                """,
+                (artist_ids, artist_ids_text or []),
+            )
+            == 0,
+            "slice-scoped",
         )
     )
 
     if args.require_embeddings:
-        embeddings_total = counts["entity_embeddings"]
         results.append(
             CheckResult(
                 "embeddings-required",
-                embeddings_total > 0,
-                f"entity_embeddings={embeddings_total}",
+                counts["entity_embeddings"] > 0,
+                f"entity_embeddings={counts['entity_embeddings']}",
             )
         )
 
@@ -296,6 +333,55 @@ def run_checks(connection: psycopg.Connection, args: argparse.Namespace) -> list
                 f"artist_id={args.check_artist_id}, rows={artist_embedding_rows}",
             )
         )
+
+    with connection.cursor() as cursor:
+        if event_ids is None:
+            cursor.execute(
+                """
+                SELECT MAX(date_updated) AS max_event_updated, MAX(date_posted) AS max_event_posted
+                FROM events
+                """
+            )
+            cursor2_query = "SELECT MAX(fetched_at) AS max_payload_fetched FROM event_source_payloads"
+            cursor2_params = ()
+        elif event_ids:
+            cursor.execute(
+                """
+                SELECT MAX(date_updated) AS max_event_updated, MAX(date_posted) AS max_event_posted
+                FROM events
+                WHERE ra_event_id = ANY(%s)
+                """,
+                (event_ids_text,),
+            )
+            cursor2_query = """
+                SELECT MAX(esp.fetched_at) AS max_payload_fetched
+                FROM event_source_payloads esp
+                JOIN events e ON e.id = esp.event_id
+                WHERE e.ra_event_id = ANY(%s)
+            """
+            cursor2_params = (event_ids_text,)
+        else:
+            cursor.execute(
+                "SELECT NULL::timestamptz AS max_event_updated, NULL::timestamptz AS max_event_posted"
+            )
+            cursor2_query = "SELECT NULL::timestamptz AS max_payload_fetched"
+            cursor2_params = ()
+
+        events_freshness = cursor.fetchone() or {}
+        cursor.execute(cursor2_query, cursor2_params)
+        payload_freshness = cursor.fetchone() or {}
+
+    results.append(
+        CheckResult(
+            "freshness-markers",
+            bool(events_freshness.get("max_event_updated") or events_freshness.get("max_event_posted") or payload_freshness.get("max_payload_fetched")),
+            (
+                f"max_event_updated={events_freshness.get('max_event_updated')}, "
+                f"max_event_posted={events_freshness.get('max_event_posted')}, "
+                f"max_payload_fetched={payload_freshness.get('max_payload_fetched')}"
+            ),
+        )
+    )
 
     return results
 

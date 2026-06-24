@@ -2,7 +2,7 @@ from fastapi import APIRouter
 
 from app.routers import (
     artist_connections, artists, feedback, graph, recommendations, search, venues, events,
-    promoters, genres, graph_ego, composition, metrics
+    promoters, genres, graph_ego, composition, metrics, dashboard_ws, recommendation_jobs, imports
 )
 
 router = APIRouter()
@@ -20,3 +20,6 @@ router.include_router(graph_ego.router, prefix="/graph", tags=["graph"])
 router.include_router(genres.router, prefix="/genres", tags=["genres"])
 router.include_router(composition.router, prefix="/admin", tags=["admin"])
 router.include_router(metrics.router, prefix="/admin", tags=["admin"])
+router.include_router(dashboard_ws.router, prefix="/ws", tags=["websocket"])
+router.include_router(recommendation_jobs.router, tags=["recommendation-jobs"])
+router.include_router(imports.router, prefix="/admin", tags=["admin"])

@@ -37,6 +37,7 @@ backend/data/*.json
 backend/data/*.jsonl
 backend/data/*.csv
 backend/data/*.sql
+backend/data/import_runs/
 backend/data/backups/
 backend/data/existing_ra_event_ids.txt
 backend/data/existing_ra_artist_ids.txt
@@ -44,6 +45,7 @@ backend/data/existing_ra_artist_ids.txt
 scenegraph_dump*.sql
 *_dump.sql
 !backend/data/.gitkeep
+backend/data/single*
 
 # IDEs
 .idea/

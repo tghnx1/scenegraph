@@ -8,6 +8,16 @@ CHECK_DATABASE_URL ?= postgresql://scenegraph:change-me@db:5432/$(CHECK_DB_NAME)
 PARSER_DATABASE_URL ?= postgresql://scenegraph:change-me@127.0.0.1:5432/$(CHECK_DB_NAME)
 REFRESH_PARSE_PYTHON ?= $(abspath backend/.venv/bin/python)
 REFRESH_BIO_PYTHON ?= $(abspath parsers/playwright_parser/venv/bin/python)
+FULL_PIPELINE_MIN_DATE ?= 2021-01-01
+FULL_PIPELINE_MAX_DATE ?=
+FULL_PIPELINE_CDP_URL ?= http://127.0.0.1:9222
+FULL_PIPELINE_VALIDATE_ARTIST_ID ?=
+FULL_PIPELINE_DEDUP_WITH_DB ?= yes
+FULL_PIPELINE_SKIP_BIO ?= no
+FULL_PIPELINE_SKIP_TAGS ?= no
+FULL_PIPELINE_SKIP_EMBEDDINGS ?= no
+FULL_PIPELINE_EVENTS_JSON ?=
+FULL_PIPELINE_ARTIFACTS_DIR ?= backend/data/import_runs
 REFRESH_EVENTS_JSON ?= backend/data/ra_berlin_past_events_2026.json
 REFRESH_EVENTS_JSON_IN_CONTAINER ?= /app/data/ra_berlin_past_events_2026.json
 REFRESH_ARTISTS_JSON ?= backend/data/artists.json
@@ -17,17 +27,22 @@ REFRESH_EXISTING_ARTIST_IDS_FILE ?= backend/data/existing_ra_artist_ids.txt
 REFRESH_CDP_URL ?= http://localhost:9222
 REFRESH_PIPELINE_ARGS ?=
 CHECK_ARTIST_ID ?= 2178
+NGINX_CERT_DIR ?= nginx/certs
+NGINX_CERT_KEY ?= $(NGINX_CERT_DIR)/privkey.pem
+NGINX_CERT_FILE ?= $(NGINX_CERT_DIR)/fullchain.pem
+CERT_NAMES ?=
 
-.PHONY: help env build up upd upd-build down stop restart logs ps health prisma-migrate prisma-studio db-shell import-events backfill-normalized-texts backfill-lineup-residual backfill-artist-biographies extract-artist-tags refresh-embeddings validate-import refresh-data-check refresh-data-check-bio refresh-data-check-bio-embeddings import-dump export-dump clean reset-db list fclean
+.PHONY: help env cert build up upd upd-build down stop restart logs ps health ensure-ssl-certs prisma-migrate prisma-studio db-shell import-events backfill-normalized-texts backfill-lineup-residual backfill-artist-biographies extract-artist-tags refresh-embeddings validate-import refresh-data-check refresh-data-check-bio refresh-data-check-bio-embeddings full-pipeline import-dump export-dump clean reset-db list fclean
 
 help:
 	@printf "\n"
 	@printf "Scene Graph docker helpers\n"
 	@printf "\n"
 	@printf "  make env      Create .env from .env.example if missing\n"
+	@printf "  make cert     Generate nginx self-signed TLS certificate\n"
 	@printf "  make build    Build containers\n"
-	@printf "  make up       Start stack in foreground (runs migrations first)\n"
-	@printf "  make upd      Start dev stack in background with Vite dev server\n"
+	@printf "  make up       Start stack with recommendation-worker count from .env (fallback: 1)\n"
+	@printf "  make upd      Start dev stack with recommendation-worker count from .env (fallback: 1)\n"
 	@printf "  make upd-build Start build stack in background with nginx serving frontend dist\n"
 	@printf "  make down     Stop and remove containers\n"
 	@printf "  make stop     Stop running containers\n"
@@ -48,8 +63,10 @@ help:
 	@printf "  make refresh-data-check Run pipeline + import + validate on a check DB (default: scenegraph_check)\n"
 	@printf "  make refresh-data-check-bio Same as refresh-data-check, but includes artists biographies scraping\n"
 	@printf "  make refresh-data-check-bio-embeddings Same as refresh-data-check-bio + incremental embeddings for check DB\n"
+	@printf "  make full-pipeline Run the full ingestion pipeline in Docker (supports FULL_PIPELINE_MIN_DATE/FULL_PIPELINE_MAX_DATE)\n"
 	@printf "  make import-dump   Import local/remote dump with interactive safety prompts\n"
 	@printf "  make export-dump   Export DB_NAME or .env/explicit DATABASE_URL dump; supports OUT=... FORMAT=sql|custom\n"
+	@printf "  make up/upd/upd-build auto-generate nginx SSL certs if nginx/certs is missing them\n"
 	@printf "  make clean    Stop stack and remove containers (keeps DB volumes)\n"
 	@printf "  make reset-db DANGEROUS: remove containers and DB volumes (requires RESET_DB=yes)\n"
 	@printf "  make list     List Docker resources\n"
@@ -64,16 +81,29 @@ env:
 		echo "$(ENV_FILE) already exists"; \
 	fi
 
+cert:
+	./scripts/gen_cert.sh $(CERT_NAMES)
+
 build: env
 	$(COMPOSE) build
 
-up: env prisma-migrate
-	$(COMPOSE) up --build
+ensure-ssl-certs:
+	@if [ ! -f "$(NGINX_CERT_KEY)" ] || [ ! -f "$(NGINX_CERT_FILE)" ]; then \
+		echo "Missing nginx SSL certs; generating self-signed certificate..."; \
+		./scripts/gen_cert.sh; \
+	else \
+		echo "nginx SSL certs already exist"; \
+	fi
 
-upd: env prisma-migrate
-	$(COMPOSE) up --build -d
+up: env ensure-ssl-certs prisma-migrate
+	@set -a; [ -f .env ] && . ./.env; set +a; \
+	$(COMPOSE) up --build --scale recommendation-worker="$${RECOMMENDATION_WORKER:-1}"
 
-upd-build: env
+upd: env ensure-ssl-certs prisma-migrate
+	@set -a; [ -f .env ] && . ./.env; set +a; \
+	$(COMPOSE) up --build -d --scale recommendation-worker="$${RECOMMENDATION_WORKER:-1}"
+
+upd-build: env ensure-ssl-certs
 	$(COMPOSE_BUILD) --profile tools run --rm --build prisma
 	$(COMPOSE_BUILD) up --build -d --remove-orphans
 
@@ -150,6 +180,19 @@ refresh-data-check-bio: env
 
 refresh-data-check-bio-embeddings: refresh-data-check-bio
 	$(COMPOSE) exec -e DATABASE_URL="$(CHECK_DATABASE_URL)" backend python scripts/generate_embeddings.py
+
+full-pipeline: env
+	$(COMPOSE) --profile tools run --rm --build tools python backend/scripts/full_pipeline.py \
+		--min-date "$(FULL_PIPELINE_MIN_DATE)" \
+		--max-date "$(FULL_PIPELINE_MAX_DATE)" \
+		--artifacts-dir "$(FULL_PIPELINE_ARTIFACTS_DIR)" \
+		--cdp-url "$(FULL_PIPELINE_CDP_URL)" \
+		$$(test -n "$(FULL_PIPELINE_EVENTS_JSON)" && printf '%s %s' '--events-json' "$(FULL_PIPELINE_EVENTS_JSON)" || true) \
+		$$(test "$(FULL_PIPELINE_DEDUP_WITH_DB)" = "no" && printf '%s' '--no-dedup-with-db' || true) \
+		$$(test "$(FULL_PIPELINE_SKIP_BIO)" = "yes" && printf '%s' '--skip-bio' || true) \
+		$$(test "$(FULL_PIPELINE_SKIP_TAGS)" = "yes" && printf '%s' '--skip-tags' || true) \
+		$$(test "$(FULL_PIPELINE_SKIP_EMBEDDINGS)" = "yes" && printf '%s' '--skip-embeddings' || true) \
+		$$(test -n "$(FULL_PIPELINE_VALIDATE_ARTIST_ID)" && printf '%s %s' '--validate-artist-id' "$(FULL_PIPELINE_VALIDATE_ARTIST_ID)" || true)
 
 import-dump: env
 	@DUMP="$(DUMP)" DB_NAME="$(DB_NAME)" DATABASE_URL="$(DATABASE_URL)" RESET_DB="$(RESET_DB)" DUMP_FORMAT="$(DUMP_FORMAT)" PG_CLIENT_IMAGE="$(PG_CLIENT_IMAGE)" REMOTE_RESTORE_MODE="$(REMOTE_RESTORE_MODE)" CONFIRM_IMPORT="$(CONFIRM_IMPORT)" IMPORT_DUMP_NONINTERACTIVE="$(IMPORT_DUMP_NONINTERACTIVE)" sh ./scripts/import_dump.sh

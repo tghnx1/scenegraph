@@ -1,19 +1,21 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { login, register, type AuthRole } from '../api/auth'
+import { type CSSProperties, useEffect, useRef, useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ChevronDown } from 'lucide-react'
-import { Button } from '@/shared/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/shared/ui/card'
-import { Input } from '@/shared/ui/input'
-import { Label } from '@/shared/ui/label'
-import { isAuthRole, login, register, type AuthRole } from '../api/auth'
+// import { ChevronsUpDown } from 'lucide-react'
+import { validateLoginForm, validateRegistrationForm } from '@/shared/lib/validation'
 
 interface LoginPageProps {
-  onLogin: (role: AuthRole, username: string) => void
-}
+  onLogin: (role: AuthRole, redirect?: boolean) => void }
+
+const colorVar = (name: string) => `var(${name})`
+const colorAlpha = (name: string, percent: number) =>
+  `color-mix(in srgb, var(${name}) ${percent}%, transparent)`
 
 const REGISTRATION_ROLES = [
   {value: 'artist', label: 'Artist'},
   {value: 'agent', label: 'Agent'},
+  {value: 'admin', label: 'Admin'},
 ] as const
 
 type RegistrationRole = (typeof REGISTRATION_ROLES)[number]['value']
@@ -52,6 +54,7 @@ function RoleSelect({value, onChange}: {value: RegistrationRole; onChange: (role
       >
         <span>{selectedRole.label}</span>
         <ChevronDown className="size-4 text-[var(--text-muted)]" aria-hidden="true" />
+        {/* <ChevronsUpDown className="size-4 text-[var(--text-muted)]" aria-hidden="true" /> */}
       </button>
       {isOpen && (
         <div
@@ -80,25 +83,91 @@ function RoleSelect({value, onChange}: {value: RegistrationRole; onChange: (role
   )
 }
 
+const loginButtonStyle: CSSProperties = {
+  textDecoration: 'none',
+  color: colorVar('--text-muted'),
+  padding: '6px 10px',
+  borderRadius: 8,
+  fontSize: 14,
+  fontWeight: 600,
+  transition: 'all 120ms ease',
+  cursor: 'pointer',
+  border: `1px solid ${colorAlpha('--text', 18)}`,
+  background: colorAlpha('--text', 6),
+  font: 'inherit',
+}
+
+const inputStyle: CSSProperties = {
+  width: '100%',
+  minWidth: 0,
+  border: `1px solid ${colorAlpha('--text', 18)}`,
+  borderRadius: 8,
+  background: colorAlpha('--background', 64),
+  color: colorVar('--text'),
+  font: 'inherit',
+  padding: '10px 12px',
+  outline: 'none',
+}
+
 export function LoginPage({ onLogin }: LoginPageProps) {
   const navigate = useNavigate()
-  const [username, setUsername] = useState(localStorage.getItem('last_username') ?? '')
+  const [username, setUsername] = useState(localStorage.getItem('last_username') ?? '')   // for keeping the username in the login mask
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isRegistering, setIsRegistering] = useState(false)
   const [email, setEmail] = useState('')
   const [passwordConfirm, setPasswordConfirm] = useState('')
-  const [requestedRole, setRequestedRole] = useState<RegistrationRole>('artist')
+  const [requestedRole, setRequestedRole] = useState<RegistrationRole>('artist') 
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     setError('')
+    const cleanUsername = username.trim()
+    const cleanEmail = email.trim()
+
+    if (isRegistering) {
+      const validationError = validateRegistrationForm(cleanUsername, cleanEmail, password, passwordConfirm)
+      if (validationError) {
+        setError(validationError)
+        return
+      }
+
+      setIsSubmitting(true)
+      const response = await register(
+        cleanUsername,
+        cleanEmail,
+        password,
+        passwordConfirm,
+        requestedRole,
+      )
+
+      if (!response.success) {
+        setError(response.message)
+        setIsSubmitting(false)
+        return
+      }
+
+      setError('Registration successful. Please wait for admin approval.')
+      setIsRegistering(false)
+      setPassword('')
+      setPasswordConfirm('')
+      setEmail('')
+      setIsSubmitting(false)
+      return
+    }
+
+    const validationError = validateLoginForm(cleanUsername, password)
+    if (validationError) {
+      setError(validationError)
+      return
+    }
+
     setIsSubmitting(true)
 
     try {
       if (isRegistering) {
-        const response = await register(username, email, password, passwordConfirm, requestedRole)
+        const response = await register(cleanUsername, cleanEmail, password, passwordConfirm, requestedRole)
         if (!response.success) {
           setError(response.message)
           return
@@ -112,33 +181,44 @@ export function LoginPage({ onLogin }: LoginPageProps) {
         return
       }
 
-      const response = await login(username, password)
+      const response = await login(cleanUsername, password)
       if (!response.success || !response.access_token) {
         setError(response.message || 'Invalid username or password')
         return
       }
 
-      const authenticatedUsername = response.username ?? username
-      const role: AuthRole = isAuthRole(response.role) ? response.role : 'artist'
+      const authenticatedUsername = response.username ?? cleanUsername
+      const role: AuthRole =
+        response.role === 'admin' 
+          ? 'admin' 
+          : response.role === 'agent'
+            ? 'agent'
+            : 'artist'
+
       localStorage.setItem('token', response.access_token)
       localStorage.setItem('role', role)
       localStorage.setItem('username', authenticatedUsername)
       localStorage.setItem('last_username', authenticatedUsername)
+      localStorage.setItem('artist_id', String(response.artist_id))
 
-      if (response.user_id !== undefined) localStorage.setItem('user_id', String(response.user_id))
-      if (response.artist_id !== undefined) {
-        localStorage.setItem('artist_id', String(response.artist_id))
-      } else {
-        localStorage.removeItem('artist_id')
+      if (response.user_id !== undefined) {
+        localStorage.setItem('user_id', String(response.user_id))
       }
 
-      if (response.must_change_password) {
+      if (response.artist_id) {
+         localStorage.setItem('artist_id', String(response.artist_id))
+      } else {
+         localStorage.removeItem('artist_id')
+      }
+
+      //console.log('must_change_password:', response.must_change_password)
+      if (response.must_change_password)
+      {
         navigate('/change-password?forced=true', { replace: true })
         return
       }
+      onLogin(role)
 
-      onLogin(role, authenticatedUsername)
-      navigate(role === 'admin' ? '/dashboard' : '/graph')
     } catch {
       setError('Login failed. Please try again.')
     } finally {
@@ -147,38 +227,103 @@ export function LoginPage({ onLogin }: LoginPageProps) {
   }
 
   return (
-    <div className="grid min-h-full place-items-center p-6">
-      <Card className="w-full max-w-[420px] bg-[color-mix(in_srgb,var(--background)_72%,transparent)]">
-        <CardHeader>
-          <span className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--accent)]">
-            {isRegistering ? 'Register page' : 'Login page'}
-          </span>
-          <CardTitle className="mt-2 text-[32px]">{isRegistering ? 'Register' : 'Sign in'}</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSubmit} className="grid gap-3.5">
-            <Label>Username<Input value={username} onChange={(event) => setUsername(event.target.value)} autoComplete="username" required /></Label>
-            {isRegistering && (
-              <>
-                <Label>Email<Input type="email" value={email} onChange={(event) => setEmail(event.target.value)} required /></Label>
-                <Label>
-                  Requested role
-                  <RoleSelect value={requestedRole} onChange={setRequestedRole} />
-                </Label>
-              </>
-            )}
-            <Label>Password<Input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" required /></Label>
-            {isRegistering && <Label>Confirm password<Input type="password" value={passwordConfirm} onChange={(event) => setPasswordConfirm(event.target.value)} required /></Label>}
-            {error && <p className="m-0 text-sm text-[var(--danger,#d94848)]">{error}</p>}
-            <Button type="submit" disabled={isSubmitting}>
-              {isSubmitting ? (isRegistering ? 'Registering...' : 'Signing in...') : (isRegistering ? 'Register' : 'Sign in')}
-            </Button>
-            <Button type="button" variant="secondary" onClick={() => { setIsRegistering(!isRegistering); setError('') }}>
-              {isRegistering ? 'Back to sign in' : 'Create account'}
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
+    <div style={{ minHeight: '100%', display: 'grid', placeItems: 'center', padding: 24 }}>
+      <section
+        style={{
+          width: 'min(420px, 100%)',
+          padding: 24,
+          borderRadius: 8,
+          background: colorAlpha('--background', 72),
+          border: `1px solid ${colorAlpha('--text', 18)}`,
+          boxShadow: 'var(--surface-shadow)',
+        }}
+      >
+        <span className="search-query-label">
+          {isRegistering ? 'Register Page' : 'Login page'}
+        </span>
+        <h1 style={{ marginTop: 8, fontSize: 32 }}>
+          {isRegistering ? 'Register' : 'Sign in'}
+        </h1>
+        <form onSubmit={handleSubmit} style={{ display: 'grid', gap: 14, marginTop: 24 }}>
+          <label style={{ display: 'grid', gap: 6, color: colorVar('--text-muted'), fontSize: 14 }}>
+            Username
+            <input
+              style={inputStyle}
+              value={username}
+              onChange={(event) => setUsername(event.target.value)}
+              autoComplete="username"
+              required
+            />
+          </label>
+          {isRegistering && (
+            <label style={{ display: 'grid', gap: 6, color: colorVar('--text-muted'), fontSize: 14 }}>
+              Email
+              <input
+                style={inputStyle}
+                type="email"
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                required
+              />
+            </label>
+          )}
+          {isRegistering && (
+            <RoleSelect
+              value={requestedRole}
+              onChange={setRequestedRole}
+            />
+          )}
+          <label style={{ display: 'grid', gap: 6, color: colorVar('--text-muted'), fontSize: 14 }}>
+            Password
+            <input
+              style={inputStyle}
+              type="password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              autoComplete="current-password"
+              required
+            />
+          </label>
+          {isRegistering && (
+            <label style={{ display: 'grid', gap: 6, color: colorVar('--text-muted'), fontSize: 14 }}>
+              Confirm password
+              <input
+                style={inputStyle}
+                type="password"
+                value={passwordConfirm}
+                onChange={(event) => setPasswordConfirm(event.target.value)}
+                required
+              />
+            </label>
+          )}
+          {error && <p style={{ margin: 0, color: 'var(--danger, #d94848)', fontSize: 14 }}>{error}</p>}
+          <button type="submit" style={loginButtonStyle} disabled={isSubmitting}>
+            {isSubmitting
+              ? isRegistering
+                ? 'Registering...'
+                : 'Signing in...'
+              : isRegistering
+                ? 'Register'
+                : 'Sign in'}
+          </button>
+          <button
+            type="button"
+            style={loginButtonStyle}
+            onClick={() => {
+              if (!isRegistering) {
+                setUsername('')
+                setEmail('')
+                setPassword('')
+                setPasswordConfirm('')
+              }
+              setIsRegistering(!isRegistering)
+              setError('')
+            }}
+          >
+            {isRegistering ? 'Back to sign in' : 'Create account'}
+          </button>
+        </form>
+      </section>
     </div>
   )
 }

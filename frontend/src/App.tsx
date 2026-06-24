@@ -5,9 +5,9 @@ import { DashboardPage } from './pages/DashboardPage'
 import { ProfilePage } from './pages/ProfilePage'
 import { AgencyPage } from './pages/AgencyPage'
 import { LoginPage } from './pages/LoginPage'
+import { logout, type AuthRole } from './api/auth'
 import { ChangePasswordPage } from './pages/ChangePasswordPage'
 import { AboutPage } from './pages/AboutPage'
-import { isAuthRole, logout, type AuthRole } from './api/auth'
 import { applyTheme, getStoredTheme, type ThemeName } from './shared/styles/colors'
 import { Button } from '@/shared/ui/button'
 import { cn } from '@/shared/lib/cn-utils'
@@ -38,11 +38,9 @@ export default function App() {
   const [authRole, setAuthRole] = useState<AuthRole | null>(() => {
     const storedToken = localStorage.getItem('token')
     const storedRole = localStorage.getItem('role')
-
-    if (!storedToken) return null
-    if (isAuthRole(storedRole)) return storedRole
-
-    return null
+    return storedToken && storedRole && ['artist', 'agent', 'admin'].includes(storedRole) 
+      ? storedRole as AuthRole
+      : null
   })
   const [themeName, setThemeName] = useState<ThemeName>(() => getStoredTheme())
   const isAuthenticated = Boolean(authRole)
@@ -55,16 +53,11 @@ export default function App() {
 
   const handleAuthClick = async () => {
     if (isAuthenticated) {
-
-      const username = localStorage.getItem('username')
-
-      if (username) {
-        try {
-          await logout(username)
-        } catch {
-          console.error('Logout logging failed')
+      try {
+        await logout()
+      } catch {
+        console.error('Logout logging failed')
         }
-      }
 
       localStorage.removeItem('token')
       localStorage.removeItem('role')
@@ -78,8 +71,12 @@ export default function App() {
     navigate('/login')
   }
 
-  const handleLogin = (role: AuthRole, _username: string) => {
+  const handleLogin = (role: AuthRole, redirect = true) => {
     setAuthRole(role)
+
+    if (redirect) {
+      navigate(role === 'admin' ? '/dashboard' : '/profile')
+    }
   }
 
   const handleThemeToggle = () => {
@@ -88,9 +85,11 @@ export default function App() {
     setThemeName(nextTheme)
   }
 
+  const username = localStorage.getItem('username')
+
   return (
     <div className="flex h-dvh min-h-screen flex-col bg-[var(--background)] text-[var(--text)] [background:radial-gradient(1000px_520px_at_12%_-10%,color-mix(in_srgb,var(--link-highlight)_18%,transparent),transparent_60%),radial-gradient(900px_460px_at_95%_0%,color-mix(in_srgb,var(--accent-warm)_15%,transparent),transparent_55%),var(--background)]">
-      <nav className="flex items-center gap-3 border-b border-[color-mix(in_srgb,var(--text)_18%,transparent)] bg-[color-mix(in_srgb,var(--background)_55%,transparent)] px-5 py-3 backdrop-blur-md">
+      <nav className="flex flex-wrap items-center gap-2 border-b border-[color-mix(in_srgb,var(--text)_18%,transparent)] bg-[color-mix(in_srgb,var(--background)_55%,transparent)] px-3 py-3 backdrop-blur-md sm:gap-3 sm:px-5">
         <NavLink to="/graph" className={navLinkClass}>
           Graph
         </NavLink>
@@ -99,7 +98,13 @@ export default function App() {
             Dashboard
           </NavLink>
         )}
+        
         <span className="flex-1" />
+        {username && (
+          <span className="text-sm text-[var(--text-muted)]">
+            Logged in as {username}
+          </span>
+        )}
         {isAuthenticated && (
           <Button type="button" size="sm" variant="outline" onClick={() => navigate('/change-password')}>
             Change password
@@ -118,16 +123,15 @@ export default function App() {
           <Route path="/" element={<Navigate to="/graph" />} />
           <Route path="/graph" element={graphPage} />
           <Route path="/login" element={isAuthenticated ? <Navigate to="/graph" replace /> : <LoginPage onLogin={handleLogin} />} />
-          <Route
-            path="/change-password"
+          <Route 
+            path="/change-password" 
             element={
               isAuthenticated || localStorage.getItem('token')
                 ? <ChangePasswordPage onLogin={handleLogin} />
-                : <Navigate to="/login" replace />
-            }
+                : <Navigate to="/login" replace />} 
           />
           <Route path="/dashboard" element={authRole === 'admin' ? <DashboardPage /> : <Navigate to={isAuthenticated ? '/graph' : '/login'} replace />} />
-          <Route path="/profile" element={authRole === 'artist' ? <ProfilePage /> : <Navigate to={isAuthenticated ? '/graph' : '/login'} replace />} />
+          <Route path="/profile" element={authRole === 'artist' || authRole === 'agent' ? <ProfilePage /> : <Navigate to={isAuthenticated ? '/graph' : '/login'} replace />} />
           <Route path="/search" element={<SearchRedirect />} />
           <Route path="/artist/:id" element={<EntityRedirect type="artist" />} />
           <Route path="/promoter/:id" element={<EntityRedirect type="promoter" />} />

@@ -24,6 +24,23 @@ from app.embeddings import (
 DATABASE_URL = os.environ["DATABASE_URL"]
 
 
+def load_id_file(path: Path | None) -> list[int] | None:
+    if path is None:
+        return None
+    if not path.exists():
+        raise SystemExit(f"ID file not found: {path}")
+    ids: list[int] = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        raw = line.strip()
+        if not raw:
+            continue
+        try:
+            ids.append(int(raw))
+        except ValueError as exc:
+            raise SystemExit(f"Invalid integer id in {path}: {raw}") from exc
+    return ids
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Generate OpenAI embeddings for recommendation entities.")
     parser.add_argument(
@@ -35,6 +52,18 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--limit", type=int, default=None, help="Maximum entities per type.")
     parser.add_argument("--batch-size", type=int, default=64, help="OpenAI embeddings batch size.")
     parser.add_argument("--force", action="store_true", help="Regenerate embeddings even if text is unchanged.")
+    parser.add_argument(
+        "--event-ids-file",
+        type=Path,
+        default=None,
+        help="Optional newline-delimited list of event ids to embed.",
+    )
+    parser.add_argument(
+        "--artist-ids-file",
+        type=Path,
+        default=None,
+        help="Optional newline-delimited list of artist ids to embed.",
+    )
     return parser.parse_args()
 
 
@@ -85,9 +114,16 @@ def main() -> None:
     with psycopg.connect(DATABASE_URL, row_factory=dict_row) as connection:
         total_embedded = 0
         total_skipped = 0
+        event_ids = load_id_file(args.event_ids_file)
+        artist_ids = load_id_file(args.artist_ids_file)
 
         for entity_type in entity_types(args.entity):
-            ids = fetch_entity_ids(connection, entity_type, args.limit)
+            ids = fetch_entity_ids(
+                connection,
+                entity_type,
+                args.limit,
+                ids=event_ids if entity_type == "event" else artist_ids,
+            )
             batch: list[tuple[EntityType, int, str]] = []
 
             for entity_id in ids:

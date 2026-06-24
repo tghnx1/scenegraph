@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 
 export type DashboardUpdateArea = 'composition' | 'metrics'
 
@@ -6,6 +6,8 @@ export type DashboardUpdate = {
   type: 'dashboard.updated'
   areas: DashboardUpdateArea[]
 }
+
+export type DashboardConnectionStatus = 'connecting' | 'connected' | 'reconnecting' | 'auth-error' | 'error'
 
 const DASHBOARD_UPDATE_AREAS: DashboardUpdateArea[] = ['composition', 'metrics']
 
@@ -50,6 +52,8 @@ function parseDashboardUpdate(data: string): DashboardUpdate | null {
 }
 
 export function useDashboardUpdates(onUpdate: (message: DashboardUpdate) => void) {
+  const [status, setStatus] = useState<DashboardConnectionStatus>('connecting')
+
   useEffect(() => {
     let socket: WebSocket | undefined
     let reconnectTimer: number | undefined
@@ -57,14 +61,24 @@ export function useDashboardUpdates(onUpdate: (message: DashboardUpdate) => void
     let isClosed = false
 
     const connect = () => {
+      setStatus((current) => current === 'connected' ? 'connected' : 'connecting')
+
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
       const token = window.localStorage.getItem('token')
+      if (!token) {
+        console.error('Dashboard WebSocket cannot connect without an auth token')
+        setStatus('auth-error')
+        isClosed = true
+        return
+      }
+
       const url = `${protocol}//${window.location.host}/api/ws/dashboard?token=${encodeURIComponent(token ?? '')}`
 
       socket = new WebSocket(url)
 
       socket.onopen = () => {
         reconnectDelayMs = 1000
+        setStatus('connected')
       }
 
       socket.onmessage = (event) => {
@@ -79,11 +93,30 @@ export function useDashboardUpdates(onUpdate: (message: DashboardUpdate) => void
         }
       }
 
-      socket.onclose = () => {
+      socket.onerror = (event) => {
+        console.error('Dashboard WebSocket error', event)
+
+        if (!isClosed) {
+          setStatus('error')
+        }
+      }
+
+      socket.onclose = (event) => {
         if (isClosed) {
           return
         }
 
+        if (event.code === 1008) {
+          console.error('Dashboard WebSocket closed by policy/auth validation', {
+            code: event.code,
+            reason: event.reason,
+          })
+          setStatus('auth-error')
+          isClosed = true
+          return
+        }
+
+        setStatus('reconnecting')
         reconnectTimer = window.setTimeout(connect, reconnectDelayMs)
         reconnectDelayMs = Math.min(reconnectDelayMs * 2, 30000)
       }
@@ -101,4 +134,6 @@ export function useDashboardUpdates(onUpdate: (message: DashboardUpdate) => void
       socket?.close()
     }
   }, [onUpdate])
+
+  return status
 }

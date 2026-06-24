@@ -488,6 +488,12 @@ def parse_args() -> argparse.Namespace:
         help="Oldest event date to crawl, in YYYY-MM-DD format",
     )
     parser.add_argument(
+        "--max-date",
+        type=str,
+        default=None,
+        help="Newest event date to crawl, in YYYY-MM-DD format. Defaults to today.",
+    )
+    parser.add_argument(
         "--dedup-db",
         action="store_true",
         help="Skip fetching event details for RA event IDs that already exist in the database.",
@@ -549,6 +555,10 @@ def main():
     out_file = args.out
     checkpoint_every = max(1, args.checkpoint_every)
     min_date = args.min_date
+    max_date = args.max_date or datetime.now().strftime("%Y-%m-%d")
+
+    if min_date > max_date:
+        raise ValueError(f"--min-date ({min_date}) cannot be later than --max-date ({max_date})")
 
     # 4. Incremental Deduplication: Load existing data
     events_by_year: Dict[str, List[dict]] = {}
@@ -596,8 +606,7 @@ def main():
         )
 
     # 1. Chunk the Date Ranges
-    today_str = datetime.now().strftime("%Y-%m-%d")
-    date_chunks = get_month_chunks(min_date, today_str)
+    date_chunks = get_month_chunks(min_date, max_date)
 
     list_query = """
     query GET_EVENT_LISTINGS($filters: FilterInputDtoInput, $filterOptions: FilterOptionsInputDtoInput) {

@@ -71,12 +71,13 @@ class LoginResponse(BaseModel):
     access_token: str | None = None
     must_change_password: bool | None = None
 
+
 class RegisterRequest(BaseModel):
     username: str
     email: str
     password: str
     password_confirm: str
-    role: str
+    role: Literal["artist", "agent"]
 
 class RegisterResponse(BaseModel):
     success: bool
@@ -94,7 +95,12 @@ class ChangePasswordResponse(BaseModel):
     message: str
 
 class ChangeRoleRequest(BaseModel):
-    role: str
+    role: Literal["artist", "agent"]
+
+
+class ArtistClaimRequest(BaseModel):
+    reason: str
+
 class SimilarityItem(BaseModel):
     id: int
     type: Literal["artist", "event"]
@@ -140,31 +146,6 @@ class SemanticArtistResponse(BaseModel):
     model: str
     dimensions: int
     similar: list[SemanticArtistItem]
-
-
-class ArtistRecommendationItem(BaseModel):
-    id: int
-    type: Literal["artist"] = "artist"
-    name: str
-    score: float
-    semanticScore: float
-    graphScore: float
-    embeddingScore: float
-    styleScore: float
-    tagScore: float = 0.0
-    scoreBreakdown: dict[str, float] = Field(default_factory=dict)
-    semanticBreakdown: dict[str, float] = Field(default_factory=dict)
-    reasons: list[str] = Field(default_factory=list)
-    sharedStyles: list[str] = Field(default_factory=list)
-    sharedTags: dict[str, list[str]] = Field(default_factory=dict)
-
-
-class ArtistRecommendationResponse(BaseModel):
-    entityId: int
-    entityType: Literal["artist"] = "artist"
-    model: str
-    dimensions: int
-    recommendations: list[ArtistRecommendationItem]
 
 
 class RecommendationEvidenceItem(BaseModel):
@@ -244,6 +225,34 @@ class PromoterRecommendationResponse(BaseModel):
     graph: GraphResponse
     analyticsGraph: GraphResponse | None = None
     debug: dict[str, object] | None = None
+
+
+RecommendationJobStatus = Literal["queued", "running", "completed", "failed"]
+
+
+class RecommendationJobParams(BaseModel):
+    limit: int = Field(default=50, ge=1)
+    excludeExisting: bool = True
+    debug: bool = False
+
+
+class RecommendationJobCreatedResponse(BaseModel):
+    jobId: str
+    status: RecommendationJobStatus
+
+
+class RecommendationJobResponse(BaseModel):
+    jobId: str
+    jobType: Literal["artist_promoters"]
+    artistId: int
+    params: RecommendationJobParams
+    status: RecommendationJobStatus
+    result: PromoterRecommendationResponse | None = None
+    errorMessage: str | None = None
+    createdAt: datetime
+    startedAt: datetime | None = None
+    finishedAt: datetime | None = None
+    updatedAt: datetime
 
 
 class ArtistSimilarEventItem(BaseModel):

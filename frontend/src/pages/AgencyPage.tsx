@@ -79,7 +79,7 @@ export function AgencyPage() {
           : 'Search and select an artist, then click "Get Rec" to load promoter recommendations. Loading time may be quite long.',
         getButtonLabel: 'Get Rec',
         controls: (
-          <div className="w-[clamp(240px,28vw,360px)] shrink">
+          <div className="w-[clamp(240px,28vw,360px)] min-w-0 shrink max-[900px]:w-full">
             <SearchInputField
               inputId="agency-recommendation-artist-search"
               label=""

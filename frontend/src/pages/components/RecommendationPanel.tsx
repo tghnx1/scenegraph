@@ -9,7 +9,12 @@ import {
   type PromoterFeedbackValue,
 } from '@/api/recommendationFeedback'
 import { graphEntityId, type GraphNode } from '../../types/graph'
-import type { PromoterRecommendationResponse } from '../../types/recommendation'
+import type {
+  PromoterRecommendationResponse,
+  RecommendationJobCreatedResponse,
+  RecommendationJobResponse,
+} from '../../types/recommendation'
+import { useRecommendationJobUpdates } from '../hooks/useRecommendationJobUpdates'
 import { RecommendationLoading } from './LoadingScreen'
 import { ScenegraphMapPanel } from './GraphPanel'
 import { RecommendationExportMenu } from './ExportRecommendation'
@@ -32,7 +37,7 @@ const PROMOTER_SIZE_LABELS: Record<'small' | 'medium' | 'large', string> = {
 }
 
 const labelClass = 'text-xs font-semibold uppercase tracking-[0.14em] text-[var(--accent)]'
-const panelHeadingClass = 'flex items-center justify-between gap-3'
+const panelHeadingClass = 'flex items-center justify-between gap-3 max-[900px]:flex-wrap'
 const mutedTextClass = 'text-sm text-[var(--text-muted)]'
 
 type ReasonListKind =
@@ -180,6 +185,7 @@ export function PromoterRecommendationsPanel({
   onSelectNode,
 }: PromoterRecommendationsPanelProps) {
   const [recommendationsData, setRecommendationsData] = useState<PromoterRecommendationResponse | null>(null)
+  const [activeRecommendationJobId, setActiveRecommendationJobId] = useState<string | null>(null)
   const [isRecommendationsLoading, setIsRecommendationsLoading] = useState(false)
   const [recommendationsError, setRecommendationsError] = useState<string | null>(null)
   const [recommendationLoadingMessageIndex, setRecommendationLoadingMessageIndex] = useState(0)
@@ -198,6 +204,7 @@ export function PromoterRecommendationsPanel({
   const recommendationThresholdInitializedRef = useRef(false)
   const recommendationListRef = useRef<HTMLElement | null>(null)
   const recommendationRequestIdRef = useRef(0)
+  const activeRecommendationJobRef = useRef<{ jobId: string; requestId: number } | null>(null)
   const recommendationArtistId = targetControls
     ? targetControls.artistId
     : artistId
@@ -205,6 +212,8 @@ export function PromoterRecommendationsPanel({
   useEffect(() => {
     recommendationRequestIdRef.current += 1
     setRecommendationsData(null)
+    setActiveRecommendationJobId(null)
+    activeRecommendationJobRef.current = null
     setRecommendationsError(null)
     setIsRecommendationsLoading(false)
     setExpandedRecommendationId(null)
@@ -242,6 +251,58 @@ export function PromoterRecommendationsPanel({
     recommendationThresholdInitializedRef.current = true
   }, [recommendationsData])
 
+  // Read durable job state once after a WebSocket signal or reconnect.
+  const refreshRecommendationJob = useCallback(async (jobId: string) => {
+    const activeJob = activeRecommendationJobRef.current
+    if (activeJob === null || activeJob.jobId !== jobId) return
+
+    try {
+      const job = await api.get<RecommendationJobResponse>(`/recommendations/jobs/${jobId}`)
+      const currentJob = activeRecommendationJobRef.current
+      if (currentJob === null || currentJob.jobId !== jobId || currentJob.requestId !== activeJob.requestId) return
+
+      if (job.status === 'completed') {
+        if (!job.result) throw new Error('Recommendation job completed without a result')
+        setRecommendationsData(job.result)
+        setIsRecommendationsLoading(false)
+        setActiveRecommendationJobId(null)
+        activeRecommendationJobRef.current = null
+      } else if (job.status === 'failed') {
+        setRecommendationsData(null)
+        setRecommendationsError(job.errorMessage ?? 'Recommendation job failed')
+        setIsRecommendationsLoading(false)
+        setActiveRecommendationJobId(null)
+        activeRecommendationJobRef.current = null
+      }
+    } catch (error) {
+      const currentJob = activeRecommendationJobRef.current
+      if (currentJob === null || currentJob.jobId !== jobId) return
+      setRecommendationsError(error instanceof Error ? error.message : 'Failed to read recommendation job')
+      setIsRecommendationsLoading(false)
+      setActiveRecommendationJobId(null)
+      activeRecommendationJobRef.current = null
+    }
+  }, [])
+
+  // Ignore status signals for stale jobs created by earlier UI requests.
+  const handleRecommendationJobUpdate = useCallback((message: { jobId: string }) => {
+    if (message.jobId === activeRecommendationJobRef.current?.jobId) {
+      void refreshRecommendationJob(message.jobId)
+    }
+  }, [refreshRecommendationJob])
+
+  // Recover a result that completed while the browser socket was disconnected.
+  const handleRecommendationSocketConnected = useCallback(() => {
+    const jobId = activeRecommendationJobRef.current?.jobId
+    if (jobId) void refreshRecommendationJob(jobId)
+  }, [refreshRecommendationJob])
+
+  useRecommendationJobUpdates(
+    activeRecommendationJobId !== null,
+    handleRecommendationJobUpdate,
+    handleRecommendationSocketConnected,
+  )
+
   const handleLoadRecommendations = useCallback(async () => {
     if (recommendationArtistId === null) {
       setRecommendationsError(targetControls?.emptyMessage ?? 'Select an artist to load recommendations.')
@@ -259,24 +320,28 @@ export function PromoterRecommendationsPanel({
     setRecommendationGraphMode('compact')
 
     try {
-      const recommendationResponse = await api.get<PromoterRecommendationResponse>(
-        `${PROMOTER_RECOMMENDATIONS_API_PATH}/${recommendationArtistId}/promoters?limit=50`,
+      const createdJob = await api.post<RecommendationJobCreatedResponse>(
+        `${PROMOTER_RECOMMENDATIONS_API_PATH}/${recommendationArtistId}/promoters/jobs`,
+        { limit: 50, excludeExisting: true, debug: false },
       )
       if (recommendationRequestIdRef.current !== requestId) return
-      setRecommendationsData(recommendationResponse)
+      activeRecommendationJobRef.current = { jobId: createdJob.jobId, requestId }
+      setActiveRecommendationJobId(createdJob.jobId)
+      await refreshRecommendationJob(createdJob.jobId)
     } catch (error) {
       if (recommendationRequestIdRef.current !== requestId) return
       setRecommendationsData(null)
       setRecommendationsError(error instanceof Error ? error.message : 'Failed to load recommendations')
-    } finally {
-      if (recommendationRequestIdRef.current === requestId) {
-        setIsRecommendationsLoading(false)
-      }
+      setIsRecommendationsLoading(false)
+      setActiveRecommendationJobId(null)
+      activeRecommendationJobRef.current = null
     }
-  }, [recommendationArtistId, targetControls?.emptyMessage])
+  }, [recommendationArtistId, refreshRecommendationJob, targetControls?.emptyMessage])
 
   const handleResetRecommendations = useCallback(() => {
     recommendationRequestIdRef.current += 1
+    activeRecommendationJobRef.current = null
+    setActiveRecommendationJobId(null)
     recommendationThresholdInitializedRef.current = false
     setRecommendationsData(null)
     setRecommendationsError(null)
@@ -515,7 +580,7 @@ export function PromoterRecommendationsPanel({
       <div className={panelHeadingClass}>
         <span className={labelClass}>Promoter Recommendations</span>
         {(targetControls || recommendationsData) && (
-          <div className="flex min-w-0 flex-nowrap items-center justify-end gap-2 max-[900px]:flex-wrap">
+          <div className="flex min-w-0 flex-nowrap items-center justify-end gap-2 max-[900px]:w-full max-[900px]:flex-wrap">
             {targetControls?.controls}
             <Button
               type="button"
