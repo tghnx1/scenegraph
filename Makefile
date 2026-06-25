@@ -111,7 +111,7 @@ upd-build: env ensure-ssl-certs
 
 debug-up: env ensure-ssl-certs prisma-migrate
 	@set -a; [ -f .env ] && . ./.env; set +a; \
-	$(COMPOSE) -f docker-compose.yml -f docker-compose.debug.yml up --build -d --scale recommendation-worker="$${RECOMMENDATION_WORKER:-1}"
+	$(COMPOSE) -f docker-compose.yml -f docker-compose.debug.yml up --build -d --scale recommendation-worker="$${RECOMMENDATION_WORKER:-1}" db backend recommendation-worker frontend nginx
 
 debug-down:
 	$(COMPOSE) -f docker-compose.yml -f docker-compose.debug.yml down --remove-orphans
