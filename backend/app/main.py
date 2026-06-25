@@ -1329,3 +1329,16 @@ async def reject_artist_claim(
         connection.commit()
 
     return {"success": True, "message": "Artist claim rejected"}
+
+@app.get("/api/me")
+async def get_me(
+    current_user: dict = Depends(get_current_user),
+) -> dict:
+    return {
+        "success": True,
+        "user_id": current_user["id"],
+        "username": current_user["username"],
+        "role": current_user["role"],
+        "artist_id": current_user["artist_id"],
+    }
+
