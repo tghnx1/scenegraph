@@ -32,7 +32,7 @@ NGINX_CERT_KEY ?= $(NGINX_CERT_DIR)/privkey.pem
 NGINX_CERT_FILE ?= $(NGINX_CERT_DIR)/fullchain.pem
 CERT_NAMES ?=
 
-.PHONY: help env cert build up upd upd-build debug-up debug-down down stop restart logs ps health ensure-ssl-certs prisma-migrate prisma-studio db-shell import-events backfill-normalized-texts backfill-lineup-residual backfill-artist-biographies extract-artist-tags refresh-embeddings validate-import refresh-data-check refresh-data-check-bio refresh-data-check-bio-embeddings full-pipeline import-dump export-dump clean reset-db list fclean
+.PHONY: help env cert build up upd upd-build down stop restart logs ps health ensure-ssl-certs prisma-migrate prisma-studio db-shell import-events backfill-normalized-texts backfill-lineup-residual backfill-artist-biographies extract-artist-tags refresh-embeddings validate-import refresh-data-check refresh-data-check-bio refresh-data-check-bio-embeddings full-pipeline import-dump export-dump clean reset-db list fclean
 
 help:
 	@printf "\n"
@@ -44,8 +44,6 @@ help:
 	@printf "  make up       Start stack with recommendation-worker count from .env (fallback: 1)\n"
 	@printf "  make upd      Start dev stack with recommendation-worker count from .env (fallback: 1)\n"
 	@printf "  make upd-build Start build stack in background with nginx serving frontend dist\n"
-	@printf "  make debug-up Start stack with backend debugpy attached on localhost:5678\n"
-	@printf "  make debug-down Stop the debug stack\n"
 	@printf "  make down     Stop and remove containers\n"
 	@printf "  make stop     Stop running containers\n"
 	@printf "  make restart  Restart the stack in background\n"
@@ -108,13 +106,6 @@ upd: env ensure-ssl-certs prisma-migrate
 upd-build: env ensure-ssl-certs
 	$(COMPOSE_BUILD) --profile tools run --rm --build prisma
 	$(COMPOSE_BUILD) up --build -d --remove-orphans
-
-debug-up: env ensure-ssl-certs prisma-migrate
-	@set -a; [ -f .env ] && . ./.env; set +a; \
-	$(COMPOSE) -f docker-compose.yml -f docker-compose.debug.yml up --build -d --scale recommendation-worker="$${RECOMMENDATION_WORKER:-1}"
-
-debug-down:
-	$(COMPOSE) -f docker-compose.yml -f docker-compose.debug.yml down --remove-orphans
 
 down:
 	$(COMPOSE) down
