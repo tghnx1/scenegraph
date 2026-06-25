@@ -18,7 +18,7 @@ def connect_to_pycharm_debug_server() -> None:
 
     debug_host = os.getenv("PYCHARM_DEBUG_HOST", "host.docker.internal")
     debug_port = int(os.getenv("PYCHARM_DEBUG_PORT", "5678"))
-    suspend = os.getenv("PYCHARM_DEBUG_SUSPEND", "1").strip().lower() not in {
+    suspend = os.getenv("PYCHARM_DEBUG_SUSPEND", "0").strip().lower() not in {
         "0",
         "false",
         "no",

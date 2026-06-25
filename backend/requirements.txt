@@ -8,4 +8,4 @@ httpx==0.28.1
 passlib[bcrypt]==1.7.4
 bcrypt==4.0.1
 python-jose[cryptography]
-pydevd-pycharm==262.8117.23
+pydevd-pycharm~=252.23892.439

@@ -1,10 +1,9 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from psycopg import Connection
 
 from app.auth import get_current_user_id
-from app.db import get_db
+from app.db import get_connection
 from app.recommendation_helpers import ensure_feedback_entity_exists, feedback_item_from_row
 from app.schemas import (
     FeedbackCandidateKind,
@@ -25,70 +24,70 @@ router = APIRouter()
 async def upsert_recommendation_feedback(
     request: RecommendationFeedbackRequest,
     user_id: int = Depends(get_current_user_id),
-    connection: Connection = Depends(get_db),
 ) -> RecommendationFeedbackItem:
-    ensure_feedback_entity_exists(
-        connection,
-        entity_type=request.sourceEntityType,
-        entity_id=request.sourceEntityId,
-    )
-    ensure_feedback_entity_exists(
-        connection,
-        entity_type=request.candidateEntityType,
-        entity_id=request.candidateEntityId,
-    )
-
-    reason = request.reason.strip() if request.reason else None
-    if reason == "":
-        reason = None
-
-    with connection.cursor() as cursor:
-        cursor.execute(
-            """
-            INSERT INTO recommendation_feedback (
-                user_id,
-                source_entity_type,
-                source_entity_id,
-                candidate_entity_type,
-                candidate_entity_id,
-                feedback,
-                reason
-            )
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
-            ON CONFLICT (
-                user_id,
-                source_entity_type,
-                source_entity_id,
-                candidate_entity_type,
-                candidate_entity_id
-            )
-            DO UPDATE SET
-                feedback = EXCLUDED.feedback,
-                reason = EXCLUDED.reason,
-                updated_at = CURRENT_TIMESTAMP
-            RETURNING
-                id,
-                user_id,
-                source_entity_type,
-                source_entity_id,
-                candidate_entity_type,
-                candidate_entity_id,
-                feedback,
-                reason,
-                created_at,
-                updated_at
-            """,
-            (
-                user_id,
-                request.sourceEntityType,
-                request.sourceEntityId,
-                request.candidateEntityType,
-                request.candidateEntityId,
-                request.feedback,
-                reason,
-            ),
+    with get_connection() as connection:
+        ensure_feedback_entity_exists(
+            connection,
+            entity_type=request.sourceEntityType,
+            entity_id=request.sourceEntityId,
         )
-        row = cursor.fetchone()
+        ensure_feedback_entity_exists(
+            connection,
+            entity_type=request.candidateEntityType,
+            entity_id=request.candidateEntityId,
+        )
+
+        reason = request.reason.strip() if request.reason else None
+        if reason == "":
+            reason = None
+
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO recommendation_feedback (
+                    user_id,
+                    source_entity_type,
+                    source_entity_id,
+                    candidate_entity_type,
+                    candidate_entity_id,
+                    feedback,
+                    reason
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (
+                    user_id,
+                    source_entity_type,
+                    source_entity_id,
+                    candidate_entity_type,
+                    candidate_entity_id
+                )
+                DO UPDATE SET
+                    feedback = EXCLUDED.feedback,
+                    reason = EXCLUDED.reason,
+                    updated_at = CURRENT_TIMESTAMP
+                RETURNING
+                    id,
+                    user_id,
+                    source_entity_type,
+                    source_entity_id,
+                    candidate_entity_type,
+                    candidate_entity_id,
+                    feedback,
+                    reason,
+                    created_at,
+                    updated_at
+                """,
+                (
+                    user_id,
+                    request.sourceEntityType,
+                    request.sourceEntityId,
+                    request.candidateEntityType,
+                    request.candidateEntityId,
+                    request.feedback,
+                    reason,
+                ),
+            )
+            row = cursor.fetchone()
 
     return feedback_item_from_row(row)
 
@@ -104,44 +103,44 @@ async def list_recommendation_feedback(
     candidate_entity_type: FeedbackCandidateKind | None = Query(default=None, alias="candidateEntityType"),
     candidate_entity_id: int | None = Query(default=None, ge=1, alias="candidateEntityId"),
     user_id: int = Depends(get_current_user_id),
-    connection: Connection = Depends(get_db),
 ) -> RecommendationFeedbackResponse:
-    with connection.cursor() as cursor:
-        cursor.execute(
-            """
-            SELECT
-                id,
-                user_id,
-                source_entity_type,
-                source_entity_id,
-                candidate_entity_type,
-                candidate_entity_id,
-                feedback,
-                reason,
-                created_at,
-                updated_at
-            FROM recommendation_feedback
-            WHERE user_id = %s
-              AND (%s::text IS NULL OR source_entity_type = %s)
-              AND (%s::bigint IS NULL OR source_entity_id = %s)
-              AND (%s::text IS NULL OR candidate_entity_type = %s)
-              AND (%s::bigint IS NULL OR candidate_entity_id = %s)
-            ORDER BY updated_at DESC, id DESC
-            LIMIT 500
-            """,
-            (
-                user_id,
-                source_entity_type,
-                source_entity_type,
-                source_entity_id,
-                source_entity_id,
-                candidate_entity_type,
-                candidate_entity_type,
-                candidate_entity_id,
-                candidate_entity_id,
-            ),
-        )
-        rows = cursor.fetchall()
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT
+                    id,
+                    user_id,
+                    source_entity_type,
+                    source_entity_id,
+                    candidate_entity_type,
+                    candidate_entity_id,
+                    feedback,
+                    reason,
+                    created_at,
+                    updated_at
+                FROM recommendation_feedback
+                WHERE user_id = %s
+                  AND (%s::text IS NULL OR source_entity_type = %s)
+                  AND (%s::bigint IS NULL OR source_entity_id = %s)
+                  AND (%s::text IS NULL OR candidate_entity_type = %s)
+                  AND (%s::bigint IS NULL OR candidate_entity_id = %s)
+                ORDER BY updated_at DESC, id DESC
+                LIMIT 500
+                """,
+                (
+                    user_id,
+                    source_entity_type,
+                    source_entity_type,
+                    source_entity_id,
+                    source_entity_id,
+                    candidate_entity_type,
+                    candidate_entity_type,
+                    candidate_entity_id,
+                    candidate_entity_id,
+                ),
+            )
+            rows = cursor.fetchall()
 
     return RecommendationFeedbackResponse(
         feedback=[feedback_item_from_row(row) for row in rows],
@@ -156,29 +155,29 @@ async def list_recommendation_feedback(
 async def delete_recommendation_feedback(
     feedback_id: int,
     user_id: int = Depends(get_current_user_id),
-    connection: Connection = Depends(get_db),
 ) -> RecommendationFeedbackItem:
-    with connection.cursor() as cursor:
-        cursor.execute(
-            """
-            DELETE FROM recommendation_feedback
-            WHERE id = %s
-              AND user_id = %s
-            RETURNING
-                id,
-                user_id,
-                source_entity_type,
-                source_entity_id,
-                candidate_entity_type,
-                candidate_entity_id,
-                feedback,
-                reason,
-                created_at,
-                updated_at
-            """,
-            (feedback_id, user_id),
-        )
-        row = cursor.fetchone()
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                DELETE FROM recommendation_feedback
+                WHERE id = %s
+                  AND user_id = %s
+                RETURNING
+                    id,
+                    user_id,
+                    source_entity_type,
+                    source_entity_id,
+                    candidate_entity_type,
+                    candidate_entity_id,
+                    feedback,
+                    reason,
+                    created_at,
+                    updated_at
+                """,
+                (feedback_id, user_id),
+            )
+            row = cursor.fetchone()
     if row is None:
         raise HTTPException(status_code=404, detail="recommendation feedback not found")
     return feedback_item_from_row(row)

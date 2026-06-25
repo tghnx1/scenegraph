@@ -41,15 +41,8 @@ class FakePool:
 @contextmanager
 def use_db_connection():
     """Open and close one short-lived database checkout through the app helper."""
-    generator = db.get_db()
-    connection = next(generator)
-    try:
+    with db.get_connection() as connection:
         yield connection
-    finally:
-        try:
-            next(generator)
-        except StopIteration:
-            pass
 
 
 def test_get_connection_uses_one_shared_pool(monkeypatch):

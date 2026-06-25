@@ -1,8 +1,8 @@
-from fastapi import APIRouter, Depends, Query, HTTPException
+from fastapi import APIRouter, Query, HTTPException
 from pydantic import BaseModel
 from typing import List, Optional
 from psycopg import Connection
-from app.db import get_db
+from app.db import get_connection
 
 router = APIRouter()
 
@@ -491,15 +491,15 @@ def get_ego_graph(
     id: int = Query(...),
     depth: int = Query(1, ge=1, le=3),
     limit: int = Query(100, ge=1, le=500),
-    db: Connection = Depends(get_db),
 ):
-    if type == "artist":
-        return build_artist_graph(id, limit, depth, db)
-    elif type == "venue":
-        return build_venue_graph(id, limit, db)
-    elif type == "event":
-        return build_event_graph(id, limit, db)
-    elif type == "promoter":
-        return build_promoter_graph(id, limit, depth, db)
-    else:
-        raise HTTPException(status_code=400, detail=f"Unsupported type: {type}")
+    with get_connection() as db:
+        if type == "artist":
+            return build_artist_graph(id, limit, depth, db)
+        elif type == "venue":
+            return build_venue_graph(id, limit, db)
+        elif type == "event":
+            return build_event_graph(id, limit, db)
+        elif type == "promoter":
+            return build_promoter_graph(id, limit, depth, db)
+        else:
+            raise HTTPException(status_code=400, detail=f"Unsupported type: {type}")

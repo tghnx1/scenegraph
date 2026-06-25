@@ -6,6 +6,7 @@ services:
     environment:
       PYCHARM_DEBUG_HOST: ${PYCHARM_DEBUG_HOST:-host.docker.internal}
       PYCHARM_DEBUG_PORT: ${PYCHARM_DEBUG_PORT:-5678}
+      PYCHARM_DEBUG_SUSPEND: ${PYCHARM_DEBUG_SUSPEND:-0}
     healthcheck:
       disable: true
 

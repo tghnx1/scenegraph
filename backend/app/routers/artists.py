@@ -1,8 +1,7 @@
-from fastapi import APIRouter, Depends, Query, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from typing import List, Optional
-from psycopg import Connection
-from app.db import get_db
+from app.db import get_connection
 from app.style_tags import canonicalize_style_tags, extract_style_tags
 from app.auth import get_current_user_id
 
@@ -130,29 +129,37 @@ def present_style_label(value: str) -> str:
 @router.get("/{id}", response_model=ArtistResponse)
 def get_artist(
     id: int,
-    db: Connection = Depends(get_db),
 ):
-    with db.cursor() as cur:
-        cur.execute(ARTIST_SQL, (id,))
-        artist = cur.fetchone()
+    with get_connection() as db:
+        with db.cursor() as cur:
+            cur.execute(ARTIST_SQL, (id,))
+            artist = cur.fetchone()
 
-    if not artist:
-        raise HTTPException(status_code=404, detail="Artist not found")
+        if not artist:
+            raise HTTPException(status_code=404, detail="Artist not found")
 
-    biography = artist.get("biography_normalized") or artist.get("biography") or ""
-    profile_style_tags: list[str] = []
-    with db.cursor() as cur:
-        cur.execute("SELECT to_regclass('public.artist_extracted_genres') AS table_name")
-        has_artist_extracted_genres = cur.fetchone()["table_name"] is not None
-        if has_artist_extracted_genres:
-            cur.execute(ARTIST_STYLE_TAGS_SQL, (id,))
-            profile_style_tags = sorted(
-                {
-                    canonical
-                    for row in cur.fetchall()
-                    for canonical in canonicalize_style_tags(row["extracted_genre"])
-                }
-            )
+        biography = artist.get("biography_normalized") or artist.get("biography") or ""
+        profile_style_tags: list[str] = []
+        with db.cursor() as cur:
+            cur.execute("SELECT to_regclass('public.artist_extracted_genres') AS table_name")
+            has_artist_extracted_genres = cur.fetchone()["table_name"] is not None
+            if has_artist_extracted_genres:
+                cur.execute(ARTIST_STYLE_TAGS_SQL, (id,))
+                profile_style_tags = sorted(
+                    {
+                        canonical
+                        for row in cur.fetchall()
+                        for canonical in canonicalize_style_tags(row["extracted_genre"])
+                    }
+                )
+
+        with db.cursor() as cur:
+            cur.execute(ARTIST_EVENTS_SQL, (id,))
+            events_rows = cur.fetchall()
+
+        with db.cursor() as cur:
+            cur.execute(CONNECTED_ARTISTS_SQL, (id,))
+            connected_rows = cur.fetchall()
 
     if not profile_style_tags:
         profile_style_tags = extract_style_tags(biography)
@@ -164,14 +171,6 @@ def get_artist(
             if isinstance(tag, str) and tag.strip()
         }
     )
-
-    with db.cursor() as cur:
-        cur.execute(ARTIST_EVENTS_SQL, (id,))
-        events_rows = cur.fetchall()
-
-    with db.cursor() as cur:
-        cur.execute(CONNECTED_ARTISTS_SQL, (id,))
-        connected_rows = cur.fetchall()
 
     events = [
         EventSummary(
@@ -208,42 +207,42 @@ def get_artist(
 async def update_artist_biography(
     id: int,
     request: ArtistBiographyUpdate,
-    db: Connection = Depends(get_db),
     current_user_id: dict = Depends(get_current_user_id),
 ):
-    with db.cursor() as cur:
-        cur.execute(
-            """
-            SELECT role, artist_id
-            FROM users
-            WHERE id = %s
-            """,
-            (current_user_id,)
-        )
-        user_row = cur.fetchone()
+    with get_connection() as db:
+        with db.cursor() as cur:
+            cur.execute(
+                """
+                SELECT role, artist_id
+                FROM users
+                WHERE id = %s
+                """,
+                (current_user_id,)
+            )
+            user_row = cur.fetchone()
 
-    if not user_row:
-        raise HTTPException(status_code=403, detail="User not found")
-    
-    if user_row["role"] != "admin" and user_row["artist_id"] != id:
-        raise HTTPException(
-            status_code=403,
-            detail="You can only edit your own artist profile"
-        )
-    
-    biography = request.biography.strip()
-    with db.cursor() as cur:
-        cur.execute(
-            """
-            UPDATE artists
-            SET biography = %s,
-                biography_status = 'manually_edited'
-            WHERE id = %s
-            RETURNING id, name, biography;
-            """,
-            (biography, id),
-        )
-        artist = cur.fetchone()
+        if not user_row:
+            raise HTTPException(status_code=403, detail="User not found")
+        
+        if user_row["role"] != "admin" and user_row["artist_id"] != id:
+            raise HTTPException(
+                status_code=403,
+                detail="You can only edit your own artist profile"
+            )
+        
+        biography = request.biography.strip()
+        with db.cursor() as cur:
+            cur.execute(
+                """
+                UPDATE artists
+                SET biography = %s,
+                    biography_status = 'manually_edited'
+                WHERE id = %s
+                RETURNING id, name, biography;
+                """,
+                (biography, id),
+            )
+            artist = cur.fetchone()
 
     if not artist:
         raise HTTPException(status_code=404, detail="Artist not found")
