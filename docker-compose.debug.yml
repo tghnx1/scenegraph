@@ -1,0 +1,8 @@
+services:
+  backend:
+    command: ["python", "/app/scripts/run_with_pycharm_debug.py"]
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      PYCHARM_DEBUG_HOST: ${PYCHARM_DEBUG_HOST:-host.docker.internal}
+      PYCHARM_DEBUG_PORT: ${PYCHARM_DEBUG_PORT:-5678}
