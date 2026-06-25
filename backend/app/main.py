@@ -1138,6 +1138,25 @@ async def claim_artist_profile(
         if cursor.fetchone() is None:
             raise HTTPException(status_code=404, detail="Artist not found")
 
+        ## to avoid double claims
+        cursor.execute(
+            """
+            SELECT id, username
+            FROM users
+            WHERE artist_id = %s
+                AND id != %s
+            LIMIT 1
+            """,
+            (artist_id, current_user["id"]),
+        )
+        assigned_user = cursor.fetchone()
+
+        if assigned_user is not None:
+            raise HTTPException(
+                status_code=409,
+                detail="This artist profile has already been assigned to another user.",
+            )
+
         cursor.execute(
             """
             SELECT id, status
