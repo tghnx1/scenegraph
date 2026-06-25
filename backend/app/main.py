@@ -460,7 +460,7 @@ async def register(
     connection: Connection = Depends(get_db)
 ) -> RegisterResponse:
 
-    check_rate_limit(f"register:{register_data.email}, max_attempts=3, window_seconds=300")
+    check_rate_limit(f"register:{register_data.email}", max_attempts=3, window_seconds=300)
 
     if register_data.password != register_data.password_confirm:
         return RegisterResponse(
@@ -1097,6 +1097,11 @@ async def get_public_genres(
     limit: int = 20,
     offset: int = 0,
 ) -> dict:
+    check_rate_limit("public:genres", max_attempts=100, window_seconds=60)
+
+    limit = min(max(limit, 1), 100)     
+    offset = max(offset, 0)
+
     with connection.cursor() as cursor:
         cursor.execute(
             """
