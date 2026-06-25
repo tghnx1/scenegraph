@@ -44,7 +44,7 @@ help:
 	@printf "  make up       Start stack with recommendation-worker count from .env (fallback: 1)\n"
 	@printf "  make upd      Start dev stack with recommendation-worker count from .env (fallback: 1)\n"
 	@printf "  make upd-build Start build stack in background with nginx serving frontend dist\n"
-	@printf "  make debug-up Start stack with backend debugpy attached on localhost:5678\n"
+	@printf "  make debug-up Start stack with backend connecting to the PyCharm debug server on localhost:5678\n"
 	@printf "  make debug-down Stop the debug stack\n"
 	@printf "  make down     Stop and remove containers\n"
 	@printf "  make stop     Stop running containers\n"
