@@ -34,8 +34,8 @@ def connect_to_pycharm_debug_server() -> None:
     pydevd_pycharm.settrace(
         debug_host,
         port=debug_port,
-        stdout_to_server=True,
-        stderr_to_server=True,
+        stdoutToServer=True,
+        stderrToServer=True,
         suspend=suspend,
     )
 
