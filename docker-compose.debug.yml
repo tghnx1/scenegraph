@@ -6,3 +6,17 @@ services:
     environment:
       PYCHARM_DEBUG_HOST: ${PYCHARM_DEBUG_HOST:-host.docker.internal}
       PYCHARM_DEBUG_PORT: ${PYCHARM_DEBUG_PORT:-5678}
+    healthcheck:
+      disable: true
+
+  frontend:
+    depends_on:
+      backend:
+        condition: service_started
+
+  nginx:
+    depends_on:
+      backend:
+        condition: service_started
+      frontend:
+        condition: service_started
