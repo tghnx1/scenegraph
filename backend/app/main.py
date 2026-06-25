@@ -884,15 +884,15 @@ async def export_activity(
 
     lines = []
     lines.append(
-        f"{'id':<4}| {'username':<10}| {'event_type':<28}| {'target':<30}| {'created_at'}"
+        f"{'id':<4}| {'username':<25}| {'event_type':<28}| {'target':<30}| {'created_at'}"
     )
     lines.append(
-        f"{'-' * 4}+{'-' * 11}+{'-' * 29}+{'-' * 31}+{'-' * 30}"
+        f"{'-' * 4}+{'-' * 26}+{'-' * 29}+{'-' * 31}+{'-' * 30}"
     )
     for row in rows:
         lines.append(
             f"{str(row['id']):<4}| "
-            f"{(row['username'] or ''):<10}| "
+            f"{(row['username'] or ''):<25}| "
             f"{row['event_type']:<28}| "
             f"{(row['target'] or ''):<30}| "
             f"{row['created_at']}"

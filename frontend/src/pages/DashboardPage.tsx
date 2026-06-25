@@ -152,7 +152,7 @@ export function DashboardPage() {
             <div
               className="dashboard-scroll-list"
               style={{
-                maxHeight: 470,
+                maxHeight: 490,
                 overflowY: 'auto',
                 display: 'grid',
                 gap: 6,
