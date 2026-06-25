@@ -21,6 +21,7 @@ export function DashboardPage() {
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
   const [activityRows, setActivityRows] = useState<ActivityLogItem[]>([])
+  const [usersRefreshVersion, setUsersRefreshVersion] = useState(0)
   const include = selectedEntities.join(',')
   const {
     data: dashboardStatus,
@@ -48,16 +49,13 @@ export function DashboardPage() {
   }, [])
 
   const handleDashboardUpdate = useCallback(
-    ({areas}: DashboardUpdate) => {
-      if (areas.includes('composition')) {
-        void refetchComposition()
-      }
-
-      if (areas.includes('metrics')) {
-        void refetchMetrics()
-      }
+    (_message: DashboardUpdate) => {
+      void refetchComposition()
+      void refetchMetrics()
+      void loadActivity()
+      setUsersRefreshVersion((version) => version + 1)
     },
-    [refetchComposition, refetchMetrics],
+    [loadActivity, refetchComposition, refetchMetrics],
   )
 
   const dashboardConnectionStatus = useDashboardUpdates(handleDashboardUpdate)
@@ -128,7 +126,11 @@ export function DashboardPage() {
         />
 
         <div className="grid min-w-0 gap-6 lg:grid-cols-2">
-          <AdminUsersPage compact onActivityChanged={loadActivity} />
+          <AdminUsersPage
+            compact
+            refreshVersion={usersRefreshVersion}
+            onActivityChanged={loadActivity}
+          />
 
           <section className="min-w-0">
             <div

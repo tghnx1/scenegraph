@@ -5,10 +5,11 @@ import { changeUserRole, approveUser, rejectUser, getPendingUsers, getUsers,
 
 interface AdminUsersPageProps { 
   compact?: boolean
+  refreshVersion?: number
   onActivityChanged?: () => Promise<void>       //to update directly the log, the child adminuserpage has to ask the dashboardpage.
 }  
 
-export function AdminUsersPage({ compact = false, onActivityChanged, }: AdminUsersPageProps) {
+export function AdminUsersPage({ compact = false, refreshVersion = 0, onActivityChanged, }: AdminUsersPageProps) {
   const [users, setUsers] = useState<PendingUser[]>([])
   const [message, setMessage] = useState('')
   const [allUsers, setAllUsers] = useState<UserItem[]>([])
@@ -55,7 +56,7 @@ export function AdminUsersPage({ compact = false, onActivityChanged, }: AdminUse
     loadUsers()
     loadAllUsers()
     loadClaims()
-  }, [])
+  }, [refreshVersion])
 
 
 
