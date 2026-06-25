@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Button } from '@/shared/ui/button'
 import { cn } from '@/shared/lib/cn-utils.ts'
 import { DetailsPanel } from './components/DetailsPanel.tsx'
@@ -8,6 +8,7 @@ import { SearchInputField } from './components/SearchInputField.tsx'
 import { useGraphSearchDetails } from './hooks/useGraphSearchDetails.ts'
 import { useManualArtistConnections } from './hooks/useManualArtistConnections.ts'
 import { BiographyPanel } from './components/BiographyPanel.tsx'
+import { getMe } from '../api/auth'
 
 const DEFAULT_PROFILE_ARTIST_ID = 2178
 
@@ -22,6 +23,26 @@ export function ProfilePage({ recommendationTargetControls, showBiography = true
   const { detailsPanelProps, searchFormProps, setSelected } = useGraphSearchDetails()
   const [activeWorkspaceTab, setActiveWorkspaceTab] = useState<ProfileWorkspaceTab>('graph')
 
+  const [assignedArtistId, setAssignedArtistId] = useState<number | null>(() => {
+    const stored = Number(localStorage.getItem('artist_id'))
+    return Number.isInteger(stored) && stored > 0 ? stored : null
+  }) 
+
+  useEffect(() => {
+    getMe()
+    .then((response) => {
+      if (response.artist_id) {
+        localStorage.setItem('artist_id', String(response.artist_id))
+        setAssignedArtistId(response.artist_id)
+      } else {
+        localStorage.removeItem('artist_id')
+        setAssignedArtistId(null)
+      }
+    })
+    .catch(() => {
+    })
+  }, [])
+  
   const searchParams = new URLSearchParams(window.location.search)
   const selectedType = searchParams.get('selectedType')
   const selectedId = Number(searchParams.get('selectedId'))
@@ -31,10 +52,9 @@ export function ProfilePage({ recommendationTargetControls, showBiography = true
     Number.isInteger(selectedId) &&
     selectedId > 0
 
-  const storedArtistId = Number(localStorage.getItem('artist_id'))
+  const storedArtistId = assignedArtistId
 
-  const hasAssignedArtist =
-    Number.isInteger(storedArtistId) && storedArtistId > 0
+  const hasAssignedArtist =storedArtistId !== null
 
   const artistId = hasSelectedArtist
     ? selectedId
@@ -43,7 +63,7 @@ export function ProfilePage({ recommendationTargetControls, showBiography = true
       : DEFAULT_PROFILE_ARTIST_ID
 
   const canEditBiography = 
-    hasAssignedArtist && storedArtistId == artistId
+    hasAssignedArtist && storedArtistId === artistId
 
   const manualConnections = useManualArtistConnections(showBiography ? artistId : null)
   const isSingleRowWorkspace = !showBiography

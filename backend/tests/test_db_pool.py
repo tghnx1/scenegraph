@@ -31,7 +31,7 @@ def use_db_connection():
             pass
 
 
-def test_get_db_reuses_pooled_connections(monkeypatch):
+def test_get_db_opens_direct_connections(monkeypatch):
     created_connections: list[FakeConnection] = []
 
     def fake_connect(*args, **kwargs):
@@ -43,8 +43,10 @@ def test_get_db_reuses_pooled_connections(monkeypatch):
 
     with use_db_connection() as first_connection:
         assert first_connection.label == "connection-1"
+    assert first_connection.closed is True
 
     with use_db_connection() as second_connection:
-        assert second_connection is first_connection
+        assert second_connection.label == "connection-2"
+    assert second_connection.closed is True
 
-    assert len(created_connections) == 1
+    assert len(created_connections) == 2

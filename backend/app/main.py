@@ -40,6 +40,14 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 BOOTSTRAP_ADMIN_USERNAME = os.getenv("BOOTSTRAP_ADMIN_USERNAME")
 BOOTSTRAP_ADMIN_EMAIL = os.getenv("BOOTSTRAP_ADMIN_EMAIL")
 BOOTSTRAP_ADMIN_PASSWORD = os.getenv("BOOTSTRAP_ADMIN_PASSWORD")
+BOOTSTRAP_USER_USERNAME = os.getenv("BOOTSTRAP_USER_USERNAME")
+BOOTSTRAP_USER_EMAIL = os.getenv("BOOTSTRAP_USER_EMAIL")
+BOOTSTRAP_USER_PASSWORD = os.getenv("BOOTSTRAP_USER_PASSWORD")
+BOOTSTRAP_USER_ROLE = os.getenv("BOOTSTRAP_USER_ROLE", "artist")
+BOOTSTRAP_USER_UPDATE_EXISTING = os.getenv(
+    "BOOTSTRAP_USER_UPDATE_EXISTING",
+    "false",
+).strip().lower() in {"1", "true", "yes", "on"}
 
 def create_bootstrap_admin(connection: Connection) -> None:         #like void
     with connection.cursor() as cursor:
@@ -96,6 +104,70 @@ def create_bootstrap_admin(connection: Connection) -> None:         #like void
 
         connection.commit()
 
+
+# Create the configured approved non-admin account once without overwriting existing credentials.
+def create_bootstrap_user(connection: Connection) -> None:
+    if (
+        not BOOTSTRAP_USER_USERNAME
+        or not BOOTSTRAP_USER_EMAIL
+        or not BOOTSTRAP_USER_PASSWORD
+    ):
+        return
+    if BOOTSTRAP_USER_ROLE not in {"artist", "agent", "admin"}:
+        raise RuntimeError("BOOTSTRAP_USER_ROLE must be one of: artist, agent, admin")
+
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT id FROM users WHERE username = %s",
+            (BOOTSTRAP_USER_USERNAME,),
+        )
+        existing_user = cursor.fetchone()
+        password_hash = pwd_context.hash(BOOTSTRAP_USER_PASSWORD)
+
+        if existing_user is not None:
+            if not BOOTSTRAP_USER_UPDATE_EXISTING:
+                return
+            cursor.execute(
+                """
+                UPDATE users
+                SET email = %s,
+                    password_hash = %s,
+                    role = %s,
+                    status = 'approved',
+                    must_change_password = FALSE
+                WHERE id = %s
+                """,
+                (
+                    BOOTSTRAP_USER_EMAIL,
+                    password_hash,
+                    BOOTSTRAP_USER_ROLE,
+                    existing_user["id"],
+                ),
+            )
+            connection.commit()
+            return
+
+        cursor.execute(
+            """
+            INSERT INTO users (
+                username,
+                email,
+                password_hash,
+                role,
+                status,
+                must_change_password
+            )
+            VALUES (%s, %s, %s, %s, 'approved', FALSE)
+            """,
+            (
+                BOOTSTRAP_USER_USERNAME,
+                BOOTSTRAP_USER_EMAIL,
+                password_hash,
+                BOOTSTRAP_USER_ROLE,
+            ),
+        )
+    connection.commit()
+
 def log_activity(
         connection: Connection,
         user_id: int | None,
@@ -126,6 +198,7 @@ async def lifespan(app_instance: FastAPI):
     with get_connection() as connection:
         schema_report = check_schema_tables(connection)
         create_bootstrap_admin(connection)
+        create_bootstrap_user(connection)
     app_instance.state.schema_preflight = schema_report
 
     if schema_preflight_strict_mode() and schema_report["missingRequiredTables"]:
@@ -1242,3 +1315,15 @@ async def reject_artist_claim(
         connection.commit()
 
     return {"success": True, "message": "Artist claim rejected"}
+
+@app.get("/api/me")
+async def get_me(
+    current_user: dict = Depends(get_current_user),
+) -> dict:
+    return {
+        "success": True,
+        "user_id": current_user["id"],
+        "username": current_user["username"],
+        "role": current_user["role"],
+        "artist_id": current_user["artist_id"],
+    }
