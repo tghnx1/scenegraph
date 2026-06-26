@@ -78,7 +78,7 @@ up: env prisma-migrate
 upd: env prisma-migrate cert
 	$(COMPOSE) up --build -d
 
-upd-build: env cert
+upd-build: env prisma-migrate cert
 	$(COMPOSE_BUILD) --profile tools run --rm --build prisma
 	$(COMPOSE_BUILD) up --build -d --remove-orphans
 
