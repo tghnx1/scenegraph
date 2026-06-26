@@ -128,19 +128,20 @@ def test_parallel_recommendation_job_create_read_complete_flow():
                     )
                 )
 
-            for response, job in zip(read_responses, created_jobs, strict=True):
-                assert response.status_code == 200
-                payload = response.json()
-                read_job_ids.append(payload["jobId"])
-                assert payload["jobId"] == job["jobId"]
-                assert payload["status"] == "queued"
-                assert payload.get("result") is None
+                for response, job in zip(read_responses, created_jobs, strict=True):
+                    assert response.status_code == 200
+                    payload = response.json()
+                    read_job_ids.append(payload["jobId"])
+                    assert payload["jobId"] == job["jobId"]
+                    # Initial read must reflect queued state
+                    assert payload["status"] == "queued"
+                    assert payload.get("result") is None
 
             with ThreadPoolExecutor(max_workers=4) as executor:
                 claimed_job_ids = list(executor.map(lambda _: _claim_and_complete_jobs(), range(4)))
 
-            flattened_claims = [job_id for batch in claimed_job_ids for job_id in batch]
-            assert len(flattened_claims) == len(job_ids)
+                flattened_claims = [job_id for batch in claimed_job_ids for job_id in batch]
+                assert len(flattened_claims) == len(job_ids)
             assert len(flattened_claims) == len(set(flattened_claims))
 
             with ThreadPoolExecutor(max_workers=len(created_jobs)) as executor:
