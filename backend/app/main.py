@@ -479,7 +479,7 @@ async def register(
     register_data: RegisterRequest,
 ) -> RegisterResponse:
 
-    check_rate_limit(f"register:{register_data.email}, max_attempts=3, window_seconds=300")
+    check_rate_limit(f"register:{register_data.email}", max_attempts=3, window_seconds=300)
 
     if register_data.password != register_data.password_confirm:
         return RegisterResponse(
@@ -907,15 +907,15 @@ async def export_activity(
 
     lines = []
     lines.append(
-        f"{'id':<4}| {'username':<10}| {'event_type':<28}| {'target':<30}| {'created_at'}"
+        f"{'id':<4}| {'username':<25}| {'event_type':<28}| {'target':<30}| {'created_at'}"
     )
     lines.append(
-        f"{'-' * 4}+{'-' * 11}+{'-' * 29}+{'-' * 31}+{'-' * 30}"
+        f"{'-' * 4}+{'-' * 26}+{'-' * 29}+{'-' * 31}+{'-' * 30}"
     )
     for row in rows:
         lines.append(
             f"{str(row['id']):<4}| "
-            f"{(row['username'] or ''):<10}| "
+            f"{(row['username'] or ''):<25}| "
             f"{row['event_type']:<28}| "
             f"{(row['target'] or ''):<30}| "
             f"{row['created_at']}"
@@ -1120,6 +1120,11 @@ async def get_public_genres(
     limit: int = 20,
     offset: int = 0,
 ) -> dict:
+    check_rate_limit("public:genres", max_attempts=100, window_seconds=60)
+
+    limit = min(max(limit, 1), 100)
+    offset = max(offset, 0)
+
     with get_connection() as connection:
         with connection.cursor() as cursor:
             cursor.execute(
@@ -1161,6 +1166,25 @@ async def claim_artist_profile(
             cursor.execute("SELECT id FROM artists WHERE id = %s", (artist_id,))
             if cursor.fetchone() is None:
                 raise HTTPException(status_code=404, detail="Artist not found")
+
+            # Avoid claims for artist profiles already assigned to another user.
+            cursor.execute(
+                """
+                SELECT id, username
+                FROM users
+                WHERE artist_id = %s
+                    AND id != %s
+                LIMIT 1
+                """,
+                (artist_id, current_user["id"]),
+            )
+            assigned_user = cursor.fetchone()
+
+            if assigned_user is not None:
+                raise HTTPException(
+                    status_code=409,
+                    detail="This artist profile has already been assigned to another user.",
+                )
 
             cursor.execute(
                 """
@@ -1349,3 +1373,15 @@ async def reject_artist_claim(
         connection.commit()
 
     return {"success": True, "message": "Artist claim rejected"}
+
+@app.get("/api/me")
+async def get_me(
+    current_user: dict = Depends(get_current_user),
+) -> dict:
+    return {
+        "success": True,
+        "user_id": current_user["id"],
+        "username": current_user["username"],
+        "role": current_user["role"],
+        "artist_id": current_user["artist_id"],
+    }

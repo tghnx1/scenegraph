@@ -6,7 +6,7 @@ The app is built with Vite, React Router, Tailwind CSS, a Zustand store, typed A
 
 ## Quick Start
 
-From the repository root, the normal development path is to run the complete stack:
+From the repository root, the normal __development path__ is to run the complete stack:
 
 ```bash
 make upd
@@ -69,7 +69,7 @@ src/types/                   TypeScript types for API data
 
 `src/main.tsx` starts the React app, applies the saved theme, and enables React Router.
 
-`src/App.tsx` owns the main layout, navigation, auth state, theme toggle, and route protection. It reads the saved `token` and `role` from `localStorage` and sends each user to the right workspace:
+`src/App.tsx` contains the main layout, navigation, auth state, theme toggle, and route protection. It reads the saved `token` and `role` from `localStorage` and sends each user to the respective workspace:
 
 - anonymous users use the public graph page
 - artists use the profile workspace
@@ -113,7 +113,7 @@ In the display, `react-force-graph-2d` draws and manages the graph component whi
 
 Global styles are in `src/shared/styles/base.css`. Theme helpers are in `src/shared/styles/colors.ts`, and the selected theme is stored in `localStorage` as `scenegraph-theme`.
 
-Reusable UI primitives live in `src/shared/ui/`.
+Reusable UI primitives (buttons, dropdowns, tooltips etc) live in `src/shared/ui/`.
 
 Other components:
 - `lucide-react`: icon components

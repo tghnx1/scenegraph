@@ -163,3 +163,14 @@ export const rejectArtistClaim = (
   claimId: number,
 ): Promise<{ success: boolean; message: string }> =>
   api.post(`/admin/artist-claims/${claimId}/reject`, undefined)
+
+export interface MeResponse {
+  success: boolean
+  user_id: number
+  username: string
+  role: AuthRole
+  artist_id?: number | null
+}
+
+export const getMe = (): Promise<MeResponse> =>
+  api.get('/me')

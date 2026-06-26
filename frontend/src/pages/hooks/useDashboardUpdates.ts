@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 
-export type DashboardUpdateArea = 'composition' | 'metrics'
+export type DashboardUpdateArea = 'composition' | 'metrics' | 'users'
 
 export type DashboardUpdate = {
   type: 'dashboard.updated'
@@ -9,7 +9,7 @@ export type DashboardUpdate = {
 
 export type DashboardConnectionStatus = 'connecting' | 'connected' | 'reconnecting' | 'auth-error' | 'error'
 
-const DASHBOARD_UPDATE_AREAS: DashboardUpdateArea[] = ['composition', 'metrics']
+const DASHBOARD_UPDATE_AREAS: DashboardUpdateArea[] = ['composition', 'metrics', 'users']
 
 function isDashboardUpdateArea(value: unknown): value is DashboardUpdateArea {
   return typeof value === 'string' && DASHBOARD_UPDATE_AREAS.includes(value as DashboardUpdateArea)

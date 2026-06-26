@@ -8,11 +8,21 @@ import {ManualArtistConnections, type ManualArtistConnectionsProps} from './Manu
 
 interface BiographyPanelProps {
   artistId: number | null
+  selectedArtistName?: string | null
   manualConnections: ManualArtistConnectionsProps
   canEditBiography: boolean
+  hasApprovedArtistProfile: boolean
 }
 
-export function BiographyPanel({artistId, manualConnections, canEditBiography}: BiographyPanelProps) {
+export function BiographyPanel({
+  artistId,
+  selectedArtistName,
+  manualConnections,
+  canEditBiography,
+  hasApprovedArtistProfile,
+}: BiographyPanelProps) {
+  const hasArtistProfileTarget = artistId !== null
+  const shouldShowApprovedProfileWorkspace = hasApprovedArtistProfile && hasArtistProfileTarget
   const [artistName, setArtistName] = useState('Artist profile')
   const [biography, setBiography] = useState('')
   const [draftBiography, setDraftBiography] = useState('')
@@ -30,8 +40,14 @@ export function BiographyPanel({artistId, manualConnections, canEditBiography}: 
   useEffect(() => {
     let isCurrent = true
 
-    if (artistId === null) {
+    if (artistId === null || !hasApprovedArtistProfile) {
       setIsLoading(false)
+      setArtistName(selectedArtistName ?? 'Artist profile')
+      setBiography('')
+      setDraftBiography('')
+      setLinkedArtists([])
+      setIsEditing(false)
+      setSuccess(null)
       setError('This account is not linked to an artist profile yet.')
       return () => { isCurrent = false }
     }
@@ -59,7 +75,7 @@ export function BiographyPanel({artistId, manualConnections, canEditBiography}: 
       })
 
     return () => { isCurrent = false }
-  }, [artistId])
+  }, [artistId, hasApprovedArtistProfile, selectedArtistName])
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -92,7 +108,10 @@ export function BiographyPanel({artistId, manualConnections, canEditBiography}: 
   }
 
   const handleClaimProfile = async () => {
-    if (artistId === null) return
+    if (artistId === null) {
+      setClaimError('Select an artist profile before sending a claim.')
+      return
+    }
 
     const reason = claimReason.trim()
     if (reason.length < 6) {
@@ -139,7 +158,7 @@ export function BiographyPanel({artistId, manualConnections, canEditBiography}: 
             Edit biography
           </Button>
         )}
-        {!canEditBiography && artistId !== null && !isLoading && (
+        {!canEditBiography && !isLoading && (
           <div className="grid gap-2">
             <textarea
               value={claimReason}
@@ -197,16 +216,20 @@ export function BiographyPanel({artistId, manualConnections, canEditBiography}: 
             </div>
           </div>
         </form>
-      ) : (
+      ) : shouldShowApprovedProfileWorkspace ? (
         <p className={biography ? 'm-0 whitespace-pre-wrap text-sm leading-6 text-[var(--text)]' : 'm-0 text-sm text-[var(--text-muted)]'}>
           {biography || 'No biography added yet. Select Edit to introduce yourself.'}
         </p>
+      ) : null}
+
+      {!shouldShowApprovedProfileWorkspace && error && (
+        <p className="m-0 rounded-xl border border-[var(--event-border-soft)] bg-[var(--event-soft)] p-3 text-sm text-[var(--event)]">{error}</p>
       )}
 
-      {error && <p className="m-0 rounded-xl border border-[var(--event-border-soft)] bg-[var(--event-soft)] p-3 text-sm text-[var(--event)]">{error}</p>}
+      {shouldShowApprovedProfileWorkspace && error && <p className="m-0 rounded-xl border border-[var(--event-border-soft)] bg-[var(--event-soft)] p-3 text-sm text-[var(--event)]">{error}</p>}
       {success && <p className="m-0 rounded-xl border border-[var(--promoter-border)] bg-[var(--promoter-soft)] p-3 text-sm text-[var(--text)]">{success}</p>}
 
-      {!isLoading && !error && (
+      {!isLoading && shouldShowApprovedProfileWorkspace && !error && (
         <section className="grid gap-3" aria-labelledby="biography-linked-artists-heading">
           <div className="flex items-center justify-between gap-3 border-b border-[var(--surface-border-soft)] pb-2">
             <h3 id="biography-linked-artists-heading">Linked artists</h3>
@@ -228,7 +251,7 @@ export function BiographyPanel({artistId, manualConnections, canEditBiography}: 
         </section>
       )}
 
-      {!isLoading && artistId !== null && (
+      {!isLoading && shouldShowApprovedProfileWorkspace && (
         <ManualArtistConnections {...manualConnections} />
       )}
     </article>

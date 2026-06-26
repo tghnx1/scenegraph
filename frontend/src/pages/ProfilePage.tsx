@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Button } from '@/shared/ui/button'
 import { cn } from '@/shared/lib/cn-utils.ts'
 import { DetailsPanel } from './components/DetailsPanel.tsx'
@@ -8,8 +8,7 @@ import { SearchInputField } from './components/SearchInputField.tsx'
 import { useGraphSearchDetails } from './hooks/useGraphSearchDetails.ts'
 import { useManualArtistConnections } from './hooks/useManualArtistConnections.ts'
 import { BiographyPanel } from './components/BiographyPanel.tsx'
-
-const DEFAULT_PROFILE_ARTIST_ID = 2178
+import { getMe } from '../api/auth'
 
 type ProfileWorkspaceTab = 'graph' | 'recommendations'
 
@@ -19,8 +18,28 @@ interface ProfilePageProps {
 }
 
 export function ProfilePage({ recommendationTargetControls, showBiography = true }: ProfilePageProps = {}) {
-  const { detailsPanelProps, searchFormProps, setSelected } = useGraphSearchDetails()
+  const { detailsPanelProps, searchFormProps, selectedNode, setSelected } = useGraphSearchDetails()
   const [activeWorkspaceTab, setActiveWorkspaceTab] = useState<ProfileWorkspaceTab>('graph')
+
+  const [assignedArtistId, setAssignedArtistId] = useState<number | null>(() => {
+    const stored = Number(localStorage.getItem('artist_id'))
+    return Number.isInteger(stored) && stored > 0 ? stored : null
+  })
+
+  useEffect(() => {
+    getMe()
+    .then((response) => {
+      if (response.artist_id) {
+        localStorage.setItem('artist_id', String(response.artist_id))
+        setAssignedArtistId(response.artist_id)
+      } else {
+        localStorage.removeItem('artist_id')
+        setAssignedArtistId(null)
+      }
+    })
+    .catch(() => {
+    })
+  }, [])
 
   const searchParams = new URLSearchParams(window.location.search)
   const selectedType = searchParams.get('selectedType')
@@ -31,21 +50,29 @@ export function ProfilePage({ recommendationTargetControls, showBiography = true
     Number.isInteger(selectedId) &&
     selectedId > 0
 
-  const storedArtistId = Number(localStorage.getItem('artist_id'))
+  const storedArtistId = assignedArtistId
 
-  const hasAssignedArtist =
-    Number.isInteger(storedArtistId) && storedArtistId > 0
+  const hasAssignedArtist =storedArtistId !== null
+  const selectedNodeArtistId = selectedNode?.type === 'artist' ? selectedNode.entityId : null
+  const selectedDetailArtistName = detailsPanelProps.selectedEntityDetail?.type === 'artist'
+    ? detailsPanelProps.selectedEntityDetail.name
+    : null
+  const selectedArtistName = selectedNode?.type === 'artist'
+    ? selectedNode.name
+    : selectedDetailArtistName
 
   const artistId = hasSelectedArtist
     ? selectedId
+    : selectedNodeArtistId
+      ? selectedNodeArtistId
     : hasAssignedArtist
       ? storedArtistId
-      : DEFAULT_PROFILE_ARTIST_ID
+      : null
 
-  const canEditBiography = 
-    hasAssignedArtist && storedArtistId == artistId
+  const canEditBiography =
+    hasAssignedArtist && storedArtistId === artistId
 
-  const manualConnections = useManualArtistConnections(showBiography ? artistId : null)
+  const manualConnections = useManualArtistConnections(showBiography && hasAssignedArtist ? artistId : null)
   const isSingleRowWorkspace = !showBiography
 
   return (
@@ -74,7 +101,7 @@ export function ProfilePage({ recommendationTargetControls, showBiography = true
 
           <DetailsPanel
             {...detailsPanelProps}
-            manualArtistConnections={showBiography && artistId !== null ? {
+            manualArtistConnections={showBiography && hasAssignedArtist && artistId !== null ? {
               sourceArtistId: artistId,
               connectedArtistIds: manualConnections.connectedArtistIds,
               isLoading: manualConnections.isLoading,
@@ -136,7 +163,9 @@ export function ProfilePage({ recommendationTargetControls, showBiography = true
           <div className="col-span-2 max-[900px]:col-span-1">
             <BiographyPanel
               artistId={artistId}
+              selectedArtistName={selectedArtistName}
               canEditBiography={canEditBiography}
+              hasApprovedArtistProfile={hasAssignedArtist}
               manualConnections={{
                 connections: manualConnections.connections,
                 isLoading: manualConnections.isLoading,
