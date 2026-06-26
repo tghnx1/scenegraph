@@ -1377,27 +1377,27 @@ async def reject_artist_claim(
 @app.get("/api/me")
 async def get_me(
     current_user: dict = Depends(get_current_user),
-    connection: Connection = Depends(get_db),
 ) -> dict:
     pending_artist_claim = None
-    with connection.cursor() as cursor:
-        cursor.execute(
-            """
-            SELECT
-                artist_claims.id,
-                artist_claims.artist_id,
-                artists.name AS artist_name,
-                artist_claims.created_at
-            FROM artist_claims
-            JOIN artists ON artists.id = artist_claims.artist_id
-            WHERE artist_claims.user_id = %s
-              AND artist_claims.status = 'pending'
-            ORDER BY artist_claims.created_at DESC
-            LIMIT 1
-            """,
-            (current_user["id"],),
-        )
-        pending_artist_claim = cursor.fetchone()
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT
+                    artist_claims.id,
+                    artist_claims.artist_id,
+                    artists.name AS artist_name,
+                    artist_claims.created_at
+                FROM artist_claims
+                JOIN artists ON artists.id = artist_claims.artist_id
+                WHERE artist_claims.user_id = %s
+                  AND artist_claims.status = 'pending'
+                ORDER BY artist_claims.created_at DESC
+                LIMIT 1
+                """,
+                (current_user["id"],),
+            )
+            pending_artist_claim = cursor.fetchone()
 
     return {
         "success": True,
