@@ -66,7 +66,7 @@ export function BiographyPanel({
       setError(
         pendingArtistClaim
           ? `Waiting approval to claim "${pendingArtistClaim.artist_name}"`
-          : 'This account is not linked to an artist profile yet.',
+          : 'This account is not linked to an artist profile yet.\nPlease select from the graph/search input field. The artist named in THIS panel is the one to be claimed.',
       )
       return () => { isCurrent = false }
     }
@@ -249,10 +249,10 @@ export function BiographyPanel({
       ) : null}
 
       {!shouldShowApprovedProfileWorkspace && error && (
-        <p className="m-0 rounded-xl border border-[var(--event-border-soft)] bg-[var(--event-soft)] p-3 text-sm text-[var(--event)]">{error}</p>
+        <p className="m-0 whitespace-pre-line rounded-xl border border-[var(--event-border-soft)] bg-[var(--event-soft)] p-3 text-sm text-[var(--event)]">{error}</p>
       )}
 
-      {shouldShowApprovedProfileWorkspace && error && <p className="m-0 rounded-xl border border-[var(--event-border-soft)] bg-[var(--event-soft)] p-3 text-sm text-[var(--event)]">{error}</p>}
+      {shouldShowApprovedProfileWorkspace && error && <p className="m-0 whitespace-pre-line rounded-xl border border-[var(--event-border-soft)] bg-[var(--event-soft)] p-3 text-sm text-[var(--event)]">{error}</p>}
       {success && <p className="m-0 rounded-xl border border-[var(--promoter-border)] bg-[var(--promoter-soft)] p-3 text-sm text-[var(--text)]">{success}</p>}
 
       {!isLoading && shouldShowApprovedProfileWorkspace && !error && (
