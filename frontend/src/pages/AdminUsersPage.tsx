@@ -149,7 +149,10 @@ export function AdminUsersPage({ compact = false, refreshVersion = 0, onActivity
   return (
     <section className="min-w-0" style={{ display: 'grid', gap: 12}}>
       {compact ? (
-        <div className="dashboard-section-heading">
+        <div 
+          className="mb-3 flex flex-wrap items-center justify-between gap-2"
+          style={{ minHeight:38 }}
+        >
           <span>Pending user registrations and artist claims</span>
         </div>
       ) : (
@@ -280,7 +283,7 @@ export function AdminUsersPage({ compact = false, refreshVersion = 0, onActivity
 
       <div 
         className="dashboard-scroll-list" 
-        style={{ maxHeight: 300, overflowY: 'auto', display: 'grid', gap: 12, paddingRight: 16, paddingTop: 4 }}
+        style={{ maxHeight: 290, overflowY: 'auto', display: 'grid', gap: 12, paddingRight: 16, paddingTop: 4 }}
       >
         {allUsers.map((user) => (
           <div

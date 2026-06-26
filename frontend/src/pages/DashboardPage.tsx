@@ -50,8 +50,8 @@ export function DashboardPage() {
 
   const handleDashboardUpdate = useCallback(
     (_message: DashboardUpdate) => {
-      void refetchComposition()
-      void refetchMetrics()
+        void refetchComposition()
+        void refetchMetrics()
       void loadActivity()
       setUsersRefreshVersion((version) => version + 1)
     },
@@ -154,7 +154,7 @@ export function DashboardPage() {
             <div
               className="dashboard-scroll-list"
               style={{
-                maxHeight: 470,
+                maxHeight: 490,
                 overflowY: 'auto',
                 display: 'grid',
                 gap: 6,
