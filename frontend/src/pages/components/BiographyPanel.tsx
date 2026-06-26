@@ -202,7 +202,7 @@ export function BiographyPanel({
               disabled={isClaiming}
               onClick={handleClaimProfile}
             >
-              {isClaiming ? 'Sending claim...' : 'Claim biography'}
+              {isClaiming ? 'Sending claim...' : 'Claim this artist'}
             </Button>
           </div>
         )}
