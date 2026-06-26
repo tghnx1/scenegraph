@@ -260,7 +260,7 @@ def build_artist_graph(id: int, limit: int, depth: int, db: Connection) -> Graph
         if depth >= 2 and venue_id and venue_id not in nodes:
             nodes[venue_id] = VenueNode(
                 id=venue_id,
-                entityId=row["event_id"],
+                entityId=row["venue_id"],
                 type="venue",
                 name=row["venue_name"],
             )
