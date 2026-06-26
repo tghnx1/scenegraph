@@ -63,7 +63,7 @@ export interface RecommendationTargetControls {
 
 interface PromoterRecommendationsPanelProps {
   isActive: boolean
-  artistId: number
+  artistId: number | null
   targetControls?: RecommendationTargetControls
   onSelectNode: (node: GraphNode | null) => void
 }

@@ -10,8 +10,6 @@ import { useManualArtistConnections } from './hooks/useManualArtistConnections.t
 import { BiographyPanel } from './components/BiographyPanel.tsx'
 import { getMe } from '../api/auth'
 
-const DEFAULT_PROFILE_ARTIST_ID = 2178
-
 type ProfileWorkspaceTab = 'graph' | 'recommendations'
 
 interface ProfilePageProps {
@@ -20,7 +18,7 @@ interface ProfilePageProps {
 }
 
 export function ProfilePage({ recommendationTargetControls, showBiography = true }: ProfilePageProps = {}) {
-  const { detailsPanelProps, searchFormProps, setSelected } = useGraphSearchDetails()
+  const { detailsPanelProps, searchFormProps, selectedNode, setSelected } = useGraphSearchDetails()
   const [activeWorkspaceTab, setActiveWorkspaceTab] = useState<ProfileWorkspaceTab>('graph')
 
   const [assignedArtistId, setAssignedArtistId] = useState<number | null>(() => {
@@ -55,17 +53,26 @@ export function ProfilePage({ recommendationTargetControls, showBiography = true
   const storedArtistId = assignedArtistId
 
   const hasAssignedArtist =storedArtistId !== null
+  const selectedNodeArtistId = selectedNode?.type === 'artist' ? selectedNode.entityId : null
+  const selectedDetailArtistName = detailsPanelProps.selectedEntityDetail?.type === 'artist'
+    ? detailsPanelProps.selectedEntityDetail.name
+    : null
+  const selectedArtistName = selectedNode?.type === 'artist'
+    ? selectedNode.name
+    : selectedDetailArtistName
 
   const artistId = hasSelectedArtist
     ? selectedId
+    : selectedNodeArtistId
+      ? selectedNodeArtistId
     : hasAssignedArtist
       ? storedArtistId
-      : DEFAULT_PROFILE_ARTIST_ID
+      : null
 
   const canEditBiography = 
     hasAssignedArtist && storedArtistId === artistId
 
-  const manualConnections = useManualArtistConnections(showBiography ? artistId : null)
+  const manualConnections = useManualArtistConnections(showBiography && hasAssignedArtist ? artistId : null)
   const isSingleRowWorkspace = !showBiography
 
   return (
@@ -94,7 +101,7 @@ export function ProfilePage({ recommendationTargetControls, showBiography = true
 
           <DetailsPanel
             {...detailsPanelProps}
-            manualArtistConnections={showBiography && artistId !== null ? {
+            manualArtistConnections={showBiography && hasAssignedArtist && artistId !== null ? {
               sourceArtistId: artistId,
               connectedArtistIds: manualConnections.connectedArtistIds,
               isLoading: manualConnections.isLoading,
@@ -156,7 +163,9 @@ export function ProfilePage({ recommendationTargetControls, showBiography = true
           <div className="col-span-2 max-[900px]:col-span-1">
             <BiographyPanel
               artistId={artistId}
+              selectedArtistName={selectedArtistName}
               canEditBiography={canEditBiography}
+              hasApprovedArtistProfile={hasAssignedArtist}
               manualConnections={{
                 connections: manualConnections.connections,
                 isLoading: manualConnections.isLoading,
