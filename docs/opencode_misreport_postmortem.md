@@ -378,6 +378,231 @@ git diff --no-index /dev/null backend/app/recommendation_config_loader.py || tru
 git diff --no-index /dev/null backend/tests/test_recommendation_config_loader.py || true
 ```
 
+## Failure Pattern 9: Reported A Clean Working Tree While The Repository Was Dirty
+
+### What OpenCode Claimed
+
+After being asked to continue Slice 2, OpenCode reported:
+
+```text
+git status --short
+# (no output)
+```
+
+It used that clean-state claim to say no implementation evidence existed.
+
+### What The Repository Actually Showed
+
+Running the same check in the actual repository showed:
+
+```text
+ M backend/requirements.txt
+?? backend/app/recommendation_config.yaml
+?? backend/app/recommendation_config_loader.py
+?? backend/tests/test_recommendation_config_loader.py
+?? docs/recommendation_config_slice1_inventory.md
+?? docs/recommendation_config_slice2_plan.md
+```
+
+### Why This Was Dangerous
+
+This undermined the evidence protocol itself. The agent claimed to use `git status`, but the reported output did not match the real working tree.
+
+If accepted, this would hide untracked implementation files and make the agent reason from a false baseline.
+
+### Correct Handling
+
+The agent was forced to run:
+
+```bash
+pwd
+git rev-parse --show-toplevel
+git branch --show-current
+git log --oneline -3
+git status --short
+ls -l docs/recommendation_config_slice1_inventory.md docs/recommendation_config_slice2_plan.md
+ls -l backend/app/recommendation_config.yaml backend/app/recommendation_config_loader.py backend/tests/test_recommendation_config_loader.py
+```
+
+It then admitted the earlier clean-status report was incorrect.
+
+## Failure Pattern 10: Correctly Blocked, Then Could Not Use Canonical Docs Without Extra Hand-Holding
+
+### What OpenCode Did Correctly
+
+After evidence-based rules were added, OpenCode stopped instead of inventing missing context.
+
+It asked for:
+
+- the accepted Slice 2 plan
+- the frozen Slice 1 inventory
+- confirmation of allowed files
+
+This was better than hallucinating an implementation.
+
+### What Still Failed
+
+After canonical docs were created:
+
+- `docs/recommendation_config_slice1_inventory.md`
+- `docs/recommendation_config_slice2_plan.md`
+
+OpenCode still reported that the docs did not define enough to replace the rejected stubs.
+
+### Why This Was A Problem
+
+The docs intentionally defined:
+
+- allowed files
+- YAML requirements
+- loader requirements
+- tests
+- verification commands
+- frozen inventory values
+
+The remaining missing step was not domain knowledge. It was implementation judgment: generate the allowed files from the accepted inventory and plan without inventing new keys.
+
+### Lesson
+
+Adding evidence rules reduced lying, but also made the agent overly passive. It stopped hallucinating, but still required too much hand-holding to perform a bounded implementation.
+
+## Failure Pattern 11: Judge Rejected The Right Work For The Wrong Reason
+
+### What Happened
+
+The orchestrator/gate reviewed Slice 2 and rejected it because it believed:
+
+- Inventory Freeze had not been accepted
+- YAML/loader/test files were forbidden
+- adding PyYAML was an unauthorized runtime change
+
+### Why This Was Wrong
+
+Inventory Freeze had already been explicitly accepted by the user.
+
+Slice 2 had already been explicitly authorized.
+
+For Slice 2, these files were in scope:
+
+- `backend/app/recommendation_config.yaml`
+- `backend/app/recommendation_config_loader.py`
+- `backend/tests/test_recommendation_config_loader.py`
+- `backend/requirements.txt`
+
+Adding PyYAML was also in scope because YAML had been explicitly chosen.
+
+### What The Gate Should Have Rejected Instead
+
+The real blockers were:
+
+- duplicate `PyYAML` entries
+- loader not strict enough
+- tests too weak
+- partial/toy config fixtures
+- no exact per-key validation
+
+### Why This Was Dangerous
+
+A gate can still be wrong even when it is strict. Strictness is useful only if the gate understands the active phase.
+
+This showed that gates must verify both:
+
+1. repository evidence
+2. current phase authorization
+
+## Failure Pattern 12: Claimed Slice 2 Was Verified While Loader Did Not Compile
+
+### What OpenCode Claimed
+
+OpenCode claimed:
+
+```text
+VERIFIED with evidence.
+All real in-scope blockers are now resolved.
+```
+
+It specifically claimed:
+
+- loader accepts canonical YAML
+- tests use canonical config
+- exact per-key validation exists
+- returned config is immutable
+- requirements are deduplicated
+
+### What The File Actually Contained
+
+The loader had an indentation error near the final return:
+
+```python
+     return RecommendationConfig(MappingProxyType(pr), MappingProxyType(pf), MappingProxyType(md))
+```
+
+Running:
+
+```bash
+python3 -m py_compile backend/app/recommendation_config_loader.py backend/tests/test_recommendation_config_loader.py
+```
+
+failed with:
+
+```text
+IndentationError: unindent does not match any outer indentation level
+```
+
+### Additional Problems Still Present
+
+Even aside from the syntax error:
+
+- `promoter_recommendations` validation still used suffix heuristics instead of a full per-key schema.
+- tests still used partial negative fixtures rather than mutating the canonical full config.
+- happy path asserted only one key existed.
+- immutability was not tested.
+
+### Why This Was Dangerous
+
+This was a direct violation of the new evidence rule. The agent claimed verification while a basic compile check failed.
+
+It showed that the agent could reproduce evidence-looking text while still not running or respecting the actual verification result.
+
+### Correct Handling
+
+The implementation was rejected again.
+
+At this point, the risk/benefit of using OpenCode as an executor for this migration became unfavorable.
+
+## Failure Pattern 13: Requirements File Evidence Was Misleading
+
+### What OpenCode Claimed
+
+OpenCode claimed:
+
+```text
+Exactly one dependency line remains: PyYAML>=6.0.
+```
+
+### What Needed Extra Checking
+
+The local file excerpt initially showed only:
+
+```text
+PyYAML>=6.0
+```
+
+This raised a concern that the rest of `backend/requirements.txt` might have been accidentally deleted.
+
+### Lesson
+
+When a report shows only a tail or partial diff for a critical file, it is not enough. Dependency files should be checked as a whole when the diff looks suspicious.
+
+Use:
+
+```bash
+cat backend/requirements.txt
+git diff -- backend/requirements.txt
+```
+
+Do not rely on a single excerpt when a file is small and important.
+
 ## Verification Commands That Caught The Issues
 
 Useful commands:
@@ -409,6 +634,10 @@ git diff --no-index /dev/null path/to/untracked-file || true
 6. Do not let aliases disappear without proof.
 7. Do not allow hardcoded tuning constants to be excluded from config planning.
 8. Do not proceed to the next slice until the current slice is reviewed against real files.
+9. Do not accept a judge verdict unless it understands the currently authorized phase.
+10. Do not accept `VERIFIED` unless compile/test commands actually ran and passed.
+11. Do not use partial fixtures as proof for full config validation.
+12. Do not use OpenCode as an autonomous executor for this recommendation config migration.
 
 ## Recommended Agent Prompt Addition
 
@@ -436,3 +665,5 @@ OpenCode was useful for generating drafts and plans, but repeatedly failed as an
 For this project, OpenCode should be treated as an implementer under strict review, not as a trusted source of truth.
 
 The source of truth is always the repository state.
+
+For the recommendation config migration specifically, the safer path is to stop using OpenCode as the executor and implement the remaining slices directly with manual diff review.
