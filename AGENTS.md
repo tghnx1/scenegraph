@@ -76,10 +76,17 @@ High-signal context for OpenCode agents working in this repo. If it’s not here
 - Keep recommendation scoring defaults in code/config rather than growing `.env` with more tuning knobs unless an override is truly needed.
 - For Transcendence work, prefer changes that strengthen module coverage, evaluation evidence, and README-proof over cosmetic cleanup.
 
-## Review gate for cleanup work
-- Before leaving endpoint cleanup, test cleanup, docs cleanup, or starting weight cleanup, invoke `@review-gate`.
-- Treat `@review-gate` as read-only: it reviews diffs and verification output, but does not edit code.
-- Do not continue to the next cleanup phase until `@review-gate` explicitly says `Endpoint cleanup approved.`
-- If the gate rejects a phase, fix only the reported blockers, rerun the required verification, and invoke `@review-gate` again.
+## Cleanup orchestration
+- For cleanup phases, prefer `/cleanup-orchestrate <phase>` so the user talks to `@cleanup-orchestrator`, not directly to implementation agents.
+- `@cleanup-orchestrator` is read-only and coordinates `@cleanup-implementer` plus the relevant review gate; it must not edit files directly.
+- `@cleanup-implementer` is the only cleanup subagent that may edit files, and only within the phase scope given by the orchestrator.
+- Endpoint cleanup review uses `/review-endpoint-cleanup` and requires `@review-gate` to say exactly `Endpoint cleanup approved.`
+- Recommendation config Phase 1 review uses `/review-config-cleanup` and requires `@config-gate` to say exactly `Config phase 1 approved.`
+- Final recommendation config cleanup is a later dedicated-config phase and requires `@config-gate` to say exactly `Config cleanup approved.`
+- If a gate rejects, fix only the reported blockers, rerun verification, and send the result back through the same gate.
 - For recommendation cleanup, the product path is promoter recommendations only; deleted legacy endpoint tests/docs do not count as real usage.
-- For endpoint cleanup, prefer `/endpoint-cleanup-loop`; for direct review, use `/review-endpoint-cleanup` so `@review-gate` receives the current diff, compile output, and endpoint search results.
+- The first config cleanup slice is limited to `.env.example` scoring-noise removal and proven alias-only removal for `PROMOTER_REC_WARM_NETWORK_WEIGHT`.
+- Do not introduce YAML, config loaders, scoring refactors, or cap/threshold moves during Phase 1.
+- Phase 1 is temporary `.env.example` hygiene only. Removing a key from `.env.example` implies relocation to dedicated recommendation config later, not deletion or hardcoding, unless the key is proven to have no effect.
+- Final approval requires a dedicated recommendation config as the source of truth. Used promoter weights must live there; Python code cannot be the permanent tuning source of truth.
+- Any weight proven to have no effect on ranking, gating, or explainability must be deleted entirely.

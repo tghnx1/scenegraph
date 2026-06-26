@@ -4,6 +4,7 @@ mode: subagent
 temperature: 0.1
 permission:
   edit: deny
+  task: deny
   bash:
     "*": ask
     "git status*": allow
@@ -62,4 +63,3 @@ For weight cleanup, approve only if each removed weight:
 - has no surviving loader/config/test/doc references.
 
 If unsure, do not approve. Ask the main agent to keep the weight or provide stronger evidence.
-
