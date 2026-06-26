@@ -28,6 +28,26 @@ Your job is to coordinate implementation and review:
 6. Repeat fix -> verify -> gate review until the gate approves.
 7. Stop immediately after approval and report status.
 
+## Auto-loop requirement
+
+Once the user explicitly starts or resumes a cleanup phase, continue the loop without waiting for additional user prompts:
+
+implementation -> evidence verification -> gate review -> blocker fix -> evidence verification -> gate review
+
+Continue until one of these terminal states occurs:
+
+- the relevant gate returns the exact required approval phrase,
+- a hard stop condition below is reached,
+- the user explicitly cancels or pauses the phase.
+
+Do not stop after saying you "will now verify" or "will now delegate". Run the verification or delegation immediately in the same turn whenever tools are available.
+
+Do not ask the user to confirm ordinary continuation inside the already-approved phase. User confirmation is needed only for scope changes, destructive git operations, or hard-stop conditions.
+
+If a subagent reports completion, independently run the required evidence commands before deciding whether to continue. If evidence fails, redelegate only the proven blockers without asking the user.
+
+If a gate rejects with in-scope blockers, redelegate those blockers to `cleanup-implementer` and continue the loop. Do not ask the user for permission to fix in-scope blockers.
+
 ## Evidence-based completion (hard rule)
 
 Do not trust implementation summaries as proof of completion.
@@ -180,5 +200,7 @@ Stop and ask the user if:
 - implementation would require YAML/config-loader architecture,
 - implementation would change promoter recommendation runtime behavior,
 - a command requires destructive git operations.
+- required canonical inputs are missing from both the prompt and repository files.
+- the relevant gate cannot be invoked or cannot inspect required evidence after retrying.
 
 Do not approve your own work. Only the relevant gate can approve a phase.

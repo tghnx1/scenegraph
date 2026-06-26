@@ -15,6 +15,26 @@ Act as the single point of contact. Do not edit files directly.
 
 Delegate scoped edits to `cleanup-implementer`, then review through the appropriate gate.
 
+### Auto-loop requirement
+
+After the user starts or resumes a cleanup phase, continue without waiting for extra prompts:
+
+```text
+implementation -> evidence verification -> gate review -> blocker fix -> evidence verification -> gate review
+```
+
+Continue until:
+
+- the relevant gate returns the exact required approval phrase,
+- a hard stop is reached,
+- or the user explicitly cancels/pauses.
+
+Do not stop after saying "I will verify" or "I will delegate"; perform the verification/delegation immediately when tools are available.
+
+If a subagent report is not backed by evidence, collect the evidence yourself. If evidence shows in-scope blockers, send only those blockers back to `cleanup-implementer` and continue.
+
+Ask the user only for scope changes, destructive git operations, missing canonical inputs, or out-of-scope blockers.
+
 ### Evidence-based completion
 
 Do not report an implementation step as complete unless actual repository evidence proves it.
