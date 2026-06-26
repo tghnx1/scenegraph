@@ -1,8 +1,7 @@
-from fastapi import APIRouter, Depends, Query, HTTPException
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import List, Optional
-from psycopg import Connection
-from app.db import get_db
+from app.db import get_connection
 
 router = APIRouter()
 
@@ -58,18 +57,18 @@ ORDER BY e.event_date DESC;
 @router.get("/{id}", response_model=VenueResponse)
 def get_venue(
     id: int,
-    db: Connection = Depends(get_db),
 ):
-    with db.cursor() as cur:
-        cur.execute(VENUE_SQL, (id,))
-        venue = cur.fetchone()
+    with get_connection() as db:
+        with db.cursor() as cur:
+            cur.execute(VENUE_SQL, (id,))
+            venue = cur.fetchone()
 
-    if not venue:
-        raise HTTPException(status_code=404, detail="Venue not found")
+        if not venue:
+            raise HTTPException(status_code=404, detail="Venue not found")
 
-    with db.cursor() as cur:
-        cur.execute(VENUE_EVENTS_SQL, (id,))
-        rows = cur.fetchall()
+        with db.cursor() as cur:
+            cur.execute(VENUE_EVENTS_SQL, (id,))
+            rows = cur.fetchall()
 
     events = [
         EventSummary(

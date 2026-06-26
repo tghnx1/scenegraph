@@ -1,8 +1,7 @@
-from fastapi import APIRouter, Depends, Query, HTTPException
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import List, Optional
-from psycopg import Connection
-from app.db import get_db
+from app.db import get_connection
 
 router = APIRouter()
 
@@ -60,18 +59,18 @@ ORDER BY e.event_date DESC;
 @router.get("/{id}", response_model=PromoterResponse)
 def get_promoter(
     id: int,
-    db: Connection = Depends(get_db),
 ):
-    with db.cursor() as cur:
-        cur.execute(PROMOTER_SQL, (id,))
-        promoter = cur.fetchone()
+    with get_connection() as db:
+        with db.cursor() as cur:
+            cur.execute(PROMOTER_SQL, (id,))
+            promoter = cur.fetchone()
 
-    if not promoter:
-        raise HTTPException(status_code=404, detail="Promoter not found")
+        if not promoter:
+            raise HTTPException(status_code=404, detail="Promoter not found")
 
-    with db.cursor() as cur:
-        cur.execute(PROMOTER_EVENTS_SQL, (id,))
-        rows = cur.fetchall()
+        with db.cursor() as cur:
+            cur.execute(PROMOTER_EVENTS_SQL, (id,))
+            rows = cur.fetchall()
 
     events = [
         EventSummary(

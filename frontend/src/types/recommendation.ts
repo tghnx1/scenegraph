@@ -51,3 +51,28 @@ export interface PromoterRecommendationResponse {
   graph: GraphData
   analyticsGraph?: GraphData | null
 }
+
+export type RecommendationJobStatus = 'queued' | 'running' | 'completed' | 'failed'
+
+export interface RecommendationJobCreatedResponse {
+  jobId: string
+  status: RecommendationJobStatus
+}
+
+export interface RecommendationJobResponse {
+  jobId: string
+  jobType: 'artist_promoters'
+  artistId: number
+  params: {
+    limit: number
+    excludeExisting: boolean
+    debug: boolean
+  }
+  status: RecommendationJobStatus
+  result?: PromoterRecommendationResponse
+  errorMessage?: string
+  createdAt: string
+  startedAt?: string
+  finishedAt?: string
+  updatedAt: string
+}

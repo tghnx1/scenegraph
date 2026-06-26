@@ -161,14 +161,26 @@ def fetch_entity_ids(
     connection: Connection,
     entity_type: EntityType,
     limit: int | None = None,
+    ids: list[int] | None = None,
 ) -> list[int]:
     table = "events" if entity_type == "event" else "artists"
-    sql = f"SELECT id FROM {table} ORDER BY id ASC"
-    params: tuple[Any, ...] = ()
+    sql = f"SELECT id FROM {table}"
+    params: list[Any] = []
+    where: list[str] = []
 
+    if ids is not None:
+        if not ids:
+            return []
+        ra_column = "ra_event_id" if entity_type == "event" else "ra_artist_id"
+        where.append(f"{ra_column} = ANY(%s)")
+        params.append([str(entity_id) for entity_id in ids])
+
+    if where:
+        sql += " WHERE " + " AND ".join(where)
+    sql += " ORDER BY id ASC"
     if limit is not None:
         sql += " LIMIT %s"
-        params = (limit,)
+        params.append(limit)
 
     with connection.cursor() as cursor:
         cursor.execute(sql, params)

@@ -309,9 +309,18 @@ run_interactive_wizard() {
   fi
 }
 
-# Infer dump format from extension.
+# Infer dump format from the file contents first, then fall back to the extension.
 detect_dump_format() {
-  case "$1" in
+  dump_file=$1
+
+  if command -v file >/dev/null 2>&1; then
+    if file "$dump_file" 2>/dev/null | grep -qi 'PostgreSQL custom database dump'; then
+      printf "custom"
+      return 0
+    fi
+  fi
+
+  case "$dump_file" in
     *.dump|*.backup|*.custom)
       printf "custom"
       ;;
@@ -559,7 +568,7 @@ import_into_local_compose_db() {
       "$PG_CLIENT_IMAGE" \
       sh -lc 'pg_restore --no-owner --no-privileges -f - "/dump/'"$dump_base"'" \
         | sed "/^SET transaction_timeout = 0;$/d" \
-        | psql -v ON_ERROR_STOP=1 -h scenegraph-db -U "$DB_USER" -d "$TARGET_DB"'
+        | psql -v ON_ERROR_STOP=1 -h db -U "$DB_USER" -d "$TARGET_DB"'
   else
     docker compose exec -T -e TARGET_DB="$target_db" db sh -lc '
       psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$TARGET_DB"

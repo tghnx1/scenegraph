@@ -1,7 +1,6 @@
 services:
   db:
     image: pgvector/pgvector:pg16
-    container_name: scenegraph-db
     restart: unless-stopped
     environment:
       POSTGRES_DB: ${POSTGRES_DB}
@@ -23,7 +22,6 @@ services:
     build:
       context: ./backend
       dockerfile: prisma/Dockerfile
-    container_name: scenegraph-prisma
     profiles:
       - tools
     env_file:
@@ -34,10 +32,31 @@ services:
       db:
         condition: service_healthy
 
+  browser:
+    build:
+      context: .
+      dockerfile: tools/Dockerfile
+    profiles:
+      - tools
+    command: ["/app/tools/launch_chromium_cdp.sh"]
+    environment:
+      CDP_PORT: 9222
+      CHROME_START_URL: about:blank
+      CHROME_USER_DATA_DIR: /tmp/scenegraph-browser-profile
+    shm_size: 1gb
+    expose:
+      - "9222"
+    volumes:
+      - ./:/app
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:9222/json/version >/dev/null"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
   backend:
     build:
       context: ./backend
-    container_name: scenegraph-backend
     restart: unless-stopped
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "3000", "--reload"]
     env_file:
@@ -66,10 +85,43 @@ services:
       - ./backend/scripts:/app/scripts
       - ./backend/tests:/app/tests
 
+  tools:
+    build:
+      context: .
+      dockerfile: tools/Dockerfile
+    profiles:
+      - tools
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      SCENEGRAPH_CDP_URL: http://browser:9222
+    depends_on:
+      db:
+        condition: service_healthy
+      browser:
+        condition: service_healthy
+    volumes:
+      - ./:/app
+
+  recommendation-worker:
+    build:
+      context: ./backend
+    restart: unless-stopped
+    command: ["python", "-m", "app.recommendation_worker"]
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./backend/app:/app/app
+
   frontend:
     build:
       context: ./frontend
-    container_name: scenegraph-frontend
     restart: unless-stopped
     env_file:
       - .env
@@ -86,11 +138,10 @@ services:
 
   nginx:
     image: nginx:1.27-alpine
-    container_name: scenegraph-nginx
     restart: unless-stopped
     ports:
-      - "8080:80" #from 80:80
-      - "8443:443"
+      - "${NGINX_HTTP_PORT:-8080}:80" #from 80:80
+      - "${NGINX_HTTPS_PORT:-8443}:443"
     volumes:
       - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
       - ./nginx/certs:/etc/nginx/certs:ro

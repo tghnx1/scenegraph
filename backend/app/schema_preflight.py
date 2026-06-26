@@ -24,6 +24,7 @@ REQUIRED_TABLES: tuple[str, ...] = (
     "event_tag_extraction_runs",
     "recommendation_feedback",
     "artist_manual_connections",
+    "recommendation_jobs",
 )
 
 OPTIONAL_TABLES: tuple[str, ...] = ()
@@ -52,7 +53,10 @@ def check_schema_tables(connection: Connection) -> dict[str, object]:
             """,
             (expected_tables,),
         )
-        existing = {row["table_name"] for row in cursor.fetchall()}
+        existing = {
+            row["table_name"] if isinstance(row, dict) else row[0]
+            for row in cursor.fetchall()
+        }
 
     missing_required = sorted(table for table in REQUIRED_TABLES if table not in existing)
     missing_optional = sorted(table for table in OPTIONAL_TABLES if table not in existing)

@@ -1,13 +1,13 @@
 import { useEffect, useState } from 'react'
-import { changeUserRole, approveUser, rejectUser, getPendingUsers, getUsers, 
-  deactivateUser, activateUser, type PendingUser, type UserItem, 
+import { changeUserRole, approveUser, rejectUser, getPendingUsers, getUsers,
+  deactivateUser, activateUser, type PendingUser, type UserItem,
   getArtistClaims, approveArtistClaim, rejectArtistClaim, type ArtistClaim, } from '../api/auth'
 
-interface AdminUsersPageProps { 
+interface AdminUsersPageProps {
   compact?: boolean
   refreshVersion?: number
   onActivityChanged?: () => Promise<void>       //to update directly the log, the child adminuserpage has to ask the dashboardpage.
-}  
+}
 
 export function AdminUsersPage({ compact = false, refreshVersion = 0, onActivityChanged, }: AdminUsersPageProps) {
   const [users, setUsers] = useState<PendingUser[]>([])
@@ -149,7 +149,7 @@ export function AdminUsersPage({ compact = false, refreshVersion = 0, onActivity
   return (
     <section className="min-w-0" style={{ display: 'grid', gap: 12}}>
       {compact ? (
-        <div 
+        <div
           className="mb-3 flex flex-wrap items-center justify-between gap-2"
           style={{ minHeight:38 }}
         >
@@ -166,10 +166,10 @@ export function AdminUsersPage({ compact = false, refreshVersion = 0, onActivity
       >
         {pendingItems.map((entry) => {
           if (entry.type === 'user') {
-            const user = entry.item 
+            const user = entry.item
 
             return (
-              <div 
+              <div
                 key={`user-${user.id}`}
                 className="dashboard-table-row"
                 style={{
@@ -195,11 +195,11 @@ export function AdminUsersPage({ compact = false, refreshVersion = 0, onActivity
                 </div>
 
                 <div style={{display: 'flex', gap: 8}}>
-                  <button 
-                    type="button" 
+                  <button
+                    type="button"
                       style={{
-                        ...adminButtonStyle, 
-                        width: 110, 
+                        ...adminButtonStyle,
+                        width: 110,
                         alignSelf: 'start',
                       }}
                     onClick={() => handleApprove(user)}>Approve
@@ -208,7 +208,7 @@ export function AdminUsersPage({ compact = false, refreshVersion = 0, onActivity
                     type="button"
                       style={{
                         ...adminButtonStyle,
-                        width: 110, 
+                        width: 110,
                         alignSelf: 'start',
                       }}
                     onClick={() => handleReject(user)}>Reject
@@ -217,7 +217,7 @@ export function AdminUsersPage({ compact = false, refreshVersion = 0, onActivity
               </div>
             )
           }
-            
+
           const claim = entry.item
 
           return (
@@ -281,8 +281,8 @@ export function AdminUsersPage({ compact = false, refreshVersion = 0, onActivity
         <span>List of users</span>
       </div>
 
-      <div 
-        className="dashboard-scroll-list" 
+      <div
+        className="dashboard-scroll-list"
         style={{ maxHeight: 290, overflowY: 'auto', display: 'grid', gap: 12, paddingRight: 16, paddingTop: 4 }}
       >
         {allUsers.map((user) => (

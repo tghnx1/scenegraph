@@ -44,7 +44,7 @@ export function ProfilePage({ recommendationTargetControls, showBiography = true
     .catch(() => {
     })
   }, [])
-  
+
   const searchParams = new URLSearchParams(window.location.search)
   const selectedType = searchParams.get('selectedType')
   const selectedId = Number(searchParams.get('selectedId'))

@@ -1,8 +1,7 @@
-from fastapi import APIRouter, Depends, Query, HTTPException
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import List, Optional
-from psycopg import Connection
-from app.db import get_db
+from app.db import get_connection
 
 router = APIRouter()
 
@@ -64,22 +63,22 @@ ORDER BY p.name ASC;
 @router.get("/{id}", response_model=EventResponse)
 def get_event(
     id: int,
-    db: Connection = Depends(get_db),
 ):
-    with db.cursor() as cur:
-        cur.execute(EVENT_SQL, (id,))
-        event = cur.fetchone()
+    with get_connection() as db:
+        with db.cursor() as cur:
+            cur.execute(EVENT_SQL, (id,))
+            event = cur.fetchone()
 
-    if not event:
-        raise HTTPException(status_code=404, detail="Event not found")
+        if not event:
+            raise HTTPException(status_code=404, detail="Event not found")
 
-    with db.cursor() as cur:
-        cur.execute(EVENT_ARTISTS_SQL, (id,))
-        artists = cur.fetchall()
+        with db.cursor() as cur:
+            cur.execute(EVENT_ARTISTS_SQL, (id,))
+            artists = cur.fetchall()
 
-    with db.cursor() as cur:
-        cur.execute(EVENT_PROMOTERS_SQL, (id,))
-        promoters = cur.fetchall()
+        with db.cursor() as cur:
+            cur.execute(EVENT_PROMOTERS_SQL, (id,))
+            promoters = cur.fetchall()
 
     return EventResponse(
         type="event",

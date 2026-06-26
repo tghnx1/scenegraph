@@ -66,7 +66,7 @@ async def dashboard_ws(
                         areas.update(ALL_AREAS)
                         if any(name in table for name in ("users", "artist_claims", "activity_log")):
                             areas.update(ALL_AREAS)
-                            areas.add("management")
+                            areas.add("users")
                         else:
                             areas.update(ALL_AREAS)
                         if debounce_task is not None:

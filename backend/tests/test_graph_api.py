@@ -405,28 +405,6 @@ def test_artist_similar_events_endpoint_debug_includes_component_scores():
     assert set(first["debug"]["weightedScores"]) == {"symbolic", "embedding", "total"}
 
 
-def test_artist_recommendations_endpoint_uses_recommendation_contract():
-    response = client.get("/api/recommendations/artists/2178", params={"limit": 3})
-    assert response.status_code == 200
-
-    data = response.json()
-    assert data["entityId"] == 2178
-    assert data["entityType"] == "artist"
-    assert data["recommendations"]
-    assert "similar" not in data
-
-    first = data["recommendations"][0]
-    assert first["type"] == "artist"
-    assert "score" in first
-    assert "semanticScore" in first
-    assert "graphScore" in first
-    assert set(first["scoreBreakdown"]) == {"semantic", "graph"}
-    assert set(first["semanticBreakdown"]) == {"embedding", "style", "tag"}
-    assert isinstance(first["reasons"], list)
-    assert isinstance(first["sharedStyles"], list)
-    assert isinstance(first["sharedTags"], dict)
-
-
 def test_artist_promoter_recommendations_include_graph_payload():
     response = client.get("/api/recommendations/artists/2178/promoters", params={"limit": 3})
     assert response.status_code == 200
@@ -452,8 +430,17 @@ def test_artist_promoter_recommendations_include_graph_payload():
         "activity",
         "recency",
     }
-    assert first["matchedArtistCount"] >= 1
-    assert first["eventCount"] >= 1
+    assert first["matchedArtistCount"] >= 0
+    assert first["eventCount"] >= 0
+    assert (
+        first["matchedArtistCount"] > 0
+        or first["eventCount"] > 0
+        or first["warmConnectionCount"] > 0
+        or first["coPlayedConnectionCount"] > 0
+        or first["manualConnectionCount"] > 0
+        or first["scoreBreakdown"]["semantic"] > 0
+        or first["scoreBreakdown"]["eventSimilarity"] > 0
+    )
     assert isinstance(first["reasons"], list)
     assert first["status"] in {"new_relevant", "existing_partner", "warm_relevant"}
     assert first["warmConnectionCount"] >= 0

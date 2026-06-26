@@ -272,7 +272,6 @@ model User {
   role                String    @default("artist")
   status              String    @default("pending")
   mustChangePassword  Boolean   @default(false) @map("must_change_password")
-  isLoggedIn          Boolean   @default(false) @map
   recommendationJobs RecommendationJob[]
 
   @@map("users")

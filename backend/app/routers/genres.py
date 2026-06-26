@@ -1,8 +1,7 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter
 from pydantic import BaseModel
 from typing import List
-from psycopg import Connection
-from app.db import get_db
+from app.db import get_connection
 
 router = APIRouter()
 
@@ -27,10 +26,11 @@ ORDER BY name ASC;
 
 
 @router.get("", response_model=GenresResponse)
-def get_genres(db: Connection = Depends(get_db)):
-    with db.cursor() as cur:
-        cur.execute(GENRES_SQL)
-        rows = cur.fetchall()
+def get_genres():
+    with get_connection() as db:
+        with db.cursor() as cur:
+            cur.execute(GENRES_SQL)
+            rows = cur.fetchall()
 
     return GenresResponse(
         genres=[Genre(name=row["name"], value=row["value"]) for row in rows]
