@@ -16,7 +16,6 @@ NOTIFY_CHANNEL = "scenegraph_dashboard_refresh"
 ALL_AREAS = ["composition", "metrics"]
 PING_INTERVAL = 30
 
-
 @router.websocket("/dashboard")
 async def dashboard_ws(
     websocket: WebSocket,
@@ -42,47 +41,38 @@ async def dashboard_ws(
             row_factory=psycopg.rows.dict_row,
         ) as conn:
             await conn.execute(f"LISTEN {NOTIFY_CHANNEL}")
-
             stop_event = asyncio.Event()
-
             async def notify_task():
                 try:
-                    pending_areas: set[str] = set()
+                    areas: set[str] = set()
                     debounce_task: asyncio.Task | None = None
 
                     async def flush():
                         nonlocal debounce_task
                         await asyncio.sleep(0.5)
-                        if pending_areas:
+                        if areas:
                             await websocket.send_text(json.dumps({
                                 "type": "dashboard.updated",
-                                "areas": list(pending_areas),
+                                "areas": list(areas),
                             }))
-                            pending_areas.clear()
+                            areas.clear()
                         debounce_task = None
 
                     async for notify in conn.notifies():
                         if stop_event.is_set():
                             break
-
                         payload = json.loads(notify.payload)
                         table = payload.get("table", "")
-                        pending_areas.update(ALL_AREAS)
-                        if table == "users":
-                            pending_areas.add("users")
-                        elif "users" in table:
-                            pending_areas.update(ALL_AREAS)
-                            pending_areas.add("users")
+                        areas.update(ALL_AREAS)
+                        if any(name in table for name in ("users", "artist_claims", "activity_log")):
+                            areas.update(ALL_AREAS)
+                            areas.add("management")
                         else:
-                            pending_areas.update(ALL_AREAS)
-
+                            areas.update(ALL_AREAS)
                         if debounce_task is not None:
                             debounce_task.cancel()
                         debounce_task = asyncio.create_task(flush())
-                        # await websocket.send_text(json.dumps({
-                        #     "type": "dashboard.updated",
-                        #     "areas": areas,
-                        # }))
+
                 except Exception as e:
                     logger.error("Fatal error in the database listener: %s", e, exc_info=True)
                 finally:

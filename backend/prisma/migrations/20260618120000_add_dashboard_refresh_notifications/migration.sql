@@ -39,8 +39,6 @@ BEGIN
         'event_extracted_tags',
         'event_tag_extraction_runs',
         'users'
-        'activity_log'
-        'artist_claims'
     ]
     LOOP
         IF to_regclass(format('public.%I', table_name)) IS NOT NULL THEN

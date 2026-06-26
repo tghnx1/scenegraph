@@ -12,3 +12,5 @@ CREATE TABLE IF NOT EXISTS "users" (
         DEFAULT 'pending',
     "must_change_password" BOOLEAN NOT NULL DEFAULT FALSE
 );
+
+
