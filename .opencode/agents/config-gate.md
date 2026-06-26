@@ -38,6 +38,84 @@ Approve only the first, narrow configuration cleanup slice:
 - Any weight proven to have no effect on ranking, gating, or explainability must be deleted entirely.
 - YAML/config-loader changes are allowed only in a later phase, and only if runtime behavior is unchanged or explicitly approved.
 
+## Inventory Freeze Hard Gate
+
+Inventory Freeze is a blocking read-only phase before any recommendation config migration.
+
+The gate must reject Inventory Freeze unless every listed tuning variable includes:
+
+- exact variable name
+- runtime default value
+- runtime default source file and function/constant
+- type
+- validation rule or allowed range
+- used-by path or function
+- effect type
+- proposed config section
+- status: active, unresolved alias, or delete-candidate
+
+Allowed runtime default sources:
+
+- `DEFAULT_PROMOTER_RECOMMENDATION_SCORING` in `backend/app/recommendation_scoring.py`
+- `DEFAULT_PROMOTER_SEGMENT_QUOTA_RATIOS` in `backend/app/recommendation_scoring.py`
+- `DEFAULT_PROMOTER_SEGMENT_WARM_SHARE` in `backend/app/recommendation_scoring.py`
+- explicit fallback defaults inside runtime `*_from_env` functions
+- `promoter_feedback.py` `DEFAULT_*` constants
+
+Forbidden default sources:
+
+- tests
+- `monkeypatch.setenv` values
+- docs
+- `.env.example`
+- inferred values
+- previously generated inventories
+
+Tests may be used only for:
+
+- coverage
+- validation behavior
+- expected error messages
+- override behavior
+
+Tests must never be used as the source of runtime default values.
+
+The gate must hard-reject Inventory Freeze if any of the following are true:
+
+1. Any default value comes from a test, monkeypatch, docs, `.env.example`, or inference.
+2. Any listed variable does not exist in runtime code.
+3. Any runtime tuning variable is omitted.
+4. Any type is wrong.
+5. Any validation rule or allowed range is wrong.
+6. Any effect type is missing or speculative.
+7. Any proposed config section is missing.
+8. Any alias read through `env_float_alias` or equivalent is omitted or treated as active without proof.
+9. `PROMOTER_REC_API_LIMIT_MAX` is omitted.
+10. `PROMOTER_REC_EVENT_SIMILARITY_EXTRACTED_STYLE_WEIGHT` is omitted as a legacy alias.
+11. `PROMOTER_REC_WARM_NETWORK_WEIGHT` is deleted, renamed, or treated as resolved without explicit proof.
+12. `PROMOTER_FEEDBACK_*` names do not exactly match runtime variables loaded in `backend/app/promoter_feedback.py`.
+13. `PROMOTER_REC_SEGMENT_QUOTA_*` is treated as int instead of normalized float ratios.
+14. Inventory is marked frozen without explicit user acceptance.
+
+Required `PROMOTER_FEEDBACK_*` runtime variables:
+
+- `PROMOTER_FEEDBACK_EXACT_POSITIVE_BOOST`
+- `PROMOTER_FEEDBACK_SIMILAR_POSITIVE_BOOST`
+- `PROMOTER_FEEDBACK_MAX_TOTAL_BOOST`
+- `PROMOTER_FEEDBACK_SIMILARITY_MIN`
+- `PROMOTER_FEEDBACK_SIMILAR_PROMOTER_LIMIT`
+
+Known alias variables that must be tracked as unresolved unless proven otherwise:
+
+- `PROMOTER_REC_WARM_NETWORK_WEIGHT`
+- `PROMOTER_REC_EVENT_SIMILARITY_EXTRACTED_STYLE_WEIGHT`
+
+Inventory Freeze approval wording:
+
+- The inventory may only be called accepted/frozen after explicit user acceptance.
+- Config-gate must not approve final config cleanup during Inventory Freeze.
+- Final approval phrase `Config cleanup approved.` is forbidden during Inventory Freeze.
+
 Out of scope for this phase:
 
 - YAML config introduction.
