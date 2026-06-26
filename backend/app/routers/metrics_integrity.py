@@ -26,83 +26,118 @@ class IntegritiesResponse(BaseModel):
 INTEGRITY_SQL = """
 WITH
 artist_event_counts AS (
-    SELECT COUNT(*) AS n FROM event_artists GROUP BY artist_id
+    SELECT artist_id, COUNT(*) AS n
+    FROM event_artists
+    GROUP BY artist_id
+),
+event_artist_counts AS (
+    SELECT event_id, COUNT(*) AS n
+    FROM event_artists
+    GROUP BY event_id
 ),
 promoter_event_counts AS (
-    SELECT COUNT(*) AS n FROM event_promoters GROUP BY promoter_id
+    SELECT promoter_id, COUNT(*) AS n
+    FROM event_promoters
+    GROUP BY promoter_id
 ),
 event_promoter_counts AS (
-    SELECT COUNT(*) AS n FROM event_promoters GROUP BY event_id
+    SELECT event_id, COUNT(*) AS n
+    FROM event_promoters
+    GROUP BY event_id
 ),
 event_genre_counts AS (
-    SELECT COUNT(*) AS n FROM event_genres GROUP BY event_id
+    SELECT event_id, COUNT(*) AS n
+    FROM event_genres
+    GROUP BY event_id
+),
+artist_embedding_ids AS (
+    SELECT DISTINCT entity_id
+    FROM entity_embeddings
+    WHERE entity_type = 'artist'
+),
+event_embedding_ids AS (
+    SELECT DISTINCT entity_id
+    FROM entity_embeddings
+    WHERE entity_type = 'event'
+),
+artist_tag_ids AS (
+    SELECT DISTINCT artist_id
+    FROM artist_extracted_tags
+),
+event_tag_ids AS (
+    SELECT DISTINCT event_id
+    FROM event_extracted_tags
+),
+base_counts AS (
+    SELECT
+        (SELECT COUNT(*) FROM artists) AS total_artists,
+        (SELECT COUNT(*) FROM promoters) AS total_promoters,
+        (SELECT COUNT(*) FROM venues) AS total_venues,
+        (SELECT COUNT(*) FROM events) AS total_events,
+        (SELECT COUNT(*) FROM events WHERE venue_id IS NOT NULL) AS event_venue_links,
+        (SELECT MAX(fetched_at) FROM event_source_payloads) AS latest_fetched_at
 )
 SELECT
-    -- dataset overview:
-    to_char(
-        (SELECT MAX(fetched_at) FROM event_source_payloads),
-        'YYYY-MM-DD HH24:MI:SS'
-    ) AS latest_source_payload,
-    (SELECT COUNT(*) FROM event_artists)                      AS event_artist_links,
-    (SELECT COUNT(*) FROM event_promoters)                    AS event_promoter_links,
-    (SELECT COUNT(*) FROM events WHERE venue_id IS NOT NULL)  AS event_venue_links,
-    (SELECT COUNT(*) FROM events)                             AS total_events,
+    to_char(base_counts.latest_fetched_at, 'YYYY-MM-DD HH24:MI:SS') AS latest_source_payload,
+    COALESCE((SELECT SUM(n) FROM artist_event_counts), 0)::bigint AS event_artist_links,
+    COALESCE((SELECT SUM(n) FROM event_promoter_counts), 0)::bigint AS event_promoter_links,
+    base_counts.event_venue_links AS event_venue_links,
+    base_counts.total_events AS total_events,
 
-    -- data coverage:
-    (SELECT COUNT(*) FROM artists a
-    WHERE NOT EXISTS (SELECT 1 FROM event_artists ea WHERE ea.artist_id = a.id))     AS artists_without_event,
-    (SELECT COUNT(*) FROM artists)                                                   AS total_artists,
-    (SELECT COUNT(*) FROM promoters p
-    WHERE NOT EXISTS (SELECT 1 FROM event_promoters ep WHERE ep.promoter_id = p.id)) AS promoters_without_event,
-    (SELECT COUNT(*) FROM promoters)                                                 AS total_promoters,
-    (SELECT COUNT(*) FROM venues v
-    WHERE NOT EXISTS (SELECT 1 FROM events e WHERE e.venue_id = v.id))               AS venues_without_event,
-    (SELECT COUNT(*) FROM venues)                                                    AS total_venues,
-    
-    (SELECT COUNT(*) FROM events e
-     WHERE NOT EXISTS (SELECT 1 FROM event_artists ea WHERE ea.event_id = e.id))    AS events_without_artists,     
-    (SELECT COUNT(*) FROM events e
-     WHERE NOT EXISTS (SELECT 1 FROM event_promoters ep WHERE ep.event_id = e.id))  AS events_without_promoter,
+    base_counts.total_artists - (SELECT COUNT(*) FROM artist_event_counts) AS artists_without_event,
+    base_counts.total_artists AS total_artists,
+    base_counts.total_promoters - (SELECT COUNT(*) FROM promoter_event_counts) AS promoters_without_event,
+    base_counts.total_promoters AS total_promoters,
+    base_counts.total_venues - (SELECT COUNT(DISTINCT venue_id) FROM events WHERE venue_id IS NOT NULL) AS venues_without_event,
+    base_counts.total_venues AS total_venues,
 
-    -- network health:
-    (SELECT ROUND(AVG(n)::numeric, 2) FROM artist_event_counts)                        AS avg_events_per_artist,
-    (SELECT PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY n) FROM artist_event_counts)   AS med_events_per_artist,
-    (SELECT ROUND(AVG(n)::numeric, 2) FROM promoter_event_counts)                      AS avg_events_per_promoter,
+    base_counts.total_events - (SELECT COUNT(*) FROM event_artist_counts) AS events_without_artists,
+    base_counts.total_events - (SELECT COUNT(*) FROM event_promoter_counts) AS events_without_promoter,
+
+    (SELECT ROUND(AVG(n)::numeric, 2) FROM artist_event_counts) AS avg_events_per_artist,
+    (SELECT PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY n) FROM artist_event_counts) AS med_events_per_artist,
+    (SELECT ROUND(AVG(n)::numeric, 2) FROM promoter_event_counts) AS avg_events_per_promoter,
     (SELECT PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY n) FROM promoter_event_counts) AS med_events_per_promoter,
     (SELECT PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY n) FROM event_promoter_counts) AS med_promoters_per_event,
-    (SELECT PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY n) FROM event_genre_counts)    AS med_genres_per_event,
+    (SELECT PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY n) FROM event_genre_counts) AS med_genres_per_event,
 
-    -- sematic coverage:
-    (SELECT COUNT(*) FROM entity_embeddings WHERE entity_type = 'artist')              AS artists_with_embeddings,
-    (SELECT COUNT(*) FROM artists) - 
-    (SELECT COUNT(*) FROM entity_embeddings WHERE entity_type = 'artist')              AS artists_without_embeddings,
-    (SELECT COUNT(*) FROM artists a
-    WHERE NOT EXISTS (SELECT 1 FROM artist_extracted_tags t WHERE t.artist_id = a.id)) AS artists_without_tags,
-    (SELECT COUNT(*) FROM entity_embeddings WHERE entity_type = 'event')               AS events_with_embeddings,
-    (SELECT COUNT(*) FROM events) -
-    (SELECT COUNT(*) FROM entity_embeddings WHERE entity_type = 'event')               AS events_without_embeddings,
-    (SELECT COUNT(*) FROM events e
-    WHERE NOT EXISTS (SELECT 1 FROM event_extracted_tags t WHERE t.event_id = e.id))   AS events_without_tags,
+    (SELECT COUNT(*) FROM artist_embedding_ids) AS artists_with_embeddings,
+    base_counts.total_artists - (SELECT COUNT(*) FROM artist_embedding_ids) AS artists_without_embeddings,
+    base_counts.total_artists - (SELECT COUNT(*) FROM artist_tag_ids) AS artists_without_tags,
+    (SELECT COUNT(*) FROM event_embedding_ids) AS events_with_embeddings,
+    base_counts.total_events - (SELECT COUNT(*) FROM event_embedding_ids) AS events_without_embeddings,
+    base_counts.total_events - (SELECT COUNT(*) FROM event_tag_ids) AS events_without_tags,
 
-    -- recommendation:
-    (SELECT COUNT(DISTINCT a.id) FROM artists a
-    WHERE EXISTS (SELECT 1 FROM event_artists ea WHERE ea.artist_id = a.id))                                AS artists_with_graph_input,
-    (SELECT COUNT(DISTINCT ee.entity_id) FROM entity_embeddings ee
-    WHERE ee.entity_type = 'artist'
-    AND EXISTS (SELECT 1 FROM event_artists ea WHERE ea.artist_id = ee.entity_id))                          AS artists_with_both_inputs,
-    (SELECT COUNT(DISTINCT e.id) FROM events e
-    WHERE e.venue_id IS NOT NULL
-        OR EXISTS (SELECT 1 FROM event_artists   ea WHERE ea.event_id = e.id)
-        OR EXISTS (SELECT 1 FROM event_promoters ep WHERE ep.event_id = e.id)
-        OR EXISTS (SELECT 1 FROM event_genres    eg WHERE eg.event_id = e.id))                              AS events_with_graph_input,
-    (SELECT COUNT(DISTINCT ee.entity_id) FROM entity_embeddings ee
-    WHERE ee.entity_type = 'event'
-    AND (
-        EXISTS (SELECT 1 FROM event_artists   ea WHERE ea.event_id = ee.entity_id)
-        OR EXISTS (SELECT 1 FROM event_promoters ep WHERE ep.event_id = ee.entity_id)
-        OR EXISTS (SELECT 1 FROM event_genres    eg WHERE eg.event_id = ee.entity_id)
-        OR EXISTS (SELECT 1 FROM events          e  WHERE e.id = ee.entity_id AND e.venue_id IS NOT NULL))) AS events_with_both_inputs;
-
+    (SELECT COUNT(*) FROM artist_event_counts) AS artists_with_graph_input,
+    (
+        SELECT COUNT(*)
+        FROM artist_embedding_ids ae
+        JOIN artist_event_counts aec ON aec.artist_id = ae.entity_id
+    ) AS artists_with_both_inputs,
+    (
+        SELECT COUNT(*)
+        FROM events e
+        LEFT JOIN event_artist_counts eac ON eac.event_id = e.id
+        LEFT JOIN event_promoter_counts epc ON epc.event_id = e.id
+        LEFT JOIN event_genre_counts egc ON egc.event_id = e.id
+        WHERE e.venue_id IS NOT NULL
+            OR eac.event_id IS NOT NULL
+            OR epc.event_id IS NOT NULL
+            OR egc.event_id IS NOT NULL
+    ) AS events_with_graph_input,
+    (
+        SELECT COUNT(*)
+        FROM event_embedding_ids ee
+        JOIN events e ON e.id = ee.entity_id
+        LEFT JOIN event_artist_counts eac ON eac.event_id = ee.entity_id
+        LEFT JOIN event_promoter_counts epc ON epc.event_id = ee.entity_id
+        LEFT JOIN event_genre_counts egc ON egc.event_id = ee.entity_id
+        WHERE e.venue_id IS NOT NULL
+            OR eac.event_id IS NOT NULL
+            OR epc.event_id IS NOT NULL
+            OR egc.event_id IS NOT NULL
+    ) AS events_with_both_inputs
+FROM base_counts;
 """
 
 def compute_status(value: int, total: int) -> str:

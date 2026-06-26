@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import os
 
-from fastapi import Depends, Header, HTTPException
+from fastapi import Header, HTTPException
 from jose import JWTError, jwt
 from psycopg import Connection
 
-from app.db import get_db
+from app.db import get_connection
 
 JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY")
 JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
@@ -46,14 +46,14 @@ def _user_id_from_jwt(token: str, connection: Connection) -> int:
 def get_current_user_id(
     authorization: str | None = Header(default=None, alias="Authorization"),
     x_user_id: int | None = Header(default=None, alias="X-User-Id", ge=1),
-    connection: Connection = Depends(get_db),
 ) -> int:
     """Resolve the current user from JWT auth, with a legacy header fallback for tests."""
     if authorization is not None:
         scheme, _, token = authorization.partition(" ")
         if scheme.lower() != "bearer" or not token:
             raise HTTPException(status_code=401, detail="Invalid token")
-        return _user_id_from_jwt(token, connection)
+        with get_connection() as connection:
+            return _user_id_from_jwt(token, connection)
     if x_user_id is not None:
         return x_user_id
     raise HTTPException(status_code=401, detail="authenticated user required")

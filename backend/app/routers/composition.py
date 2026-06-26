@@ -1,9 +1,8 @@
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
 from typing import Any, List, Optional
-from psycopg import Connection
 from app.main import require_admin
-from app.db import get_db
+from app.db import get_connection
 
 router = APIRouter()
 
@@ -59,25 +58,26 @@ def get_composition(
     dateFrom: Optional[str] = Query(None),
     dateTo: Optional[str] = Query(None),
     admin: dict = Depends(require_admin),
-    db: Connection = Depends(get_db),
 ):
+    """Return entity composition while keeping DB checkout scoped to the queries."""
     requested = [t.strip() for t in include.split(",") if t.strip() in LABELS]
 
     date_from = f"{dateFrom}T00:00:00Z" if dateFrom else None
     date_to   = f"{dateTo}T23:59:59Z"   if dateTo   else None
 
-    if not date_from or not date_to:
-        with db.cursor() as cur:
-            cur.execute(PERIOD_SQL)
-            period = cur.fetchone()
-        if not date_from:
-            date_from = f"{period['oldest']}T00:00:00Z"
-        if not date_to:
-            date_to = f"{period['newest']}T23:59:59Z"
+    with get_connection() as db:
+        if not date_from or not date_to:
+            with db.cursor() as cur:
+                cur.execute(PERIOD_SQL)
+                period = cur.fetchone()
+            if not date_from:
+                date_from = f"{period['oldest']}T00:00:00Z"
+            if not date_to:
+                date_to = f"{period['newest']}T23:59:59Z"
 
-    with db.cursor() as cur:
-        cur.execute(COMPOSITION_SQL, (date_from, date_from, date_to, date_to))
-        rows = cur.fetchall()
+        with db.cursor() as cur:
+            cur.execute(COMPOSITION_SQL, (date_from, date_from, date_to, date_to))
+            rows = cur.fetchall()
 
     all_counts = {row["entity"]: row["count"] for row in rows}
 

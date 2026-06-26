@@ -7,10 +7,9 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from psycopg import Connection
 
 from app.main import require_admin
-from app.db import get_db
+from app.db import get_connection
 
 router = APIRouter()
 
@@ -54,8 +53,8 @@ def imported_source_ids(payload: Any) -> list[str]:
 def run_import(
     request: ImportRequest,
     admin: dict = Depends(require_admin),
-    db: Connection = Depends(get_db),
 ) -> ImportResponse:
+    """Run import work first, then use a short DB checkout for the summary write."""
     filename = safe_import_filename(request.filename)
     source_ids = imported_source_ids(request.payload)
     if not source_ids:
@@ -89,42 +88,43 @@ def run_import(
     finally:
         temp_path.unlink(missing_ok=True)
 
-    with db.cursor() as cursor:
-        cursor.execute(
-            """
-            SELECT id, title
-            FROM events
-            WHERE ra_event_id = ANY(%s)
-            ORDER BY id DESC
-            LIMIT 1
-            """,
-            (source_ids,),
-        )
-        event = cursor.fetchone()
+    with get_connection() as db:
+        with db.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id, title
+                FROM events
+                WHERE ra_event_id = ANY(%s)
+                ORDER BY id DESC
+                LIMIT 1
+                """,
+                (source_ids,),
+            )
+            event = cursor.fetchone()
 
-        cursor.execute(
-            """
-            SELECT COUNT(*) AS imported_count
-            FROM events
-            WHERE ra_event_id = ANY(%s)
-            """,
-            (source_ids,),
-        )
-        imported_count = int(cursor.fetchone()["imported_count"])
+            cursor.execute(
+                """
+                SELECT COUNT(*) AS imported_count
+                FROM events
+                WHERE ra_event_id = ANY(%s)
+                """,
+                (source_ids,),
+            )
+            imported_count = int(cursor.fetchone()["imported_count"])
 
-        cursor.execute(
-            """
-            INSERT INTO activity_log (user_id, username, event_type, target)
-            VALUES (%s, %s, %s, %s)
-            """,
-            (
-                admin["id"],
-                admin["username"],
-                "dashboard import completed",
-                filename,
-            ),
-        )
-    db.commit()
+            cursor.execute(
+                """
+                INSERT INTO activity_log (user_id, username, event_type, target)
+                VALUES (%s, %s, %s, %s)
+                """,
+                (
+                    admin["id"],
+                    admin["username"],
+                    "dashboard import completed",
+                    filename,
+                ),
+            )
+        db.commit()
 
     return ImportResponse(
         success=True,

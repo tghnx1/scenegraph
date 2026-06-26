@@ -2,10 +2,9 @@ from __future__ import annotations
 
 from datetime import date as DateValue
 
-from fastapi import APIRouter, Depends, HTTPException, Query
-from psycopg import Connection
+from fastapi import APIRouter, HTTPException, Query
 
-from app.db import get_db
+from app.db import get_connection
 from app.recommendation_helpers import graph_node_id
 from app.schemas import GraphLink, GraphNode, GraphResponse
 
@@ -22,7 +21,6 @@ async def get_graph(
     date_from: DateValue | None = Query(default=None, alias="dateFrom"),
     date_to: DateValue | None = Query(default=None, alias="dateTo"),
     limit: int = Query(default=500, ge=1, le=1000),
-    connection: Connection = Depends(get_db),
 ) -> GraphResponse:
     if date_from and date_to and date_from > date_to:
         raise HTTPException(
@@ -30,82 +28,83 @@ async def get_graph(
             detail="dateFrom must be earlier than or equal to dateTo.",
         )
 
-    with connection.cursor() as cursor:
-        cursor.execute(
-            """
-            SELECT
-                e.id,
-                e.title,
-                e.event_date::date AS event_date,
-                e.venue_id,
-                v.name AS venue_name,
-                COALESCE(v.area_name, v.country_code, '') AS venue_district,
-                COALESCE(v.address, v.content_url, '') AS venue_scene_focus,
-                array_remove(array_agg(DISTINCT LOWER(g.name)), NULL) AS genres
-            FROM events e
-            LEFT JOIN venues v
-                ON v.id = e.venue_id
-            LEFT JOIN event_genres eg
-                ON eg.event_id = e.id
-            LEFT JOIN genres g
-                ON g.id = eg.genre_id
-            WHERE
-                (%(date_from)s::date IS NULL OR e.event_date::date >= %(date_from)s::date)
-                AND (%(date_to)s::date IS NULL OR e.event_date::date <= %(date_to)s::date)
-                AND (
-                    %(genre)s::text IS NULL
-                    OR EXISTS (
-                        SELECT 1
-                        FROM event_genres eg_filter
-                        JOIN genres g_filter
-                            ON g_filter.id = eg_filter.genre_id
-                        WHERE eg_filter.event_id = e.id
-                          AND LOWER(g_filter.name) = LOWER(%(genre)s::text)
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT
+                    e.id,
+                    e.title,
+                    e.event_date::date AS event_date,
+                    e.venue_id,
+                    v.name AS venue_name,
+                    COALESCE(v.area_name, v.country_code, '') AS venue_district,
+                    COALESCE(v.address, v.content_url, '') AS venue_scene_focus,
+                    array_remove(array_agg(DISTINCT LOWER(g.name)), NULL) AS genres
+                FROM events e
+                LEFT JOIN venues v
+                    ON v.id = e.venue_id
+                LEFT JOIN event_genres eg
+                    ON eg.event_id = e.id
+                LEFT JOIN genres g
+                    ON g.id = eg.genre_id
+                WHERE
+                    (%(date_from)s::date IS NULL OR e.event_date::date >= %(date_from)s::date)
+                    AND (%(date_to)s::date IS NULL OR e.event_date::date <= %(date_to)s::date)
+                    AND (
+                        %(genre)s::text IS NULL
+                        OR EXISTS (
+                            SELECT 1
+                            FROM event_genres eg_filter
+                            JOIN genres g_filter
+                                ON g_filter.id = eg_filter.genre_id
+                            WHERE eg_filter.event_id = e.id
+                              AND LOWER(g_filter.name) = LOWER(%(genre)s::text)
+                        )
                     )
-                )
-            GROUP BY e.id, v.id
-            ORDER BY e.event_date ASC, e.id ASC
-            LIMIT %(limit)s
-            """,
-            {
-                "genre": genre,
-                "date_from": date_from,
-                "date_to": date_to,
-                "limit": limit,
-            },
-        )
-        events = cursor.fetchall()
+                GROUP BY e.id, v.id
+                ORDER BY e.event_date ASC, e.id ASC
+                LIMIT %(limit)s
+                """,
+                {
+                    "genre": genre,
+                    "date_from": date_from,
+                    "date_to": date_to,
+                    "limit": limit,
+                },
+            )
+            events = cursor.fetchall()
 
-        if not events:
-            return GraphResponse(nodes=[], links=[])
+            if not events:
+                return GraphResponse(nodes=[], links=[])
 
-        event_ids = [event["id"] for event in events]
+            event_ids = [event["id"] for event in events]
 
-        cursor.execute(
-            """
-            SELECT
-                a.id,
-                a.name,
-                COUNT(DISTINCT ea_all.event_id) AS event_count,
-                array_remove(array_agg(DISTINCT LOWER(g.name)), NULL) AS genres
-            FROM artists a
-            JOIN event_artists ea_filtered
-                ON ea_filtered.artist_id = a.id
-            LEFT JOIN event_artists ea_all
-                ON ea_all.artist_id = a.id
-            LEFT JOIN event_genres eg
-                ON eg.event_id = ea_all.event_id
-            LEFT JOIN genres g
-                ON g.id = eg.genre_id
-            WHERE ea_filtered.event_id = ANY(%s)
-            GROUP BY a.id, a.name
-            ORDER BY a.name ASC
-            """,
-            (event_ids,),
-        )
-        artists = cursor.fetchall()
+            cursor.execute(
+                """
+                SELECT
+                    a.id,
+                    a.name,
+                    COUNT(DISTINCT ea_all.event_id) AS event_count,
+                    array_remove(array_agg(DISTINCT LOWER(g.name)), NULL) AS genres
+                FROM artists a
+                JOIN event_artists ea_filtered
+                    ON ea_filtered.artist_id = a.id
+                LEFT JOIN event_artists ea_all
+                    ON ea_all.artist_id = a.id
+                LEFT JOIN event_genres eg
+                    ON eg.event_id = ea_all.event_id
+                LEFT JOIN genres g
+                    ON g.id = eg.genre_id
+                WHERE ea_filtered.event_id = ANY(%s)
+                GROUP BY a.id, a.name
+                ORDER BY a.name ASC
+                """,
+                (event_ids,),
+            )
+            artists = cursor.fetchall()
 
-        cursor.execute(
+            cursor.execute(
             """
             SELECT artist_id, event_id
             FROM event_artists
@@ -114,9 +113,9 @@ async def get_graph(
             """,
             (event_ids,),
         )
-        artist_event_links = cursor.fetchall()
+            artist_event_links = cursor.fetchall()
 
-        cursor.execute(
+            cursor.execute(
             """
             SELECT
                 p.id,
@@ -133,9 +132,9 @@ async def get_graph(
             """,
             (event_ids,),
         )
-        promoters = cursor.fetchall()
+            promoters = cursor.fetchall()
 
-        cursor.execute(
+            cursor.execute(
             """
             SELECT promoter_id, event_id
             FROM event_promoters
@@ -144,7 +143,7 @@ async def get_graph(
             """,
             (event_ids,),
         )
-        promoter_event_links = cursor.fetchall()
+            promoter_event_links = cursor.fetchall()
 
     nodes_by_id: dict[str, GraphNode] = {}
     links: list[GraphLink] = []
@@ -232,4 +231,3 @@ async def get_graph(
     )
 
     return GraphResponse(nodes=nodes, links=links)
-

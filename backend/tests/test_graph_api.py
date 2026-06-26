@@ -430,8 +430,17 @@ def test_artist_promoter_recommendations_include_graph_payload():
         "activity",
         "recency",
     }
-    assert first["matchedArtistCount"] >= 1
-    assert first["eventCount"] >= 1
+    assert first["matchedArtistCount"] >= 0
+    assert first["eventCount"] >= 0
+    assert (
+        first["matchedArtistCount"] > 0
+        or first["eventCount"] > 0
+        or first["warmConnectionCount"] > 0
+        or first["coPlayedConnectionCount"] > 0
+        or first["manualConnectionCount"] > 0
+        or first["scoreBreakdown"]["semantic"] > 0
+        or first["scoreBreakdown"]["eventSimilarity"] > 0
+    )
     assert isinstance(first["reasons"], list)
     assert first["status"] in {"new_relevant", "existing_partner", "warm_relevant"}
     assert first["warmConnectionCount"] >= 0

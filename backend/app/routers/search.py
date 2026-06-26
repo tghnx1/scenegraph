@@ -1,8 +1,7 @@
-from fastapi import APIRouter, Depends, Query, HTTPException
+from fastapi import APIRouter, Query
 from pydantic import BaseModel
 from typing import List, Literal, Optional
-from psycopg import Connection
-from app.db import get_db
+from app.db import get_connection
 
 router = APIRouter()
 
@@ -150,23 +149,23 @@ def search(
     limit: int = Query(8, ge=1, le=100),
     entity_type: Optional[Literal["artist", "venue", "event", "promoter"]] = Query(None, alias="type"),
     sort: SearchSort = Query("relevance"),
-    db: Connection = Depends(get_db),
 ):
     pattern = f"%{q}%"
 
-    with db.cursor() as cur:
-        if entity_type:
-            sql = SEARCH_BY_TYPE_SQL[entity_type].format(order_by=SORT_ORDER_BY[sort])
-            cur.execute(sql, (q, pattern, limit))
-        else:
-            per_type = max(2, limit // 4)
-            cur.execute(SEARCH_SQL, (
-                q, q, pattern, per_type,
-                q, q, pattern, per_type,
-                q, q, pattern, per_type,
-                q, q, pattern, per_type,
-            ))
-        rows = cur.fetchall()
+    with get_connection() as db:
+        with db.cursor() as cur:
+            if entity_type:
+                sql = SEARCH_BY_TYPE_SQL[entity_type].format(order_by=SORT_ORDER_BY[sort])
+                cur.execute(sql, (q, pattern, limit))
+            else:
+                per_type = max(2, limit // 4)
+                cur.execute(SEARCH_SQL, (
+                    q, q, pattern, per_type,
+                    q, q, pattern, per_type,
+                    q, q, pattern, per_type,
+                    q, q, pattern, per_type,
+                ))
+            rows = cur.fetchall()
 
     results = [
         SearchResult(type=row["type"], id=row["id"], name=row["name"])

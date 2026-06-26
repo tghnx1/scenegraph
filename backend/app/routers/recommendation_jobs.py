@@ -4,10 +4,9 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, WebSocket, WebSocketDisconnect, status
-from psycopg import Connection
 
 from app.auth import _user_id_from_jwt, get_current_user_id
-from app.db import get_connection, get_db
+from app.db import get_connection
 from app.recommendation_job_events import recommendation_job_socket_hub
 from app.recommendation_jobs import create_recommendation_job, get_recommendation_job
 from app.recommendation_scoring import promoter_recommendation_api_limit_max_from_env
@@ -56,7 +55,6 @@ def create_artist_promoter_job(
     artist_id: int,
     params: RecommendationJobParams,
     user_id: int = Depends(get_current_user_id),
-    connection: Connection = Depends(get_db),
 ) -> RecommendationJobCreatedResponse:
     """Create a durable recommendation job and return without running recommendations."""
     if params.limit > PROMOTER_REC_API_LIMIT_MAX:
@@ -65,17 +63,18 @@ def create_artist_promoter_job(
             detail=f"limit must be less than or equal to {PROMOTER_REC_API_LIMIT_MAX}",
         )
 
-    with connection.cursor() as cursor:
-        cursor.execute("SELECT 1 FROM artists WHERE id = %s", (artist_id,))
-        if cursor.fetchone() is None:
-            raise HTTPException(status_code=404, detail=f"Artist {artist_id} not found")
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT 1 FROM artists WHERE id = %s", (artist_id,))
+            if cursor.fetchone() is None:
+                raise HTTPException(status_code=404, detail=f"Artist {artist_id} not found")
 
-    row = create_recommendation_job(
-        connection,
-        user_id=user_id,
-        artist_id=artist_id,
-        params=params.model_dump(mode="json"),
-    )
+        row = create_recommendation_job(
+            connection,
+            user_id=user_id,
+            artist_id=artist_id,
+            params=params.model_dump(mode="json"),
+        )
     return RecommendationJobCreatedResponse(jobId=str(row["id"]), status="queued")
 
 
@@ -88,14 +87,14 @@ def create_artist_promoter_job(
 def read_recommendation_job(
     job_id: UUID,
     user_id: int = Depends(get_current_user_id),
-    connection: Connection = Depends(get_db),
 ) -> RecommendationJobResponse:
     """Return current job state and the result only to the owning user."""
-    row = get_recommendation_job(
-        connection,
-        job_id=str(job_id),
-        user_id=user_id,
-    )
+    with get_connection() as connection:
+        row = get_recommendation_job(
+            connection,
+            job_id=str(job_id),
+            user_id=user_id,
+        )
     if row is None:
         raise HTTPException(status_code=404, detail="Recommendation job not found")
     return _job_response(row)

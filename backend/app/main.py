@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 from contextlib import asynccontextmanager, suppress
 
-from fastapi import Depends, FastAPI, Header, HTTPException         #Header and HTTPException for the admin operations
+from fastapi import Depends, FastAPI, Header, HTTPException, Request         #Header and HTTPException for the admin operations
 from fastapi.middleware.cors import CORSMiddleware
 from psycopg import Connection
 from fastapi.responses import PlainTextResponse
@@ -14,7 +14,13 @@ from jose import JWTError, jwt
 
 security = HTTPBearer()         #security parse that understands jwt-encrypted headers.
 
-from app.db import close_connection_pool, get_connection, get_db, get_connection_pool
+from app.db import (
+    close_connection_pool,
+    get_connection,
+    get_connection_pool,
+    reset_current_request_path,
+    set_current_request_path,
+)
 from app.recommendation_helpers import extracted_tag_score
 from app.schema_preflight import check_schema_tables, schema_preflight_strict_mode
 from app.recommendation_job_events import listen_for_recommendation_job_updates
@@ -238,6 +244,17 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+@app.middleware("http")
+async def attach_request_path_to_db_diagnostics(request: Request, call_next):
+    """Attach the current HTTP path to database pool diagnostics for this request."""
+    token = set_current_request_path(f"{request.method} {request.url.path}")
+    try:
+        return await call_next(request)
+    finally:
+        reset_current_request_path(token)
+
+
 JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY")
 JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
 JWT_EXPIRE_MINUTES = int(os.getenv("JWT_EXPIRE_MINUTES", "120"))
@@ -246,8 +263,8 @@ if JWT_SECRET_KEY is None:
 
 def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security),
-    connection: Connection = Depends(get_db),
 ) -> dict:
+    """Authenticate the bearer token and fetch the user with a short DB checkout."""
     token = credentials.credentials
 
     try:
@@ -264,16 +281,17 @@ def get_current_user(
     except (JWTError, ValueError):
         raise HTTPException(status_code=401, detail="Invalid token")
 
-    with connection.cursor() as cursor:
-        cursor.execute(
-            """
-            SELECT id, username, role, status, artist_id
-            FROM users
-            WHERE id = %s
-            """,
-            (int(user_id),),
-        )
-        user = cursor.fetchone()
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id, username, role, status, artist_id
+                FROM users
+                WHERE id = %s
+                """,
+                (int(user_id),),
+            )
+            user = cursor.fetchone()
 
     if user is None:
         raise HTTPException(status_code=401, detail="User not found")
@@ -310,10 +328,11 @@ def create_access_token(data: dict) -> str:
     )
 
 @app.get("/health")
-async def health(connection: Connection = Depends(get_db)) -> dict[str, object]:
-    with connection.cursor() as cursor:
-        cursor.execute("SELECT 1 AS ready")
-        ready = cursor.fetchone()["ready"]
+async def health() -> dict[str, object]:
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT 1 AS ready")
+            ready = cursor.fetchone()["ready"]
 
     schema_report = getattr(
         app.state,
@@ -382,20 +401,20 @@ def check_rate_limit(key: str, max_attempts: int = 5, window_seconds: int = 60) 
 @app.post("/api/login", response_model=LoginResponse, response_model_exclude_none=True)        
 async def login(
     login_data: LoginRequest,
-    connection: Connection = Depends(get_db),
 ) -> LoginResponse:
     check_rate_limit(f"login:{login_data.username}")
 
-    with connection.cursor() as cursor:
-        cursor.execute(
-            """
-            SELECT id, username, password_hash, role, status, must_change_password, artist_id
-            FROM users
-            WHERE username = %s
-            """,
-            (login_data.username,),
-        )
-        user = cursor.fetchone()
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id, username, password_hash, role, status, must_change_password, artist_id
+                FROM users
+                WHERE username = %s
+                """,
+                (login_data.username,),
+            )
+            user = cursor.fetchone()
 
     if user is None:
         return LoginResponse(
@@ -414,15 +433,16 @@ async def login(
             success=False,
             message="Account is not approved"
         )
-    
-    log_activity(
-        connection,
-        user["id"],
-        user["username"],
-        "login",
-        "Login page",
-    )
-    connection.commit()
+
+    with get_connection() as connection:
+        log_activity(
+            connection,
+            user["id"],
+            user["username"],
+            "login",
+            "Login page",
+        )
+        connection.commit()
     
     return LoginResponse(
         success=True,
@@ -457,10 +477,9 @@ def validatate_registration_input(register_data: RegisterRequest) -> str | None:
 @app.post("/api/register", response_model=RegisterResponse, response_model_exclude_none=True)
 async def register(
     register_data: RegisterRequest,
-    connection: Connection = Depends(get_db)
 ) -> RegisterResponse:
 
-    check_rate_limit(f"register:{register_data.email}, max_attempts=3, window_seconds=300")
+    check_rate_limit(f"register:{register_data.email}", max_attempts=3, window_seconds=300)
 
     if register_data.password != register_data.password_confirm:
         return RegisterResponse(
@@ -481,50 +500,51 @@ async def register(
             message="Invalid role",
         )
     
-    with connection.cursor() as cursor:
-        cursor.execute(
-            """
-            SELECT id
-            FROM users
-            WHERE username = %s OR email = %s
-            """,
-            (register_data.username, register_data.email)
-        )
-
-        existing_user = cursor.fetchone()
-
-        if existing_user is not None:
-            return RegisterResponse(
-                success=False,
-                message="Username or email already exists",
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id
+                FROM users
+                WHERE username = %s OR email = %s
+                """,
+                (register_data.username, register_data.email)
             )
-        
-        hashed_password = pwd_context.hash(register_data.password)
 
-        cursor.execute(
-            """
-            INSERT INTO users (username, email, password_hash, role)
-            VALUES (%s, %s, %s, %s)
-            RETURNING id
-            """,
-            (
+            existing_user = cursor.fetchone()
+
+            if existing_user is not None:
+                return RegisterResponse(
+                    success=False,
+                    message="Username or email already exists",
+                )
+            
+            hashed_password = pwd_context.hash(register_data.password)
+
+            cursor.execute(
+                """
+                INSERT INTO users (username, email, password_hash, role)
+                VALUES (%s, %s, %s, %s)
+                RETURNING id
+                """,
+                (
+                    register_data.username,
+                    register_data.email,
+                    hashed_password,
+                    register_data.role,
+                ),
+            )
+
+            created_user = cursor.fetchone()
+
+            log_activity(
+                connection,
+                created_user["id"],
                 register_data.username,
-                register_data.email,
-                hashed_password,
-                register_data.role,
-            ),
-        )
-
-        created_user = cursor.fetchone()
-
-        log_activity(
-            connection,
-            created_user["id"],
-            register_data.username,
-            "registration",
-            "User account",
-        )
-        connection.commit() # ensure to save the changes...
+                "registration",
+                "User account",
+            )
+            connection.commit() # ensure to save the changes...
     
     return RegisterResponse(
         success=True,
@@ -544,7 +564,6 @@ def validate_password(password: str) -> str | None:
 @app.post("/api/change-password", response_model=ChangePasswordResponse)
 async def change_password(
     password_data: ChangePasswordRequest,           # read json request body into a ChangePasswordRequest object
-    connection: Connection = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ) -> ChangePasswordResponse:                        # return type... this function should return a ChangePasswordResponse
     if password_data.new_password != password_data.new_password_confirm:
@@ -561,16 +580,17 @@ async def change_password(
             message=password_error,
         )
 
-    with connection.cursor() as cursor:
-        cursor.execute(
-            """
-            SELECT id, username, password_hash, status
-            FROM users
-            WHERE username = %s
-            """,
-            (password_data.username,),
-        )
-        user = cursor.fetchone()
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id, username, password_hash, status
+                FROM users
+                WHERE username = %s
+                """,
+                (password_data.username,),
+            )
+            user = cursor.fetchone()
 
         if user is None:
             return ChangePasswordResponse(
@@ -598,28 +618,29 @@ async def change_password(
         
         new_hashed_password = pwd_context.hash(password_data.new_password)
 
-        cursor.execute(
-            """
-            UPDATE users
-            SET password_hash = %s,
-                must_change_password = FALSE
-            WHERE id = %s
-            """,
-            (
-                new_hashed_password,
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE users
+                SET password_hash = %s,
+                    must_change_password = FALSE
+                WHERE id = %s
+                """,
+                (
+                    new_hashed_password,
+                    user["id"],
+                ),
+            )
+
+            log_activity(
+                connection,
                 user["id"],
-            ),
-        )
+                user["username"],
+                "password change",
+                "Own account",
+            )
 
-        log_activity(
-            connection,
-            user["id"],
-            user["username"],
-            "password change",
-            "Own account",
-        )
-
-        connection.commit()
+            connection.commit()
 
     return ChangePasswordResponse(
         success=True,
@@ -629,18 +650,19 @@ async def change_password(
 @app.get("/api/admin/users/pending")
 async def list_pending_users(
     admin: dict = Depends(require_admin),
-    connection: Connection = Depends(get_db),
 ) -> dict:
-    with connection.cursor() as cursor:
-        cursor.execute(
-            """
-            SELECT id, username, email, role, status, created_at
-            FROM users
-            WHERE status = 'pending'
-            ORDER BY created_at ASC
-            """
-        )
-        users = cursor.fetchall()
+    """List pending users while returning the DB connection before serialization."""
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id, username, email, role, status, created_at
+                FROM users
+                WHERE status = 'pending'
+                ORDER BY created_at ASC
+                """
+            )
+            users = cursor.fetchall()
     
     return {
         "success": True,
@@ -651,32 +673,31 @@ async def list_pending_users(
 async def approve_user(
     user_id: int,
     admin: dict = Depends(require_admin),
-    connection: Connection = Depends(get_db),
 ) -> dict:
-    with connection.cursor() as cursor:
-        cursor.execute(
-            """
-            UPDATE users
-            SET status = 'approved'
-            WHERE id = %s
-            RETURNING id, username, email, role, status
-            """,
-            (user_id,)
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE users
+                SET status = 'approved'
+                WHERE id = %s
+                RETURNING id, username, email, role, status
+                """,
+                (user_id,)
+            )
+            updated_user = cursor.fetchone()
+        
+        if updated_user is None:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        log_activity(
+            connection,
+            admin["id"],
+            admin["username"],
+            "user approved",
+            updated_user["username"],
         )
-        updated_user = cursor.fetchone()
         connection.commit()
-    
-    if updated_user is None:
-        raise HTTPException(status_code=404, detail="User not found")
-    
-    log_activity(
-        connection,
-        admin["id"],
-        admin["username"],
-        "user approved",
-        updated_user["username"],
-    )
-    connection.commit()
 
     return {
         "success": True,
@@ -688,32 +709,31 @@ async def approve_user(
 async def reject_user(
     user_id: int,
     admin: dict = Depends(require_admin),
-    connection: Connection = Depends(get_db),
 ) -> dict:
-    with connection.cursor() as cursor:
-        cursor.execute(
-            """
-            UPDATE users
-            SET status = 'rejected'
-            WHERE id = %s
-            RETURNING id, username, email, role, status
-            """,
-            (user_id,),
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE users
+                SET status = 'rejected'
+                WHERE id = %s
+                RETURNING id, username, email, role, status
+                """,
+                (user_id,),
+            )
+            updated_user = cursor.fetchone()
+        
+        if updated_user is None:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        log_activity(
+            connection,
+            admin["id"],
+            admin["username"],
+            "user registration rejected",
+            updated_user["username"],
         )
-        updated_user = cursor.fetchone()
         connection.commit()
-    
-    if updated_user is None:
-        raise HTTPException(status_code=404, detail="User not found")
-    
-    log_activity(
-        connection,
-        admin["id"],
-        admin["username"],
-        "user registration rejected",
-        updated_user["username"],
-    )
-    connection.commit()
 
     return {
         "success": True,
@@ -726,39 +746,39 @@ async def reject_user(
 async def deactivate_user(
     user_id: int,
     admin: dict = Depends(require_admin),
-    connection: Connection = Depends(get_db),
 ) -> dict:
-    with connection.cursor() as cursor:
-        cursor.execute(
-            """
-            UPDATE users
-            SET status = 'deactivated'
-            WHERE id = %s
-            RETURNING id, username, email, role, status
-            """,
-            (user_id,),
-        )
-        updated_user = cursor.fetchone()
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE users
+                SET status = 'deactivated'
+                WHERE id = %s
+                RETURNING id, username, email, role, status
+                """,
+                (user_id,),
+            )
+            updated_user = cursor.fetchone()
 
-        if updated_user is None:
-            raise HTTPException(status_code=404, detail="User not found")
-        
-        log_activity(
-            connection,
-            updated_user["id"],
-            updated_user["username"],
-            "deactivation",
-            f"Deactivated by {admin['username']}",
-        )
+            if updated_user is None:
+                raise HTTPException(status_code=404, detail="User not found")
+            
+            log_activity(
+                connection,
+                updated_user["id"],
+                updated_user["username"],
+                "deactivation",
+                f"Deactivated by {admin['username']}",
+            )
 
-        log_activity(
-            connection,
-            admin["id"],
-            admin["username"],
-            "user deactivated",
-            updated_user["username"],
-        )
-        connection.commit()
+            log_activity(
+                connection,
+                admin["id"],
+                admin["username"],
+                "user deactivated",
+                updated_user["username"],
+            )
+            connection.commit()
     
     return {
         "success": True,
@@ -770,39 +790,39 @@ async def deactivate_user(
 async def activate_user(
     user_id: int,
     admin: dict = Depends(require_admin),
-    connection: Connection = Depends(get_db),
 ) -> dict:
-    with connection.cursor() as cursor:
-        cursor.execute(
-            """
-            UPDATE users
-            SET status = 'approved'
-            WHERE id = %s
-            RETURNING id, username, email, role, status
-            """,
-            (user_id,),
-        )
-        updated_user = cursor.fetchone()
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE users
+                SET status = 'approved'
+                WHERE id = %s
+                RETURNING id, username, email, role, status
+                """,
+                (user_id,),
+            )
+            updated_user = cursor.fetchone()
 
-        if updated_user is None:
-            raise HTTPException(status_code=404, detail="User not found")
-        
-        log_activity(
-            connection,
-            updated_user["id"],
-            updated_user["username"],
-            "activation",
-            f"Activated by {admin['username']}",
-        )
+            if updated_user is None:
+                raise HTTPException(status_code=404, detail="User not found")
+            
+            log_activity(
+                connection,
+                updated_user["id"],
+                updated_user["username"],
+                "activation",
+                f"Activated by {admin['username']}",
+            )
 
-        log_activity(
-            connection,
-            admin["id"],
-            admin["username"],
-            "user activated",
-            updated_user["username"],
-        )
-        connection.commit()
+            log_activity(
+                connection,
+                admin["id"],
+                admin["username"],
+                "user activated",
+                updated_user["username"],
+            )
+            connection.commit()
     
     return {
         "success": True,
@@ -813,18 +833,19 @@ async def activate_user(
 @app.get("/api/admin/activity")
 async def list_activity(
     admin: dict = Depends(require_admin),
-    connection: Connection = Depends(get_db),
 ) -> dict:
-    with connection.cursor() as cursor:
-        cursor.execute(
-            """
-            SELECT id, username, event_type, target, created_at
-            FROM activity_log
-            ORDER BY created_at DESC
-            LIMIT 20
-            """
-        )
-        rows = cursor.fetchall()
+    """List recent activity while keeping the DB checkout scoped to the query."""
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id, username, event_type, target, created_at
+                FROM activity_log
+                ORDER BY created_at DESC
+                LIMIT 20
+                """
+            )
+            rows = cursor.fetchall()
     
     return {
         "success": True,
@@ -834,17 +855,18 @@ async def list_activity(
 @app.get("/api/admin/users")
 async def list_users(
     admin: dict = Depends(require_admin),
-    connection: Connection = Depends(get_db),
 ) -> dict:
-    with connection.cursor() as cursor:
-        cursor.execute(
-            """
-            SELECT id, username, email, role, status, created_at
-            FROM users
-            ORDER BY created_at DESC
-            """
-        )
-        users = cursor.fetchall()
+    """List users while releasing the DB connection before response serialization."""
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id, username, email, role, status, created_at
+                FROM users
+                ORDER BY created_at DESC
+                """
+            )
+            users = cursor.fetchall()
 
     return {
         "success": True,
@@ -854,45 +876,46 @@ async def list_users(
 @app.post("/api/logout")
 async def logout(
     current_user: dict = Depends(get_current_user),
-    connection: Connection = Depends(get_db),
 ) ->dict:
-    log_activity(
-        connection,
-        current_user["id"],
-        current_user["username"],
-        "logout",
-        "Frontend logout",
-    )
-    connection.commit()
+    with get_connection() as connection:
+        log_activity(
+            connection,
+            current_user["id"],
+            current_user["username"],
+            "logout",
+            "Frontend logout",
+        )
+        connection.commit()
 
     return {"success": True, "message": "Logout logged"}
 
 @app.get("/api/admin/activity/export", response_class=PlainTextResponse)
 async def export_activity(
     admin: dict = Depends(require_admin),
-    connection: Connection = Depends(get_db),
 ) -> str:
-    with connection.cursor() as cursor:
-        cursor.execute(
-            """
-            SELECT id, username, event_type, target, created_at
-            FROM activity_log
-            ORDER BY created_at DESC
-            """
-        )
-        rows = cursor.fetchall()
+    """Export activity after fetching rows in a short DB checkout."""
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id, username, event_type, target, created_at
+                FROM activity_log
+                ORDER BY created_at DESC
+                """
+            )
+            rows = cursor.fetchall()
 
     lines = []
     lines.append(
-        f"{'id':<4}| {'username':<10}| {'event_type':<28}| {'target':<30}| {'created_at'}"
+        f"{'id':<4}| {'username':<25}| {'event_type':<28}| {'target':<30}| {'created_at'}"
     )
     lines.append(
-        f"{'-' * 4}+{'-' * 11}+{'-' * 29}+{'-' * 31}+{'-' * 30}"
+        f"{'-' * 4}+{'-' * 26}+{'-' * 29}+{'-' * 31}+{'-' * 30}"
     )
     for row in rows:
         lines.append(
             f"{str(row['id']):<4}| "
-            f"{(row['username'] or ''):<10}| "
+            f"{(row['username'] or ''):<25}| "
             f"{row['event_type']:<28}| "
             f"{(row['target'] or ''):<30}| "
             f"{row['created_at']}"
@@ -905,36 +928,36 @@ async def change_user_role(
     user_id: int,
     role_data: ChangeRoleRequest,
     admin: dict = Depends(require_admin),
-    connection: Connection = Depends(get_db),
 ) -> dict:
     if role_data.role not in {"artist", "agent"}:
         raise HTTPException(status_code=400, detail="Invalid role")
     
-    with connection.cursor() as cursor:
-        cursor.execute(
-            """
-            UPDATE users
-            SET role = %s
-            WHERE id = %s
-                AND role != 'admin'
-            RETURNING id, username, email, role, status
-            """,
-            (role_data.role, user_id),
-        )
-        updated_user = cursor.fetchone()
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE users
+                SET role = %s
+                WHERE id = %s
+                    AND role != 'admin'
+                RETURNING id, username, email, role, status
+                """,
+                (role_data.role, user_id),
+            )
+            updated_user = cursor.fetchone()
 
-        if updated_user is None:
-            raise HTTPException(status_code=404, detail="User not found or cannot change admin role")
-        
-        log_activity(
-            connection,
-            admin["id"],
-            admin["username"],
-            "user role changed",
-            f"{updated_user['username']} -> {updated_user['role']}",
-        )
+            if updated_user is None:
+                raise HTTPException(status_code=404, detail="User not found or cannot change admin role")
+            
+            log_activity(
+                connection,
+                admin["id"],
+                admin["username"],
+                "user role changed",
+                f"{updated_user['username']} -> {updated_user['role']}",
+            )
 
-        connection.commit()
+            connection.commit()
     
     return {
         "success": True,
@@ -943,20 +966,21 @@ async def change_user_role(
     }
 
 @app.get("/api/venues", response_model=VenuesResponse)
-async def list_venues(connection: Connection = Depends(get_db)) -> VenuesResponse:
-    with connection.cursor() as cursor:
-        cursor.execute(
-            """
-            SELECT
-                id,
-                name,
-                COALESCE(area_name, country_code, '') AS district,
-                COALESCE(address, content_url, '') AS scene_focus
-            FROM venues
-            ORDER BY id ASC
-            """
-        )
-        venues = cursor.fetchall()
+async def list_venues() -> VenuesResponse:
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT
+                    id,
+                    name,
+                    COALESCE(area_name, country_code, '') AS district,
+                    COALESCE(address, content_url, '') AS scene_focus
+                FROM venues
+                ORDER BY id ASC
+                """
+            )
+            venues = cursor.fetchall()
 
     return VenuesResponse(venues=[Venue(**venue) for venue in venues])
 
@@ -969,7 +993,6 @@ def require_public_api_key(api_key: str | None = Header(alias="X-API-Key"),) -> 
 @app.get("/api/public/venues")
 async def public_venues(
     _: None = Depends(require_public_api_key),          # _: None is because the result is not necessary, just run it
-    connection: Connection = Depends(get_db),
     limit: int = 20,
     offset: int = 0,
 ) -> dict:
@@ -978,17 +1001,18 @@ async def public_venues(
     limit = min(max(limit, 1), 100)     #for pagination
     offset = max(offset, 0)
 
-    with connection.cursor() as cursor:
-        cursor.execute(
-            """
-            SELECT id, name
-            FROM venues
-            ORDER BY name ASC
-            LIMIT %s OFFSET %s
-            """,
-            (limit, offset),
-        )
-        rows = cursor.fetchall()
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id, name
+                FROM venues
+                ORDER BY name ASC
+                LIMIT %s OFFSET %s
+                """,
+                (limit, offset),
+            )
+            rows = cursor.fetchall()
 
     return {
         "success": True,
@@ -1000,7 +1024,6 @@ async def public_venues(
 @app.get("/api/public/artists")
 async def public_artists(
     _: None = Depends(require_public_api_key),         
-    connection: Connection = Depends(get_db),
     limit: int = 20,
     offset: int = 0,
 ) -> dict:
@@ -1009,17 +1032,18 @@ async def public_artists(
     limit = min(max(limit, 1), 100)     #for pagination
     offset = max(offset, 0)
 
-    with connection.cursor() as cursor:
-        cursor.execute(
-            """
-            SELECT id, name
-            FROM artists
-            ORDER BY name ASC
-            LIMIT %s OFFSET %s
-            """,
-            (limit, offset),
-        )
-        rows = cursor.fetchall()
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id, name
+                FROM artists
+                ORDER BY name ASC
+                LIMIT %s OFFSET %s
+                """,
+                (limit, offset),
+            )
+            rows = cursor.fetchall()
 
     return {
         "success": True,
@@ -1031,7 +1055,6 @@ async def public_artists(
 @app.get("/api/public/events")
 async def public_events(
     _: None = Depends(require_public_api_key),         
-    connection: Connection = Depends(get_db),
     limit: int = 20,
     offset: int = 0,
 ) -> dict:
@@ -1040,17 +1063,18 @@ async def public_events(
     limit = min(max(limit, 1), 100)     #for pagination
     offset = max(offset, 0)
 
-    with connection.cursor() as cursor:
-        cursor.execute(
-            """
-            SELECT id, name
-            FROM events
-            ORDER BY name ASC
-            LIMIT %s OFFSET %s
-            """,
-            (limit, offset),
-        )
-        rows = cursor.fetchall()
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id, name
+                FROM events
+                ORDER BY name ASC
+                LIMIT %s OFFSET %s
+                """,
+                (limit, offset),
+            )
+            rows = cursor.fetchall()
 
     return {
         "success": True,
@@ -1062,7 +1086,6 @@ async def public_events(
 @app.get("/api/public/promoters")
 async def public_promoters(
     _: None = Depends(require_public_api_key),         
-    connection: Connection = Depends(get_db),
     limit: int = 20,
     offset: int = 0,
 ) -> dict:
@@ -1071,17 +1094,18 @@ async def public_promoters(
     limit = min(max(limit, 1), 100)     #for pagination
     offset = max(offset, 0)
 
-    with connection.cursor() as cursor:
-        cursor.execute(
-            """
-            SELECT id, name
-            FROM promoters
-            ORDER BY name ASC
-            LIMIT %s OFFSET %s
-            """,
-            (limit, offset),
-        )
-        rows = cursor.fetchall()
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id, name
+                FROM promoters
+                ORDER BY name ASC
+                LIMIT %s OFFSET %s
+                """,
+                (limit, offset),
+            )
+            rows = cursor.fetchall()
 
     return {
         "success": True,
@@ -1093,21 +1117,26 @@ async def public_promoters(
 @app.get("/api/public/genres")
 async def get_public_genres(
     _: None = Depends(require_public_api_key),
-    connection: Connection = Depends(get_db),
     limit: int = 20,
     offset: int = 0,
 ) -> dict:
-    with connection.cursor() as cursor:
-        cursor.execute(
-            """
-            SELECT id, name
-            FROM genres
-            ORDER BY name ASC
-            LIMIT %s OFFSET %s
-            """,
-            (limit, offset),
-        )
-        rows = cursor.fetchall()
+    check_rate_limit("public:genres", max_attempts=100, window_seconds=60)
+
+    limit = min(max(limit, 1), 100)
+    offset = max(offset, 0)
+
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id, name
+                FROM genres
+                ORDER BY name ASC
+                LIMIT %s OFFSET %s
+                """,
+                (limit, offset),
+            )
+            rows = cursor.fetchall()
 
     return {
         "success": True,
@@ -1121,7 +1150,6 @@ async def claim_artist_profile(
     artist_id: int,
     claim_data: ArtistClaimRequest,
     current_user: dict = Depends(get_current_user),
-    connection: Connection = Depends(get_db),
 ) -> dict:
     if current_user["role"] != "artist":
         raise HTTPException(status_code=403, detail="Only artists can claim profiles")
@@ -1133,39 +1161,58 @@ async def claim_artist_profile(
         raise HTTPException(status_code=400, detail="Reason must be more concise")
 
 
-    with connection.cursor() as cursor:
-        cursor.execute("SELECT id FROM artists WHERE id = %s", (artist_id,))
-        if cursor.fetchone() is None:
-            raise HTTPException(status_code=404, detail="Artist not found")
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT id FROM artists WHERE id = %s", (artist_id,))
+            if cursor.fetchone() is None:
+                raise HTTPException(status_code=404, detail="Artist not found")
 
-        cursor.execute(
-            """
-            SELECT id, status
-            FROM artist_claims
-            WHERE user_id = %s
-            AND artist_id = %s
-            AND status = 'pending'
-            """,
-            (current_user["id"], artist_id),
-        )
-        existing_claim = cursor.fetchone()
-
-        if existing_claim is not None:
-            raise HTTPException(
-                status_code=409,
-                detail="You already have a pending claim for this artist profile.",
+            # Avoid claims for artist profiles already assigned to another user.
+            cursor.execute(
+                """
+                SELECT id, username
+                FROM users
+                WHERE artist_id = %s
+                    AND id != %s
+                LIMIT 1
+                """,
+                (artist_id, current_user["id"]),
             )
+            assigned_user = cursor.fetchone()
 
-        cursor.execute(
-            """
-            INSERT INTO artist_claims (user_id, artist_id, reason)
-            VALUES (%s, %s, %s)
-            RETURNING id
-            """,
-            (current_user["id"], artist_id, reason),
-        )
-        claim = cursor.fetchone()
-        connection.commit()
+            if assigned_user is not None:
+                raise HTTPException(
+                    status_code=409,
+                    detail="This artist profile has already been assigned to another user.",
+                )
+
+            cursor.execute(
+                """
+                SELECT id, status
+                FROM artist_claims
+                WHERE user_id = %s
+                AND artist_id = %s
+                AND status = 'pending'
+                """,
+                (current_user["id"], artist_id),
+            )
+            existing_claim = cursor.fetchone()
+
+            if existing_claim is not None:
+                raise HTTPException(
+                    status_code=409,
+                    detail="You already have a pending claim for this artist profile.",
+                )
+
+            cursor.execute(
+                """
+                INSERT INTO artist_claims (user_id, artist_id, reason)
+                VALUES (%s, %s, %s)
+                RETURNING id
+                """,
+                (current_user["id"], artist_id, reason),
+            )
+            claim = cursor.fetchone()
 
         log_activity(
             connection,
@@ -1181,27 +1228,28 @@ async def claim_artist_profile(
 @app.get("/api/admin/artist-claims")
 async def get_artist_claims(
     admin: dict = Depends(require_admin),
-    connection: Connection = Depends(get_db),
 ) -> dict:
-    with connection.cursor() as cursor:
-        cursor.execute(
-            """
-            SELECT
-                artist_claims.id,
-                artist_claims.status,
-                artist_claims.reason,
-                artist_claims.created_at,
-                users.username,
-                users.email,
-                artists.name AS artist_name,
-                artist_claims.artist_id
-            FROM artist_claims
-            JOIN users ON users.id = artist_claims.user_id
-            JOIN artists ON artists.id = artist_claims.artist_id
-            ORDER BY artist_claims.created_at DESC
-            """
-        )
-        claims = cursor.fetchall()
+    """List artist claims without holding the DB connection through serialization."""
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT
+                    artist_claims.id,
+                    artist_claims.status,
+                    artist_claims.reason,
+                    artist_claims.created_at,
+                    users.username,
+                    users.email,
+                    artists.name AS artist_name,
+                    artist_claims.artist_id
+                FROM artist_claims
+                JOIN users ON users.id = artist_claims.user_id
+                JOIN artists ON artists.id = artist_claims.artist_id
+                ORDER BY artist_claims.created_at DESC
+                """
+            )
+            claims = cursor.fetchall()
 
     return {"success": True, "claims": claims}
 
@@ -1209,54 +1257,52 @@ async def get_artist_claims(
 async def approve_artist_claim(
     claim_id: int,
     admin: dict = Depends(require_admin),
-    connection: Connection = Depends(get_db),
 ) -> dict:
-    with connection.cursor() as cursor:
-        cursor.execute(
-            """
-            SELECT 
-                artist_claims.id,
-                artist_claims.user_id,
-                artist_claims.artist_id,
-                artist_claims.status,
-                users.username,
-                artists.name AS artist_name
-            FROM artist_claims
-            JOIN users ON users.id = artist_claims.user_id
-            JOIN artists ON artists.id = artist_claims.artist_id
-            WHERE artist_claims.id = %s
-            """,
-            (claim_id,),
-        )
-        claim = cursor.fetchone()
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT 
+                    artist_claims.id,
+                    artist_claims.user_id,
+                    artist_claims.artist_id,
+                    artist_claims.status,
+                    users.username,
+                    artists.name AS artist_name
+                FROM artist_claims
+                JOIN users ON users.id = artist_claims.user_id
+                JOIN artists ON artists.id = artist_claims.artist_id
+                WHERE artist_claims.id = %s
+                """,
+                (claim_id,),
+            )
+            claim = cursor.fetchone()
 
-        if claim is None:
-            raise HTTPException(status_code=404, detail="Claim not found")
+            if claim is None:
+                raise HTTPException(status_code=404, detail="Claim not found")
 
-        if claim["status"] != "pending":
-            raise HTTPException(status_code=400, detail="Claim already decided")
+            if claim["status"] != "pending":
+                raise HTTPException(status_code=400, detail="Claim already decided")
 
-        cursor.execute(
-            """
-            UPDATE users
-            SET artist_id = %s
-            WHERE id = %s
-            """,
-            (claim["artist_id"], claim["user_id"]),
-        )
+            cursor.execute(
+                """
+                UPDATE users
+                SET artist_id = %s
+                WHERE id = %s
+                """,
+                (claim["artist_id"], claim["user_id"]),
+            )
 
-        cursor.execute(
-            """
-            UPDATE artist_claims
-            SET status = 'approved',
-                decided_at = CURRENT_TIMESTAMP,
-                decided_by = %s
-            WHERE id = %s
-            """,
-            (admin["id"], claim_id),
-        )
-
-        connection.commit()
+            cursor.execute(
+                """
+                UPDATE artist_claims
+                SET status = 'approved',
+                    decided_at = CURRENT_TIMESTAMP,
+                    decided_by = %s
+                WHERE id = %s
+                """,
+                (admin["id"], claim_id),
+            )
 
         log_activity(
             connection,
@@ -1273,51 +1319,49 @@ async def approve_artist_claim(
 async def reject_artist_claim(
     claim_id: int,
     admin: dict = Depends(require_admin),
-    connection: Connection = Depends(get_db),
 ) -> dict:
-    with connection.cursor() as cursor:
-        cursor.execute(
-            """
-            SELECT 
-                artist_claims.id,
-                artist_claims.user_id,
-                artist_claims.artist_id,
-                artist_claims.status,
-                users.username,
-                artists.name AS artist_name
-            FROM artist_claims
-            JOIN users ON users.id = artist_claims.user_id
-            JOIN artists ON artists.id = artist_claims.artist_id
-            WHERE artist_claims.id = %s
-            """,
-            (claim_id,),
-        )
-        claim = cursor.fetchone()
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT 
+                    artist_claims.id,
+                    artist_claims.user_id,
+                    artist_claims.artist_id,
+                    artist_claims.status,
+                    users.username,
+                    artists.name AS artist_name
+                FROM artist_claims
+                JOIN users ON users.id = artist_claims.user_id
+                JOIN artists ON artists.id = artist_claims.artist_id
+                WHERE artist_claims.id = %s
+                """,
+                (claim_id,),
+            )
+            claim = cursor.fetchone()
 
-        if claim is None:
-            raise HTTPException(status_code=404, detail="Claim not found")
+            if claim is None:
+                raise HTTPException(status_code=404, detail="Claim not found")
 
-        if claim["status"] != "pending":
-            raise HTTPException(status_code=400, detail="Claim already decided")
+            if claim["status"] != "pending":
+                raise HTTPException(status_code=400, detail="Claim already decided")
 
-        cursor.execute(
-            """
-            UPDATE artist_claims
-            SET status = 'rejected',
-                decided_at = CURRENT_TIMESTAMP,
-                decided_by = %s
-            WHERE id = %s
-              AND status = 'pending'
-            RETURNING id
-            """,
-            (admin["id"], claim_id),
-        )
-        updated_claim = cursor.fetchone()
+            cursor.execute(
+                """
+                UPDATE artist_claims
+                SET status = 'rejected',
+                    decided_at = CURRENT_TIMESTAMP,
+                    decided_by = %s
+                WHERE id = %s
+                  AND status = 'pending'
+                RETURNING id
+                """,
+                (admin["id"], claim_id),
+            )
+            updated_claim = cursor.fetchone()
 
-        if updated_claim is None:
-            raise HTTPException(status_code=400, detail="Claim already decided")
-        
-        connection.commit()
+            if updated_claim is None:
+                raise HTTPException(status_code=400, detail="Claim already decided")
 
         log_activity(
             connection,
@@ -1329,3 +1373,15 @@ async def reject_artist_claim(
         connection.commit()
 
     return {"success": True, "message": "Artist claim rejected"}
+
+@app.get("/api/me")
+async def get_me(
+    current_user: dict = Depends(get_current_user),
+) -> dict:
+    return {
+        "success": True,
+        "user_id": current_user["id"],
+        "username": current_user["username"],
+        "role": current_user["role"],
+        "artist_id": current_user["artist_id"],
+    }
