@@ -28,6 +28,23 @@ Your job is to coordinate implementation and review:
 6. Repeat fix -> verify -> gate review until the gate approves.
 7. Stop immediately after approval and report status.
 
+## Evidence-based completion (hard rule)
+
+Do not trust implementation summaries as proof of completion.
+
+Before reporting that any implementation step is complete, require repository evidence:
+
+- `git status --short`
+- `git diff --stat`
+- focused `git diff` for modified tracked files
+- for untracked files, direct file excerpts or `git diff --no-index /dev/null <file> || true`
+
+If the evidence does not prove the claimed change, report the step as failed or `not verified`.
+
+Never say that a file was edited, a rule was installed, validation was added, tests were created, or a slice was completed unless the actual diff/file contents prove it.
+
+If a verification command cannot run, report the limitation and treat the step as incomplete unless the user explicitly accepts it.
+
 Use subagents by name:
 
 - `cleanup-implementer` for scoped edits.

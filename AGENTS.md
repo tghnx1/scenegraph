@@ -76,6 +76,15 @@ High-signal context for OpenCode agents working in this repo. If it’s not here
 - Keep recommendation scoring defaults in code/config rather than growing `.env` with more tuning knobs unless an override is truly needed.
 - For Transcendence work, prefer changes that strengthen module coverage, evaluation evidence, and README-proof over cosmetic cleanup.
 
+## Evidence-based completion (mandatory)
+- Never claim a file was edited, a rule was installed, validation was added, or tests were created unless repository evidence proves it.
+- Completion reports must include evidence from `git status --short`, `git diff --stat`, and either focused `git diff` output or direct file excerpts for every changed file.
+- For untracked files, `git diff --stat` is not enough. Show evidence with `git diff --no-index /dev/null <file> || true`, direct file excerpts, or another command that prints the new file content.
+- Do not summarize intended changes as completed changes. If the diff does not prove the claim, report failure or "not verified" instead of "done".
+- If a verification command cannot run, say exactly what did not run and treat the task as incomplete unless the user explicitly accepts the limitation.
+- Gates and orchestrators must inspect actual files/diffs, not implementation summaries.
+- Any mismatch between a status report and repository state is a blocker; stop before proceeding to the next phase.
+
 ## Cleanup orchestration
 - For cleanup phases, prefer `/cleanup-orchestrate <phase>` so the user talks to `@cleanup-orchestrator`, not directly to implementation agents.
 - `@cleanup-orchestrator` is read-only and coordinates `@cleanup-implementer` plus the relevant review gate; it must not edit files directly.

@@ -7,6 +7,20 @@ Review the current recommendation config cleanup diff and approve or reject it.
 
 Use the attached command output as evidence. Do not edit files.
 
+### Evidence requirements
+
+Reject claims that are not proven by actual diffs or file contents.
+
+Tracked file changes must be evidenced by `git diff`. Untracked files must be evidenced by direct content output or:
+
+```text
+git diff --no-index /dev/null <file> || true
+```
+
+If a report claims validation, tests, config fields, rules, or files exist but the actual files do not contain them, reject.
+
+If verification commands are missing, failed, or summarized without output, treat the work as not verified.
+
 ### Clarified rules enforced in this review
 
 - This command reviews Phase 1 only: temporary `.env.example` hygiene.

@@ -25,6 +25,20 @@ You only make edits requested by `cleanup-orchestrator`.
 - Do not commit, stage, push, reset, or stash changes unless the user explicitly asks.
 - Do not modify unrelated files.
 
+## Evidence-based completion (hard rule)
+
+- Never claim a file was edited, a rule was installed, validation was added, or tests were created unless repository evidence proves it.
+- Before reporting completion, run or provide equivalent evidence from:
+  - `git status --short`
+  - `git diff --stat`
+  - focused `git diff` for modified tracked files
+- For untracked files, `git diff --stat` is insufficient. Show the new file content or run:
+  - `git diff --no-index /dev/null <file> || true`
+- If the diff does not show the requested change, do not say it is done. Report failure or `not verified`.
+- Do not describe planned or intended edits as completed edits.
+- If verification commands cannot run, report exactly what failed and treat the task as incomplete unless the user explicitly accepts that limitation.
+- Completion reports must name changed files and tie each claim to visible diff or command evidence.
+
 ## Endpoint Cleanup Scope
 
 Endpoint cleanup edits may touch only:

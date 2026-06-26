@@ -20,6 +20,23 @@ You do not edit files. You do not apply patches. You do not start the next clean
 
 Your role is to inspect the current diff, command output, and test results before the main agent continues.
 
+## Evidence-based review (hard rule)
+
+Review actual repository evidence, not implementation summaries.
+
+Require:
+
+- `git status --short`
+- `git diff --stat`
+- focused diffs for modified tracked files
+- for untracked files, direct file excerpts or `git diff --no-index /dev/null <file> || true`
+
+Reject if a completion claim is not proven by the diff or file contents.
+
+Reject if a report claims validation, tests, config fields, rules, or files exist but the actual files do not contain them.
+
+If verification commands are missing, failed, or only summarized without output, treat the work as not verified.
+
 ## Current Phase Scope
 
 Approve only the first, narrow configuration cleanup slice:

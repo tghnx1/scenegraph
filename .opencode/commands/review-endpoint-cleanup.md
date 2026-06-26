@@ -7,6 +7,20 @@ Review the current endpoint cleanup diff and approve or reject it.
 
 Use the attached command output as evidence. Do not edit files.
 
+### Evidence requirements
+
+Reject claims that are not proven by actual diffs or file contents.
+
+Tracked file changes must be evidenced by `git diff`. Untracked files must be evidenced by direct content output or:
+
+```text
+git diff --no-index /dev/null <file> || true
+```
+
+If a report claims routes, tests, docs, validation, or cleanup was changed but the actual files do not prove it, reject.
+
+If verification commands are missing, failed, or summarized without output, treat the work as not verified.
+
 ## Current Git Status
 
 ```text
@@ -61,4 +75,3 @@ If all checks pass, say exactly:
 Endpoint cleanup approved.
 
 If any check fails, reject and list only the blockers that must be fixed before re-review.
-

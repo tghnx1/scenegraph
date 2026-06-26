@@ -15,6 +15,21 @@ Act as the single point of contact. Do not edit files directly.
 
 Delegate scoped edits to `cleanup-implementer`, then review through the appropriate gate.
 
+### Evidence-based completion
+
+Do not report an implementation step as complete unless actual repository evidence proves it.
+
+Require after every implementation step:
+
+```text
+git status --short
+git diff --stat
+focused git diff for modified tracked files
+git diff --no-index /dev/null <file> || true  # for untracked files
+```
+
+If the evidence is missing or does not prove the claim, report `not verified` or failed instead of `done`.
+
 ### Clarified config cleanup rules
 
 - Phase 1 is temporary `.env.example` hygiene only.
