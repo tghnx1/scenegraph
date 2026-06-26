@@ -12,6 +12,18 @@ interface BiographyPanelProps {
   manualConnections: ManualArtistConnectionsProps
   canEditBiography: boolean
   hasApprovedArtistProfile: boolean
+  pendingArtistClaim?: {
+    id: number
+    artist_id: number
+    artist_name: string
+    created_at?: string
+  } | null
+  onClaimSubmitted?: (claim: {
+    id: number
+    artist_id: number
+    artist_name: string
+    created_at: string
+  }) => void
 }
 
 export function BiographyPanel({
@@ -20,9 +32,12 @@ export function BiographyPanel({
   manualConnections,
   canEditBiography,
   hasApprovedArtistProfile,
+  pendingArtistClaim = null,
+  onClaimSubmitted,
 }: BiographyPanelProps) {
   const hasArtistProfileTarget = artistId !== null
   const shouldShowApprovedProfileWorkspace = hasApprovedArtistProfile && hasArtistProfileTarget
+  const isWaitingForClaimApproval = !hasApprovedArtistProfile && pendingArtistClaim !== null
   const [artistName, setArtistName] = useState('Artist profile')
   const [biography, setBiography] = useState('')
   const [draftBiography, setDraftBiography] = useState('')
@@ -42,13 +57,17 @@ export function BiographyPanel({
 
     if (artistId === null || !hasApprovedArtistProfile) {
       setIsLoading(false)
-      setArtistName(selectedArtistName ?? 'Artist profile')
+      setArtistName(pendingArtistClaim?.artist_name ?? selectedArtistName ?? 'Artist profile')
       setBiography('')
       setDraftBiography('')
       setLinkedArtists([])
       setIsEditing(false)
       setSuccess(null)
-      setError('This account is not linked to an artist profile yet.')
+      setError(
+        pendingArtistClaim
+          ? `Waiting approval to claim "${pendingArtistClaim.artist_name}"`
+          : 'This account is not linked to an artist profile yet.',
+      )
       return () => { isCurrent = false }
     }
 
@@ -75,7 +94,7 @@ export function BiographyPanel({
       })
 
     return () => { isCurrent = false }
-  }, [artistId, hasApprovedArtistProfile, selectedArtistName])
+  }, [artistId, hasApprovedArtistProfile, pendingArtistClaim, selectedArtistName])
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -124,8 +143,15 @@ export function BiographyPanel({
     setClaimMessage('')
 
     try {
-      await claimArtistProfile(artistId, reason)
-      setClaimMessage('Claim sent. An admin will review it.')
+      const claim = await claimArtistProfile(artistId, reason)
+      const claimedArtistName = artistName
+      onClaimSubmitted?.({
+        id: claim.claim_id,
+        artist_id: artistId,
+        artist_name: claimedArtistName,
+        created_at: new Date().toISOString(),
+      })
+      setClaimMessage(`Waiting approval to claim "${claimedArtistName}"`)
       setClaimReason('')
     } catch (requestError) {
       const message = requestError instanceof Error
@@ -158,7 +184,7 @@ export function BiographyPanel({
             Edit biography
           </Button>
         )}
-        {!canEditBiography && !isLoading && (
+        {!canEditBiography && !isLoading && !isWaitingForClaimApproval && (
           <div className="grid gap-2">
             <textarea
               value={claimReason}
@@ -251,7 +277,7 @@ export function BiographyPanel({
         </section>
       )}
 
-      {!isLoading && shouldShowApprovedProfileWorkspace && (
+      {!isLoading && shouldShowApprovedProfileWorkspace && canEditBiography && (
         <ManualArtistConnections {...manualConnections} />
       )}
     </article>

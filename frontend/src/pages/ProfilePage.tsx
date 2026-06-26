@@ -9,6 +9,7 @@ import { useGraphSearchDetails } from './hooks/useGraphSearchDetails.ts'
 import { useManualArtistConnections } from './hooks/useManualArtistConnections.ts'
 import { BiographyPanel } from './components/BiographyPanel.tsx'
 import { getMe } from '../api/auth'
+import type { MeResponse } from '../api/auth'
 
 type ProfileWorkspaceTab = 'graph' | 'recommendations'
 
@@ -25,6 +26,7 @@ export function ProfilePage({ recommendationTargetControls, showBiography = true
     const stored = Number(localStorage.getItem('artist_id'))
     return Number.isInteger(stored) && stored > 0 ? stored : null
   }) 
+  const [pendingArtistClaim, setPendingArtistClaim] = useState<NonNullable<MeResponse['pending_artist_claim']> | null>(null)
 
   useEffect(() => {
     getMe()
@@ -32,9 +34,11 @@ export function ProfilePage({ recommendationTargetControls, showBiography = true
       if (response.artist_id) {
         localStorage.setItem('artist_id', String(response.artist_id))
         setAssignedArtistId(response.artist_id)
+        setPendingArtistClaim(null)
       } else {
         localStorage.removeItem('artist_id')
         setAssignedArtistId(null)
+        setPendingArtistClaim(response.pending_artist_claim ?? null)
       }
     })
     .catch(() => {
@@ -69,10 +73,13 @@ export function ProfilePage({ recommendationTargetControls, showBiography = true
       ? storedArtistId
       : null
 
+  const biographyArtistId = hasAssignedArtist ? storedArtistId : pendingArtistClaim?.artist_id ?? artistId
+  const biographySelectedArtistName = hasAssignedArtist ? null : pendingArtistClaim?.artist_name ?? selectedArtistName
   const canEditBiography = 
-    hasAssignedArtist && storedArtistId === artistId
+    hasAssignedArtist && storedArtistId === biographyArtistId
 
-  const manualConnections = useManualArtistConnections(showBiography && hasAssignedArtist ? artistId : null)
+  const manualConnectionSourceArtistId = showBiography && hasAssignedArtist ? storedArtistId : null
+  const manualConnections = useManualArtistConnections(manualConnectionSourceArtistId)
   const isSingleRowWorkspace = !showBiography
 
   return (
@@ -101,8 +108,8 @@ export function ProfilePage({ recommendationTargetControls, showBiography = true
 
           <DetailsPanel
             {...detailsPanelProps}
-            manualArtistConnections={showBiography && hasAssignedArtist && artistId !== null ? {
-              sourceArtistId: artistId,
+            manualArtistConnections={manualConnectionSourceArtistId !== null ? {
+              sourceArtistId: manualConnectionSourceArtistId,
               connectedArtistIds: manualConnections.connectedArtistIds,
               isLoading: manualConnections.isLoading,
               pendingArtistId: manualConnections.pendingArtistId,
@@ -162,10 +169,12 @@ export function ProfilePage({ recommendationTargetControls, showBiography = true
         {showBiography && (
           <div className="col-span-2 max-[900px]:col-span-1">
             <BiographyPanel
-              artistId={artistId}
-              selectedArtistName={selectedArtistName}
+              artistId={biographyArtistId}
+              selectedArtistName={biographySelectedArtistName}
               canEditBiography={canEditBiography}
               hasApprovedArtistProfile={hasAssignedArtist}
+              pendingArtistClaim={pendingArtistClaim}
+              onClaimSubmitted={(claim) => setPendingArtistClaim(claim)}
               manualConnections={{
                 connections: manualConnections.connections,
                 isLoading: manualConnections.isLoading,
