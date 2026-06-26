@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import os
+from functools import lru_cache
 from dataclasses import dataclass
 from typing import Literal
 
 from app.embeddings import EntityType
+from app.recommendation_config_loader import load_recommendation_config
 
 
 GraphFeature = Literal["artists", "events", "venues", "promoters", "genres", "extracted_genres"]
@@ -219,6 +221,13 @@ DEFAULT_PROMOTER_SEGMENT_QUOTA_RATIOS: dict[str, dict[str, float]] = {
 }
 DEFAULT_PROMOTER_SEGMENT_WARM_SHARE = 0.70
 
+SEGMENT_NAMES = ("small", "medium", "large")
+
+
+@lru_cache(maxsize=1)
+def _recommendation_config():
+    return load_recommendation_config()
+
 # Normalize arbitrary positive weights into a unit-sum tuple.
 def normalized_weights(values: tuple[float, ...]) -> tuple[float, ...]:
     if any(value < 0 for value in values):
@@ -354,305 +363,95 @@ def semantic_artist_tag_scoring_from_env() -> SemanticArtistTagScoringConfig:
 
 # Build full Artist -> Promoter scoring config from environment.
 def promoter_recommendation_scoring_from_env() -> PromoterRecommendationScoringConfig:
+    config_values = _recommendation_config().promoter_recommendations
     weights = normalized_weights(
         (
-            env_float(
-                "PROMOTER_REC_SEMANTIC_WEIGHT",
-                DEFAULT_PROMOTER_RECOMMENDATION_SCORING.semantic_weight,
-            ),
-            env_float(
-                "PROMOTER_REC_STRENGTH_WEIGHT",
-                DEFAULT_PROMOTER_RECOMMENDATION_SCORING.strength_weight,
-            ),
-            env_float(
-                "PROMOTER_REC_DIRECT_CONNECTION_WEIGHT",
-                DEFAULT_PROMOTER_RECOMMENDATION_SCORING.direct_connection_weight,
-            ),
-            env_float_alias(
-                "PROMOTER_REC_CO_PLAYED_CONNECTION_WEIGHT",
-                "PROMOTER_REC_WARM_NETWORK_WEIGHT",
-                DEFAULT_PROMOTER_RECOMMENDATION_SCORING.co_played_connection_weight,
-            ),
-            env_float(
-                "PROMOTER_REC_MANUAL_CONNECTION_WEIGHT",
-                DEFAULT_PROMOTER_RECOMMENDATION_SCORING.manual_connection_weight,
-            ),
-            env_float(
-                "PROMOTER_REC_EVENT_SIMILARITY_WEIGHT",
-                DEFAULT_PROMOTER_RECOMMENDATION_SCORING.event_similarity_weight,
-            ),
-            env_float(
-                "PROMOTER_REC_SCALE_FIT_WEIGHT",
-                DEFAULT_PROMOTER_RECOMMENDATION_SCORING.scale_fit_weight,
-            ),
-            env_float(
-                "PROMOTER_REC_ACTIVITY_WEIGHT",
-                DEFAULT_PROMOTER_RECOMMENDATION_SCORING.activity_weight,
-            ),
-            env_float(
-                "PROMOTER_REC_RECENCY_WEIGHT",
-                DEFAULT_PROMOTER_RECOMMENDATION_SCORING.recency_weight,
-            ),
+            config_values["PROMOTER_REC_SEMANTIC_WEIGHT"],
+            config_values["PROMOTER_REC_STRENGTH_WEIGHT"],
+            config_values["PROMOTER_REC_DIRECT_CONNECTION_WEIGHT"],
+            config_values["PROMOTER_REC_CO_PLAYED_CONNECTION_WEIGHT"],
+            config_values["PROMOTER_REC_MANUAL_CONNECTION_WEIGHT"],
+            config_values["PROMOTER_REC_EVENT_SIMILARITY_WEIGHT"],
+            config_values["PROMOTER_REC_SCALE_FIT_WEIGHT"],
+            config_values["PROMOTER_REC_ACTIVITY_WEIGHT"],
+            config_values["PROMOTER_REC_RECENCY_WEIGHT"],
         )
     )
     strength_weights = normalized_weights(
         (
-            env_float(
-                "PROMOTER_REC_STRENGTH_MATCHED_ARTIST_WEIGHT",
-                DEFAULT_PROMOTER_RECOMMENDATION_SCORING.strength_matched_artist_weight,
-            ),
-            env_float(
-                "PROMOTER_REC_STRENGTH_EVENT_WEIGHT",
-                DEFAULT_PROMOTER_RECOMMENDATION_SCORING.strength_event_weight,
-            ),
+            config_values["PROMOTER_REC_STRENGTH_MATCHED_ARTIST_WEIGHT"],
+            config_values["PROMOTER_REC_STRENGTH_EVENT_WEIGHT"],
         )
     )
 
-    strength_matched_artist_cap = env_int(
-        "PROMOTER_REC_STRENGTH_MATCHED_ARTIST_CAP",
-        DEFAULT_PROMOTER_RECOMMENDATION_SCORING.strength_matched_artist_cap,
-    )
-    strength_event_cap = env_int(
-        "PROMOTER_REC_STRENGTH_EVENT_CAP",
-        DEFAULT_PROMOTER_RECOMMENDATION_SCORING.strength_event_cap,
-    )
-    direct_connection_cap = env_int(
-        "PROMOTER_REC_DIRECT_CONNECTION_CAP",
-        DEFAULT_PROMOTER_RECOMMENDATION_SCORING.direct_connection_cap,
-    )
-    warm_connection_cap = env_int(
-        "PROMOTER_REC_WARM_CONNECTION_CAP",
-        DEFAULT_PROMOTER_RECOMMENDATION_SCORING.warm_connection_cap,
-    )
-    manual_warm_connection_cap = env_int(
-        "PROMOTER_REC_MANUAL_WARM_CONNECTION_CAP",
-        DEFAULT_PROMOTER_RECOMMENDATION_SCORING.manual_warm_connection_cap,
-    )
-    manual_warm_min_artist_semantic_score = env_float(
-        "PROMOTER_REC_MANUAL_WARM_MIN_ARTIST_SEMANTIC_SCORE",
-        DEFAULT_PROMOTER_RECOMMENDATION_SCORING.manual_warm_min_artist_semantic_score,
-    )
-    event_similarity_count_cap = env_int(
-        "PROMOTER_REC_EVENT_SIMILARITY_COUNT_CAP",
-        DEFAULT_PROMOTER_RECOMMENDATION_SCORING.event_similarity_count_cap,
-    )
-    event_similarity_min_total_score = env_float(
-        "PROMOTER_REC_EVENT_SIMILARITY_MIN_TOTAL_SCORE",
-        DEFAULT_PROMOTER_RECOMMENDATION_SCORING.event_similarity_min_total_score,
-    )
-    event_similarity_min_embedding_score = env_float(
-        "PROMOTER_REC_EVENT_SIMILARITY_MIN_EMBEDDING_SCORE",
-        DEFAULT_PROMOTER_RECOMMENDATION_SCORING.event_similarity_min_embedding_score,
-    )
-    event_similarity_semantic_only = env_bool(
-        "PROMOTER_REC_EVENT_SIMILARITY_SEMANTIC_ONLY",
-        DEFAULT_PROMOTER_RECOMMENDATION_SCORING.event_similarity_semantic_only,
-    )
-    event_similarity_per_promoter_limit = env_int(
-        "PROMOTER_REC_EVENT_SIMILARITY_PER_PROMOTER_LIMIT",
-        DEFAULT_PROMOTER_RECOMMENDATION_SCORING.event_similarity_per_promoter_limit,
-    )
+    strength_matched_artist_cap = config_values["PROMOTER_REC_STRENGTH_MATCHED_ARTIST_CAP"]
+    strength_event_cap = config_values["PROMOTER_REC_STRENGTH_EVENT_CAP"]
+    direct_connection_cap = config_values["PROMOTER_REC_DIRECT_CONNECTION_CAP"]
+    warm_connection_cap = config_values["PROMOTER_REC_WARM_CONNECTION_CAP"]
+    manual_warm_connection_cap = config_values["PROMOTER_REC_MANUAL_WARM_CONNECTION_CAP"]
+    manual_warm_min_artist_semantic_score = config_values[
+        "PROMOTER_REC_MANUAL_WARM_MIN_ARTIST_SEMANTIC_SCORE"
+    ]
+    event_similarity_count_cap = config_values["PROMOTER_REC_EVENT_SIMILARITY_COUNT_CAP"]
+    event_similarity_min_total_score = config_values["PROMOTER_REC_EVENT_SIMILARITY_MIN_TOTAL_SCORE"]
+    event_similarity_min_embedding_score = config_values[
+        "PROMOTER_REC_EVENT_SIMILARITY_MIN_EMBEDDING_SCORE"
+    ]
+    event_similarity_semantic_only = config_values["PROMOTER_REC_EVENT_SIMILARITY_SEMANTIC_ONLY"]
+    event_similarity_per_promoter_limit = config_values[
+        "PROMOTER_REC_EVENT_SIMILARITY_PER_PROMOTER_LIMIT"
+    ]
     event_similarity_mix_weights = normalized_weights(
         (
-            env_float(
-                "PROMOTER_REC_EVENT_SIMILARITY_SYMBOLIC_WEIGHT",
-                DEFAULT_PROMOTER_RECOMMENDATION_SCORING.event_similarity_symbolic_weight,
-            ),
-            env_float(
-                "PROMOTER_REC_EVENT_SIMILARITY_EMBEDDING_WEIGHT",
-                DEFAULT_PROMOTER_RECOMMENDATION_SCORING.event_similarity_embedding_weight,
-            ),
+            config_values["PROMOTER_REC_EVENT_SIMILARITY_SYMBOLIC_WEIGHT"],
+            config_values["PROMOTER_REC_EVENT_SIMILARITY_EMBEDDING_WEIGHT"],
         )
     )
     if event_similarity_semantic_only:
         event_similarity_mix_weights = (0.0, 1.0)
     event_similarity_signal_weights = normalized_weights(
         (
-            env_float(
-                "PROMOTER_REC_EVENT_SIMILARITY_SAME_VENUE_WEIGHT",
-                DEFAULT_PROMOTER_RECOMMENDATION_SCORING.event_similarity_same_venue_weight,
-            ),
-            env_float(
-                "PROMOTER_REC_EVENT_SIMILARITY_SHARED_GENRE_WEIGHT",
-                DEFAULT_PROMOTER_RECOMMENDATION_SCORING.event_similarity_shared_genre_weight,
-            ),
-            env_float(
-                "PROMOTER_REC_EVENT_SIMILARITY_SHARED_LINEUP_WEIGHT",
-                DEFAULT_PROMOTER_RECOMMENDATION_SCORING.event_similarity_shared_lineup_weight,
-            ),
-            env_float_alias(
-                "PROMOTER_REC_EVENT_SIMILARITY_EXTRACTED_GENRE_WEIGHT",
-                "PROMOTER_REC_EVENT_SIMILARITY_EXTRACTED_STYLE_WEIGHT",
-                DEFAULT_PROMOTER_RECOMMENDATION_SCORING.event_similarity_extracted_genre_weight,
-            ),
+            config_values["PROMOTER_REC_EVENT_SIMILARITY_SAME_VENUE_WEIGHT"],
+            config_values["PROMOTER_REC_EVENT_SIMILARITY_SHARED_GENRE_WEIGHT"],
+            config_values["PROMOTER_REC_EVENT_SIMILARITY_SHARED_LINEUP_WEIGHT"],
+            config_values["PROMOTER_REC_EVENT_SIMILARITY_EXTRACTED_GENRE_WEIGHT"],
         )
     )
-    event_similarity_shared_theme_bonus = env_float(
-        "PROMOTER_REC_EVENT_SIMILARITY_SHARED_THEME_BONUS",
-        DEFAULT_PROMOTER_RECOMMENDATION_SCORING.event_similarity_shared_theme_bonus,
-    )
-    event_similarity_shared_mood_bonus = env_float(
-        "PROMOTER_REC_EVENT_SIMILARITY_SHARED_MOOD_BONUS",
-        DEFAULT_PROMOTER_RECOMMENDATION_SCORING.event_similarity_shared_mood_bonus,
-    )
-    activity_event_cap = env_int(
-        "PROMOTER_REC_ACTIVITY_EVENT_CAP",
-        DEFAULT_PROMOTER_RECOMMENDATION_SCORING.activity_event_cap,
-    )
-    existing_partner_direct_min = env_int(
-        "PROMOTER_REC_EXISTING_PARTNER_DIRECT_MIN",
-        DEFAULT_PROMOTER_RECOMMENDATION_SCORING.existing_partner_direct_min,
-    )
-    warm_relevant_connection_min = env_int(
-        "PROMOTER_REC_WARM_RELEVANT_CONNECTION_MIN",
-        DEFAULT_PROMOTER_RECOMMENDATION_SCORING.warm_relevant_connection_min,
-    )
-    direct_edge_strength_min = env_float(
-        "PROMOTER_REC_DIRECT_EDGE_STRENGTH_MIN",
-        DEFAULT_PROMOTER_RECOMMENDATION_SCORING.direct_edge_strength_min,
-    )
-    direct_edge_strength_max = env_float(
-        "PROMOTER_REC_DIRECT_EDGE_STRENGTH_MAX",
-        DEFAULT_PROMOTER_RECOMMENDATION_SCORING.direct_edge_strength_max,
-    )
-    warm_edge_strength_min = env_float(
-        "PROMOTER_REC_WARM_EDGE_STRENGTH_MIN",
-        DEFAULT_PROMOTER_RECOMMENDATION_SCORING.warm_edge_strength_min,
-    )
-    warm_edge_strength_max = env_float(
-        "PROMOTER_REC_WARM_EDGE_STRENGTH_MAX",
-        DEFAULT_PROMOTER_RECOMMENDATION_SCORING.warm_edge_strength_max,
-    )
-    event_similarity_edge_strength_min = env_float(
-        "PROMOTER_REC_EVENT_SIMILARITY_EDGE_STRENGTH_MIN",
-        DEFAULT_PROMOTER_RECOMMENDATION_SCORING.event_similarity_edge_strength_min,
-    )
-    event_similarity_edge_strength_max = env_float(
-        "PROMOTER_REC_EVENT_SIMILARITY_EDGE_STRENGTH_MAX",
-        DEFAULT_PROMOTER_RECOMMENDATION_SCORING.event_similarity_edge_strength_max,
-    )
-    scale_fit_alpha = env_float(
-        "PROMOTER_REC_SCALE_FIT_ALPHA",
-        DEFAULT_PROMOTER_RECOMMENDATION_SCORING.scale_fit_alpha,
-    )
-    scale_fit_tau = env_float(
-        "PROMOTER_REC_SCALE_FIT_TAU",
-        DEFAULT_PROMOTER_RECOMMENDATION_SCORING.scale_fit_tau,
-    )
-    sql_candidate_limit = env_int(
-        "PROMOTER_REC_SQL_CANDIDATE_LIMIT",
-        DEFAULT_PROMOTER_RECOMMENDATION_SCORING.sql_candidate_limit,
-    )
-    semantic_artist_pool_limit = env_int(
-        "PROMOTER_REC_SEMANTIC_ARTIST_POOL_LIMIT",
-        DEFAULT_PROMOTER_RECOMMENDATION_SCORING.semantic_artist_pool_limit,
-    )
-    semantic_artist_min_score = env_float(
-        "PROMOTER_REC_SEMANTIC_ARTIST_MIN_SCORE",
-        DEFAULT_PROMOTER_RECOMMENDATION_SCORING.semantic_artist_min_score,
-    )
-    event_similarity_overfetch_multiplier = env_int(
-        "PROMOTER_REC_EVENT_SIMILARITY_OVERFETCH_MULTIPLIER",
-        DEFAULT_PROMOTER_RECOMMENDATION_SCORING.event_similarity_overfetch_multiplier,
-    )
-    event_similarity_overfetch_min = env_int(
-        "PROMOTER_REC_EVENT_SIMILARITY_OVERFETCH_MIN",
-        DEFAULT_PROMOTER_RECOMMENDATION_SCORING.event_similarity_overfetch_min,
-    )
-    source_event_relevance_gate_enabled = env_bool(
-        "PROMOTER_REC_SOURCE_EVENT_RELEVANCE_GATE_ENABLED",
-        DEFAULT_PROMOTER_RECOMMENDATION_SCORING.source_event_relevance_gate_enabled,
-    )
-    source_event_relevance_min_embedding_score = env_float(
-        "PROMOTER_REC_SOURCE_EVENT_RELEVANCE_MIN_EMBEDDING_SCORE",
-        DEFAULT_PROMOTER_RECOMMENDATION_SCORING.source_event_relevance_min_embedding_score,
-    )
-    source_event_relevance_top_k = env_int(
-        "PROMOTER_REC_SOURCE_EVENT_RELEVANCE_TOP_K",
-        DEFAULT_PROMOTER_RECOMMENDATION_SCORING.source_event_relevance_top_k,
-    )
-
-    if strength_matched_artist_cap <= 0:
-        raise ValueError("PROMOTER_REC_STRENGTH_MATCHED_ARTIST_CAP must be greater than zero")
-    if strength_event_cap <= 0:
-        raise ValueError("PROMOTER_REC_STRENGTH_EVENT_CAP must be greater than zero")
-    if direct_connection_cap <= 0:
-        raise ValueError("PROMOTER_REC_DIRECT_CONNECTION_CAP must be greater than zero")
-    if warm_connection_cap <= 0:
-        raise ValueError("PROMOTER_REC_WARM_CONNECTION_CAP must be greater than zero")
-    if manual_warm_connection_cap <= 0:
-        raise ValueError("PROMOTER_REC_MANUAL_WARM_CONNECTION_CAP must be greater than zero")
-    if not (0.0 <= manual_warm_min_artist_semantic_score <= 1.0):
-        raise ValueError(
-            "PROMOTER_REC_MANUAL_WARM_MIN_ARTIST_SEMANTIC_SCORE must be between 0 and 1"
-        )
-    if event_similarity_count_cap <= 0:
-        raise ValueError("PROMOTER_REC_EVENT_SIMILARITY_COUNT_CAP must be greater than zero")
-    if not (0.0 <= event_similarity_min_total_score <= 1.0):
-        raise ValueError("PROMOTER_REC_EVENT_SIMILARITY_MIN_TOTAL_SCORE must be between 0 and 1")
-    if not (0.0 <= event_similarity_min_embedding_score <= 1.0):
-        raise ValueError(
-            "PROMOTER_REC_EVENT_SIMILARITY_MIN_EMBEDDING_SCORE must be between 0 and 1"
-        )
-    if event_similarity_per_promoter_limit <= 0:
-        raise ValueError("PROMOTER_REC_EVENT_SIMILARITY_PER_PROMOTER_LIMIT must be greater than zero")
-    if event_similarity_shared_theme_bonus < 0:
-        raise ValueError("PROMOTER_REC_EVENT_SIMILARITY_SHARED_THEME_BONUS must be non-negative")
-    if event_similarity_shared_mood_bonus < 0:
-        raise ValueError("PROMOTER_REC_EVENT_SIMILARITY_SHARED_MOOD_BONUS must be non-negative")
-    if activity_event_cap <= 0:
-        raise ValueError("PROMOTER_REC_ACTIVITY_EVENT_CAP must be greater than zero")
-    if existing_partner_direct_min <= 0:
-        raise ValueError("PROMOTER_REC_EXISTING_PARTNER_DIRECT_MIN must be greater than zero")
-    if warm_relevant_connection_min <= 0:
-        raise ValueError("PROMOTER_REC_WARM_RELEVANT_CONNECTION_MIN must be greater than zero")
-    if not (0.0 <= direct_edge_strength_min <= 1.0):
-        raise ValueError("PROMOTER_REC_DIRECT_EDGE_STRENGTH_MIN must be between 0 and 1")
-    if not (0.0 <= direct_edge_strength_max <= 1.0):
-        raise ValueError("PROMOTER_REC_DIRECT_EDGE_STRENGTH_MAX must be between 0 and 1")
-    if direct_edge_strength_min > direct_edge_strength_max:
-        raise ValueError(
-            "PROMOTER_REC_DIRECT_EDGE_STRENGTH_MIN must be less than or equal to "
-            "PROMOTER_REC_DIRECT_EDGE_STRENGTH_MAX"
-        )
-    if not (0.0 <= warm_edge_strength_min <= 1.0):
-        raise ValueError("PROMOTER_REC_WARM_EDGE_STRENGTH_MIN must be between 0 and 1")
-    if not (0.0 <= warm_edge_strength_max <= 1.0):
-        raise ValueError("PROMOTER_REC_WARM_EDGE_STRENGTH_MAX must be between 0 and 1")
-    if warm_edge_strength_min > warm_edge_strength_max:
-        raise ValueError(
-            "PROMOTER_REC_WARM_EDGE_STRENGTH_MIN must be less than or equal to "
-            "PROMOTER_REC_WARM_EDGE_STRENGTH_MAX"
-        )
-    if not (0.0 <= event_similarity_edge_strength_min <= 1.0):
-        raise ValueError("PROMOTER_REC_EVENT_SIMILARITY_EDGE_STRENGTH_MIN must be between 0 and 1")
-    if not (0.0 <= event_similarity_edge_strength_max <= 1.0):
-        raise ValueError("PROMOTER_REC_EVENT_SIMILARITY_EDGE_STRENGTH_MAX must be between 0 and 1")
-    if event_similarity_edge_strength_min > event_similarity_edge_strength_max:
-        raise ValueError(
-            "PROMOTER_REC_EVENT_SIMILARITY_EDGE_STRENGTH_MIN must be less than or equal to "
-            "PROMOTER_REC_EVENT_SIMILARITY_EDGE_STRENGTH_MAX"
-        )
-    if scale_fit_alpha <= 0.0:
-        raise ValueError("PROMOTER_REC_SCALE_FIT_ALPHA must be greater than zero")
-    if scale_fit_tau <= 0.0:
-        raise ValueError("PROMOTER_REC_SCALE_FIT_TAU must be greater than zero")
-    if sql_candidate_limit <= 0:
-        raise ValueError("PROMOTER_REC_SQL_CANDIDATE_LIMIT must be greater than zero")
-    if semantic_artist_pool_limit <= 0:
-        raise ValueError("PROMOTER_REC_SEMANTIC_ARTIST_POOL_LIMIT must be greater than zero")
-    if not (0.0 <= semantic_artist_min_score <= 1.0):
-        raise ValueError("PROMOTER_REC_SEMANTIC_ARTIST_MIN_SCORE must be between 0 and 1")
-    if event_similarity_overfetch_multiplier <= 0:
-        raise ValueError("PROMOTER_REC_EVENT_SIMILARITY_OVERFETCH_MULTIPLIER must be greater than zero")
-    if event_similarity_overfetch_min <= 0:
-        raise ValueError("PROMOTER_REC_EVENT_SIMILARITY_OVERFETCH_MIN must be greater than zero")
-    if not (0.0 <= source_event_relevance_min_embedding_score <= 1.0):
-        raise ValueError(
-            "PROMOTER_REC_SOURCE_EVENT_RELEVANCE_MIN_EMBEDDING_SCORE must be between 0 and 1"
-        )
-    if source_event_relevance_top_k <= 0:
-        raise ValueError("PROMOTER_REC_SOURCE_EVENT_RELEVANCE_TOP_K must be greater than zero")
+    event_similarity_shared_theme_bonus = config_values[
+        "PROMOTER_REC_EVENT_SIMILARITY_SHARED_THEME_BONUS"
+    ]
+    event_similarity_shared_mood_bonus = config_values[
+        "PROMOTER_REC_EVENT_SIMILARITY_SHARED_MOOD_BONUS"
+    ]
+    activity_event_cap = config_values["PROMOTER_REC_ACTIVITY_EVENT_CAP"]
+    existing_partner_direct_min = config_values["PROMOTER_REC_EXISTING_PARTNER_DIRECT_MIN"]
+    warm_relevant_connection_min = config_values["PROMOTER_REC_WARM_RELEVANT_CONNECTION_MIN"]
+    direct_edge_strength_min = config_values["PROMOTER_REC_DIRECT_EDGE_STRENGTH_MIN"]
+    direct_edge_strength_max = config_values["PROMOTER_REC_DIRECT_EDGE_STRENGTH_MAX"]
+    warm_edge_strength_min = config_values["PROMOTER_REC_WARM_EDGE_STRENGTH_MIN"]
+    warm_edge_strength_max = config_values["PROMOTER_REC_WARM_EDGE_STRENGTH_MAX"]
+    event_similarity_edge_strength_min = config_values[
+        "PROMOTER_REC_EVENT_SIMILARITY_EDGE_STRENGTH_MIN"
+    ]
+    event_similarity_edge_strength_max = config_values[
+        "PROMOTER_REC_EVENT_SIMILARITY_EDGE_STRENGTH_MAX"
+    ]
+    scale_fit_alpha = config_values["PROMOTER_REC_SCALE_FIT_ALPHA"]
+    scale_fit_tau = config_values["PROMOTER_REC_SCALE_FIT_TAU"]
+    sql_candidate_limit = config_values["PROMOTER_REC_SQL_CANDIDATE_LIMIT"]
+    semantic_artist_pool_limit = config_values["PROMOTER_REC_SEMANTIC_ARTIST_POOL_LIMIT"]
+    semantic_artist_min_score = config_values["PROMOTER_REC_SEMANTIC_ARTIST_MIN_SCORE"]
+    event_similarity_overfetch_multiplier = config_values[
+        "PROMOTER_REC_EVENT_SIMILARITY_OVERFETCH_MULTIPLIER"
+    ]
+    event_similarity_overfetch_min = config_values["PROMOTER_REC_EVENT_SIMILARITY_OVERFETCH_MIN"]
+    source_event_relevance_gate_enabled = config_values[
+        "PROMOTER_REC_SOURCE_EVENT_RELEVANCE_GATE_ENABLED"
+    ]
+    source_event_relevance_min_embedding_score = config_values[
+        "PROMOTER_REC_SOURCE_EVENT_RELEVANCE_MIN_EMBEDDING_SCORE"
+    ]
+    source_event_relevance_top_k = config_values["PROMOTER_REC_SOURCE_EVENT_RELEVANCE_TOP_K"]
 
     return PromoterRecommendationScoringConfig(
         semantic_weight=weights[0],
@@ -708,10 +507,7 @@ def promoter_recommendation_scoring_from_env() -> PromoterRecommendationScoringC
 
 # Read and validate API max limit for promoter recommendation endpoint.
 def promoter_recommendation_api_limit_max_from_env() -> int:
-    value = env_int("PROMOTER_REC_API_LIMIT_MAX", 50)
-    if value <= 0:
-        raise ValueError("PROMOTER_REC_API_LIMIT_MAX must be greater than zero")
-    return value
+    return _recommendation_config().promoter_recommendations["PROMOTER_REC_API_LIMIT_MAX"]
 
 
 def artist_recommendation_min_semantic_score_from_env() -> float:
@@ -723,15 +519,14 @@ def artist_recommendation_min_semantic_score_from_env() -> float:
 
 def promoter_segment_quota_ratios_from_env() -> dict[str, dict[str, float]]:
     """Return normalized per-source segment quota ratios for final promoter recommendation mix."""
+    config_values = _recommendation_config().promoter_recommendations
     config: dict[str, dict[str, float]] = {}
-    segments = ("small", "medium", "large")
-    for source_segment in segments:
+    for source_segment in SEGMENT_NAMES:
         raw_values = tuple(
-            env_float(
-                f"PROMOTER_REC_SEGMENT_QUOTA_{source_segment.upper()}_{target_segment.upper()}",
-                DEFAULT_PROMOTER_SEGMENT_QUOTA_RATIOS[source_segment][target_segment],
-            )
-            for target_segment in segments
+            config_values[
+                f"PROMOTER_REC_SEGMENT_QUOTA_{source_segment.upper()}_{target_segment.upper()}"
+            ]
+            for target_segment in SEGMENT_NAMES
         )
         normalized = normalized_weights(raw_values)
         config[source_segment] = {
@@ -744,10 +539,7 @@ def promoter_segment_quota_ratios_from_env() -> dict[str, dict[str, float]]:
 
 def promoter_segment_warm_share_from_env() -> float:
     """Return max warm/manual share per segment quota for final recommendation mix."""
-    value = env_float("PROMOTER_REC_SEGMENT_WARM_SHARE", DEFAULT_PROMOTER_SEGMENT_WARM_SHARE)
-    if not (0.0 <= value <= 1.0):
-        raise ValueError("PROMOTER_REC_SEGMENT_WARM_SHARE must be between 0 and 1")
-    return value
+    return _recommendation_config().promoter_recommendations["PROMOTER_REC_SEGMENT_WARM_SHARE"]
 
 # Compute semantic artist score from embedding/style/tag components.
 def semantic_artist_score(
