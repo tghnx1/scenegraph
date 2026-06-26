@@ -136,7 +136,7 @@ def get_artist(
             artist = cur.fetchone()
 
         if not artist:
-            raise HTTPException(status_code=404, detail="Artist not found")
+            raise HTTPException(status_code=404, detail="Use the search engine above for Artist profiles. Double click an Artist icon on the upper-right graph")
 
         biography = artist.get("biography_normalized") or artist.get("biography") or ""
         profile_style_tags: list[str] = []
