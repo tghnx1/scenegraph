@@ -32,7 +32,7 @@ NGINX_CERT_KEY ?= $(NGINX_CERT_DIR)/privkey.pem
 NGINX_CERT_FILE ?= $(NGINX_CERT_DIR)/fullchain.pem
 CERT_NAMES ?=
 
-.PHONY: help env cert build up upd upd-build debug-up debug-down down stop restart logs ps health ensure-ssl-certs prisma-migrate prisma-studio db-shell import-events backfill-normalized-texts backfill-lineup-residual backfill-artist-biographies extract-artist-tags refresh-embeddings validate-import refresh-data-check refresh-data-check-bio refresh-data-check-bio-embeddings full-pipeline import-dump export-dump clean reset-db list fclean
+.PHONY: help env cert build up upd upd-build debug-up debug-down down stop restart logs ps health load-dashboard load-dashboard-k6 ensure-ssl-certs prisma-migrate prisma-studio db-shell import-events backfill-normalized-texts backfill-lineup-residual backfill-artist-biographies extract-artist-tags refresh-embeddings validate-import refresh-data-check refresh-data-check-bio refresh-data-check-bio-embeddings full-pipeline import-dump export-dump clean reset-db list fclean
 
 help:
 	@printf "\n"
@@ -52,6 +52,8 @@ help:
 	@printf "  make logs     Follow compose logs\n"
 	@printf "  make ps       Show running services\n"
 	@printf "  make health   Check nginx and API health endpoints\n"
+	@printf "  make load-dashboard Run authenticated concurrent dashboard load test\n"
+	@printf "  make load-dashboard-k6 Run authenticated k6 dashboard load test through Docker\n"
 	@printf "  make prisma-migrate Apply Prisma migrations to Postgres\n"
 	@printf "  make prisma-studio  Open Prisma Studio on localhost:5555\n"
 	@printf "  make db-shell Open a psql shell inside the Postgres container\n"
@@ -135,6 +137,12 @@ health:
 	@curl -fsS http://localhost:8080/health && printf "\n"
 	@printf "\nGET /api/venues\n"
 	@curl -fsS http://localhost:8080/api/venues && printf "\n"
+
+load-dashboard: env
+	$(PYTHON) scripts/load_dashboard.py --requests "$${LOAD_REQUESTS:-100}" --concurrency "$${LOAD_CONCURRENCY:-100}" --mode "$${LOAD_MODE:-page}" --base-url "$${LOAD_BASE_URL:-https://localhost:8443}"
+
+load-dashboard-k6: env
+	docker run --rm -i --add-host=host.docker.internal:host-gateway -v "$$(pwd)":/work -w /work -e SG_K6_MODE="$${K6_MODE:-dashboard-api}" -e SG_K6_VUS="$${K6_VUS:-100}" -e SG_K6_ITERATIONS="$${K6_ITERATIONS:-100}" -e SG_K6_BASE_URL="$${K6_BASE_URL:-https://host.docker.internal:8443}" -e SG_K6_MAX_DURATION="$${K6_MAX_DURATION:-5m}" -e SG_K6_REQUEST_TIMEOUT="$${K6_REQUEST_TIMEOUT:-180s}" grafana/k6:latest run scripts/load_dashboard_k6.js
 
 prisma-migrate: env
 	$(COMPOSE) --profile tools run --rm --build prisma
