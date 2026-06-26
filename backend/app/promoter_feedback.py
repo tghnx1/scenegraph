@@ -1,26 +1,14 @@
 from __future__ import annotations
 
 import math
-import os
 from dataclasses import dataclass
+from functools import lru_cache
 
 from psycopg import Connection
 
 from app.event_similarity import event_embedding_similarity_by_candidate
+from app.recommendation_config_loader import load_recommendation_config
 from app.schemas import PromoterRecommendationItem
-
-
-DEFAULT_EXACT_POSITIVE_BOOST = 0.10
-DEFAULT_SIMILAR_POSITIVE_BOOST = 0.03
-DEFAULT_MAX_TOTAL_BOOST = 0.15
-DEFAULT_SIMILARITY_MIN = 0.30
-DEFAULT_SIMILAR_PROMOTER_LIMIT = 10
-PROMOTER_PROFILE_EVENT_LIMIT = 20
-
-SHARED_ARTISTS_WEIGHT = 0.45
-SHARED_GENRES_TAGS_WEIGHT = 0.25
-SIMILAR_EVENTS_WEIGHT = 0.20
-SHARED_VENUES_WEIGHT = 0.10
 
 
 @dataclass(frozen=True)
@@ -33,53 +21,46 @@ class PromoterFeedbackConfig:
 
 
 @dataclass(frozen=True)
+class PromoterFeedbackTuning:
+    profile_event_limit: int
+    shared_artists_weight: float
+    shared_genres_tags_weight: float
+    similar_events_weight: float
+    shared_venues_weight: float
+
+
+@dataclass(frozen=True)
 class PromoterContentProfile:
     artist_ids: frozenset[int] = frozenset()
     genre_tags: frozenset[str] = frozenset()
     venue_ids: frozenset[int] = frozenset()
     event_ids: tuple[int, ...] = ()
 
-
-def _non_negative_float(name: str, default: float) -> float:
-    value = float(os.environ.get(name, default))
-    if value < 0:
-        raise ValueError(f"{name} must be greater than or equal to 0")
-    return value
-
-
-def _positive_int(name: str, default: int) -> int:
-    value = int(os.environ.get(name, default))
-    if value < 1:
-        raise ValueError(f"{name} must be greater than or equal to 1")
-    return value
+@lru_cache(maxsize=1)
+def _recommendation_config():
+    return load_recommendation_config()
 
 
 def promoter_feedback_config_from_env() -> PromoterFeedbackConfig:
-    config = PromoterFeedbackConfig(
-        exact_positive_boost=_non_negative_float(
-            "PROMOTER_FEEDBACK_EXACT_POSITIVE_BOOST",
-            DEFAULT_EXACT_POSITIVE_BOOST,
-        ),
-        similar_positive_boost=_non_negative_float(
-            "PROMOTER_FEEDBACK_SIMILAR_POSITIVE_BOOST",
-            DEFAULT_SIMILAR_POSITIVE_BOOST,
-        ),
-        max_total_boost=_non_negative_float(
-            "PROMOTER_FEEDBACK_MAX_TOTAL_BOOST",
-            DEFAULT_MAX_TOTAL_BOOST,
-        ),
-        similarity_min=_non_negative_float(
-            "PROMOTER_FEEDBACK_SIMILARITY_MIN",
-            DEFAULT_SIMILARITY_MIN,
-        ),
-        similar_promoter_limit=_positive_int(
-            "PROMOTER_FEEDBACK_SIMILAR_PROMOTER_LIMIT",
-            DEFAULT_SIMILAR_PROMOTER_LIMIT,
-        ),
+    config_values = _recommendation_config().promoter_feedback
+    return PromoterFeedbackConfig(
+        exact_positive_boost=config_values["PROMOTER_FEEDBACK_EXACT_POSITIVE_BOOST"],
+        similar_positive_boost=config_values["PROMOTER_FEEDBACK_SIMILAR_POSITIVE_BOOST"],
+        max_total_boost=config_values["PROMOTER_FEEDBACK_MAX_TOTAL_BOOST"],
+        similarity_min=config_values["PROMOTER_FEEDBACK_SIMILARITY_MIN"],
+        similar_promoter_limit=config_values["PROMOTER_FEEDBACK_SIMILAR_PROMOTER_LIMIT"],
     )
-    if config.similarity_min > 1:
-        raise ValueError("PROMOTER_FEEDBACK_SIMILARITY_MIN must be less than or equal to 1")
-    return config
+
+
+def promoter_feedback_tuning_from_config() -> PromoterFeedbackTuning:
+    config_values = _recommendation_config().promoter_feedback
+    return PromoterFeedbackTuning(
+        profile_event_limit=config_values["PROMOTER_PROFILE_EVENT_LIMIT"],
+        shared_artists_weight=config_values["SHARED_ARTISTS_WEIGHT"],
+        shared_genres_tags_weight=config_values["SHARED_GENRES_TAGS_WEIGHT"],
+        similar_events_weight=config_values["SIMILAR_EVENTS_WEIGHT"],
+        shared_venues_weight=config_values["SHARED_VENUES_WEIGHT"],
+    )
 
 
 def load_promoter_feedback(
@@ -117,12 +98,14 @@ def promoter_content_similarity(
     right: PromoterContentProfile,
     *,
     event_similarity: float = 0.0,
+    tuning: PromoterFeedbackTuning | None = None,
 ) -> float:
+    tuning = tuning or promoter_feedback_tuning_from_config()
     return min(
-        SHARED_ARTISTS_WEIGHT * _set_cosine_similarity(left.artist_ids, right.artist_ids)
-        + SHARED_GENRES_TAGS_WEIGHT * _set_cosine_similarity(left.genre_tags, right.genre_tags)
-        + SIMILAR_EVENTS_WEIGHT * max(min(event_similarity, 1.0), 0.0)
-        + SHARED_VENUES_WEIGHT * _set_cosine_similarity(left.venue_ids, right.venue_ids),
+        tuning.shared_artists_weight * _set_cosine_similarity(left.artist_ids, right.artist_ids)
+        + tuning.shared_genres_tags_weight * _set_cosine_similarity(left.genre_tags, right.genre_tags)
+        + tuning.similar_events_weight * max(min(event_similarity, 1.0), 0.0)
+        + tuning.shared_venues_weight * _set_cosine_similarity(left.venue_ids, right.venue_ids),
         1.0,
     )
 
@@ -131,6 +114,7 @@ def load_promoter_content_profiles(
     connection: Connection,
     promoter_ids: list[int],
 ) -> dict[int, PromoterContentProfile]:
+    tuning = promoter_feedback_tuning_from_config()
     unique_promoter_ids = sorted(set(promoter_ids))
     if not unique_promoter_ids:
         return {}
@@ -164,7 +148,7 @@ def load_promoter_content_profiles(
             FROM ranked_events
             WHERE event_rank <= %s
             """,
-            (unique_promoter_ids, PROMOTER_PROFILE_EVENT_LIMIT),
+            (unique_promoter_ids, tuning.profile_event_limit),
         )
         for row in cursor.fetchall():
             profile = profiles[int(row["promoter_id"])]
@@ -223,6 +207,7 @@ def promoter_content_similarities(
     positive_promoter_ids: list[int],
     config: PromoterFeedbackConfig,
 ) -> dict[int, float]:
+    tuning = promoter_feedback_tuning_from_config()
     candidate_ids = sorted(set(candidate_promoter_ids) - set(positive_promoter_ids))
     positive_ids = sorted(set(positive_promoter_ids))
     if not candidate_ids or not positive_ids:
@@ -261,6 +246,7 @@ def promoter_content_similarities(
                 candidate_profile,
                 positive_profile,
                 event_similarity=event_similarity_by_promoter.get(candidate_id, 0.0),
+                tuning=tuning,
             )
             similarities[candidate_id] = max(similarities.get(candidate_id, 0.0), similarity)
 
