@@ -7,6 +7,7 @@ import re
 from dataclasses import dataclass
 from typing import Any, Literal
 
+from openai import AzureOpenAI
 from psycopg import Connection
 
 from app.artist_tag_extraction import (
@@ -100,6 +101,16 @@ def _required_env(name: str) -> str:
     if not value:
         raise ValueError(f"{name} must be set")
     return value
+
+
+def create_extraction_client() -> AzureOpenAI:
+    if not os.environ.get("AZURE_OPENAI_API_KEY"):
+        raise RuntimeError("AZURE_OPENAI_API_KEY must be set for Azure tag extraction")
+    return AzureOpenAI(
+        api_key=os.environ["AZURE_OPENAI_API_KEY"],
+        azure_endpoint=_required_env("AZURE_OPENAI_ENDPOINT"),
+        api_version=_required_env("AZURE_OPENAI_CHAT_API_VERSION"),
+    )
 
 
 def event_tag_extraction_text_hash(text: str) -> str:

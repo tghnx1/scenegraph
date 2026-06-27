@@ -11,9 +11,9 @@ from psycopg.rows import dict_row
 
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 
-from app.artist_tag_extraction import create_extraction_client, is_content_filter_error
 from app.event_tag_extraction import (
     EventTagExtractionConfig,
+    create_extraction_client,
     event_extraction_hash_input,
     event_source_fields,
     event_tag_extraction_text_hash,
@@ -176,7 +176,7 @@ def main() -> None:
     if args.event_id is not None and args.batch_size != 1:
         args.batch_size = 1
 
-    client = create_extraction_client(config)  # type: ignore[arg-type]
+    client = create_extraction_client()
     processed = 0
     skipped = 0
     failed = 0
