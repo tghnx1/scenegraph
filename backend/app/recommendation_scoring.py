@@ -88,7 +88,6 @@ class PromoterRecommendationScoringConfig:
     event_similarity_shared_lineup_weight: float
     event_similarity_extracted_genre_weight: float
     event_similarity_shared_theme_bonus: float
-    event_similarity_shared_mood_bonus: float
     activity_event_cap: int
     existing_partner_direct_min: int
     warm_relevant_connection_min: int
@@ -361,9 +360,6 @@ def promoter_recommendation_scoring_from_config() -> PromoterRecommendationScori
     event_similarity_shared_theme_bonus = config_values[
         "PROMOTER_REC_EVENT_SIMILARITY_SHARED_THEME_BONUS"
     ]
-    event_similarity_shared_mood_bonus = config_values[
-        "PROMOTER_REC_EVENT_SIMILARITY_SHARED_MOOD_BONUS"
-    ]
     activity_event_cap = config_values["PROMOTER_REC_ACTIVITY_EVENT_CAP"]
     existing_partner_direct_min = config_values["PROMOTER_REC_EXISTING_PARTNER_DIRECT_MIN"]
     warm_relevant_connection_min = config_values["PROMOTER_REC_WARM_RELEVANT_CONNECTION_MIN"]
@@ -424,7 +420,6 @@ def promoter_recommendation_scoring_from_config() -> PromoterRecommendationScori
         event_similarity_shared_lineup_weight=event_similarity_signal_weights[2],
         event_similarity_extracted_genre_weight=event_similarity_signal_weights[3],
         event_similarity_shared_theme_bonus=event_similarity_shared_theme_bonus,
-        event_similarity_shared_mood_bonus=event_similarity_shared_mood_bonus,
         activity_event_cap=activity_event_cap,
         existing_partner_direct_min=existing_partner_direct_min,
         warm_relevant_connection_min=warm_relevant_connection_min,

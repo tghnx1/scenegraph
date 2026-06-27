@@ -107,8 +107,6 @@ def artist_similar_events_scored_rows(
         structured_tag_bonus = 0.0
         if shared_themes:
             structured_tag_bonus += scoring_config.event_similarity_shared_theme_bonus
-        if shared_moods:
-            structured_tag_bonus += scoring_config.event_similarity_shared_mood_bonus
         symbolic_score = min(
             float(row["symbolic_score"]) + extracted_genre_score + structured_tag_bonus,
             1.0,
