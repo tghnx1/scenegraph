@@ -109,14 +109,6 @@ PROMOTER_FEEDBACK_SCHEMA: Mapping[str, FieldRule] = {
 }
 
 
-REQUIRED_LEGACY_ALIASES: Mapping[str, str] = {
-    "PROMOTER_REC_WARM_NETWORK_WEIGHT": "PROMOTER_REC_CO_PLAYED_CONNECTION_WEIGHT",
-    "PROMOTER_REC_EVENT_SIMILARITY_EXTRACTED_STYLE_WEIGHT": (
-        "PROMOTER_REC_EVENT_SIMILARITY_EXTRACTED_GENRE_WEIGHT"
-    ),
-}
-
-
 SEGMENT_QUOTA_ROWS: tuple[tuple[str, ...], ...] = (
     (
         "PROMOTER_REC_SEGMENT_QUOTA_SMALL_SMALL",
@@ -239,13 +231,7 @@ def _validate_edge_strength_ranges(values: Mapping[str, Any]) -> None:
 
 
 def _validate_metadata(metadata: Mapping[str, Any]) -> None:
-    _require_exact_keys(metadata, {"legacy_aliases"}, "metadata")
-    legacy_aliases = _require_mapping(metadata["legacy_aliases"], "metadata.legacy_aliases")
-    _require_exact_keys(legacy_aliases, set(REQUIRED_LEGACY_ALIASES), "metadata.legacy_aliases")
-    for alias, target in REQUIRED_LEGACY_ALIASES.items():
-        actual_target = legacy_aliases[alias]
-        if actual_target != target:
-            raise ConfigError(f"metadata.legacy_aliases.{alias} must point to {target}")
+    _require_exact_keys(metadata, set(), "metadata")
 
 
 def _freeze_mapping(value: Mapping[str, Any]) -> Mapping[str, Any]:

@@ -107,11 +107,6 @@ These are not env vars, but they affect promoter feedback similarity/reranking a
 | `SIMILAR_EVENTS_WEIGHT` | `0.20` | float | `>= 0`, normalized group | reranking similarity | active |
 | `SHARED_VENUES_WEIGHT` | `0.10` | float | `>= 0`, normalized group | reranking similarity | active |
 
-## Metadata-Only Unresolved Aliases
+## Removed Legacy Aliases
 
-These must be tracked but not exposed as active scoring fields in Slice 2.
-
-| Alias | Alias for | Status |
-|---|---|---|
-| `PROMOTER_REC_WARM_NETWORK_WEIGHT` | `PROMOTER_REC_CO_PLAYED_CONNECTION_WEIGHT` | unresolved alias |
-| `PROMOTER_REC_EVENT_SIMILARITY_EXTRACTED_STYLE_WEIGHT` | `PROMOTER_REC_EVENT_SIMILARITY_EXTRACTED_GENRE_WEIGHT` | unresolved alias |
+Old recommendation alias names are no longer tracked in active recommendation config.

@@ -74,12 +74,10 @@ def _canonical_recommendation_config_data() -> dict:
 
 
 def _recommendation_config_from_data(config_data: dict) -> RecommendationConfig:
-    metadata = dict(config_data["metadata"])
-    metadata["legacy_aliases"] = MappingProxyType(dict(metadata["legacy_aliases"]))
     return RecommendationConfig(
         promoter_recommendations=MappingProxyType(dict(config_data["promoter_recommendations"])),
         promoter_feedback=MappingProxyType(dict(config_data["promoter_feedback"])),
-        metadata=MappingProxyType(metadata),
+        metadata=MappingProxyType(dict(config_data["metadata"])),
     )
 
 

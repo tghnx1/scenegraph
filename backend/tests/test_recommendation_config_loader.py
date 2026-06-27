@@ -21,10 +21,7 @@ def test_loads_canonical_config() -> None:
     assert config.promoter_recommendations["PROMOTER_REC_API_LIMIT_MAX"] == 50
     assert config.promoter_feedback["PROMOTER_FEEDBACK_EXACT_POSITIVE_BOOST"] == 0.10
     assert config.promoter_feedback["PROMOTER_PROFILE_EVENT_LIMIT"] == 20
-    assert (
-        config.metadata["legacy_aliases"]["PROMOTER_REC_WARM_NETWORK_WEIGHT"]
-        == "PROMOTER_REC_CO_PLAYED_CONNECTION_WEIGHT"
-    )
+    assert dict(config.metadata) == {}
 
 
 def test_returns_immutable_mappings() -> None:
@@ -33,23 +30,11 @@ def test_returns_immutable_mappings() -> None:
     assert isinstance(config.promoter_recommendations, MappingProxyType)
     assert isinstance(config.promoter_feedback, MappingProxyType)
     assert isinstance(config.metadata, MappingProxyType)
-    assert isinstance(config.metadata["legacy_aliases"], MappingProxyType)
 
     with pytest.raises(TypeError):
         config.promoter_recommendations["PROMOTER_REC_API_LIMIT_MAX"] = 20
     with pytest.raises(TypeError):
-        config.metadata["legacy_aliases"]["PROMOTER_REC_WARM_NETWORK_WEIGHT"] = "x"
-
-
-def test_legacy_aliases_are_metadata_only() -> None:
-    config = load_recommendation_config()
-
-    assert "PROMOTER_REC_WARM_NETWORK_WEIGHT" not in config.promoter_recommendations
-    assert (
-        "PROMOTER_REC_EVENT_SIMILARITY_EXTRACTED_STYLE_WEIGHT"
-        not in config.promoter_recommendations
-    )
-    assert "PROMOTER_REC_WARM_NETWORK_WEIGHT" in config.metadata["legacy_aliases"]
+        config.metadata["anything"] = "x"
 
 
 def test_missing_key_rejected(tmp_path: Path) -> None:
@@ -103,12 +88,11 @@ def test_warm_edge_strength_min_above_max_rejected(tmp_path: Path) -> None:
         load_recommendation_config(_write_config(tmp_path, config_data))
 
 
-def test_wrong_legacy_alias_target_rejected(tmp_path: Path) -> None:
+def test_metadata_extra_key_rejected(tmp_path: Path) -> None:
     config_data = _canonical_config_data()
-    config_data["metadata"]["legacy_aliases"]["PROMOTER_REC_WARM_NETWORK_WEIGHT"] = (
-    )
+    config_data["metadata"]["unexpected"] = {}
 
-    with pytest.raises(ConfigError, match="PROMOTER_REC_WARM_NETWORK_WEIGHT"):
+    with pytest.raises(ConfigError, match="metadata extra keys"):
         load_recommendation_config(_write_config(tmp_path, config_data))
 
 

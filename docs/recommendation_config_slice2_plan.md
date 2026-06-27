@@ -54,12 +54,7 @@ Top-level sections:
   - `SIMILAR_EVENTS_WEIGHT`
   - `SHARED_VENUES_WEIGHT`
 
-`metadata.legacy_aliases` must track:
-
-- `PROMOTER_REC_WARM_NETWORK_WEIGHT` -> `PROMOTER_REC_CO_PLAYED_CONNECTION_WEIGHT`
-- `PROMOTER_REC_EVENT_SIMILARITY_EXTRACTED_STYLE_WEIGHT` -> `PROMOTER_REC_EVENT_SIMILARITY_EXTRACTED_GENRE_WEIGHT`
-
-Legacy aliases are metadata only. The loader must not expose them as active scoring fields.
+`metadata` remains reserved for future audit metadata and is currently empty.
 
 ## Loader Requirements
 
