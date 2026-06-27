@@ -97,9 +97,9 @@ total_score =
 
 Notes:
 
-- All promoter recommendation tuning lives in `backend/app/recommendation_config.yaml`.
+- All promoter recommendation tuning lives in `backend/app/recommendations/config.yaml`.
 - Direct promoter relationships remain visible as evidence and status, but no longer contribute a separate weighted score component.
-- Caps and normalization controls live in `backend/app/recommendation_config.yaml`.
+- Caps and normalization controls live in `backend/app/recommendations/config.yaml`.
 
 ## Candidate Collection and Internal Limits
 

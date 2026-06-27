@@ -29,7 +29,7 @@ Primary Endpoint: `GET /api/recommendations/artists/{artist_id}/promoters`
 - `d39f067`: interested-count size signal in similar-events rerank.
 - `64f3dcb`: internal `eventSimilarity` in `Artist -> Promoters` now uses similar-events pipeline.
 - `91064a0`: manual artist connections support + warm evidence details.
-- `95ebcd2`: candidate/overfetch/API recommendation limits were introduced as runtime knobs; promoter-specific ones now live in `backend/app/recommendation_config.yaml`.
+- `95ebcd2`: candidate/overfetch/API recommendation limits were introduced as runtime knobs; promoter-specific ones now live in `backend/app/recommendations/config.yaml`.
 - `c296d77`: promoter reasons now include concrete names/titles instead of counts only.
 
 ### In Progress
@@ -52,7 +52,7 @@ Primary Endpoint: `GET /api/recommendations/artists/{artist_id}/promoters`
 - Event similarity is hybrid: symbolic overlap + embedding similarity.
 - Graph/evidence is required and must explain ranking signals.
 - Recommendation behavior keeps direct partner evidence visible, but ranking is driven by semantic, warm, event, scale, activity, and recency signals.
-- Promoter recommendation and feedback tuning now live in `backend/app/recommendation_config.yaml`; other recommendation knobs may remain environment-configurable where they are still runtime-backed.
+- Promoter recommendation and feedback tuning now live in `backend/app/recommendations/config.yaml`; other recommendation knobs may remain environment-configurable where they are still runtime-backed.
 
 ## Validation Snapshot
 

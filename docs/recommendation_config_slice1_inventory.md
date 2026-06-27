@@ -6,12 +6,12 @@ Purpose: authoritative baseline for recommendation config migration. Slice 2 and
 
 ## Runtime Default Sources
 
-- `backend/app/recommendation_scoring.py`
+- `backend/app/recommendations/scoring.py`
   - `DEFAULT_PROMOTER_RECOMMENDATION_SCORING`
   - `DEFAULT_PROMOTER_SEGMENT_QUOTA_RATIOS`
   - `DEFAULT_PROMOTER_SEGMENT_WARM_SHARE`
   - `promoter_recommendation_api_limit_max_from_env()`
-- `backend/app/promoter_feedback.py`
+- `backend/app/recommendations/promoter_feedback.py`
   - `DEFAULT_*` feedback constants
   - hardcoded promoter feedback tuning constants
 

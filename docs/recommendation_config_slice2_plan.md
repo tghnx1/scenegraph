@@ -10,16 +10,16 @@ Slice 2 is config introduction only. Existing env/runtime code remains authorita
 
 Slice 2 may touch only:
 
-- `backend/app/recommendation_config.yaml`
-- `backend/app/recommendation_config_loader.py`
+- `backend/app/recommendations/config.yaml`
+- `backend/app/recommendations/config_loader.py`
 - `backend/tests/test_recommendation_config_loader.py`
 - `backend/requirements.txt`
 
 Slice 2 must not edit:
 
-- `backend/app/recommendation_scoring.py`
-- `backend/app/promoter_feedback.py`
-- `backend/app/recommendation_services.py`
+- `backend/app/recommendations/scoring.py`
+- `backend/app/recommendations/promoter_feedback.py`
+- `backend/app/recommendations/services.py`
 - routers
 - `.env.example`
 - runtime consumers
@@ -30,7 +30,7 @@ The config format is YAML. `backend/requirements.txt` must include PyYAML.
 
 ## YAML Requirements
 
-`backend/app/recommendation_config.yaml` must mirror the frozen Slice 1 inventory exactly.
+`backend/app/recommendations/config.yaml` must mirror the frozen Slice 1 inventory exactly.
 
 Top-level sections:
 
@@ -46,7 +46,7 @@ Top-level sections:
 
 `promoter_feedback` must include:
 
-- all `PROMOTER_FEEDBACK_*` values from `backend/app/promoter_feedback.py`
+- all `PROMOTER_FEEDBACK_*` values from `backend/app/recommendations/promoter_feedback.py`
 - hardcoded promoter feedback tuning constants:
   - `PROMOTER_PROFILE_EVENT_LIMIT`
   - `SHARED_ARTISTS_WEIGHT`
@@ -63,7 +63,7 @@ Legacy aliases are metadata only. The loader must not expose them as active scor
 
 ## Loader Requirements
 
-`backend/app/recommendation_config_loader.py` must:
+`backend/app/recommendations/config_loader.py` must:
 
 - load YAML with PyYAML
 - validate exact schema
@@ -101,7 +101,7 @@ Required tests:
 Run:
 
 ```bash
-python3 -m py_compile backend/app/recommendation_config_loader.py backend/tests/test_recommendation_config_loader.py
+python3 -m py_compile backend/app/recommendations/config_loader.py backend/tests/test_recommendation_config_loader.py
 docker compose exec backend pytest tests/test_recommendation_config_loader.py -q
 ```
 
@@ -111,8 +111,8 @@ After implementation, show:
 git status --short
 git diff --stat
 git diff -- backend/requirements.txt
-git diff --no-index /dev/null backend/app/recommendation_config.yaml || true
-git diff --no-index /dev/null backend/app/recommendation_config_loader.py || true
+git diff --no-index /dev/null backend/app/recommendations/config.yaml || true
+git diff --no-index /dev/null backend/app/recommendations/config_loader.py || true
 git diff --no-index /dev/null backend/tests/test_recommendation_config_loader.py || true
 ```
 
@@ -123,4 +123,3 @@ If the evidence does not prove the implementation, report `not verified` instead
 Do not proceed to Slice 3.
 
 Do not request final config approval.
-
