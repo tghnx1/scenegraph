@@ -1,12 +1,11 @@
 CREATE EXTENSION IF NOT EXISTS vector;
 
 ALTER TABLE IF EXISTS entity_embeddings
-ADD COLUMN IF NOT EXISTS embedding_vec vector(1536);
+ADD COLUMN IF NOT EXISTS embedding_vec vector;
 
 UPDATE entity_embeddings
 SET embedding_vec = embedding::vector
-WHERE embedding_vec IS NULL
-  AND dimensions = 1536;
+WHERE embedding_vec IS NULL;
 
 CREATE INDEX IF NOT EXISTS entity_embeddings_vector_hnsw_cosine_idx
 ON entity_embeddings

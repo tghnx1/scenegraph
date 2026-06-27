@@ -1,4 +1,5 @@
 import os
+import pytest
 
 os.environ.setdefault("DATABASE_URL", "postgresql://scenegraph:change-me@db:5432/scenegraph")
 
@@ -14,26 +15,27 @@ def test_embedding_vector_literal_formats_for_pgvector():
 
 
 def test_embedding_config_reads_env(monkeypatch):
-    monkeypatch.setenv("EMBEDDING_PROVIDER", "openai")
     monkeypatch.setenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-large")
     monkeypatch.setenv("OPENAI_EMBEDDING_DIMENSIONS", "1024")
 
     config = EmbeddingConfig.from_env()
 
-    assert config.provider == "openai"
     assert config.model == "text-embedding-3-large"
     assert config.provider_model_key == "openai:text-embedding-3-large"
     assert config.dimensions == 1024
 
 
-def test_embedding_config_reads_azure_env(monkeypatch):
-    monkeypatch.setenv("EMBEDDING_PROVIDER", "azure")
-    monkeypatch.setenv("AZURE_OPENAI_EMBEDDING_DEPLOYMENT", "scenegraph-embedding-small")
+def test_embedding_config_requires_model(monkeypatch):
+    monkeypatch.delenv("OPENAI_EMBEDDING_MODEL", raising=False)
+    monkeypatch.setenv("OPENAI_EMBEDDING_DIMENSIONS", "1024")
+
+    with pytest.raises(ValueError, match="OPENAI_EMBEDDING_MODEL"):
+        EmbeddingConfig.from_env()
+
+
+def test_embedding_config_requires_dimensions(monkeypatch):
+    monkeypatch.setenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-large")
     monkeypatch.delenv("OPENAI_EMBEDDING_DIMENSIONS", raising=False)
 
-    config = EmbeddingConfig.from_env()
-
-    assert config.provider == "azure"
-    assert config.model == "scenegraph-embedding-small"
-    assert config.provider_model_key == "azure:scenegraph-embedding-small"
-    assert config.dimensions is None
+    with pytest.raises(ValueError, match="OPENAI_EMBEDDING_DIMENSIONS"):
+        EmbeddingConfig.from_env()

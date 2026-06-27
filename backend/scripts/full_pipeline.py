@@ -280,38 +280,15 @@ def launch_local_chrome(args: argparse.Namespace) -> subprocess.Popen[bytes]:
 
 def ensure_provider_env(skip_tags: bool, skip_embeddings: bool) -> None:
     if not skip_tags:
-        event_config = EventTagExtractionConfig.from_env()
-        artist_config = TagExtractionConfig.from_env()
-        if event_config.provider == "openai" and not os.environ.get("OPENAI_API_KEY"):
-            raise SystemExit("OPENAI_API_KEY must be set for event tag extraction")
-        if artist_config.provider == "openai" and not os.environ.get("OPENAI_API_KEY"):
-            raise SystemExit("OPENAI_API_KEY must be set for artist tag extraction")
-        if event_config.provider == "azure":
-            if not os.environ.get("AZURE_OPENAI_API_KEY"):
-                raise SystemExit("AZURE_OPENAI_API_KEY must be set for event tag extraction")
-            if event_config.api == "responses":
-                if not event_config.azure_responses_url:
-                    raise SystemExit("AZURE_OPENAI_RESPONSES_URL must be set for Azure event tag extraction")
-            elif not os.environ.get("AZURE_OPENAI_ENDPOINT"):
-                raise SystemExit("AZURE_OPENAI_ENDPOINT must be set for Azure event tag extraction")
-        if artist_config.provider == "azure":
-            if not os.environ.get("AZURE_OPENAI_API_KEY"):
-                raise SystemExit("AZURE_OPENAI_API_KEY must be set for artist tag extraction")
-            if artist_config.api == "responses":
-                if not artist_config.azure_responses_url:
-                    raise SystemExit("AZURE_OPENAI_RESPONSES_URL must be set for Azure artist tag extraction")
-            elif not os.environ.get("AZURE_OPENAI_ENDPOINT"):
-                raise SystemExit("AZURE_OPENAI_ENDPOINT must be set for artist tag extraction")
+        EventTagExtractionConfig.from_env()
+        TagExtractionConfig.from_env()
+        if not os.environ.get("AZURE_OPENAI_API_KEY"):
+            raise SystemExit("AZURE_OPENAI_API_KEY must be set for tag extraction")
 
     if not skip_embeddings:
-        embedding_config = EmbeddingConfig.from_env()
-        if embedding_config.provider == "openai" and not os.environ.get("OPENAI_API_KEY"):
+        EmbeddingConfig.from_env()
+        if not os.environ.get("OPENAI_API_KEY"):
             raise SystemExit("OPENAI_API_KEY must be set for embeddings")
-        if embedding_config.provider == "azure":
-            if not os.environ.get("AZURE_OPENAI_API_KEY"):
-                raise SystemExit("AZURE_OPENAI_API_KEY must be set for Azure embeddings")
-            if not os.environ.get("AZURE_OPENAI_ENDPOINT"):
-                raise SystemExit("AZURE_OPENAI_ENDPOINT must be set for Azure embeddings")
 
 
 def ensure_db_ready() -> None:

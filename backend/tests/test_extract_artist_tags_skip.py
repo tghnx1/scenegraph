@@ -96,9 +96,8 @@ def test_artist_tag_extraction_skips_existing_current_run(monkeypatch):
         "from_env",
         classmethod(
             lambda cls: types.SimpleNamespace(
-                provider="openai",
-                api="chat_completions",
-                azure_responses_url=None,
+                azure_endpoint="https://example.openai.azure.com",
+                api_version="2025-01-01-preview",
                 extractor_key="extractor",
                 model="gpt-test",
             )

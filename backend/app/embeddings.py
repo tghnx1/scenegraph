@@ -17,48 +17,30 @@ from app.text_profiles import (
 
 
 EntityType = Literal["artist", "event"]
-EmbeddingProvider = Literal["openai", "azure"]
-DEFAULT_EMBEDDING_MODEL = "text-embedding-3-small"
-DEFAULT_AZURE_OPENAI_API_VERSION = "2024-02-01"
 
 
 @dataclass(frozen=True)
 class EmbeddingConfig:
-    provider: EmbeddingProvider = "openai"
-    model: str = DEFAULT_EMBEDDING_MODEL
-    dimensions: int | None = None
+    model: str
+    dimensions: int
 
     @classmethod
     def from_env(cls) -> "EmbeddingConfig":
-        dimensions = os.environ.get("OPENAI_EMBEDDING_DIMENSIONS", "").strip()
-        provider = os.environ.get("EMBEDDING_PROVIDER", "openai").strip().lower() or "openai"
-        if provider not in {"openai", "azure"}:
-            raise ValueError("EMBEDDING_PROVIDER must be either 'openai' or 'azure'")
-
-        if provider == "azure":
-            model = (
-                os.environ.get("AZURE_OPENAI_EMBEDDING_DEPLOYMENT", "").strip()
-                or os.environ.get("OPENAI_EMBEDDING_MODEL", "").strip()
-            )
-            if not model:
-                raise ValueError(
-                    "AZURE_OPENAI_EMBEDDING_DEPLOYMENT must be set when EMBEDDING_PROVIDER=azure"
-                )
-        else:
-            model = (
-                os.environ.get("OPENAI_EMBEDDING_MODEL", DEFAULT_EMBEDDING_MODEL).strip()
-                or DEFAULT_EMBEDDING_MODEL
-            )
-
         return cls(
-            provider=provider,  # type: ignore[arg-type]
-            model=model,
-            dimensions=int(dimensions) if dimensions else None,
+            model=_required_env("OPENAI_EMBEDDING_MODEL"),
+            dimensions=int(_required_env("OPENAI_EMBEDDING_DIMENSIONS")),
         )
 
     @property
     def provider_model_key(self) -> str:
-        return f"{self.provider}:{self.model}"
+        return f"openai:{self.model}"
+
+
+def _required_env(name: str) -> str:
+    value = os.environ.get(name, "").strip()
+    if not value:
+        raise ValueError(f"{name} must be set")
+    return value
 
 
 def embedding_text_hash(text: str) -> str:
@@ -109,32 +91,15 @@ def embedding_vector_supported(connection: Connection) -> bool:
 
 
 def create_openai_embeddings(texts: list[str], config: EmbeddingConfig) -> list[list[float]]:
-    if config.provider == "azure":
-        if not os.environ.get("AZURE_OPENAI_API_KEY"):
-            raise RuntimeError("AZURE_OPENAI_API_KEY must be set to generate Azure embeddings")
-        endpoint = os.environ.get("AZURE_OPENAI_ENDPOINT", "").strip()
-        if not endpoint:
-            raise RuntimeError("AZURE_OPENAI_ENDPOINT must be set to generate Azure embeddings")
-
-        client: OpenAI | AzureOpenAI = AzureOpenAI(
-            api_key=os.environ["AZURE_OPENAI_API_KEY"],
-            azure_endpoint=endpoint,
-            api_version=os.environ.get(
-                "AZURE_OPENAI_API_VERSION",
-                DEFAULT_AZURE_OPENAI_API_VERSION,
-            ),
-        )
-    else:
-        if not os.environ.get("OPENAI_API_KEY"):
-            raise RuntimeError("OPENAI_API_KEY must be set to generate embeddings")
-        client = OpenAI()
+    if not os.environ.get("OPENAI_API_KEY"):
+        raise RuntimeError("OPENAI_API_KEY must be set to generate embeddings")
+    client: OpenAI | AzureOpenAI = OpenAI()
 
     request: dict[str, Any] = {
         "model": config.model,
         "input": texts,
     }
-    if config.dimensions is not None:
-        request["dimensions"] = config.dimensions
+    request["dimensions"] = config.dimensions
 
     response = client.embeddings.create(**request)
     vectors = [item.embedding for item in sorted(response.data, key=lambda item: item.index)]
@@ -229,7 +194,7 @@ def upsert_entity_embedding(
     embedding: list[float],
 ) -> None:
     dimensions = len(embedding)
-    if config.dimensions is not None and dimensions != config.dimensions:
+    if dimensions != config.dimensions:
         raise ValueError(
             f"Expected {config.dimensions} dimensions from {config.provider_model_key}, got {dimensions}"
         )
@@ -237,7 +202,7 @@ def upsert_entity_embedding(
     vector_supported = embedding_vector_supported(connection)
 
     with connection.cursor() as cursor:
-        if vector_supported and dimensions == 1536:
+        if vector_supported and dimensions == config.dimensions:
             cursor.execute(
                 """
                 INSERT INTO entity_embeddings (
@@ -305,9 +270,8 @@ def load_source_embedding(
     dimensions_filter = ""
     params: list[Any] = [entity_type, entity_id, config.provider_model_key]
 
-    if config.dimensions is not None:
-        dimensions_filter = "AND dimensions = %s"
-        params.append(config.dimensions)
+    dimensions_filter = "AND dimensions = %s"
+    params.append(config.dimensions)
 
     with connection.cursor() as cursor:
         if vector_supported:

@@ -7,16 +7,12 @@ import re
 from dataclasses import dataclass
 from typing import Any, Literal
 
-import httpx
-from openai import AzureOpenAI, OpenAI
 from psycopg import Connection
 
 from app.artist_tag_extraction import (
     create_chat_completion,
     create_extraction_client,
-    create_azure_responses_completion,
     extract_json_object,
-    extract_responses_output_text,
     is_content_filter_error,
     split_biography_chunks,
 )
@@ -34,14 +30,7 @@ from app.event_tag_taxonomy import (
 from app.text_profiles import normalize_text, truncate_text
 
 
-ExtractionProvider = Literal["openai", "azure"]
-ExtractionApi = Literal["chat_completions", "responses"]
 EventTagType = Literal["style", "mood", "theme"]
-
-DEFAULT_EXTRACTION_MODEL = "gpt-4.1-mini"
-MAX_EVENT_TEXT_CHARS = 7000
-MAX_TAGS_PER_EVENT = 12
-CHUNK_FALLBACK_CHARS = 800
 
 ALLOWED_EVENT_TAG_TYPES: set[str] = {
     "mood",
@@ -87,60 +76,30 @@ class ChunkedEventTagExtractionResult:
 
 @dataclass(frozen=True)
 class EventTagExtractionConfig:
-    provider: ExtractionProvider = "openai"
-    model: str = DEFAULT_EXTRACTION_MODEL
-    api: ExtractionApi = "chat_completions"
-    azure_responses_url: str | None = None
-    max_text_chars: int = MAX_EVENT_TEXT_CHARS
-    max_tags: int = MAX_TAGS_PER_EVENT
-    chunk_chars: int = CHUNK_FALLBACK_CHARS
+    model: str
+    max_text_chars: int
+    max_tags: int
+    chunk_chars: int
 
     @classmethod
     def from_env(cls) -> "EventTagExtractionConfig":
-        provider = os.environ.get("EXTRACTION_PROVIDER", "openai").strip().lower() or "openai"
-        if provider not in {"openai", "azure"}:
-            raise ValueError("EXTRACTION_PROVIDER must be either 'openai' or 'azure'")
-
-        azure_responses_url = os.environ.get("AZURE_OPENAI_RESPONSES_URL", "").strip()
-        api = os.environ.get("EXTRACTION_API", "").strip().lower()
-        if not api:
-            api = "responses" if provider == "azure" and azure_responses_url else "chat_completions"
-        if api not in {"chat_completions", "responses"}:
-            raise ValueError("EXTRACTION_API must be either 'chat_completions' or 'responses'")
-
-        if provider == "azure":
-            model = (
-                os.environ.get("AZURE_OPENAI_EXTRACTION_DEPLOYMENT", "").strip()
-                or os.environ.get("AZURE_OPENAI_RESPONSES_MODEL", "").strip()
-                or os.environ.get("AZURE_OPENAI_CHAT_DEPLOYMENT", "").strip()
-                or os.environ.get("OPENAI_EXTRACTION_MODEL", "").strip()
-            )
-            if not model:
-                raise ValueError(
-                    "AZURE_OPENAI_EXTRACTION_DEPLOYMENT or AZURE_OPENAI_RESPONSES_MODEL "
-                    "must be set when EXTRACTION_PROVIDER=azure"
-                )
-        else:
-            model = os.environ.get("OPENAI_EXTRACTION_MODEL", DEFAULT_EXTRACTION_MODEL).strip()
-            if not model:
-                model = DEFAULT_EXTRACTION_MODEL
-
         return cls(
-            provider=provider,  # type: ignore[arg-type]
-            model=model,
-            api=api,  # type: ignore[arg-type]
-            azure_responses_url=azure_responses_url or None,
-            max_text_chars=int(os.environ.get("EVENT_TAG_EXTRACTION_MAX_TEXT_CHARS", MAX_EVENT_TEXT_CHARS)),
-            max_tags=min(
-                int(os.environ.get("EVENT_TAG_EXTRACTION_MAX_TAGS", MAX_TAGS_PER_EVENT)),
-                MAX_TAGS_PER_EVENT,
-            ),
-            chunk_chars=int(os.environ.get("EVENT_TAG_EXTRACTION_CHUNK_CHARS", CHUNK_FALLBACK_CHARS)),
+            model=_required_env("AZURE_OPENAI_EXTRACTION_DEPLOYMENT"),
+            max_text_chars=int(_required_env("EVENT_TAG_EXTRACTION_MAX_TEXT_CHARS")),
+            max_tags=int(_required_env("EVENT_TAG_EXTRACTION_MAX_TAGS")),
+            chunk_chars=int(_required_env("EVENT_TAG_EXTRACTION_CHUNK_CHARS")),
         )
 
     @property
     def extractor_key(self) -> str:
-        return f"llm_event_tags_v3:{self.provider}:{self.api}:{self.model}"
+        return f"llm_event_tags_v3:azure:chat_completions:{self.model}"
+
+
+def _required_env(name: str) -> str:
+    value = os.environ.get(name, "").strip()
+    if not value:
+        raise ValueError(f"{name} must be set")
+    return value
 
 
 def event_tag_extraction_text_hash(text: str) -> str:
@@ -323,7 +282,7 @@ def finalize_event_tags(tags: list[EventTag], *, max_tags: int) -> list[EventTag
             continue
         retained.append(tag)
         type_counts[tag.tag_type] = type_counts.get(tag.tag_type, 0) + 1
-    return retained[: min(max_tags, MAX_TAGS_PER_EVENT)]
+    return retained[:max_tags]
 
 
 def merge_event_tags(tag_groups: list[list[EventTag]], *, max_tags: int) -> list[EventTag]:
@@ -480,19 +439,12 @@ def extract_event_tags_with_llm(
         )
 
     prompt = event_user_prompt(event_name, normalized_text, config.max_tags)
-    if config.provider == "azure" and config.api == "responses":
-        content = create_azure_responses_completion(
-            prompt=prompt,
-            config=config,  # type: ignore[arg-type]
-            instructions=event_system_prompt(),
-        )
-    else:
-        content = create_chat_completion(
-            client,
-            prompt=prompt,
-            config=config,  # type: ignore[arg-type]
-            instructions=event_system_prompt(),
-        )
+    content = create_chat_completion(
+        client,
+        prompt=prompt,
+        config=config,  # type: ignore[arg-type]
+        instructions=event_system_prompt(),
+    )
     payload = extract_json_object(content)
     return merge_event_styles_and_metadata(
         normalized_text,
@@ -566,19 +518,12 @@ def extract_event_tag_batch_with_llm(
         return {}
 
     prompt = event_batch_user_prompt(prepared_events, config.max_tags)
-    if config.provider == "azure" and config.api == "responses":
-        content = create_azure_responses_completion(
-            prompt=prompt,
-            config=config,  # type: ignore[arg-type]
-            instructions=event_system_prompt(),
-        )
-    else:
-        content = create_chat_completion(
-            client,
-            prompt=prompt,
-            config=config,  # type: ignore[arg-type]
-            instructions=event_system_prompt(),
-        )
+    content = create_chat_completion(
+        client,
+        prompt=prompt,
+        config=config,  # type: ignore[arg-type]
+        instructions=event_system_prompt(),
+    )
 
     payload = extract_json_object(content)
     parsed = parse_event_batch_response(payload, events=prepared_events, max_tags=config.max_tags)

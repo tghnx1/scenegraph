@@ -4,7 +4,6 @@ from app.artist_tag_extraction import (
     ArtistTag,
     TagExtractionConfig,
     batch_user_prompt,
-    extract_responses_output_text,
     extract_json_object,
     is_content_filter_error,
     merge_artist_tags,
@@ -16,64 +15,30 @@ from app.artist_tag_extraction import (
 )
 
 
-def test_tag_extraction_config_reads_openai_env(monkeypatch):
-    monkeypatch.setenv("EXTRACTION_PROVIDER", "openai")
-    monkeypatch.setenv("OPENAI_EXTRACTION_MODEL", "gpt-4.1-nano")
-    monkeypatch.setenv("ARTIST_TAG_EXTRACTION_MAX_TAGS", "12")
-
-    config = TagExtractionConfig.from_env()
-
-    assert config.provider == "openai"
-    assert config.model == "gpt-4.1-nano"
-    assert config.api == "chat_completions"
-    assert config.max_tags == 12
-    assert config.extractor_key == "llm_artist_tags_v2:openai:chat_completions:gpt-4.1-nano"
-
-
 def test_tag_extraction_config_reads_azure_env(monkeypatch):
-    monkeypatch.setenv("EXTRACTION_PROVIDER", "azure")
     monkeypatch.setenv("AZURE_OPENAI_EXTRACTION_DEPLOYMENT", "scenegraph-gpt-41-mini")
+    monkeypatch.setenv("AZURE_OPENAI_ENDPOINT", "https://example.openai.azure.com")
+    monkeypatch.setenv("AZURE_OPENAI_CHAT_API_VERSION", "2025-01-01-preview")
+    monkeypatch.setenv("ARTIST_TAG_EXTRACTION_MAX_BIO_CHARS", "6000")
+    monkeypatch.setenv("ARTIST_TAG_EXTRACTION_MAX_TAGS", "12")
+    monkeypatch.setenv("ARTIST_TAG_EXTRACTION_CHUNK_CHARS", "600")
 
     config = TagExtractionConfig.from_env()
 
-    assert config.provider == "azure"
     assert config.model == "scenegraph-gpt-41-mini"
-    assert config.api == "chat_completions"
-    assert (
-        config.extractor_key
-        == "llm_artist_tags_v2:azure:chat_completions:scenegraph-gpt-41-mini"
-    )
-
-
-def test_tag_extraction_config_reads_azure_responses_url(monkeypatch):
-    monkeypatch.setenv("EXTRACTION_PROVIDER", "azure")
-    monkeypatch.setenv(
-        "AZURE_OPENAI_RESPONSES_URL",
-        "https://example.cognitiveservices.azure.com/openai/responses?api-version=2025-04-01-preview",
-    )
-    monkeypatch.setenv("AZURE_OPENAI_RESPONSES_MODEL", "gpt-4.1-mini")
-    monkeypatch.delenv("EXTRACTION_API", raising=False)
-    monkeypatch.delenv("AZURE_OPENAI_EXTRACTION_DEPLOYMENT", raising=False)
-    monkeypatch.delenv("AZURE_OPENAI_CHAT_DEPLOYMENT", raising=False)
-    monkeypatch.delenv("OPENAI_EXTRACTION_MODEL", raising=False)
-
-    config = TagExtractionConfig.from_env()
-
-    assert config.provider == "azure"
-    assert config.api == "responses"
-    assert config.model == "gpt-4.1-mini"
-    assert config.azure_responses_url == (
-        "https://example.cognitiveservices.azure.com/openai/responses?api-version=2025-04-01-preview"
-    )
-    assert config.extractor_key == "llm_artist_tags_v2:azure:responses:gpt-4.1-mini"
+    assert config.azure_endpoint == "https://example.openai.azure.com"
+    assert config.api_version == "2025-01-01-preview"
+    assert config.max_tags == 12
+    assert config.extractor_key == "llm_artist_tags_v2:azure:chat_completions:scenegraph-gpt-41-mini"
 
 
 def test_tag_extraction_config_requires_azure_deployment(monkeypatch):
-    monkeypatch.setenv("EXTRACTION_PROVIDER", "azure")
     monkeypatch.delenv("AZURE_OPENAI_EXTRACTION_DEPLOYMENT", raising=False)
-    monkeypatch.delenv("AZURE_OPENAI_CHAT_DEPLOYMENT", raising=False)
-    monkeypatch.delenv("AZURE_OPENAI_RESPONSES_MODEL", raising=False)
-    monkeypatch.delenv("OPENAI_EXTRACTION_MODEL", raising=False)
+    monkeypatch.setenv("AZURE_OPENAI_ENDPOINT", "https://example.openai.azure.com")
+    monkeypatch.setenv("AZURE_OPENAI_CHAT_API_VERSION", "2025-01-01-preview")
+    monkeypatch.setenv("ARTIST_TAG_EXTRACTION_MAX_BIO_CHARS", "6000")
+    monkeypatch.setenv("ARTIST_TAG_EXTRACTION_MAX_TAGS", "32")
+    monkeypatch.setenv("ARTIST_TAG_EXTRACTION_CHUNK_CHARS", "600")
 
     with pytest.raises(ValueError, match="AZURE_OPENAI_EXTRACTION_DEPLOYMENT"):
         TagExtractionConfig.from_env()
@@ -89,26 +54,6 @@ def test_is_content_filter_error_detects_azure_messages():
     assert is_content_filter_error(RuntimeError("code: content_filter"))
     assert is_content_filter_error(RuntimeError("ResponsibleAIPolicyViolation"))
     assert not is_content_filter_error(RuntimeError("rate limit"))
-
-
-def test_extract_responses_output_text_from_output_array():
-    content = extract_responses_output_text(
-        {
-            "output": [
-                {
-                    "type": "message",
-                    "content": [
-                        {
-                            "type": "output_text",
-                            "text": '{"tags": [{"type": "style", "value": "EBM"}]}',
-                        }
-                    ],
-                }
-            ]
-        }
-    )
-
-    assert content == '{"tags": [{"type": "style", "value": "EBM"}]}'
 
 
 def test_batch_user_prompt_includes_artist_ids():
