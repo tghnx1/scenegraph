@@ -23,6 +23,7 @@ from app.embeddings import (
     upsert_entity_embedding,
 )
 from app.artist_tag_extraction import fetch_artist_biographies
+from app.recommendations.jobs import invalidate_artist_promoter_jobs
 
 
 SOURCE = "biography"
@@ -34,6 +35,11 @@ def refresh_artist_derived_data(connection: Connection, *, artist_id: int) -> di
         raise RuntimeError(f"Artist {artist_id} not found")
 
     artist = artists[0]
+    invalidate_artist_promoter_jobs(
+        connection,
+        artist_id=artist_id,
+        error_message="artist biography refreshed; promoter recommendation job invalidated",
+    )
     tag_config = TagExtractionConfig.from_env()
     client = create_extraction_client(tag_config)
     biography = artist["biography"]

@@ -131,6 +131,41 @@ def create_artist_bio_refresh_job(
     )
 
 
+# Invalidate stale promoter recommendation jobs when the artist biography changes.
+def invalidate_artist_promoter_jobs(
+    connection: Connection,
+    *,
+    artist_id: int,
+    error_message: str,
+) -> list[dict[str, Any]]:
+    """Mark queued/running promoter jobs for an artist as failed after a bio refresh."""
+    with connection.transaction():
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE recommendation_jobs
+                SET status = 'failed',
+                    result_json = NULL,
+                    error_message = %s,
+                    finished_at = CURRENT_TIMESTAMP,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE artist_id = %s
+                  AND job_type = %s
+                  AND status IN ('queued', 'running')
+                RETURNING *
+                """,
+                (
+                    error_message[:2000],
+                    artist_id,
+                    ARTIST_PROMOTERS_JOB_TYPE,
+                ),
+            )
+            rows = cursor.fetchall()
+        for row in rows:
+            _notify(connection, JOB_UPDATED_CHANNEL, _notification_payload(row))
+    return rows
+
+
 # Read a job only when it belongs to the authenticated user.
 def get_recommendation_job(
     connection: Connection,
