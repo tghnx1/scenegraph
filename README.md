@@ -130,7 +130,19 @@ Use the full local ingestion pipeline:
 make full-pipeline
 ```
 
-This runs the end-to-end import/enrichment flow in Docker. Optional extraction and embedding stages still require the corresponding provider configuration.
+This runs the end-to-end import/enrichment flow in Docker.
+
+Default behavior:
+
+- biography scraping is skipped by default
+- browser/CDP tooling is not kept as a permanent compose service anymore
+- optional extraction and embedding stages still require the corresponding provider configuration
+
+If you want biography scraping too, run:
+
+```bash
+make full-pipeline FULL_PIPELINE_SKIP_BIO=no
+```
 
 ## API examples
 
