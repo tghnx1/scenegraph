@@ -175,32 +175,12 @@ def env_float(name: str, default: float) -> float:
         return default
     return float(raw)
 
-# Read float config from primary env var with optional legacy fallback.
-def env_float_alias(primary_name: str, legacy_name: str, default: float) -> float:
-    primary_raw = os.environ.get(primary_name)
-    if primary_raw is not None and primary_raw.strip():
-        return float(primary_raw)
-    legacy_raw = os.environ.get(legacy_name)
-    if legacy_raw is not None and legacy_raw.strip():
-        return float(legacy_raw)
-    return default
-
 # Read integer config from environment with a fallback default.
 def env_int(name: str, default: int) -> int:
     raw = os.environ.get(name)
     if raw is None or not raw.strip():
         return default
     return int(raw)
-
-# Read integer config from primary env var with optional legacy fallback.
-def env_int_alias(primary_name: str, legacy_name: str, default: int) -> int:
-    primary_raw = os.environ.get(primary_name)
-    if primary_raw is not None and primary_raw.strip():
-        return int(primary_raw)
-    legacy_raw = os.environ.get(legacy_name)
-    if legacy_raw is not None and legacy_raw.strip():
-        return int(legacy_raw)
-    return default
 
 
 # Read boolean config from environment with a fallback default.
@@ -626,11 +606,7 @@ def recommendation_scoring_from_env() -> RecommendationScoringConfig:
         env_int("EVENT_GRAPH_SHARED_ARTISTS_CAP", 3),
         env_int("EVENT_GRAPH_SHARED_PROMOTERS_CAP", 2),
         env_int("EVENT_GRAPH_SHARED_GENRES_CAP", 3),
-        env_int_alias(
-            "EVENT_GRAPH_SHARED_EXTRACTED_GENRES_CAP",
-            "EVENT_GRAPH_SHARED_EXTRACTED_STYLES_CAP",
-            3,
-        ),
+        env_int("EVENT_GRAPH_SHARED_EXTRACTED_GENRES_CAP", 3),
     )
     if any(cap <= 0 for cap in event_caps):
         raise ValueError("EVENT_GRAPH_*_CAP values must be greater than zero")
@@ -641,11 +617,7 @@ def recommendation_scoring_from_env() -> RecommendationScoringConfig:
             env_float("EVENT_GRAPH_SHARED_PROMOTERS_WEIGHT", 0.20),
             env_float("EVENT_GRAPH_SAME_VENUE_WEIGHT", 0.08),
             env_float("EVENT_GRAPH_SHARED_GENRES_WEIGHT", 0.05),
-            env_float_alias(
-                "EVENT_GRAPH_SHARED_EXTRACTED_GENRES_WEIGHT",
-                "EVENT_GRAPH_SHARED_EXTRACTED_STYLES_WEIGHT",
-                0.17,
-            ),
+            env_float("EVENT_GRAPH_SHARED_EXTRACTED_GENRES_WEIGHT", 0.17),
         )
     )
     artist_graph_weight_values = normalized_weights(

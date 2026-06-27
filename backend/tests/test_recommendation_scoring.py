@@ -289,27 +289,6 @@ def test_recommendation_scoring_reads_event_graph_weights_from_env(monkeypatch):
     assert weights["extracted_genres"].cap == 4
 
 
-def test_recommendation_scoring_supports_legacy_extracted_styles_env_keys(monkeypatch):
-    monkeypatch.delenv("EVENT_GRAPH_SHARED_EXTRACTED_GENRES_WEIGHT", raising=False)
-    monkeypatch.delenv("EVENT_GRAPH_SHARED_EXTRACTED_GENRES_CAP", raising=False)
-    monkeypatch.setenv("EVENT_GRAPH_SHARED_ARTISTS_WEIGHT", "40")
-    monkeypatch.setenv("EVENT_GRAPH_SHARED_PROMOTERS_WEIGHT", "20")
-    monkeypatch.setenv("EVENT_GRAPH_SAME_VENUE_WEIGHT", "5")
-    monkeypatch.setenv("EVENT_GRAPH_SHARED_GENRES_WEIGHT", "5")
-    monkeypatch.setenv("EVENT_GRAPH_SHARED_EXTRACTED_STYLES_WEIGHT", "30")
-    monkeypatch.setenv("EVENT_GRAPH_SHARED_EXTRACTED_STYLES_CAP", "4")
-
-    config = recommendation_scoring_from_env()
-    weights = {item.feature: item for item in config.event_graph_weights}
-
-    assert round(weights["artists"].weight, 4) == 0.4
-    assert round(weights["promoters"].weight, 4) == 0.2
-    assert round(weights["venues"].weight, 4) == 0.05
-    assert round(weights["genres"].weight, 4) == 0.05
-    assert round(weights["extracted_genres"].weight, 4) == 0.3
-    assert weights["extracted_genres"].cap == 4
-
-
 def test_promoter_recommendation_scoring_uses_config_genre_weight_without_alias(monkeypatch):
     _set_promoter_config(
         monkeypatch,
