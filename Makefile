@@ -94,7 +94,8 @@ upd: env ensure-ssl-certs prisma-migrate
 
 upd-build: env ensure-ssl-certs
 	$(COMPOSE_BUILD) --profile tools run --rm --build prisma
-	$(COMPOSE_BUILD) up --build -d --remove-orphans
+	@set -a; [ -f .env ] && . ./.env; set +a; \
+	$(COMPOSE_BUILD) up --build -d --remove-orphans --scale recommendation-worker="$${RECOMMENDATION_WORKER:-1}"
 
 debug-up: env ensure-ssl-certs prisma-migrate
 	@set -a; [ -f .env ] && . ./.env; set +a; \
