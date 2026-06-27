@@ -113,8 +113,14 @@ def test_patch_biography_stores_normalized_copy(monkeypatch):
         rowcounts=[0, 1],
     )
     connection = FakeConnection(cursor)
+    enqueue_calls: list[dict[str, object]] = []
 
     monkeypatch.setattr(artists_router, "get_connection", lambda: connection)
+    monkeypatch.setattr(
+        artists_router,
+        "create_artist_bio_refresh_job",
+        lambda db, **kwargs: enqueue_calls.append(kwargs),
+    )
 
     response = asyncio.run(
         artists_router.update_artist_biography(
@@ -127,6 +133,13 @@ def test_patch_biography_stores_normalized_copy(monkeypatch):
     assert response.id == 2178
     assert response.name == "Artist"
     assert response.biography == "Dark\n Disco"
+    assert enqueue_calls == [
+        {
+            "user_id": 1,
+            "artist_id": 2178,
+            "params": {"trigger": "artist_biography_update"},
+        }
+    ]
     update_sql, update_params = cursor.executed[1]
     assert "biography_normalized = %s" in update_sql
     assert update_params == ("Dark\n Disco", "Dark Disco", 2178)

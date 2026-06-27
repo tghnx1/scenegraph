@@ -13,6 +13,7 @@ from psycopg.types.json import Jsonb
 JOB_CREATED_CHANNEL = "scenegraph_recommendation_job_created"
 JOB_UPDATED_CHANNEL = "scenegraph_recommendation_job_updated"
 ARTIST_PROMOTERS_JOB_TYPE = "artist_promoters"
+ARTIST_BIO_REFRESH_JOB_TYPE = "artist_bio_refresh"
 RUNNING_JOB_RECLAIM_AFTER_SECONDS = int(
     os.getenv("RECOMMENDATION_JOB_RUNNING_RECLAIM_AFTER_SECONDS", "600")
 )
@@ -46,15 +47,16 @@ def _notify(connection: Connection, channel: str, payload: str) -> None:
         cursor.execute("SELECT pg_notify(%s, %s)", (channel, payload))
 
 
-# Store a queued Artist -> Promoters job and wake workers after commit.
-def create_recommendation_job(
+# Store one queued recommendation job and wake workers after commit.
+def _create_job(
     connection: Connection,
     *,
     user_id: int,
     artist_id: int,
+    job_type: str,
     params: dict[str, Any],
 ) -> dict[str, Any]:
-    """Persist a queued Artist -> Promoters job and wake sleeping workers after commit."""
+    """Persist a queued job and wake sleeping workers after commit."""
     params_hash = _params_hash(params)
     job_id = uuid.uuid4()
     with connection.transaction():
@@ -77,7 +79,7 @@ def create_recommendation_job(
                     job_id,
                     user_id,
                     artist_id,
-                    ARTIST_PROMOTERS_JOB_TYPE,
+                    job_type,
                     params_hash,
                     Jsonb(params),
                 ),
@@ -91,6 +93,42 @@ def create_recommendation_job(
             json.dumps({"jobId": str(job_id)}, separators=(",", ":")),
         )
     return row
+
+
+# Store a queued Artist -> Promoters job and wake workers after commit.
+def create_recommendation_job(
+    connection: Connection,
+    *,
+    user_id: int,
+    artist_id: int,
+    params: dict[str, Any],
+) -> dict[str, Any]:
+    """Persist a queued Artist -> Promoters job and wake sleeping workers after commit."""
+    return _create_job(
+        connection,
+        user_id=user_id,
+        artist_id=artist_id,
+        job_type=ARTIST_PROMOTERS_JOB_TYPE,
+        params=params,
+    )
+
+
+# Store a queued artist biography refresh job and wake workers after commit.
+def create_artist_bio_refresh_job(
+    connection: Connection,
+    *,
+    user_id: int,
+    artist_id: int,
+    params: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Persist a queued artist biography refresh job and wake sleeping workers after commit."""
+    return _create_job(
+        connection,
+        user_id=user_id,
+        artist_id=artist_id,
+        job_type=ARTIST_BIO_REFRESH_JOB_TYPE,
+        params=params or {"trigger": "artist_biography_update"},
+    )
 
 
 # Read a job only when it belongs to the authenticated user.
@@ -108,8 +146,9 @@ def get_recommendation_job(
             FROM recommendation_jobs
             WHERE id = %s::uuid
               AND user_id = %s
+              AND job_type = %s
             """,
-            (job_id, user_id),
+            (job_id, user_id, ARTIST_PROMOTERS_JOB_TYPE),
         )
         return cursor.fetchone()
 
