@@ -108,7 +108,7 @@ services:
     build:
       context: ./backend
     restart: unless-stopped
-    command: ["python", "-m", "app.recommendation_worker"]
+    command: ["python", "-m", "app.recommendations.worker"]
     env_file:
       - .env
     environment:
