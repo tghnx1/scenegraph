@@ -10,6 +10,10 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 BOOTSTRAP_ADMIN_USERNAME = os.getenv("BOOTSTRAP_ADMIN_USERNAME")
 BOOTSTRAP_ADMIN_EMAIL = os.getenv("BOOTSTRAP_ADMIN_EMAIL")
 BOOTSTRAP_ADMIN_PASSWORD = os.getenv("BOOTSTRAP_ADMIN_PASSWORD")
+BOOTSTRAP_ADMIN_UPDATE_EXISTING = os.getenv(
+    "BOOTSTRAP_ADMIN_UPDATE_EXISTING",
+    "false",
+).strip().lower() in {"1", "true", "yes", "on"}
 BOOTSTRAP_USER_USERNAME = os.getenv("BOOTSTRAP_USER_USERNAME")
 BOOTSTRAP_USER_EMAIL = os.getenv("BOOTSTRAP_USER_EMAIL")
 BOOTSTRAP_USER_PASSWORD = os.getenv("BOOTSTRAP_USER_PASSWORD")
@@ -24,15 +28,13 @@ def create_bootstrap_admin(connection: Connection) -> None:
     with connection.cursor() as cursor:
         cursor.execute(
             """
-            SELECT id
+            SELECT id, username
             FROM users
             WHERE role = 'admin'
             LIMIT 1
             """
         )
         admin = cursor.fetchone()
-        if admin is not None:
-            return
         if (
             not BOOTSTRAP_ADMIN_USERNAME
             or not BOOTSTRAP_ADMIN_EMAIL
@@ -42,6 +44,30 @@ def create_bootstrap_admin(connection: Connection) -> None:
             return
 
         hashed_password = pwd_context.hash(BOOTSTRAP_ADMIN_PASSWORD)
+
+        if admin is not None:
+            if not BOOTSTRAP_ADMIN_UPDATE_EXISTING:
+                return
+            cursor.execute(
+                """
+                UPDATE users
+                SET username = %s,
+                    email = %s,
+                    password_hash = %s,
+                    status = 'approved',
+                    must_change_password = FALSE
+                WHERE id = %s
+                """,
+                (
+                    BOOTSTRAP_ADMIN_USERNAME,
+                    BOOTSTRAP_ADMIN_EMAIL,
+                    hashed_password,
+                    admin["id"],
+                ),
+            )
+            connection.commit()
+            return
+
         cursor.execute(
             """
             INSERT INTO users
