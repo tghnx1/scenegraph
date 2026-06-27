@@ -7,7 +7,7 @@ from types import MappingProxyType
 import pytest
 import yaml
 
-from app.recommendation_config_loader import (
+from app.recommendations.config_loader import (
     DEFAULT_RECOMMENDATION_CONFIG_PATH,
     ConfigError,
     load_recommendation_config,
@@ -118,7 +118,7 @@ def _canonical_config_data() -> dict:
 
 
 def _write_config(tmp_path: Path, config_data: dict) -> Path:
-    config_path = tmp_path / "recommendation_config.yaml"
+    config_path = tmp_path / "config.yaml"
     with config_path.open("w", encoding="utf-8") as config_file:
         yaml.safe_dump(config_data, config_file, sort_keys=False)
     return config_path

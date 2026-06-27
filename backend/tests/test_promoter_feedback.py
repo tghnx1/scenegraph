@@ -5,7 +5,7 @@ from types import MappingProxyType
 import pytest
 import yaml
 
-from app.promoter_feedback import (
+from app.recommendations.promoter_feedback import (
     PromoterContentProfile,
     PromoterFeedbackConfig,
     PromoterFeedbackTuning,
@@ -13,12 +13,12 @@ from app.promoter_feedback import (
     promoter_content_similarity,
     promoter_feedback_config_from_config,
 )
-from app.recommendation_config_loader import RecommendationConfig
+from app.recommendations.config_loader import RecommendationConfig
 from app.schemas import PromoterRecommendationItem
 
 
 CANONICAL_RECOMMENDATION_CONFIG_PATH = (
-    Path(__file__).resolve().parent.parent / "app" / "recommendation_config.yaml"
+    Path(__file__).resolve().parent.parent / "app" / "recommendations" / "config.yaml"
 )
 
 
@@ -87,7 +87,7 @@ def _set_feedback_config(monkeypatch: pytest.MonkeyPatch, **overrides) -> None:
     config_data = deepcopy(_canonical_recommendation_config_data())
     config_data["promoter_feedback"].update(overrides)
     monkeypatch.setattr(
-        "app.promoter_feedback._recommendation_config",
+        "app.recommendations.promoter_feedback._recommendation_config",
         lambda: _recommendation_config_from_data(config_data),
     )
 

@@ -1,9 +1,9 @@
 import pytest
 from fastapi.testclient import TestClient
 from app.db import get_connection
-from app.event_similarity import artist_relevant_source_event_ids
+from app.recommendations.event_similarity import artist_relevant_source_event_ids
 from app.main import app, extracted_tag_score
-from app.recommendation_scoring import (
+from app.recommendations.scoring import (
     DEFAULT_SEMANTIC_ARTIST_TAG_SCORING,
 )
 

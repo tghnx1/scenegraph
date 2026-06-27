@@ -6,8 +6,8 @@ from functools import lru_cache
 
 from psycopg import Connection
 
-from app.event_similarity import event_embedding_similarity_by_candidate
-from app.recommendation_config_loader import load_recommendation_config
+from app.recommendations.event_similarity import event_embedding_similarity_by_candidate
+from app.recommendations.config_loader import load_recommendation_config
 from app.schemas import PromoterRecommendationItem
 
 

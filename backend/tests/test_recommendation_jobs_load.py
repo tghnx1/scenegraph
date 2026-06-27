@@ -8,8 +8,8 @@ import time
 from fastapi.testclient import TestClient
 
 from app.db import get_connection
-from app.recommendation_jobs import claim_next_recommendation_job, complete_recommendation_job, requeue_stale_running_jobs
-from app.recommendation_worker import _drain_queued_jobs
+from app.recommendations.jobs import claim_next_recommendation_job, complete_recommendation_job, requeue_stale_running_jobs
+from app.recommendations.worker import _drain_queued_jobs
 from app.schemas import GraphResponse, PromoterRecommendationResponse
 from app.main import app
 

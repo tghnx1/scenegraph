@@ -9,7 +9,7 @@ import psycopg
 from fastapi import WebSocket
 
 from app.db import DATABASE_URL
-from app.recommendation_jobs import JOB_UPDATED_CHANNEL
+from app.recommendations.jobs import JOB_UPDATED_CHANNEL
 
 
 logger = logging.getLogger(__name__)

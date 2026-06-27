@@ -1,4 +1,4 @@
-from app.event_similarity import event_extracted_genres_by_id
+from app.recommendations.event_similarity import event_extracted_genres_by_id
 
 
 class FakeCursor:

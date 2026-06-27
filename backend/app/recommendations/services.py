@@ -6,8 +6,8 @@ import math
 from fastapi import HTTPException
 from psycopg import Connection
 
-from app.event_similarity import artist_similar_events_scored_rows
-from app.promoter_graph import (
+from app.recommendations.event_similarity import artist_similar_events_scored_rows
+from app.recommendations.promoter_graph import (
     date_recency_score,
     promoter_manual_connection_evidence,
     promoter_recommendation_evidence,
@@ -18,18 +18,18 @@ from app.promoter_graph import (
     project_compact_recommendation_graph,
     promoter_warm_network_evidence,
 )
-from app.promoter_feedback import (
+from app.recommendations.promoter_feedback import (
     apply_promoter_feedback_reranking,
     load_promoter_feedback,
     load_promoter_content_profiles,
     promoter_content_similarities,
     promoter_feedback_config_from_config,
 )
-from app.recommendation_engine import (
+from app.recommendations.engine import (
     apply_artist_indirect_features,
     recommendation_feature_sets,
 )
-from app.recommendation_helpers import (
+from app.recommendations.helpers import (
     artist_semantic_metadata,
     build_artist_semantic_candidates,
     load_promoter_style_sources,
@@ -37,7 +37,7 @@ from app.recommendation_helpers import (
     recommendation_item_metadata,
     shared_tag_values,
 )
-from app.recommendation_scoring import (
+from app.recommendations.scoring import (
     DEFAULT_RECOMMENDATION_SCORING,
     artist_recommendation_min_semantic_score_from_env,
     final_recommendation_score,

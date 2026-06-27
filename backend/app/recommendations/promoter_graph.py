@@ -8,8 +8,8 @@ from typing import Literal
 
 from psycopg import Connection
 
-from app.recommendation_helpers import graph_node_id
-from app.recommendation_scoring import PromoterRecommendationScoringConfig
+from app.recommendations.helpers import graph_node_id
+from app.recommendations.scoring import PromoterRecommendationScoringConfig
 from app.schemas import (
     GraphLink,
     GraphNode,

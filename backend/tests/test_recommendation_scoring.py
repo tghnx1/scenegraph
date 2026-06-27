@@ -5,9 +5,9 @@ from types import MappingProxyType
 import pytest
 import yaml
 
-from app.recommendation_config_loader import RecommendationConfig
-from app.recommendation_services import promoter_recommendation_adjusted_score
-from app.recommendation_scoring import (
+from app.recommendations.config_loader import RecommendationConfig
+from app.recommendations.services import promoter_recommendation_adjusted_score
+from app.recommendations.scoring import (
     DEFAULT_RECOMMENDATION_SCORING,
     PromoterRecommendationScoringConfig,
     SemanticArtistScoringConfig,
@@ -29,7 +29,7 @@ from app.recommendation_scoring import (
 
 
 CANONICAL_RECOMMENDATION_CONFIG_PATH = (
-    Path(__file__).resolve().parent.parent / "app" / "recommendation_config.yaml"
+    Path(__file__).resolve().parent.parent / "app" / "recommendations" / "config.yaml"
 )
 
 
@@ -52,7 +52,7 @@ def _set_promoter_config(monkeypatch: pytest.MonkeyPatch, **overrides) -> None:
     config_data = deepcopy(_canonical_recommendation_config_data())
     config_data["promoter_recommendations"].update(overrides)
     monkeypatch.setattr(
-        "app.recommendation_scoring._recommendation_config",
+        "app.recommendations.scoring._recommendation_config",
         lambda: _recommendation_config_from_data(config_data),
     )
 

@@ -4,7 +4,7 @@ from fastapi import HTTPException
 from psycopg import Connection
 
 from app.embeddings import EmbeddingConfig, EntityType, rank_similar_embeddings
-from app.recommendation_scoring import (
+from app.recommendations.scoring import (
     SemanticArtistTagScoringConfig,
     semantic_artist_scoring_from_env,
     semantic_artist_tag_scoring_from_env,

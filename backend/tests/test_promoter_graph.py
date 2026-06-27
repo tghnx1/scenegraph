@@ -1,5 +1,5 @@
-from app.promoter_graph import project_path_subgraph, promoter_recommendation_reasons, promoter_recommendation_status
-from app.recommendation_scoring import promoter_recommendation_scoring_from_config
+from app.recommendations.promoter_graph import project_path_subgraph, promoter_recommendation_reasons, promoter_recommendation_status
+from app.recommendations.scoring import promoter_recommendation_scoring_from_config
 from app.schemas import GraphLink, GraphNode
 
 

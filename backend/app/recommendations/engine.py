@@ -3,9 +3,9 @@ from __future__ import annotations
 from psycopg import Connection
 
 from app.embeddings import EmbeddingConfig, EntityType, rank_similar_embeddings
-from app.event_similarity import event_extracted_genres_by_id
-from app.recommendation_helpers import recommendation_item_metadata
-from app.recommendation_scoring import (
+from app.recommendations.event_similarity import event_extracted_genres_by_id
+from app.recommendations.helpers import recommendation_item_metadata
+from app.recommendations.scoring import (
     DEFAULT_RECOMMENDATION_SCORING,
     final_recommendation_score,
     hybrid_graph_score,

@@ -8,9 +8,9 @@ from fastapi import APIRouter, Depends, HTTPException, Query, WebSocket, WebSock
 
 from app.auth import _user_id_from_jwt, get_current_user_id
 from app.db import get_connection
-from app.recommendation_job_events import recommendation_job_socket_hub
-from app.recommendation_jobs import create_recommendation_job, get_recommendation_job
-from app.recommendation_scoring import promoter_recommendation_api_limit_max_from_config
+from app.recommendations.job_events import recommendation_job_socket_hub
+from app.recommendations.jobs import create_recommendation_job, get_recommendation_job
+from app.recommendations.scoring import promoter_recommendation_api_limit_max_from_config
 from app.schemas import (
     PromoterRecommendationResponse,
     RecommendationJobCreatedResponse,

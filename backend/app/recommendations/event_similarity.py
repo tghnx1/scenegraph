@@ -3,7 +3,7 @@ from __future__ import annotations
 from psycopg import Connection
 
 from app.embeddings import EmbeddingConfig, cosine_similarity, embedding_vector_supported
-from app.recommendation_scoring import (
+from app.recommendations.scoring import (
     PromoterRecommendationScoringConfig,
     promoter_recommendation_scoring_from_config,
 )

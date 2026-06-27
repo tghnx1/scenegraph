@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException
 
 from app.db import get_connection
-from app.recommendation_helpers import ensure_feedback_entity_exists
+from app.recommendations.helpers import ensure_feedback_entity_exists
 from app.schemas import (
     ArtistKnownConnectionItem,
     ArtistKnownConnectionRequest,

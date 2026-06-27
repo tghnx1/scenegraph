@@ -7,14 +7,14 @@ from typing import Any
 import psycopg
 
 from app.db import DATABASE_URL, get_connection
-from app.recommendation_jobs import (
+from app.recommendations.jobs import (
     JOB_CREATED_CHANNEL,
     claim_next_recommendation_job,
     complete_recommendation_job,
     fail_recommendation_job,
     requeue_stale_running_jobs,
 )
-from app.recommendation_services import build_artist_promoter_recommendation_response
+from app.recommendations.services import build_artist_promoter_recommendation_response
 from app.schemas import RecommendationJobParams
 
 

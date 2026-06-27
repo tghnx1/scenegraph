@@ -8,7 +8,7 @@ from typing import Any, Mapping
 import yaml
 
 
-DEFAULT_RECOMMENDATION_CONFIG_PATH = Path(__file__).with_name("recommendation_config.yaml")
+DEFAULT_RECOMMENDATION_CONFIG_PATH = Path(__file__).with_name("config.yaml")
 
 
 class ConfigError(ValueError):

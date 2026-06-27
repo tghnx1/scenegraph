@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from typing import Literal
 
 from app.embeddings import EntityType
-from app.recommendation_config_loader import load_recommendation_config
+from app.recommendations.config_loader import load_recommendation_config
 
 
 GraphFeature = Literal["artists", "events", "venues", "promoters", "genres", "extracted_genres"]

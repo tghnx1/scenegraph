@@ -21,9 +21,9 @@ from app.db import (
     reset_current_request_path,
     set_current_request_path,
 )
-from app.recommendation_helpers import extracted_tag_score
+from app.recommendations.helpers import extracted_tag_score
 from app.schema_preflight import check_schema_tables, schema_preflight_strict_mode
-from app.recommendation_job_events import listen_for_recommendation_job_updates
+from app.recommendations.job_events import listen_for_recommendation_job_updates
 from app.schemas import (
     LoginRequest,
     LoginResponse,
