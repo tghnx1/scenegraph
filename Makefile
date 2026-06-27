@@ -13,7 +13,7 @@ FULL_PIPELINE_MAX_DATE ?=
 FULL_PIPELINE_CDP_URL ?= http://127.0.0.1:9222
 FULL_PIPELINE_VALIDATE_ARTIST_ID ?=
 FULL_PIPELINE_DEDUP_WITH_DB ?= yes
-FULL_PIPELINE_SKIP_BIO ?= no
+FULL_PIPELINE_SKIP_BIO ?= yes
 FULL_PIPELINE_SKIP_TAGS ?= no
 FULL_PIPELINE_SKIP_EMBEDDINGS ?= no
 FULL_PIPELINE_EVENTS_JSON ?=
@@ -40,11 +40,16 @@ help:
 	@printf "\n"
 	@printf "  make env      Create .env from .env.example if missing\n"
 	@printf "  make cert     Generate nginx self-signed TLS certificate\n"
+	@printf "                flags: CERT_NAMES='localhost 127.0.0.1'\n"
 	@printf "  make build    Build local dev images only (usually unnecessary; make upd builds as needed)\n"
 	@printf "  make up       Start local dev stack in foreground with recommendation-worker count from .env (fallback: 1)\n"
+	@printf "                flags: RECOMMENDATION_WORKER=3\n"
 	@printf "  make upd      Start local dev stack in background (recommended default)\n"
+	@printf "                flags: RECOMMENDATION_WORKER=3\n"
 	@printf "  make upd-build Start production-like stack in background with nginx serving built frontend dist\n"
+	@printf "                flags: RECOMMENDATION_WORKER=3\n"
 	@printf "  make debug-up Start stack with backend connecting to the PyCharm debug server on localhost:5678\n"
+	@printf "                flags: RECOMMENDATION_WORKER=3 PYCHARM_DEBUG_HOST=host.docker.internal PYCHARM_DEBUG_PORT=5678 PYCHARM_DEBUG_SUSPEND=0\n"
 	@printf "  make debug-down Stop the debug stack\n"
 	@printf "  make down     Stop and remove containers\n"
 	@printf "  make stop     Stop running containers\n"
@@ -54,8 +59,17 @@ help:
 	@printf "  make prisma-migrate Apply Prisma migrations to Postgres\n"
 	@printf "  make db-shell Open a psql shell inside the Postgres container\n"
 	@printf "  make full-pipeline Preferred end-to-end import/enrichment flow in Docker\n"
+	@printf "                flags: FULL_PIPELINE_MIN_DATE=2024-01-01 FULL_PIPELINE_MAX_DATE=2024-12-31 FULL_PIPELINE_CDP_URL=http://127.0.0.1:9222\n"
+	@printf "                       FULL_PIPELINE_EVENTS_JSON=backend/data/events.json FULL_PIPELINE_ARTIFACTS_DIR=backend/data/import_runs\n"
+	@printf "                       FULL_PIPELINE_VALIDATE_ARTIST_ID=2178 FULL_PIPELINE_DEDUP_WITH_DB=yes|no\n"
+	@printf "                       FULL_PIPELINE_SKIP_BIO=yes|no (default yes) FULL_PIPELINE_SKIP_TAGS=yes|no FULL_PIPELINE_SKIP_EMBEDDINGS=yes|no\n"
 	@printf "  make import-dump   Import local/remote dump with interactive safety prompts\n"
-	@printf "  make export-dump   Export DB_NAME or .env/explicit DATABASE_URL dump; supports OUT=... FORMAT=sql|custom\n"
+	@printf "                flags: DUMP=/abs/path/dump.sql DUMP_FORMAT=sql|custom DB_NAME=scenegraph_check DATABASE_URL=postgresql://...\n"
+	@printf "                       RESET_DB=1 PG_CLIENT_IMAGE=postgres:18 REMOTE_RESTORE_MODE=clean|data-only\n"
+	@printf "                       CONFIRM_IMPORT=IMPORT-REMOTE IMPORT_DUMP_NONINTERACTIVE=1\n"
+	@printf "  make export-dump   Export DB_NAME or .env/explicit DATABASE_URL dump\n"
+	@printf "                flags: DB_NAME=scenegraph_check DATABASE_URL=postgresql://... OUT=/abs/path/backup.dump FORMAT=sql|custom\n"
+	@printf "                       PG_DUMP_IMAGE=postgres:18 EXCLUDE_TABLES='_emb_snapshot_*' EXPORT_DUMP_NONINTERACTIVE=1\n"
 	@printf "  make up/upd/upd-build auto-generate nginx SSL certs if nginx/certs is missing them\n"
 	@printf "  make clean    Stop stack and remove containers (keeps DB volumes and preserves .env)\n"
 	@printf "  make list     List Docker resources\n"
