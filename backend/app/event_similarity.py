@@ -6,7 +6,7 @@ from psycopg import Connection
 from app.embeddings import EmbeddingConfig, cosine_similarity, embedding_vector_supported
 from app.recommendation_scoring import (
     PromoterRecommendationScoringConfig,
-    promoter_recommendation_scoring_from_env,
+    promoter_recommendation_scoring_from_config,
 )
 from app.schemas import ArtistSimilarEventItem, ArtistSimilarEventsResponse
 from app.style_tags import extract_style_tags
@@ -836,7 +836,7 @@ def build_artist_similar_events_response(
         raise HTTPException(status_code=404, detail=f"Artist {artist_id} not found")
 
     config = EmbeddingConfig.from_env()
-    scoring_config = promoter_recommendation_scoring_from_env()
+    scoring_config = promoter_recommendation_scoring_from_config()
     scored_rows, embedding_dimensions, similar_events_debug_counts = artist_similar_events_scored_rows(
         connection,
         source_artist_id=artist_id,

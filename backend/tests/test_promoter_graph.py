@@ -1,5 +1,5 @@
 from app.promoter_graph import project_path_subgraph, promoter_recommendation_reasons, promoter_recommendation_status
-from app.recommendation_scoring import DEFAULT_PROMOTER_RECOMMENDATION_SCORING
+from app.recommendation_scoring import promoter_recommendation_scoring_from_config
 from app.schemas import GraphLink, GraphNode
 
 
@@ -94,7 +94,7 @@ def test_promoter_recommendation_status_marks_manual_as_warm_relevant():
         "manual_warm_connection_count": 1,
     }
 
-    status = promoter_recommendation_status(row, DEFAULT_PROMOTER_RECOMMENDATION_SCORING)
+    status = promoter_recommendation_status(row, promoter_recommendation_scoring_from_config())
 
     assert status == "warm_relevant"
 

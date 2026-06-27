@@ -160,66 +160,7 @@ DEFAULT_RECOMMENDATION_SCORING = RecommendationScoringConfig(
 )
 
 
-DEFAULT_PROMOTER_RECOMMENDATION_SCORING = PromoterRecommendationScoringConfig(
-    semantic_weight=0.25,
-    strength_weight=0.16,
-    direct_connection_weight=0.16,
-    co_played_connection_weight=0.16,
-    manual_connection_weight=0.09,
-    event_similarity_weight=0.10,
-    scale_fit_weight=0.08,
-    activity_weight=0.02,
-    recency_weight=0.01,
-    strength_matched_artist_weight=0.60,
-    strength_event_weight=0.40,
-    strength_matched_artist_cap=5,
-    strength_event_cap=20,
-    direct_connection_cap=3,
-    warm_connection_cap=3,
-    manual_warm_connection_cap=1,
-    manual_warm_min_artist_semantic_score=0.45,
-    event_similarity_count_cap=8,
-    event_similarity_min_total_score=0.45,
-    event_similarity_min_embedding_score=0.0,
-    event_similarity_semantic_only=False,
-    event_similarity_per_promoter_limit=20,
-    event_similarity_symbolic_weight=0.6,
-    event_similarity_embedding_weight=0.4,
-    event_similarity_same_venue_weight=0.5,
-    event_similarity_shared_genre_weight=0.1,
-    event_similarity_shared_lineup_weight=0.2,
-    event_similarity_extracted_genre_weight=0.3,
-    event_similarity_shared_theme_bonus=0.03,
-    event_similarity_shared_mood_bonus=0.02,
-    activity_event_cap=25,
-    existing_partner_direct_min=1,
-    warm_relevant_connection_min=1,
-    direct_edge_strength_min=0.8,
-    direct_edge_strength_max=1.0,
-    warm_edge_strength_min=0.5,
-    warm_edge_strength_max=0.8,
-    event_similarity_edge_strength_min=0.2,
-    event_similarity_edge_strength_max=0.7,
-    scale_fit_alpha=75.0,
-    scale_fit_tau=0.55,
-    sql_candidate_limit=200,
-    semantic_artist_pool_limit=20,
-    semantic_artist_min_score=0.45,
-    event_similarity_overfetch_multiplier=20,
-    event_similarity_overfetch_min=500,
-    source_event_relevance_gate_enabled=True,
-    source_event_relevance_min_embedding_score=0.45,
-    source_event_relevance_top_k=6,
-)
-
 DEFAULT_PROMOTER_RECOMMENDATION_MATCHING_MODE: PromoterRecommendationMatchingMode = "semantic_v2"
-
-DEFAULT_PROMOTER_SEGMENT_QUOTA_RATIOS: dict[str, dict[str, float]] = {
-    "small": {"small": 0.50, "medium": 0.35, "large": 0.15},
-    "medium": {"small": 0.15, "medium": 0.50, "large": 0.35},
-    "large": {"small": 0.15, "medium": 0.35, "large": 0.50},
-}
-DEFAULT_PROMOTER_SEGMENT_WARM_SHARE = 0.70
 
 SEGMENT_NAMES = ("small", "medium", "large")
 
@@ -361,8 +302,8 @@ def semantic_artist_tag_scoring_from_env() -> SemanticArtistTagScoringConfig:
         role_overlap_cap=role_overlap_cap,
     )
 
-# Build full Artist -> Promoter scoring config from environment.
-def promoter_recommendation_scoring_from_env() -> PromoterRecommendationScoringConfig:
+# Build full Artist -> Promoter scoring config from recommendation config.
+def promoter_recommendation_scoring_from_config() -> PromoterRecommendationScoringConfig:
     config_values = _recommendation_config().promoter_recommendations
     weights = normalized_weights(
         (
@@ -506,7 +447,7 @@ def promoter_recommendation_scoring_from_env() -> PromoterRecommendationScoringC
     )
 
 # Read and validate API max limit for promoter recommendation endpoint.
-def promoter_recommendation_api_limit_max_from_env() -> int:
+def promoter_recommendation_api_limit_max_from_config() -> int:
     return _recommendation_config().promoter_recommendations["PROMOTER_REC_API_LIMIT_MAX"]
 
 
@@ -517,7 +458,7 @@ def artist_recommendation_min_semantic_score_from_env() -> float:
     return value
 
 
-def promoter_segment_quota_ratios_from_env() -> dict[str, dict[str, float]]:
+def promoter_segment_quota_ratios_from_config() -> dict[str, dict[str, float]]:
     """Return normalized per-source segment quota ratios for final promoter recommendation mix."""
     config_values = _recommendation_config().promoter_recommendations
     config: dict[str, dict[str, float]] = {}
@@ -537,7 +478,7 @@ def promoter_segment_quota_ratios_from_env() -> dict[str, dict[str, float]]:
     return config
 
 
-def promoter_segment_warm_share_from_env() -> float:
+def promoter_segment_warm_share_from_config() -> float:
     """Return max warm/manual share per segment quota for final recommendation mix."""
     return _recommendation_config().promoter_recommendations["PROMOTER_REC_SEGMENT_WARM_SHARE"]
 

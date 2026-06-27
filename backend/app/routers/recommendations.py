@@ -4,12 +4,12 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.db import get_connection
 from app.auth import get_current_user_id
-from app.recommendation_scoring import promoter_recommendation_api_limit_max_from_env
+from app.recommendation_scoring import promoter_recommendation_api_limit_max_from_config
 from app.recommendation_services import build_artist_promoter_recommendation_response
 from app.schemas import ArtistTagItem, ArtistTagsResponse, PromoterRecommendationResponse
 
 router = APIRouter()
-PROMOTER_REC_API_LIMIT_MAX = promoter_recommendation_api_limit_max_from_env()
+PROMOTER_REC_API_LIMIT_MAX = promoter_recommendation_api_limit_max_from_config()
 
 
 

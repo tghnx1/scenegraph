@@ -52,7 +52,7 @@ Primary Endpoint: `GET /api/recommendations/artists/{artist_id}/promoters`
 - Event similarity is hybrid: symbolic overlap + embedding similarity.
 - Graph/evidence is required and must explain ranking signals.
 - Recommendation behavior should bias toward net-new opportunities by default.
-- All scoring and candidate-depth knobs should remain configurable through environment variables.
+- Promoter recommendation and feedback tuning now live in `backend/app/recommendation_config.yaml`; other recommendation knobs may remain environment-configurable where they are still runtime-backed.
 
 ## Validation Snapshot
 

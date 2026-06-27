@@ -5,7 +5,6 @@ from app.event_similarity import artist_relevant_source_event_ids
 from app.main import app, extracted_tag_score
 from app.recommendation_scoring import (
     DEFAULT_SEMANTIC_ARTIST_TAG_SCORING,
-    promoter_recommendation_scoring_from_env,
 )
 
 # docker compose exec backend sh -lc 'cd /app && pytest tests/test_graph_api.py -q'

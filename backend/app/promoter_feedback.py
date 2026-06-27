@@ -41,7 +41,7 @@ def _recommendation_config():
     return load_recommendation_config()
 
 
-def promoter_feedback_config_from_env() -> PromoterFeedbackConfig:
+def promoter_feedback_config_from_config() -> PromoterFeedbackConfig:
     config_values = _recommendation_config().promoter_feedback
     return PromoterFeedbackConfig(
         exact_positive_boost=config_values["PROMOTER_FEEDBACK_EXACT_POSITIVE_BOOST"],

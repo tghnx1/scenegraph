@@ -17,10 +17,10 @@ from app.recommendation_scoring import (
     hybrid_graph_score,
     is_similarity_candidate_eligible,
     normalized_weights,
-    promoter_segment_quota_ratios_from_env,
-    promoter_segment_warm_share_from_env,
-    promoter_recommendation_api_limit_max_from_env,
-    promoter_recommendation_scoring_from_env,
+    promoter_segment_quota_ratios_from_config,
+    promoter_segment_warm_share_from_config,
+    promoter_recommendation_api_limit_max_from_config,
+    promoter_recommendation_scoring_from_config,
     recommendation_scoring_from_env,
     semantic_artist_score,
     semantic_artist_scoring_from_env,
@@ -227,7 +227,7 @@ def test_promoter_recommendation_scoring_reads_and_normalizes_config(monkeypatch
         PROMOTER_REC_SOURCE_EVENT_RELEVANCE_TOP_K=4,
     )
 
-    config = promoter_recommendation_scoring_from_env()
+    config = promoter_recommendation_scoring_from_config()
 
     assert config == PromoterRecommendationScoringConfig(
         semantic_weight=0.35,
@@ -331,14 +331,14 @@ def test_promoter_recommendation_scoring_uses_config_genre_weight_without_alias(
         PROMOTER_REC_EVENT_SIMILARITY_SHARED_LINEUP_WEIGHT=30.0,
     )
 
-    config = promoter_recommendation_scoring_from_env()
+    config = promoter_recommendation_scoring_from_config()
 
     assert round(config.event_similarity_extracted_genre_weight, 4) == 0.2
 
 
 def test_promoter_recommendation_api_limit_max_reads_config(monkeypatch):
     _set_promoter_config(monkeypatch, PROMOTER_REC_API_LIMIT_MAX=75)
-    assert promoter_recommendation_api_limit_max_from_env() == 75
+    assert promoter_recommendation_api_limit_max_from_config() == 75
 
 
 def test_promoter_segment_quota_ratios_read_from_config(monkeypatch):
@@ -355,7 +355,7 @@ def test_promoter_segment_quota_ratios_read_from_config(monkeypatch):
         PROMOTER_REC_SEGMENT_QUOTA_LARGE_LARGE=0.7,
     )
 
-    ratios = promoter_segment_quota_ratios_from_env()
+    ratios = promoter_segment_quota_ratios_from_config()
 
     assert ratios["small"]["small"] == pytest.approx(0.7)
     assert ratios["small"]["medium"] == pytest.approx(0.2)
@@ -370,7 +370,7 @@ def test_promoter_segment_quota_ratios_read_from_config(monkeypatch):
 
 def test_promoter_segment_warm_share_reads_config(monkeypatch):
     _set_promoter_config(monkeypatch, PROMOTER_REC_SEGMENT_WARM_SHARE=0.65)
-    assert promoter_segment_warm_share_from_env() == 0.65
+    assert promoter_segment_warm_share_from_config() == 0.65
 
 
 def test_artist_recommendation_min_semantic_score_reads_env(monkeypatch):

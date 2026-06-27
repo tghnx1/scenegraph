@@ -24,7 +24,7 @@ from app.promoter_feedback import (
     load_promoter_feedback,
     load_promoter_content_profiles,
     promoter_content_similarities,
-    promoter_feedback_config_from_env,
+    promoter_feedback_config_from_config,
 )
 from app.recommendation_engine import (
     apply_artist_indirect_features,
@@ -43,10 +43,10 @@ from app.recommendation_scoring import (
     artist_recommendation_min_semantic_score_from_env,
     final_recommendation_score,
     hybrid_graph_score,
-    promoter_segment_quota_ratios_from_env,
-    promoter_segment_warm_share_from_env,
+    promoter_segment_quota_ratios_from_config,
+    promoter_segment_warm_share_from_config,
     promoter_recommendation_matching_mode_from_env,
-    promoter_recommendation_scoring_from_env,
+    promoter_recommendation_scoring_from_config,
 )
 from app.style_tags import style_overlap_score
 from app.schemas import (
@@ -366,7 +366,7 @@ def build_artist_promoter_recommendation_response(
     user_id: int,
 ) -> PromoterRecommendationResponse:
     """Build Artist -> Promoter recommendations with all weighted internal signals."""
-    scoring_config = promoter_recommendation_scoring_from_env()
+    scoring_config = promoter_recommendation_scoring_from_config()
     source, semantic_candidates = build_artist_semantic_candidates(
         connection,
         artist_id=artist_id,
@@ -1227,7 +1227,7 @@ def build_artist_promoter_recommendation_response(
         user_id=user_id,
         artist_id=artist_id,
     )
-    feedback_config = promoter_feedback_config_from_env()
+    feedback_config = promoter_feedback_config_from_config()
     content_similarity_by_promoter_id = promoter_content_similarities(
         connection,
         candidate_promoter_ids=[recommendation.id for recommendation in recommendations],
@@ -1250,9 +1250,9 @@ def build_artist_promoter_recommendation_response(
     )
     segment_order = promoter_segment_sort_order(source_artist_size_segment)
     size_sort_order = {segment: index for index, segment in enumerate(segment_order)}
-    segment_quota_ratios_by_source = promoter_segment_quota_ratios_from_env()
+    segment_quota_ratios_by_source = promoter_segment_quota_ratios_from_config()
     segment_quota_ratios = segment_quota_ratios_by_source[source_artist_size_segment]
-    segment_warm_share = promoter_segment_warm_share_from_env()
+    segment_warm_share = promoter_segment_warm_share_from_config()
     applied_segment_quotas = segment_quota_counts(
         limit=limit,
         segment_order=segment_order,

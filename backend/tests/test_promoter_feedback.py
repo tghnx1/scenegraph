@@ -11,7 +11,7 @@ from app.promoter_feedback import (
     PromoterFeedbackTuning,
     apply_promoter_feedback_reranking,
     promoter_content_similarity,
-    promoter_feedback_config_from_env,
+    promoter_feedback_config_from_config,
 )
 from app.recommendation_config_loader import RecommendationConfig
 from app.schemas import PromoterRecommendationItem
@@ -206,7 +206,7 @@ def test_feedback_boost_is_capped():
 
 
 def test_promoter_feedback_config_uses_config_defaults():
-    config = promoter_feedback_config_from_env()
+    config = promoter_feedback_config_from_config()
 
     assert config.exact_positive_boost == pytest.approx(0.10)
     assert config.similar_positive_boost == pytest.approx(0.03)
@@ -225,7 +225,7 @@ def test_promoter_feedback_config_reads_config_override(monkeypatch):
         PROMOTER_FEEDBACK_SIMILAR_PROMOTER_LIMIT=7,
     )
 
-    config = promoter_feedback_config_from_env()
+    config = promoter_feedback_config_from_config()
 
     assert config == PromoterFeedbackConfig(
         exact_positive_boost=0.12,
