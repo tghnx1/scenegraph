@@ -103,9 +103,6 @@ class PromoterRecommendationScoringConfig:
     source_event_relevance_top_k: int
 
 
-PromoterRecommendationMatchingMode = Literal["legacy", "semantic_v2"]
-
-
 DEFAULT_SEMANTIC_ARTIST_SCORING = SemanticArtistScoringConfig(
     embedding_weight=0.65,
     style_weight=0.25,
@@ -152,8 +149,6 @@ DEFAULT_RECOMMENDATION_SCORING = RecommendationScoringConfig(
     ),
 )
 
-
-DEFAULT_PROMOTER_RECOMMENDATION_MATCHING_MODE: PromoterRecommendationMatchingMode = "semantic_v2"
 
 SEGMENT_NAMES = ("small", "medium", "large")
 
@@ -220,18 +215,6 @@ def env_bool(name: str, default: bool) -> bool:
         return False
     raise ValueError(f"{name} must be a boolean value")
 
-
-def promoter_recommendation_matching_mode_from_env() -> PromoterRecommendationMatchingMode:
-    raw = os.environ.get(
-        "PROMOTER_RECOMMENDATION_MATCHING_MODE",
-        DEFAULT_PROMOTER_RECOMMENDATION_MATCHING_MODE,
-    )
-    mode = raw.strip().casefold()
-    if mode not in {"legacy", "semantic_v2"}:
-        raise ValueError(
-            "PROMOTER_RECOMMENDATION_MATCHING_MODE must be one of: legacy, semantic_v2"
-        )
-    return mode  # type: ignore[return-value]
 
 # Build semantic-artist scoring config from environment variables.
 def semantic_artist_scoring_from_env() -> SemanticArtistScoringConfig:
