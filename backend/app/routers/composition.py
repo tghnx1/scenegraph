@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
 from typing import Any, List, Optional
-from app.main import require_admin
+from app.auth import require_admin
 from app.db import get_connection
 
 router = APIRouter()

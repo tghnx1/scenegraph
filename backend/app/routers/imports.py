@@ -8,7 +8,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from app.main import require_admin
+from app.auth import require_admin
 from app.db import get_connection
 
 router = APIRouter()
