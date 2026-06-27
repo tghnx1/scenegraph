@@ -29,12 +29,12 @@ Primary Endpoint: `GET /api/recommendations/artists/{artist_id}/promoters`
 - `d39f067`: interested-count size signal in similar-events rerank.
 - `64f3dcb`: internal `eventSimilarity` in `Artist -> Promoters` now uses similar-events pipeline.
 - `91064a0`: manual artist connections support + warm evidence details.
-- `95ebcd2`: candidate/overfetch/API recommendation limits moved to env.
+- `95ebcd2`: candidate/overfetch/API recommendation limits were introduced as runtime knobs; promoter-specific ones now live in `backend/app/recommendation_config.yaml`.
 - `c296d77`: promoter reasons now include concrete names/titles instead of counts only.
 
 ### In Progress
 
-- [ ] in_progress: calibration of scoring weights from real feedback cycles (`.env`-driven, no hardcoded weights).
+- [ ] in_progress: calibration of scoring weights from real feedback cycles (config-driven for promoter recommendations, no hardcoded promoter weights).
 
 ### Next (Top Priority)
 
