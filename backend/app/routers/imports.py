@@ -1,19 +1,15 @@
-import json
-from pathlib import Path
-import re
-import subprocess
-import tempfile
+from __future__ import annotations
+
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
+from app.admin import imports as admin_imports_service
 from app.auth import require_admin
 from app.db import get_connection
 
 router = APIRouter()
-
-SAFE_FILENAME_RE = re.compile(r"[^A-Za-z0-9_.-]+")
 
 
 class ImportResponse(BaseModel):
@@ -30,101 +26,23 @@ class ImportRequest(BaseModel):
     payload: Any
 
 
-def safe_import_filename(filename: str) -> str:
-    name = Path(filename).name.strip()
-    if not name.lower().endswith(".json"):
-        raise HTTPException(status_code=400, detail="Import file must be a JSON file")
-    return SAFE_FILENAME_RE.sub("_", name) or "dashboard-import.json"
-
-
-def imported_source_ids(payload: Any) -> list[str]:
-    events = payload.get("events", []) if isinstance(payload, dict) else payload
-    if not isinstance(events, list):
-        raise HTTPException(status_code=400, detail="Import JSON must be a list or an object with an events list")
-
-    ids: list[str] = []
-    for event in events:
-        if isinstance(event, dict) and event.get("id") is not None:
-            ids.append(str(event["id"]))
-    return ids
-
-
 @router.post("/import", response_model=ImportResponse)
 def run_import(
     request: ImportRequest,
     admin: dict = Depends(require_admin),
 ) -> ImportResponse:
-    """Run import work first, then use a short DB checkout for the summary write."""
-    filename = safe_import_filename(request.filename)
-    source_ids = imported_source_ids(request.payload)
-    if not source_ids:
-        raise HTTPException(status_code=400, detail="Import JSON does not contain any event ids")
+    filename, source_ids = admin_imports_service.run_dashboard_import(
+        filename=request.filename,
+        payload=request.payload,
+    )
 
-    with tempfile.NamedTemporaryFile(
-        mode="w",
-        encoding="utf-8",
-        suffix=f"-{filename}",
-        prefix="dashboard-import-",
-        dir="/tmp",
-        delete=False,
-    ) as temp_file:
-        json.dump(request.payload, temp_file)
-        temp_path = Path(temp_file.name)
-
-    try:
-        result = subprocess.run(
-            ["python", "scripts/import_events.py", str(temp_path)],
-            cwd="/app",
-            check=True,
-            capture_output=True,
-            text=True,
-            timeout=60,
+    with get_connection() as connection:
+        event, imported_count = admin_imports_service.summarize_import(
+            connection,
+            source_ids=source_ids,
+            filename=filename,
+            admin=admin,
         )
-    except subprocess.TimeoutExpired as exc:
-        raise HTTPException(status_code=504, detail="Import timed out") from exc
-    except subprocess.CalledProcessError as exc:
-        detail = (exc.stderr or exc.stdout or "Import failed").strip()
-        raise HTTPException(status_code=500, detail=detail) from exc
-    finally:
-        temp_path.unlink(missing_ok=True)
-
-    with get_connection() as db:
-        with db.cursor() as cursor:
-            cursor.execute(
-                """
-                SELECT id, title
-                FROM events
-                WHERE ra_event_id = ANY(%s)
-                ORDER BY id DESC
-                LIMIT 1
-                """,
-                (source_ids,),
-            )
-            event = cursor.fetchone()
-
-            cursor.execute(
-                """
-                SELECT COUNT(*) AS imported_count
-                FROM events
-                WHERE ra_event_id = ANY(%s)
-                """,
-                (source_ids,),
-            )
-            imported_count = int(cursor.fetchone()["imported_count"])
-
-            cursor.execute(
-                """
-                INSERT INTO activity_log (user_id, username, event_type, target)
-                VALUES (%s, %s, %s, %s)
-                """,
-                (
-                    admin["id"],
-                    admin["username"],
-                    "dashboard import completed",
-                    filename,
-                ),
-            )
-        db.commit()
 
     return ImportResponse(
         success=True,
