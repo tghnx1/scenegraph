@@ -4,6 +4,7 @@ from typing import List, Optional
 from app.db import get_connection
 from app.style_tags import canonicalize_style_tags, extract_style_tags
 from app.auth import get_current_user_id
+from app.text_profiles import normalize_biography_text
 
 router = APIRouter()
 
@@ -231,16 +232,18 @@ async def update_artist_biography(
             )
         
         biography = request.biography.strip()
+        biography_normalized = normalize_biography_text(biography)
         with db.cursor() as cur:
             cur.execute(
                 """
                 UPDATE artists
                 SET biography = %s,
+                    biography_normalized = %s,
                     biography_status = 'manually_edited'
                 WHERE id = %s
-                RETURNING id, name, biography;
+                RETURNING id, name, biography, biography_normalized;
                 """,
-                (biography, id),
+                (biography, biography_normalized, id),
             )
             artist = cur.fetchone()
 
