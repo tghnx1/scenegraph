@@ -255,32 +255,6 @@ class RecommendationJobResponse(BaseModel):
     updatedAt: datetime
 
 
-class ArtistSimilarEventItem(BaseModel):
-    id: int
-    type: Literal["event"] = "event"
-    name: str
-    score: float
-    scoreBreakdown: dict[str, float] = Field(default_factory=dict)
-    eventDate: DateValue | None = None
-    venueName: str | None = None
-    promoterId: int | None = None
-    promoterName: str | None = None
-    sourceEventId: int
-    sourceEventName: str
-    sourceEventDate: DateValue | None = None
-    reasons: list[str] = Field(default_factory=list)
-    debug: dict[str, object] | None = None
-
-
-class ArtistSimilarEventsResponse(BaseModel):
-    entityId: int
-    entityType: Literal["artist"] = "artist"
-    model: str
-    dimensions: int | None = None
-    similarEvents: list[ArtistSimilarEventItem]
-    debug: dict[str, object] | None = None
-
-
 class ArtistTagItem(BaseModel):
     type: Literal["style", "label", "collective", "role", "residency", "alias"]
     value: str
