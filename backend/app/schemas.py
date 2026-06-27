@@ -149,7 +149,7 @@ class SemanticArtistResponse(BaseModel):
 
 
 class RecommendationEvidenceItem(BaseModel):
-    type: Literal["semantic_bridge", "direct_connection", "warm_network", "manual_connection", "event_similarity"]
+    type: Literal["semantic_bridge", "warm_network", "manual_connection", "event_similarity"]
     path: str
 
 
@@ -203,7 +203,6 @@ class PromoterRecommendationItem(BaseModel):
     manualConnectionArtists: list[WarmConnectionArtistItem] = Field(default_factory=list)
     promoterInterestedSum: int = 0
     promoterSizeSegment: Literal["small", "medium", "large"] = "small"
-    directConnectionCount: int = 0
     evidence: list[RecommendationEvidenceItem] = Field(default_factory=list)
     reasonDetails: PromoterRecommendationReasonDetails = Field(
         default_factory=PromoterRecommendationReasonDetails
@@ -232,7 +231,6 @@ RecommendationJobStatus = Literal["queued", "running", "completed", "failed"]
 
 class RecommendationJobParams(BaseModel):
     limit: int = Field(default=50, ge=1)
-    excludeExisting: bool = True
     debug: bool = False
 
 

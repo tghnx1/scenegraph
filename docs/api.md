@@ -63,7 +63,6 @@ The response includes recommendation scores, reasons, evidence paths, segmented 
 Useful query parameters:
 
 - `limit` - number of recommendations
-- `exclude_existing` - exclude existing promoter relationships
 - `debug` - include additional scoring details
 
 ## Graph endpoints

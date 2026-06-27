@@ -121,7 +121,7 @@ curl -s -X POST "http://localhost:8080/api/artists/2178/known-artists" \
 
 ### Рекомендации с debug
 ```bash
-curl -s "http://localhost:8080/api/recommendations/artists/2178/promoters?limit=50&exclude_existing=false&debug=true" \
+curl -s "http://localhost:8080/api/recommendations/artists/2178/promoters?limit=50&debug=true" \
   > /tmp/promoters_2178_debug.json
 ```
 

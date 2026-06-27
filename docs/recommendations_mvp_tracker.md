@@ -10,7 +10,7 @@ Primary Endpoint: `GET /api/recommendations/artists/{artist_id}/promoters`
 - [x] done: similar artists/events are internal evidence, not final product
 - [x] done: endpoint centered on `/api/recommendations/artists/{artist_id}/promoters`
 - [x] done: graph evidence layer included in response
-- [x] done: defaults favor new opportunities (`exclude_existing=true`, `exclude_same_promoter=true`)
+- [x] done: same-promoter filtering remains enabled for event-similarity discovery
 - [x] done: overfetch before strict filtering to preserve output `limit`
 - [x] done: event similarity internal knobs moved to `.env` (no hardcoded candidate/overfetch/api-limit literals)
 - [x] done: reasons enriched with names (artists and event titles)
@@ -21,7 +21,7 @@ Primary Endpoint: `GET /api/recommendations/artists/{artist_id}/promoters`
 
 ### Done
 
-- `12772d5`: default to new opportunities via `exclude_existing`.
+- `021a142`: removed unused promoter mood bonus weight from scoring config and code.
 - `c75b9c4`: hybrid recommendation blending (semantic + graph + extracted styles).
 - `ac1e301`: same-promoter filtering for event similarity discovery.
 - `96b7cf7`: overfetch event candidates before same-promoter filtering.
@@ -51,7 +51,7 @@ Primary Endpoint: `GET /api/recommendations/artists/{artist_id}/promoters`
 - Keep MVP focused on promoter recommendation outcome, not a full multidirectional recommender.
 - Event similarity is hybrid: symbolic overlap + embedding similarity.
 - Graph/evidence is required and must explain ranking signals.
-- Recommendation behavior should bias toward net-new opportunities by default.
+- Recommendation behavior keeps direct partner evidence visible, but ranking is driven by semantic, warm, event, scale, activity, and recency signals.
 - Promoter recommendation and feedback tuning now live in `backend/app/recommendation_config.yaml`; other recommendation knobs may remain environment-configurable where they are still runtime-backed.
 
 ## Validation Snapshot

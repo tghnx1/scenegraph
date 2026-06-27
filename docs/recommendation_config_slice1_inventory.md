@@ -23,7 +23,6 @@ All entries belong to config section `promoter_recommendations` unless stated ot
 |---|---:|---|---|---|---|
 | `PROMOTER_REC_SEMANTIC_WEIGHT` | `0.25` | float | `>= 0`, normalized group | ranking, explainability | active |
 | `PROMOTER_REC_STRENGTH_WEIGHT` | `0.16` | float | `>= 0`, normalized group | ranking | active |
-| `PROMOTER_REC_DIRECT_CONNECTION_WEIGHT` | `0.16` | float | `>= 0`, normalized group | ranking | active |
 | `PROMOTER_REC_CO_PLAYED_CONNECTION_WEIGHT` | `0.16` | float | `>= 0`, normalized group | ranking | active |
 | `PROMOTER_REC_MANUAL_CONNECTION_WEIGHT` | `0.09` | float | `>= 0`, normalized group | ranking | active |
 | `PROMOTER_REC_EVENT_SIMILARITY_WEIGHT` | `0.10` | float | `>= 0`, normalized group | ranking | active |
@@ -34,7 +33,6 @@ All entries belong to config section `promoter_recommendations` unless stated ot
 | `PROMOTER_REC_STRENGTH_EVENT_WEIGHT` | `0.40` | float | `>= 0`, normalized group | ranking | active |
 | `PROMOTER_REC_STRENGTH_MATCHED_ARTIST_CAP` | `5` | int | `> 0` | cap | active |
 | `PROMOTER_REC_STRENGTH_EVENT_CAP` | `20` | int | `> 0` | cap | active |
-| `PROMOTER_REC_DIRECT_CONNECTION_CAP` | `3` | int | `> 0` | cap | active |
 | `PROMOTER_REC_WARM_CONNECTION_CAP` | `3` | int | `> 0` | cap | active |
 | `PROMOTER_REC_MANUAL_WARM_CONNECTION_CAP` | `1` | int | `> 0` | cap | active |
 | `PROMOTER_REC_MANUAL_WARM_MIN_ARTIST_SEMANTIC_SCORE` | `0.45` | float | `0 <= value <= 1` | gating | active |
@@ -49,13 +47,9 @@ All entries belong to config section `promoter_recommendations` unless stated ot
 | `PROMOTER_REC_EVENT_SIMILARITY_SHARED_GENRE_WEIGHT` | `0.1` | float | `>= 0`, normalized group | ranking | active |
 | `PROMOTER_REC_EVENT_SIMILARITY_SHARED_LINEUP_WEIGHT` | `0.2` | float | `>= 0`, normalized group | ranking | active |
 | `PROMOTER_REC_EVENT_SIMILARITY_EXTRACTED_GENRE_WEIGHT` | `0.3` | float | `>= 0`, normalized group | ranking | active |
-| `PROMOTER_REC_EVENT_SIMILARITY_SHARED_THEME_BONUS` | `0.03` | float | `>= 0` | ranking | active |
 | `PROMOTER_REC_EVENT_SIMILARITY_SHARED_MOOD_BONUS` | `0.02` | float | `>= 0` | ranking | active |
 | `PROMOTER_REC_ACTIVITY_EVENT_CAP` | `25` | int | `> 0` | cap | active |
-| `PROMOTER_REC_EXISTING_PARTNER_DIRECT_MIN` | `1` | int | `> 0` | gating | active |
 | `PROMOTER_REC_WARM_RELEVANT_CONNECTION_MIN` | `1` | int | `> 0` | gating | active |
-| `PROMOTER_REC_DIRECT_EDGE_STRENGTH_MIN` | `0.8` | float | `0 <= value <= 1`, min <= max | ranking | active |
-| `PROMOTER_REC_DIRECT_EDGE_STRENGTH_MAX` | `1.0` | float | `0 <= value <= 1`, min <= max | ranking | active |
 | `PROMOTER_REC_WARM_EDGE_STRENGTH_MIN` | `0.5` | float | `0 <= value <= 1`, min <= max | ranking | active |
 | `PROMOTER_REC_WARM_EDGE_STRENGTH_MAX` | `0.8` | float | `0 <= value <= 1`, min <= max | ranking | active |
 | `PROMOTER_REC_EVENT_SIMILARITY_EDGE_STRENGTH_MIN` | `0.2` | float | `0 <= value <= 1`, min <= max | ranking | active |
@@ -121,4 +115,3 @@ These must be tracked but not exposed as active scoring fields in Slice 2.
 |---|---|---|
 | `PROMOTER_REC_WARM_NETWORK_WEIGHT` | `PROMOTER_REC_CO_PLAYED_CONNECTION_WEIGHT` | unresolved alias |
 | `PROMOTER_REC_EVENT_SIMILARITY_EXTRACTED_STYLE_WEIGHT` | `PROMOTER_REC_EVENT_SIMILARITY_EXTRACTED_GENRE_WEIGHT` | unresolved alias |
-

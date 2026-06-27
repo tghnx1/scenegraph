@@ -9,7 +9,6 @@ from psycopg import Connection
 from app.event_similarity import artist_similar_events_scored_rows
 from app.promoter_graph import (
     date_recency_score,
-    promoter_direct_connection_evidence,
     promoter_manual_connection_evidence,
     promoter_recommendation_evidence,
     promoter_recommendation_graph,
@@ -361,7 +360,6 @@ def build_artist_promoter_recommendation_response(
     *,
     artist_id: int,
     limit: int,
-    exclude_existing: bool,
     debug: bool,
     user_id: int,
 ) -> PromoterRecommendationResponse:
@@ -543,20 +541,6 @@ def build_artist_promoter_recommendation_response(
                     ON ep.event_id = e.id
                 GROUP BY ep.promoter_id
             ),
-            direct_promoters AS (
-                SELECT
-                    ep.promoter_id,
-                    count(DISTINCT e.id)::int AS direct_connection_count,
-                    array_agg(DISTINCT e.title) AS direct_event_titles,
-                    max(e.event_date)::date AS latest_direct_event_date
-                FROM event_artists ea
-                JOIN events e
-                    ON e.id = ea.event_id
-                JOIN event_promoters ep
-                    ON ep.event_id = e.id
-                WHERE ea.artist_id = %(source_artist_id)s
-                GROUP BY ep.promoter_id
-            ),
             warm_promoters AS (
                 SELECT
                     ep.promoter_id,
@@ -606,8 +590,6 @@ def build_artist_promoter_recommendation_response(
             candidate_promoters AS (
                 SELECT promoter_id FROM semantic_promoters
                 UNION
-                SELECT promoter_id FROM direct_promoters
-                UNION
                 SELECT promoter_id FROM warm_promoters
                 UNION
                 SELECT promoter_id FROM manual_warm_promoters
@@ -631,14 +613,12 @@ def build_artist_promoter_recommendation_response(
                 COALESCE(sp.matched_artist_names, ARRAY[]::text[]) AS matched_artist_names,
                 GREATEST(
                     COALESCE(sp.event_count, 0),
-                    COALESCE(dp.direct_connection_count, 0),
                     COALESCE(wp.warm_event_count, 0)
                 )::int AS event_count,
                 ARRAY(
                     SELECT DISTINCT title
                     FROM unnest(
                         COALESCE(sp.related_event_titles, ARRAY[]::text[])
-                        || COALESCE(dp.direct_event_titles, ARRAY[]::text[])
                         || COALESCE(wp.warm_event_titles, ARRAY[]::text[])
                     ) AS title
                     WHERE title IS NOT NULL
@@ -648,14 +628,11 @@ def build_artist_promoter_recommendation_response(
                 COALESCE(
                     GREATEST(
                         sp.latest_event_date,
-                        dp.latest_direct_event_date,
                         wp.latest_warm_event_date
                     ),
                     sp.latest_event_date,
-                    dp.latest_direct_event_date,
                     wp.latest_warm_event_date
                 )::date AS latest_event_date,
-                COALESCE(dp.direct_connection_count, 0)::int AS direct_connection_count,
                 COALESCE(wp.warm_connection_count, 0)::int AS warm_connection_count,
                 COALESCE(wp.warm_connection_artists, '[]'::jsonb) AS warm_connection_artists,
                 COALESCE(mwp.manual_warm_connection_count, 0)::int AS manual_warm_connection_count,
@@ -666,15 +643,13 @@ def build_artist_promoter_recommendation_response(
                 ON p.id = cp.promoter_id
             LEFT JOIN semantic_promoters sp
                 ON sp.promoter_id = p.id
-            LEFT JOIN direct_promoters dp
-                ON dp.promoter_id = p.id
             LEFT JOIN warm_promoters wp
                 ON wp.promoter_id = p.id
             LEFT JOIN manual_warm_promoters mwp
                 ON mwp.promoter_id = p.id
             LEFT JOIN promoter_interest pi
                 ON pi.promoter_id = p.id
-            ORDER BY semantic_score DESC, direct_connection_count DESC, warm_connection_count DESC, event_count DESC, p.id ASC
+            ORDER BY semantic_score DESC, warm_connection_count DESC, event_count DESC, p.id ASC
             LIMIT %(sql_candidate_limit)s
             """,
             {
@@ -794,7 +769,6 @@ def build_artist_promoter_recommendation_response(
                             "related_event_titles": [],
                             "semantic_score": 0.0,
                             "latest_event_date": None,
-                            "direct_connection_count": 0,
                             "warm_connection_count": 0,
                             "warm_connection_artists": [],
                             "manual_warm_connection_count": 0,
@@ -851,11 +825,7 @@ def build_artist_promoter_recommendation_response(
     source_artist_scale = float(source_artist_event_count)
 
     recommendations = []
-    exclude_existing_filtered_count = 0
     for row in rows:
-        if exclude_existing and row["direct_connection_count"] > 0:
-            exclude_existing_filtered_count += 1
-            continue
         if matching_mode == "semantic_v2":
             source_styles = source_artist_style_tags
             shared_extracted_genres = style_shared_genres_by_promoter.get(row["id"], [])
@@ -901,33 +871,25 @@ def build_artist_promoter_recommendation_response(
             shared_themes = []
             shared_moods = []
             event_similarity_event_titles = []
-        direct_connection_score = min(
-            row["direct_connection_count"] / scoring_config.direct_connection_cap,
-            1.0,
-        )
-        effective_event_count = max(
-            min(int(row["event_count"]), scoring_config.strength_event_cap),
-            event_similarity_count,
-        )
+        raw_event_count = int(row["event_count"])
+        strength_event_count = min(raw_event_count, scoring_config.strength_event_cap)
+        activity_event_count = min(raw_event_count, scoring_config.activity_event_cap)
+        promoter_scale_event_count = max(raw_event_count, 1)
         effective_latest_event_date = row["latest_event_date"]
-        if event_similarity_stats is not None and event_similarity_stats["latest_event_date"] is not None:
-            similarity_latest_event_date = event_similarity_stats["latest_event_date"]
-            if effective_latest_event_date is None or similarity_latest_event_date > effective_latest_event_date:
-                effective_latest_event_date = similarity_latest_event_date
         strength_score = min(
             (
                 row["matched_artist_count"] / scoring_config.strength_matched_artist_cap
                 * scoring_config.strength_matched_artist_weight
             )
             + (
-                effective_event_count / scoring_config.strength_event_cap
+                strength_event_count / scoring_config.strength_event_cap
                 * scoring_config.strength_event_weight
             ),
             1.0,
         )
-        activity_score = min(effective_event_count / scoring_config.activity_event_cap, 1.0)
+        activity_score = activity_event_count / scoring_config.activity_event_cap
         recency_score = date_recency_score(effective_latest_event_date)
-        promoter_scale = float(max(effective_event_count, 1))
+        promoter_scale = float(promoter_scale_event_count)
         promoter_interested_sum = int(row.get("promoter_interested_sum", 0) or 0)
         promoter_size_segment = interest_segment_label(
             promoter_interested_sum,
@@ -936,7 +898,7 @@ def build_artist_promoter_recommendation_response(
         )
         scale_bucket_multiplier = scale_bucket_match_multiplier(
             source_artist_event_count,
-            effective_event_count,
+            promoter_scale_event_count,
         )
         scale_fit = scale_fit_score(
             artist_scale=source_artist_scale,
@@ -1061,7 +1023,7 @@ def build_artist_promoter_recommendation_response(
         row_with_similarity = {
             **row,
             "event_similarity_count": event_similarity_count,
-            "event_count": effective_event_count,
+            "event_count": raw_event_count,
             "latest_event_date": effective_latest_event_date,
             "warm_connection_artists": warm_connection_artists,
             "manual_warm_connection_count": manual_warm_connection_count,
@@ -1081,7 +1043,6 @@ def build_artist_promoter_recommendation_response(
             manual_relevant_warm_connection_count / scoring_config.manual_warm_connection_cap,
             1.0,
         )
-        direct_weight = 0.0 if exclude_existing else scoring_config.direct_connection_weight
         co_played_contribution = (
             scoring_config.co_played_connection_weight * co_played_connection_score
         )
@@ -1090,7 +1051,6 @@ def build_artist_promoter_recommendation_response(
         )
         semantic_contribution = scoring_config.semantic_weight * row["semantic_score"]
         strength_contribution = scoring_config.strength_weight * strength_score
-        direct_contribution = direct_weight * direct_connection_score
         event_similarity_contribution = (
             scoring_config.event_similarity_weight * event_similarity_score
         )
@@ -1100,7 +1060,6 @@ def build_artist_promoter_recommendation_response(
         score_breakdown = {
             "semantic": semantic_contribution,
             "strength": strength_contribution,
-            "directConnection": direct_contribution,
             "coPlayedConnection": co_played_contribution,
             "manualConnection": manual_connection_contribution,
             "eventSimilarity": event_similarity_contribution,
@@ -1111,7 +1070,6 @@ def build_artist_promoter_recommendation_response(
         total_score = (
             semantic_contribution
             + strength_contribution
-            + direct_contribution
             + co_played_contribution
             + manual_connection_contribution
             + event_similarity_contribution
@@ -1136,7 +1094,7 @@ def build_artist_promoter_recommendation_response(
                 scoreBreakdown=score_breakdown,
                 reasons=promoter_recommendation_reasons(row_with_similarity),
                 matchedArtistCount=row["matched_artist_count"],
-                eventCount=effective_event_count,
+                eventCount=raw_event_count,
                 latestEventDate=effective_latest_event_date,
                 status=promoter_recommendation_status(row_with_similarity, scoring_config),
                 warmConnectionCount=row["warm_connection_count"],
@@ -1147,7 +1105,6 @@ def build_artist_promoter_recommendation_response(
                 manualConnectionArtists=manual_connection_artists,
                 promoterInterestedSum=promoter_interested_sum,
                 promoterSizeSegment=promoter_size_segment,
-                directConnectionCount=row["direct_connection_count"],
                 evidence=promoter_recommendation_item_evidence(row_with_similarity),
                 reasonDetails={
                     "similarPromoterEventTitles": event_similarity_event_titles,
@@ -1163,9 +1120,10 @@ def build_artist_promoter_recommendation_response(
                     "rawSignals": {
                         "semanticScore": row["semantic_score"],
                         "matchedArtistCount": row["matched_artist_count"],
-                        "eventCount": effective_event_count,
-                        "eventCountRaw": int(row["event_count"]),
-                        "directConnectionCount": row["direct_connection_count"],
+                        "eventCount": raw_event_count,
+                        "eventCountRaw": raw_event_count,
+                        "strengthEventCount": strength_event_count,
+                        "activityEventCount": activity_event_count,
                         "warmConnectionCount": row["warm_connection_count"],
                         "coPlayedConnectionCount": row["warm_connection_count"],
                         "manualWarmConnectionCount": manual_warm_connection_count,
@@ -1196,7 +1154,7 @@ def build_artist_promoter_recommendation_response(
                         "promoterInterestedSum": promoter_interested_sum,
                         "promoterSizeSegment": promoter_size_segment,
                         "artistScaleEventCount": source_artist_event_count,
-                        "promoterScaleEventCount": effective_event_count,
+                        "promoterScaleEventCount": promoter_scale_event_count,
                         "scaleBucketMultiplier": scale_bucket_multiplier,
                         "scaleFit": scale_fit,
                         "warmConnectionArtists": warm_connection_artists,
@@ -1204,7 +1162,6 @@ def build_artist_promoter_recommendation_response(
                     },
                     "normalizedScores": {
                         "strength": strength_score,
-                        "directConnection": direct_connection_score,
                         "coPlayedConnection": co_played_connection_score,
                         "manualConnection": manual_connection_score,
                         "eventSimilarity": event_similarity_score,
@@ -1401,7 +1358,6 @@ def build_artist_promoter_recommendation_response(
                     "returnedSmallRecommendations": 0,
                 },
                 "filteredOut": {
-                    "excludeExisting": exclude_existing_filtered_count,
                     "semanticArtistBelowThreshold": semantic_artist_below_threshold_filtered,
                     "sourceEventRelevance": similar_event_debug_counts["sourceEventsRelevanceFiltered"],
                     "sourceEventMissingEmbedding": similar_event_debug_counts[
@@ -1443,15 +1399,6 @@ def build_artist_promoter_recommendation_response(
         connection,
         promoter_ids=promoter_ids,
         semantic_scores=candidate_scores,
-    )
-    direct_evidence = (
-        []
-        if exclude_existing
-        else promoter_direct_connection_evidence(
-            connection,
-            source_artist_id=artist_id,
-            promoter_ids=promoter_ids,
-        )
     )
     warm_evidence = promoter_warm_network_evidence(
         connection,
@@ -1511,7 +1458,6 @@ def build_artist_promoter_recommendation_response(
         source_artist_name=source_artist["name"],
         recommendations=recommendations,
         semantic_evidence_rows=semantic_evidence,
-        direct_evidence_rows=direct_evidence,
         warm_evidence_rows=warm_evidence,
         manual_evidence_rows=manual_evidence,
         event_similarity_evidence_rows=event_similarity_evidence,
@@ -1563,7 +1509,6 @@ def build_artist_promoter_recommendation_response(
                 "returnedSmallRecommendations": len(small_recommendations),
             },
             "filteredOut": {
-                "excludeExisting": exclude_existing_filtered_count,
                 "semanticArtistBelowThreshold": semantic_artist_below_threshold_filtered,
                 "sourceEventRelevance": similar_event_debug_counts["sourceEventsRelevanceFiltered"],
                 "sourceEventMissingEmbedding": similar_event_debug_counts[

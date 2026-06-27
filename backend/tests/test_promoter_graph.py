@@ -5,7 +5,6 @@ from app.schemas import GraphLink, GraphNode
 
 def test_promoter_recommendation_reasons_use_displayed_titles_count_for_event_reasons():
     row = {
-        "direct_connection_count": 0,
         "warm_connection_count": 0,
         "matched_artist_count": 0,
         "event_similarity_count": 1,
@@ -26,7 +25,6 @@ def test_promoter_recommendation_reasons_use_displayed_titles_count_for_event_re
 
 def test_promoter_recommendation_reasons_show_manual_even_without_coplayed():
     row = {
-        "direct_connection_count": 0,
         "warm_connection_count": 0,
         "manual_warm_connection_count": 1,
         "matched_artist_count": 0,
@@ -42,7 +40,6 @@ def test_promoter_recommendation_reasons_show_manual_even_without_coplayed():
 
 def test_promoter_recommendation_reasons_show_manual_artist_names():
     row = {
-        "direct_connection_count": 0,
         "warm_connection_count": 0,
         "manual_warm_connection_count": 1,
         "manual_warm_connection_artists": [{"id": 42, "name": "Zee Mon"}],
@@ -59,7 +56,6 @@ def test_promoter_recommendation_reasons_show_manual_artist_names():
 
 def test_promoter_recommendation_reasons_truncate_long_lists_and_dedupe():
     row = {
-        "direct_connection_count": 0,
         "warm_connection_count": 12,
         "warm_connection_artists": [
             {"id": 1, "name": "A"},
@@ -89,7 +85,6 @@ def test_promoter_recommendation_reasons_truncate_long_lists_and_dedupe():
 
 def test_promoter_recommendation_status_marks_manual_as_warm_relevant():
     row = {
-        "direct_connection_count": 0,
         "warm_connection_count": 0,
         "manual_warm_connection_count": 1,
     }

@@ -380,8 +380,6 @@ def promoter_recommendation_reasons(row: dict) -> list[str]:
         return dedupe_keep_order(result)
 
     reasons = []
-    if row["direct_connection_count"] > 0:
-        reasons.append(f"{row['direct_connection_count']} direct artist-promoter events")
     manual_warm_connection_count = int(row.get("manual_warm_connection_count", 0) or 0)
     if row["warm_connection_count"] > 0:
         warm_names = artist_names(row.get("warm_connection_artists"))
@@ -434,8 +432,6 @@ def promoter_recommendation_status(
     scoring_config: PromoterRecommendationScoringConfig,
 ) -> str:
     manual_warm_connection_count = int(row.get("manual_warm_connection_count", 0) or 0)
-    if row["direct_connection_count"] >= scoring_config.existing_partner_direct_min:
-        return "existing_partner"
     if (
         row["warm_connection_count"] >= scoring_config.warm_relevant_connection_min
         or manual_warm_connection_count > 0
@@ -446,13 +442,6 @@ def promoter_recommendation_status(
 # Build structured evidence entries shown in recommendation payloads.
 def promoter_recommendation_item_evidence(row: dict) -> list[RecommendationEvidenceItem]:
     evidence: list[RecommendationEvidenceItem] = []
-    if row["direct_connection_count"] > 0:
-        evidence.append(
-            RecommendationEvidenceItem(
-                type="direct_connection",
-                path="Source Artist -> Event -> Promoter",
-            )
-        )
     if row["warm_connection_count"] > 0:
         evidence.append(
             RecommendationEvidenceItem(
@@ -498,7 +487,6 @@ def promoter_recommendation_graph(
     source_artist_name: str,
     recommendations: list[PromoterRecommendationItem],
     semantic_evidence_rows: list[dict],
-    direct_evidence_rows: list[dict],
     warm_evidence_rows: list[dict],
     manual_evidence_rows: list[dict],
     event_similarity_evidence_rows: list[dict],
@@ -584,58 +572,6 @@ def promoter_recommendation_graph(
                 strength=strength,
             )
         )
-
-    for row in direct_evidence_rows:
-        promoter_node_id = graph_node_id("promoter", row["promoter_id"])
-        event_node_id = graph_node_id("event", row["event_id"])
-        direct_strength = max(
-            scoring_config.direct_edge_strength_min,
-            min(
-                scoring_config.direct_edge_strength_max,
-                row["direct_connection_count"] / scoring_config.direct_connection_cap,
-            ),
-        )
-
-        nodes[event_node_id] = GraphNode(
-            id=event_node_id,
-            entityId=row["event_id"],
-            type="event",
-            name=row["event_title"],
-            date=row["event_date"],
-        )
-        add_link(
-            source_artist_node_id,
-            event_node_id,
-            "played",
-            evidence_type="direct_connection",
-            style="solid",
-            strength=direct_strength,
-        )
-        add_link(
-            promoter_node_id,
-            event_node_id,
-            "organized",
-            evidence_type="direct_connection",
-            style="solid",
-            strength=direct_strength,
-        )
-
-        if row["venue_id"] is not None:
-            venue_node_id = graph_node_id("venue", row["venue_id"])
-            nodes[venue_node_id] = GraphNode(
-                id=venue_node_id,
-                entityId=row["venue_id"],
-                type="venue",
-                name=row["venue_name"],
-            )
-            add_link(
-                event_node_id,
-                venue_node_id,
-                "at",
-                evidence_type="direct_connection",
-                style="solid",
-                strength=max(scoring_config.warm_edge_strength_min, direct_strength * 0.9),
-            )
 
     for row in warm_evidence_rows:
         promoter_id = int(row["promoter_id"])
@@ -1137,68 +1073,6 @@ def promoter_recommendation_evidence(
         )
         return cursor.fetchall()
 
-# Load direct source-artist to promoter evidence rows.
-def promoter_direct_connection_evidence(
-    connection: Connection,
-    *,
-    source_artist_id: int,
-    promoter_ids: list[int],
-) -> list[dict]:
-    if not promoter_ids:
-        return []
-
-    with connection.cursor() as cursor:
-        cursor.execute(
-            """
-            WITH direct_counts AS (
-                SELECT
-                    ep.promoter_id,
-                    count(DISTINCT e.id)::int AS direct_connection_count
-                FROM event_artists ea
-                JOIN events e
-                    ON e.id = ea.event_id
-                JOIN event_promoters ep
-                    ON ep.event_id = e.id
-                WHERE ea.artist_id = %(source_artist_id)s
-                  AND ep.promoter_id = ANY(%(promoter_ids)s)
-                GROUP BY ep.promoter_id
-            ),
-            ranked_evidence AS (
-                SELECT
-                    ep.promoter_id,
-                    e.id AS event_id,
-                    e.title AS event_title,
-                    e.event_date::date AS event_date,
-                    e.venue_id,
-                    v.name AS venue_name,
-                    dc.direct_connection_count,
-                    row_number() OVER (
-                        PARTITION BY ep.promoter_id
-                        ORDER BY e.event_date DESC NULLS LAST, e.id DESC
-                    ) AS row_number
-                FROM event_artists ea
-                JOIN events e
-                    ON e.id = ea.event_id
-                JOIN event_promoters ep
-                    ON ep.event_id = e.id
-                JOIN direct_counts dc
-                    ON dc.promoter_id = ep.promoter_id
-                LEFT JOIN venues v
-                    ON v.id = e.venue_id
-                WHERE ea.artist_id = %(source_artist_id)s
-                  AND ep.promoter_id = ANY(%(promoter_ids)s)
-            )
-            SELECT *
-            FROM ranked_evidence
-            WHERE row_number <= 5
-            ORDER BY promoter_id ASC, row_number ASC
-            """,
-            {
-                "source_artist_id": source_artist_id,
-                "promoter_ids": promoter_ids,
-            },
-        )
-        return cursor.fetchall()
 
 # Load warm-network evidence rows (co-played path to promoter).
 def promoter_warm_network_evidence(

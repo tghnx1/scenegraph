@@ -191,7 +191,6 @@ def test_artist_promoter_recommendations_include_graph_payload():
     assert set(first["scoreBreakdown"]) == {
         "semantic",
         "strength",
-        "directConnection",
         "coPlayedConnection",
         "manualConnection",
         "eventSimilarity",
@@ -211,13 +210,12 @@ def test_artist_promoter_recommendations_include_graph_payload():
         or first["scoreBreakdown"]["eventSimilarity"] > 0
     )
     assert isinstance(first["reasons"], list)
-    assert first["status"] in {"new_relevant", "existing_partner", "warm_relevant"}
+    assert first["status"] in {"new_relevant", "warm_relevant"}
     assert first["warmConnectionCount"] >= 0
     assert first["coPlayedConnectionCount"] >= 0
     assert first["manualConnectionCount"] >= 0
     assert first["promoterInterestedSum"] >= 0
     assert first["promoterSizeSegment"] in {"small", "medium", "large"}
-    assert first["directConnectionCount"] >= 0
     assert isinstance(first["evidence"], list)
     assert first["evidence"]
     assert "reasonDetails" in first
@@ -233,7 +231,7 @@ def test_artist_promoter_recommendations_include_graph_payload():
     }
     assert all(
         item["type"]
-        in {"semantic_bridge", "direct_connection", "warm_network", "manual_connection", "event_similarity"}
+        in {"semantic_bridge", "warm_network", "manual_connection", "event_similarity"}
         for item in first["evidence"]
     )
 
@@ -267,7 +265,7 @@ def test_artist_promoter_recommendations_include_graph_payload():
 def test_artist_promoter_recommendations_include_debug_when_requested():
     response = client.get(
         "/api/recommendations/artists/2178/promoters",
-        params={"limit": 1, "exclude_existing": "false", "debug": "true"},
+        params={"limit": 1, "debug": "true"},
     )
     assert response.status_code == 200
 
@@ -275,7 +273,6 @@ def test_artist_promoter_recommendations_include_debug_when_requested():
     assert "debug" in data
     assert set(data["debug"]) == {"candidateCounts", "filteredOut", "segments"}
     assert set(data["debug"]["filteredOut"]) >= {
-        "excludeExisting",
         "eventSimilaritySamePromoter",
         "eventSimilarityLimitCutoff",
         "recommendationLimitCutoff",
@@ -301,47 +298,6 @@ def test_artist_promoter_recommendations_include_debug_when_requested():
     assert "warmConnectionArtists" in first["debug"]["rawSignals"]
     assert "eventSimilarity" in first["debug"]["normalizedScores"]
     assert "total" in first["debug"]["weightedScores"]
-
-
-def test_artist_promoter_recommendations_include_direct_connections():
-    response = client.get(
-        "/api/recommendations/artists/2178/promoters",
-        params={"limit": 50, "exclude_existing": "false"},
-    )
-    assert response.status_code == 200
-    data = response.json()
-
-    direct_recommendations = [
-        item for item in data["recommendations"] if item["directConnectionCount"] > 0
-    ]
-    for item in direct_recommendations:
-        assert item["status"] == "existing_partner"
-        assert item["scoreBreakdown"]["directConnection"] > 0
-        assert any(evidence["type"] == "direct_connection" for evidence in item["evidence"])
-
-    direct_links = [
-        link
-        for link in data["analyticsGraph"]["links"]
-        if link.get("evidenceType") == "direct_connection"
-    ]
-    if direct_recommendations:
-        assert direct_links
-        assert all(link.get("style") == "solid" for link in direct_links)
-    else:
-        assert not direct_links
-
-
-def test_artist_promoter_recommendations_exclude_existing_by_default():
-    response = client.get("/api/recommendations/artists/2178/promoters", params={"limit": 50})
-    assert response.status_code == 200
-    data = response.json()
-
-    assert all(item["directConnectionCount"] == 0 for item in data["recommendations"])
-    assert all(item["scoreBreakdown"]["directConnection"] == 0 for item in data["recommendations"])
-    assert all(item["status"] != "existing_partner" for item in data["recommendations"])
-    assert not any(
-        link.get("evidenceType") == "direct_connection" for link in data["analyticsGraph"]["links"]
-    )
 
 
 def test_artist_promoter_recommendations_include_warm_network_connections():

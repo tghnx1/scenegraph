@@ -61,7 +61,6 @@ class SemanticArtistTagScoringConfig:
 class PromoterRecommendationScoringConfig:
     semantic_weight: float
     strength_weight: float
-    direct_connection_weight: float
     co_played_connection_weight: float
     manual_connection_weight: float
     event_similarity_weight: float
@@ -72,7 +71,6 @@ class PromoterRecommendationScoringConfig:
     strength_event_weight: float
     strength_matched_artist_cap: int
     strength_event_cap: int
-    direct_connection_cap: int
     warm_connection_cap: int
     manual_warm_connection_cap: int
     manual_warm_min_artist_semantic_score: float
@@ -87,12 +85,8 @@ class PromoterRecommendationScoringConfig:
     event_similarity_shared_genre_weight: float
     event_similarity_shared_lineup_weight: float
     event_similarity_extracted_genre_weight: float
-    event_similarity_shared_theme_bonus: float
     activity_event_cap: int
-    existing_partner_direct_min: int
     warm_relevant_connection_min: int
-    direct_edge_strength_min: float
-    direct_edge_strength_max: float
     warm_edge_strength_min: float
     warm_edge_strength_max: float
     event_similarity_edge_strength_min: float
@@ -308,7 +302,6 @@ def promoter_recommendation_scoring_from_config() -> PromoterRecommendationScori
         (
             config_values["PROMOTER_REC_SEMANTIC_WEIGHT"],
             config_values["PROMOTER_REC_STRENGTH_WEIGHT"],
-            config_values["PROMOTER_REC_DIRECT_CONNECTION_WEIGHT"],
             config_values["PROMOTER_REC_CO_PLAYED_CONNECTION_WEIGHT"],
             config_values["PROMOTER_REC_MANUAL_CONNECTION_WEIGHT"],
             config_values["PROMOTER_REC_EVENT_SIMILARITY_WEIGHT"],
@@ -326,7 +319,6 @@ def promoter_recommendation_scoring_from_config() -> PromoterRecommendationScori
 
     strength_matched_artist_cap = config_values["PROMOTER_REC_STRENGTH_MATCHED_ARTIST_CAP"]
     strength_event_cap = config_values["PROMOTER_REC_STRENGTH_EVENT_CAP"]
-    direct_connection_cap = config_values["PROMOTER_REC_DIRECT_CONNECTION_CAP"]
     warm_connection_cap = config_values["PROMOTER_REC_WARM_CONNECTION_CAP"]
     manual_warm_connection_cap = config_values["PROMOTER_REC_MANUAL_WARM_CONNECTION_CAP"]
     manual_warm_min_artist_semantic_score = config_values[
@@ -357,14 +349,8 @@ def promoter_recommendation_scoring_from_config() -> PromoterRecommendationScori
             config_values["PROMOTER_REC_EVENT_SIMILARITY_EXTRACTED_GENRE_WEIGHT"],
         )
     )
-    event_similarity_shared_theme_bonus = config_values[
-        "PROMOTER_REC_EVENT_SIMILARITY_SHARED_THEME_BONUS"
-    ]
     activity_event_cap = config_values["PROMOTER_REC_ACTIVITY_EVENT_CAP"]
-    existing_partner_direct_min = config_values["PROMOTER_REC_EXISTING_PARTNER_DIRECT_MIN"]
     warm_relevant_connection_min = config_values["PROMOTER_REC_WARM_RELEVANT_CONNECTION_MIN"]
-    direct_edge_strength_min = config_values["PROMOTER_REC_DIRECT_EDGE_STRENGTH_MIN"]
-    direct_edge_strength_max = config_values["PROMOTER_REC_DIRECT_EDGE_STRENGTH_MAX"]
     warm_edge_strength_min = config_values["PROMOTER_REC_WARM_EDGE_STRENGTH_MIN"]
     warm_edge_strength_max = config_values["PROMOTER_REC_WARM_EDGE_STRENGTH_MAX"]
     event_similarity_edge_strength_min = config_values[
@@ -393,18 +379,16 @@ def promoter_recommendation_scoring_from_config() -> PromoterRecommendationScori
     return PromoterRecommendationScoringConfig(
         semantic_weight=weights[0],
         strength_weight=weights[1],
-        direct_connection_weight=weights[2],
-        co_played_connection_weight=weights[3],
-        manual_connection_weight=weights[4],
-        event_similarity_weight=weights[5],
-        scale_fit_weight=weights[6],
-        activity_weight=weights[7],
-        recency_weight=weights[8],
+        co_played_connection_weight=weights[2],
+        manual_connection_weight=weights[3],
+        event_similarity_weight=weights[4],
+        scale_fit_weight=weights[5],
+        activity_weight=weights[6],
+        recency_weight=weights[7],
         strength_matched_artist_weight=strength_weights[0],
         strength_event_weight=strength_weights[1],
         strength_matched_artist_cap=strength_matched_artist_cap,
         strength_event_cap=strength_event_cap,
-        direct_connection_cap=direct_connection_cap,
         warm_connection_cap=warm_connection_cap,
         manual_warm_connection_cap=manual_warm_connection_cap,
         manual_warm_min_artist_semantic_score=manual_warm_min_artist_semantic_score,
@@ -419,12 +403,8 @@ def promoter_recommendation_scoring_from_config() -> PromoterRecommendationScori
         event_similarity_shared_genre_weight=event_similarity_signal_weights[1],
         event_similarity_shared_lineup_weight=event_similarity_signal_weights[2],
         event_similarity_extracted_genre_weight=event_similarity_signal_weights[3],
-        event_similarity_shared_theme_bonus=event_similarity_shared_theme_bonus,
         activity_event_cap=activity_event_cap,
-        existing_partner_direct_min=existing_partner_direct_min,
         warm_relevant_connection_min=warm_relevant_connection_min,
-        direct_edge_strength_min=direct_edge_strength_min,
-        direct_edge_strength_max=direct_edge_strength_max,
         warm_edge_strength_min=warm_edge_strength_min,
         warm_edge_strength_max=warm_edge_strength_max,
         event_similarity_edge_strength_min=event_similarity_edge_strength_min,

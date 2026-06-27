@@ -94,19 +94,18 @@ def test_segment_quota_row_zero_rejected(tmp_path: Path) -> None:
         load_recommendation_config(_write_config(tmp_path, config_data))
 
 
-def test_edge_strength_min_above_max_rejected(tmp_path: Path) -> None:
+def test_warm_edge_strength_min_above_max_rejected(tmp_path: Path) -> None:
     config_data = _canonical_config_data()
-    config_data["promoter_recommendations"]["PROMOTER_REC_DIRECT_EDGE_STRENGTH_MIN"] = 1.0
-    config_data["promoter_recommendations"]["PROMOTER_REC_DIRECT_EDGE_STRENGTH_MAX"] = 0.5
+    config_data["promoter_recommendations"]["PROMOTER_REC_WARM_EDGE_STRENGTH_MIN"] = 1.0
+    config_data["promoter_recommendations"]["PROMOTER_REC_WARM_EDGE_STRENGTH_MAX"] = 0.5
 
-    with pytest.raises(ConfigError, match="PROMOTER_REC_DIRECT_EDGE_STRENGTH_MIN"):
+    with pytest.raises(ConfigError, match="PROMOTER_REC_WARM_EDGE_STRENGTH_MIN"):
         load_recommendation_config(_write_config(tmp_path, config_data))
 
 
 def test_wrong_legacy_alias_target_rejected(tmp_path: Path) -> None:
     config_data = _canonical_config_data()
     config_data["metadata"]["legacy_aliases"]["PROMOTER_REC_WARM_NETWORK_WEIGHT"] = (
-        "PROMOTER_REC_DIRECT_CONNECTION_WEIGHT"
     )
 
     with pytest.raises(ConfigError, match="PROMOTER_REC_WARM_NETWORK_WEIGHT"):

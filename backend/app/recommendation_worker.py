@@ -33,7 +33,6 @@ def _run_job(job: dict[str, Any]) -> None:
                 connection,
                 artist_id=int(job["artist_id"]),
                 limit=params.limit,
-                exclude_existing=params.excludeExisting,
                 debug=params.debug,
                 user_id=int(job["user_id"]),
             )

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from copy import deepcopy
 from typing import Annotated
 from uuid import UUID
 
@@ -22,10 +23,60 @@ router = APIRouter()
 PROMOTER_REC_API_LIMIT_MAX = promoter_recommendation_api_limit_max_from_config()
 
 
+def _normalize_legacy_recommendation_job_result(result_json: object) -> object:
+    if not isinstance(result_json, dict):
+        return result_json
+
+    payload = deepcopy(result_json)
+    recommendation_lists = [
+        "recommendations",
+        "largeRecommendations",
+        "mediumRecommendations",
+        "smallRecommendations",
+        "warmRecommendations",
+        "discoveryRecommendations",
+    ]
+    for key in recommendation_lists:
+        items = payload.get(key)
+        if not isinstance(items, list):
+            continue
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            if item.get("status") == "existing_partner":
+                item["status"] = "new_relevant"
+            item.pop("directConnectionCount", None)
+            score_breakdown = item.get("scoreBreakdown")
+            if isinstance(score_breakdown, dict):
+                score_breakdown.pop("directConnection", None)
+            evidence = item.get("evidence")
+            if isinstance(evidence, list):
+                item["evidence"] = [
+                    entry
+                    for entry in evidence
+                    if not (isinstance(entry, dict) and entry.get("type") == "direct_connection")
+                ]
+    analytics_graph = payload.get("analyticsGraph")
+    if isinstance(analytics_graph, dict) and isinstance(analytics_graph.get("links"), list):
+        analytics_graph["links"] = [
+            link
+            for link in analytics_graph["links"]
+            if not (isinstance(link, dict) and link.get("evidenceType") == "direct_connection")
+        ]
+    graph = payload.get("graph")
+    if isinstance(graph, dict) and isinstance(graph.get("links"), list):
+        graph["links"] = [
+            link
+            for link in graph["links"]
+            if not (isinstance(link, dict) and link.get("evidenceType") == "direct_connection")
+        ]
+    return payload
+
+
 # Convert a database job row into the public API contract.
 def _job_response(row: dict[str, object]) -> RecommendationJobResponse:
     """Convert a database job row into the public user-scoped API contract."""
-    result_json = row["result_json"]
+    result_json = _normalize_legacy_recommendation_job_result(row["result_json"])
     return RecommendationJobResponse(
         jobId=str(row["id"]),
         jobType="artist_promoters",

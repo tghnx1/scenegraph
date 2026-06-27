@@ -22,7 +22,7 @@ def _create_job(client: TestClient, user_id: int) -> dict[str, object]:
     response = client.post(
         f"/api/recommendations/artists/{ARTIST_ID}/promoters/jobs",
         headers={"X-User-Id": str(user_id)},
-        json={"limit": 10, "excludeExisting": True, "debug": False},
+        json={"limit": 10, "debug": False},
     )
     assert response.status_code == 202
     payload = response.json()

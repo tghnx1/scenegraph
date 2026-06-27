@@ -87,7 +87,6 @@ async def artist_tags(
 async def recommend_promoters_for_artist(
     artist_id: int,
     limit: int = Query(default=10, ge=1, le=PROMOTER_REC_API_LIMIT_MAX),
-    exclude_existing: bool = Query(default=True),
     debug: bool = Query(default=False),
     user_id: int = Depends(get_current_user_id),
 ) -> PromoterRecommendationResponse:
@@ -96,7 +95,6 @@ async def recommend_promoters_for_artist(
             connection,
             artist_id=artist_id,
             limit=limit,
-            exclude_existing=exclude_existing,
             debug=debug,
             user_id=user_id,
         )

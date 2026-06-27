@@ -65,7 +65,6 @@ export interface RecommendationJobResponse {
   artistId: number
   params: {
     limit: number
-    excludeExisting: boolean
     debug: boolean
   }
   status: RecommendationJobStatus

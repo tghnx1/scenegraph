@@ -19,7 +19,6 @@ GET /api/recommendations/artists/{artist_id}/promoters
 Important query params:
 
 - `limit` (bounded by `PROMOTER_REC_API_LIMIT_MAX`, default 10)
-- `exclude_existing` (default `true`)
 - `debug` (default `false`)
 
 ## Current Response Contract (Promoter Recommendations)
@@ -29,9 +28,9 @@ Each recommendation includes:
 - final `score`
 - component `scoreBreakdown`
 - human-readable `reasons`
-- relationship counters (`warmConnectionCount`, `directConnectionCount`, etc.)
+- relationship counters (`warmConnectionCount`, `manualConnectionCount`, etc.)
 - `warmConnectionArtists` (names + ids for warm links)
-- `evidence` path types (`semantic_bridge`, `direct_connection`, `warm_network`, `event_similarity`)
+- `evidence` path types (`semantic_bridge`, `warm_network`, `manual_connection`, `event_similarity`)
 - graph payload (`nodes`, `links`) for explanation UI
 - optional debug payload (`rawSignals`, `normalizedScores`, `weightedScores`, top-level candidate counters)
 
@@ -64,16 +63,14 @@ flowchart TD
 flowchart LR
     A[Semantic Bridge] --> S[semanticScore]
     B[Matched Artists + Event Volume] --> T[strengthScore]
-    C[Direct Artist-Promoter History] --> DCS[directConnectionScore]
-    D[Warm Network Links] --> W[warmNetworkScore]
-    E[Similar Events Symbolic + Embedding] --> ES[eventSimilarityScore]
-    F[Scale Fit] --> SF[scaleFitScore]
-    G[Activity] --> AC[activityScore]
-    H[Recency] --> RC[recencyScore]
+    C[Warm Network Links] --> W[warmNetworkScore]
+    D[Similar Events Symbolic + Embedding] --> ES[eventSimilarityScore]
+    E[Scale Fit] --> SF[scaleFitScore]
+    F[Activity] --> AC[activityScore]
+    G[Recency] --> RC[recencyScore]
 
     S --> SUM
     T --> SUM
-    DCS --> SUM
     W --> SUM
     ES --> SUM
     SF --> SUM
@@ -91,7 +88,6 @@ For each promoter candidate:
 total_score =
   w_semantic       * semanticScore
 + w_strength       * strengthScore
-+ w_direct         * directConnectionScore
 + w_warm           * warmNetworkScore
 + w_event_similarity * eventSimilarityScore
 + w_scale_fit      * scaleFitScore
@@ -101,9 +97,9 @@ total_score =
 
 Notes:
 
-- All `w_*` weights are read from `.env` (normalized in code).
-- `exclude_existing=true` removes direct partners and zeros direct signal weight.
-- Caps and normalization controls are env-driven (`*_CAP`, mix weights, edge-strength bounds).
+- All promoter recommendation tuning lives in `backend/app/recommendation_config.yaml`.
+- Direct promoter relationships remain visible as evidence and status, but no longer contribute a separate weighted score component.
+- Caps and normalization controls live in `backend/app/recommendation_config.yaml`.
 
 ## Candidate Collection and Internal Limits
 
