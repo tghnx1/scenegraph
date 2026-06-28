@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.auth import get_current_user_id
 from app.db import get_connection
-from app.recommendation_helpers import ensure_feedback_entity_exists, feedback_item_from_row
+from app.recommendations.helpers import ensure_feedback_entity_exists, feedback_item_from_row
 from app.schemas import (
     FeedbackCandidateKind,
     FeedbackSourceKind,

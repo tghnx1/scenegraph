@@ -1,6 +1,6 @@
 import asyncio
 
-from app.recommendation_job_events import (
+from app.recommendations.job_events import (
     RecommendationJobSocketHub,
     _parse_job_update,
 )

@@ -467,7 +467,7 @@
       <h2>Current Gaps</h2>
       <ul>
         <li>No authentication or roles are implemented, so there are no protected API routes yet.</li>
-        <li>No public write endpoints exist for imports. Imports are local operator tasks through <code>make import-events</code>.</li>
+        <li>No public write endpoints exist for imports. Imports are local operator tasks through <code>make full-pipeline</code>.</li>
         <li>Artist profile, similar artists, and artist ego graph are still frontend mock-backed.</li>
         <li>Promoters are imported by the data script, but <code>/api/graph</code> does not emit promoter nodes or links yet.</li>
         <li>Advanced search, sorting, offset/cursor pagination, chat, friends, and WebSocket features are not implemented yet.</li>
@@ -479,11 +479,10 @@
       <p>These are not public API endpoints, but they are part of the current local workflow.</p>
       <pre>make upd
 make prisma-migrate
-make import-events
+make full-pipeline
 make import-dump DUMP=/absolute/path/to/scenegraph_dump.sql
 RESET_DB=1 make import-dump DUMP=/absolute/path/to/scenegraph_dump.sql
-make db-shell
-make health</pre>
+make db-shell</pre>
       <p style="margin-top: 12px;">
         <code>make import-dump</code> creates the configured database if it is missing. If the database already exists,
         it asks before deleting and recreating it. Use <code>RESET_DB=1</code> only when you intentionally want to skip the prompt.
@@ -512,8 +511,8 @@ make health</pre>
           </tr>
           <tr>
             <td>Incremental/upsert import</td>
-            <td><code>make import-events</code></td>
-            <td>Use when adding or updating event data without deleting the existing database.</td>
+            <td><code>make full-pipeline</code></td>
+            <td>Use when running the full local scrape/import/enrichment flow without replacing the whole database from a dump.</td>
           </tr>
         </tbody>
       </table>

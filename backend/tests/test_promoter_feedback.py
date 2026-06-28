@@ -1,13 +1,25 @@
-import pytest
+from copy import deepcopy
+from pathlib import Path
+from types import MappingProxyType
 
-from app.promoter_feedback import (
+import pytest
+import yaml
+
+from app.recommendations.promoter_feedback import (
     PromoterContentProfile,
     PromoterFeedbackConfig,
+    PromoterFeedbackTuning,
     apply_promoter_feedback_reranking,
     promoter_content_similarity,
-    promoter_feedback_config_from_env,
+    promoter_feedback_config_from_config,
 )
+from app.recommendations.config_loader import RecommendationConfig
 from app.schemas import PromoterRecommendationItem
+
+
+CANONICAL_RECOMMENDATION_CONFIG_PATH = (
+    Path(__file__).resolve().parent.parent / "app" / "recommendations" / "config.yaml"
+)
 
 
 def recommendation(
@@ -42,6 +54,39 @@ def config() -> PromoterFeedbackConfig:
         max_total_boost=0.15,
         similarity_min=0.30,
         similar_promoter_limit=10,
+    )
+
+
+@pytest.fixture
+def feedback_tuning() -> PromoterFeedbackTuning:
+    return PromoterFeedbackTuning(
+        profile_event_limit=20,
+        shared_artists_weight=0.45,
+        shared_genres_tags_weight=0.25,
+        similar_events_weight=0.20,
+        shared_venues_weight=0.10,
+    )
+
+
+def _canonical_recommendation_config_data() -> dict:
+    with CANONICAL_RECOMMENDATION_CONFIG_PATH.open("r", encoding="utf-8") as config_file:
+        return yaml.safe_load(config_file)
+
+
+def _recommendation_config_from_data(config_data: dict) -> RecommendationConfig:
+    return RecommendationConfig(
+        promoter_recommendations=MappingProxyType(dict(config_data["promoter_recommendations"])),
+        promoter_feedback=MappingProxyType(dict(config_data["promoter_feedback"])),
+        metadata=MappingProxyType(dict(config_data["metadata"])),
+    )
+
+
+def _set_feedback_config(monkeypatch: pytest.MonkeyPatch, **overrides) -> None:
+    config_data = deepcopy(_canonical_recommendation_config_data())
+    config_data["promoter_feedback"].update(overrides)
+    monkeypatch.setattr(
+        "app.recommendations.promoter_feedback._recommendation_config",
+        lambda: _recommendation_config_from_data(config_data),
     )
 
 
@@ -116,7 +161,9 @@ def test_similarity_boost_works_when_positive_promoter_is_not_in_current_results
     assert reranked[0].feedbackBoost == pytest.approx(0.024)
 
 
-def test_content_similarity_uses_promoter_content_not_recommendation_scores():
+def test_content_similarity_uses_promoter_content_not_recommendation_scores(
+    feedback_tuning,
+):
     left = PromoterContentProfile(
         artist_ids=frozenset({1, 2, 3}),
         genre_tags=frozenset({"ebm", "techno"}),
@@ -128,7 +175,7 @@ def test_content_similarity_uses_promoter_content_not_recommendation_scores():
         venue_ids=frozenset({10}),
     )
 
-    similarity = promoter_content_similarity(left, right, event_similarity=0.75)
+    similarity = promoter_content_similarity(left, right, event_similarity=0.75, tuning=feedback_tuning)
 
     assert similarity == pytest.approx(
         0.45 * (2 / 3)
@@ -156,20 +203,32 @@ def test_feedback_boost_is_capped():
     assert reranked[0].feedbackBoost == pytest.approx(0.15)
 
 
-def test_promoter_feedback_config_uses_defaults(monkeypatch):
-    for name in (
-        "PROMOTER_FEEDBACK_EXACT_POSITIVE_BOOST",
-        "PROMOTER_FEEDBACK_SIMILAR_POSITIVE_BOOST",
-        "PROMOTER_FEEDBACK_MAX_TOTAL_BOOST",
-        "PROMOTER_FEEDBACK_SIMILARITY_MIN",
-        "PROMOTER_FEEDBACK_SIMILAR_PROMOTER_LIMIT",
-    ):
-        monkeypatch.delenv(name, raising=False)
-
-    config = promoter_feedback_config_from_env()
+def test_promoter_feedback_config_uses_config_defaults():
+    config = promoter_feedback_config_from_config()
 
     assert config.exact_positive_boost == pytest.approx(0.10)
     assert config.similar_positive_boost == pytest.approx(0.03)
     assert config.max_total_boost == pytest.approx(0.15)
     assert config.similarity_min == pytest.approx(0.30)
     assert config.similar_promoter_limit == 10
+
+
+def test_promoter_feedback_config_reads_config_override(monkeypatch):
+    _set_feedback_config(
+        monkeypatch,
+        PROMOTER_FEEDBACK_EXACT_POSITIVE_BOOST=0.12,
+        PROMOTER_FEEDBACK_SIMILAR_POSITIVE_BOOST=0.04,
+        PROMOTER_FEEDBACK_MAX_TOTAL_BOOST=0.2,
+        PROMOTER_FEEDBACK_SIMILARITY_MIN=0.25,
+        PROMOTER_FEEDBACK_SIMILAR_PROMOTER_LIMIT=7,
+    )
+
+    config = promoter_feedback_config_from_config()
+
+    assert config == PromoterFeedbackConfig(
+        exact_positive_boost=0.12,
+        similar_positive_boost=0.04,
+        max_total_boost=0.2,
+        similarity_min=0.25,
+        similar_promoter_limit=7,
+    )

@@ -111,7 +111,6 @@ Useful commands:
 ```bash
 make ps
 make logs
-make health
 make db-shell
 make prisma-migrate
 make down
@@ -125,17 +124,13 @@ Local entry points:
 
 ## Data workflow
 
-The typical local workflow is:
+Use the full local ingestion pipeline:
 
 ```bash
-make import-events
-make backfill-normalized-texts
-make extract-artist-tags
-make refresh-embeddings
-make validate-import
+make full-pipeline
 ```
 
-Extraction and embedding commands require the corresponding provider configuration. Import validation and most backend tests can be used independently of those external calls.
+This runs the end-to-end import/enrichment flow in Docker. Optional extraction and embedding stages still require the corresponding provider configuration.
 
 ## API examples
 

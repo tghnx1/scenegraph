@@ -15,7 +15,7 @@ No extra analytics UI for now.
 ## Request
 
 ```http
-GET /api/recommendations/artists/{artist_id}/promoters?limit=20&exclude_existing=true
+GET /api/recommendations/artists/{artist_id}/promoters?limit=20
 ```
 
 Use `debug=false` in frontend by default.
@@ -71,7 +71,6 @@ Do not render for MVP UI:
 
 - `status`
 - `warmConnectionCount`
-- `directConnectionCount`
 - `scoreBreakdown` visuals
 - `debug` data
 - tabs by `warmRecommendations` / `discoveryRecommendations`

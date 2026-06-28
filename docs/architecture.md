@@ -70,9 +70,9 @@ flowchart TB
 ## Backend boundaries
 
 - `backend/app/routers/` defines the HTTP surface.
-- `backend/app/recommendation_services.py` builds API-facing recommendation responses.
-- `backend/app/recommendation_scoring.py` contains scoring helpers and configurable weights.
-- `backend/app/promoter_graph.py` and related graph modules build relationship evidence.
+- `backend/app/recommendations/services.py` builds API-facing recommendation responses.
+- `backend/app/recommendations/scoring.py` contains scoring helpers and configurable weights.
+- `backend/app/recommendations/promoter_graph.py` and related graph modules build relationship evidence.
 - `backend/app/text_profiles.py` and extraction modules prepare enrichment inputs.
 - `backend/app/db.py` manages psycopg database access.
 - `backend/prisma/` defines the schema and migrations.

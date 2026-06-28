@@ -1,7 +1,13 @@
-import pytest
+from copy import deepcopy
+from pathlib import Path
+from types import MappingProxyType
 
-from app.recommendation_services import promoter_recommendation_adjusted_score
-from app.recommendation_scoring import (
+import pytest
+import yaml
+
+from app.recommendations.config_loader import RecommendationConfig
+from app.recommendations.services import promoter_recommendation_adjusted_score
+from app.recommendations.scoring import (
     DEFAULT_RECOMMENDATION_SCORING,
     PromoterRecommendationScoringConfig,
     SemanticArtistScoringConfig,
@@ -11,15 +17,42 @@ from app.recommendation_scoring import (
     hybrid_graph_score,
     is_similarity_candidate_eligible,
     normalized_weights,
-    promoter_segment_quota_ratios_from_env,
-    promoter_segment_warm_share_from_env,
-    promoter_recommendation_api_limit_max_from_env,
-    promoter_recommendation_scoring_from_env,
+    promoter_segment_quota_ratios_from_config,
+    promoter_segment_warm_share_from_config,
+    promoter_recommendation_api_limit_max_from_config,
+    promoter_recommendation_scoring_from_config,
     recommendation_scoring_from_env,
     semantic_artist_score,
     semantic_artist_scoring_from_env,
     semantic_artist_tag_scoring_from_env,
 )
+
+
+CANONICAL_RECOMMENDATION_CONFIG_PATH = (
+    Path(__file__).resolve().parent.parent / "app" / "recommendations" / "config.yaml"
+)
+
+
+def _canonical_recommendation_config_data() -> dict:
+    with CANONICAL_RECOMMENDATION_CONFIG_PATH.open("r", encoding="utf-8") as config_file:
+        return yaml.safe_load(config_file)
+
+
+def _recommendation_config_from_data(config_data: dict) -> RecommendationConfig:
+    return RecommendationConfig(
+        promoter_recommendations=MappingProxyType(dict(config_data["promoter_recommendations"])),
+        promoter_feedback=MappingProxyType(dict(config_data["promoter_feedback"])),
+        metadata=MappingProxyType(dict(config_data["metadata"])),
+    )
+
+
+def _set_promoter_config(monkeypatch: pytest.MonkeyPatch, **overrides) -> None:
+    config_data = deepcopy(_canonical_recommendation_config_data())
+    config_data["promoter_recommendations"].update(overrides)
+    monkeypatch.setattr(
+        "app.recommendations.scoring._recommendation_config",
+        lambda: _recommendation_config_from_data(config_data),
+    )
 
 
 def test_event_graph_score_uses_capped_overlap_counts():
@@ -140,72 +173,68 @@ def test_semantic_artist_tag_scoring_reads_and_normalizes_env(monkeypatch):
     )
 
 
-def test_promoter_recommendation_scoring_reads_and_normalizes_env(monkeypatch):
-    monkeypatch.setenv("PROMOTER_REC_SEMANTIC_WEIGHT", "35")
-    monkeypatch.setenv("PROMOTER_REC_STRENGTH_WEIGHT", "18")
-    monkeypatch.setenv("PROMOTER_REC_DIRECT_CONNECTION_WEIGHT", "15")
-    monkeypatch.setenv("PROMOTER_REC_CO_PLAYED_CONNECTION_WEIGHT", "8")
-    monkeypatch.setenv("PROMOTER_REC_MANUAL_CONNECTION_WEIGHT", "4")
-    monkeypatch.setenv("PROMOTER_REC_EVENT_SIMILARITY_WEIGHT", "5")
-    monkeypatch.setenv("PROMOTER_REC_SCALE_FIT_WEIGHT", "5")
-    monkeypatch.setenv("PROMOTER_REC_ACTIVITY_WEIGHT", "5")
-    monkeypatch.setenv("PROMOTER_REC_RECENCY_WEIGHT", "5")
-    monkeypatch.setenv("PROMOTER_REC_STRENGTH_MATCHED_ARTIST_WEIGHT", "70")
-    monkeypatch.setenv("PROMOTER_REC_STRENGTH_EVENT_WEIGHT", "30")
-    monkeypatch.setenv("PROMOTER_REC_STRENGTH_MATCHED_ARTIST_CAP", "6")
-    monkeypatch.setenv("PROMOTER_REC_STRENGTH_EVENT_CAP", "24")
-    monkeypatch.setenv("PROMOTER_REC_DIRECT_CONNECTION_CAP", "4")
-    monkeypatch.setenv("PROMOTER_REC_WARM_CONNECTION_CAP", "5")
-    monkeypatch.setenv("PROMOTER_REC_MANUAL_WARM_CONNECTION_CAP", "2")
-    monkeypatch.setenv("PROMOTER_REC_MANUAL_WARM_MIN_ARTIST_SEMANTIC_SCORE", "0.52")
-    monkeypatch.setenv("PROMOTER_REC_EVENT_SIMILARITY_COUNT_CAP", "9")
-    monkeypatch.setenv("PROMOTER_REC_EVENT_SIMILARITY_MIN_TOTAL_SCORE", "0.58")
-    monkeypatch.setenv("PROMOTER_REC_EVENT_SIMILARITY_MIN_EMBEDDING_SCORE", "0.41")
-    monkeypatch.setenv("PROMOTER_REC_EVENT_SIMILARITY_SEMANTIC_ONLY", "false")
-    monkeypatch.setenv("PROMOTER_REC_EVENT_SIMILARITY_PER_PROMOTER_LIMIT", "12")
-    monkeypatch.setenv("PROMOTER_REC_EVENT_SIMILARITY_SYMBOLIC_WEIGHT", "55")
-    monkeypatch.setenv("PROMOTER_REC_EVENT_SIMILARITY_EMBEDDING_WEIGHT", "45")
-    monkeypatch.setenv("PROMOTER_REC_EVENT_SIMILARITY_SAME_VENUE_WEIGHT", "40")
-    monkeypatch.setenv("PROMOTER_REC_EVENT_SIMILARITY_SHARED_GENRE_WEIGHT", "10")
-    monkeypatch.setenv("PROMOTER_REC_EVENT_SIMILARITY_SHARED_LINEUP_WEIGHT", "30")
-    monkeypatch.setenv("PROMOTER_REC_EVENT_SIMILARITY_EXTRACTED_GENRE_WEIGHT", "20")
-    monkeypatch.setenv("PROMOTER_REC_ACTIVITY_EVENT_CAP", "30")
-    monkeypatch.setenv("PROMOTER_REC_EXISTING_PARTNER_DIRECT_MIN", "2")
-    monkeypatch.setenv("PROMOTER_REC_WARM_RELEVANT_CONNECTION_MIN", "1")
-    monkeypatch.setenv("PROMOTER_REC_DIRECT_EDGE_STRENGTH_MIN", "0.75")
-    monkeypatch.setenv("PROMOTER_REC_DIRECT_EDGE_STRENGTH_MAX", "0.95")
-    monkeypatch.setenv("PROMOTER_REC_WARM_EDGE_STRENGTH_MIN", "0.45")
-    monkeypatch.setenv("PROMOTER_REC_WARM_EDGE_STRENGTH_MAX", "0.78")
-    monkeypatch.setenv("PROMOTER_REC_EVENT_SIMILARITY_EDGE_STRENGTH_MIN", "0.22")
-    monkeypatch.setenv("PROMOTER_REC_EVENT_SIMILARITY_EDGE_STRENGTH_MAX", "0.66")
-    monkeypatch.setenv("PROMOTER_REC_SCALE_FIT_ALPHA", "80")
-    monkeypatch.setenv("PROMOTER_REC_SCALE_FIT_TAU", "0.6")
-    monkeypatch.setenv("PROMOTER_REC_SQL_CANDIDATE_LIMIT", "260")
-    monkeypatch.setenv("PROMOTER_REC_SEMANTIC_ARTIST_POOL_LIMIT", "21")
-    monkeypatch.setenv("PROMOTER_REC_SEMANTIC_ARTIST_MIN_SCORE", "0.51")
-    monkeypatch.setenv("PROMOTER_REC_EVENT_SIMILARITY_OVERFETCH_MULTIPLIER", "24")
-    monkeypatch.setenv("PROMOTER_REC_EVENT_SIMILARITY_OVERFETCH_MIN", "640")
-    monkeypatch.setenv("PROMOTER_REC_SOURCE_EVENT_RELEVANCE_GATE_ENABLED", "true")
-    monkeypatch.setenv("PROMOTER_REC_SOURCE_EVENT_RELEVANCE_MIN_EMBEDDING_SCORE", "0.57")
-    monkeypatch.setenv("PROMOTER_REC_SOURCE_EVENT_RELEVANCE_TOP_K", "4")
+def test_promoter_recommendation_scoring_reads_and_normalizes_config(monkeypatch):
+    _set_promoter_config(
+        monkeypatch,
+        PROMOTER_REC_SEMANTIC_WEIGHT=35.0,
+        PROMOTER_REC_STRENGTH_WEIGHT=18.0,
+        PROMOTER_REC_CO_PLAYED_CONNECTION_WEIGHT=8.0,
+        PROMOTER_REC_MANUAL_CONNECTION_WEIGHT=4.0,
+        PROMOTER_REC_EVENT_SIMILARITY_WEIGHT=5.0,
+        PROMOTER_REC_SCALE_FIT_WEIGHT=5.0,
+        PROMOTER_REC_ACTIVITY_WEIGHT=5.0,
+        PROMOTER_REC_RECENCY_WEIGHT=5.0,
+        PROMOTER_REC_STRENGTH_MATCHED_ARTIST_WEIGHT=70.0,
+        PROMOTER_REC_STRENGTH_EVENT_WEIGHT=30.0,
+        PROMOTER_REC_STRENGTH_MATCHED_ARTIST_CAP=6,
+        PROMOTER_REC_STRENGTH_EVENT_CAP=24,
+        PROMOTER_REC_WARM_CONNECTION_CAP=5,
+        PROMOTER_REC_MANUAL_WARM_CONNECTION_CAP=2,
+        PROMOTER_REC_MANUAL_WARM_MIN_ARTIST_SEMANTIC_SCORE=0.52,
+        PROMOTER_REC_EVENT_SIMILARITY_COUNT_CAP=9,
+        PROMOTER_REC_EVENT_SIMILARITY_MIN_TOTAL_SCORE=0.58,
+        PROMOTER_REC_EVENT_SIMILARITY_MIN_EMBEDDING_SCORE=0.41,
+        PROMOTER_REC_EVENT_SIMILARITY_SEMANTIC_ONLY=False,
+        PROMOTER_REC_EVENT_SIMILARITY_PER_PROMOTER_LIMIT=12,
+        PROMOTER_REC_EVENT_SIMILARITY_SYMBOLIC_WEIGHT=55.0,
+        PROMOTER_REC_EVENT_SIMILARITY_EMBEDDING_WEIGHT=45.0,
+        PROMOTER_REC_EVENT_SIMILARITY_SAME_VENUE_WEIGHT=40.0,
+        PROMOTER_REC_EVENT_SIMILARITY_SHARED_GENRE_WEIGHT=10.0,
+        PROMOTER_REC_EVENT_SIMILARITY_SHARED_LINEUP_WEIGHT=30.0,
+        PROMOTER_REC_EVENT_SIMILARITY_EXTRACTED_GENRE_WEIGHT=20.0,
+        PROMOTER_REC_ACTIVITY_EVENT_CAP=30,
+        PROMOTER_REC_WARM_RELEVANT_CONNECTION_MIN=1,
+        PROMOTER_REC_WARM_EDGE_STRENGTH_MIN=0.45,
+        PROMOTER_REC_WARM_EDGE_STRENGTH_MAX=0.78,
+        PROMOTER_REC_EVENT_SIMILARITY_EDGE_STRENGTH_MIN=0.22,
+        PROMOTER_REC_EVENT_SIMILARITY_EDGE_STRENGTH_MAX=0.66,
+        PROMOTER_REC_SCALE_FIT_ALPHA=80.0,
+        PROMOTER_REC_SCALE_FIT_TAU=0.6,
+        PROMOTER_REC_SQL_CANDIDATE_LIMIT=260,
+        PROMOTER_REC_SEMANTIC_ARTIST_POOL_LIMIT=21,
+        PROMOTER_REC_SEMANTIC_ARTIST_MIN_SCORE=0.51,
+        PROMOTER_REC_EVENT_SIMILARITY_OVERFETCH_MULTIPLIER=24,
+        PROMOTER_REC_EVENT_SIMILARITY_OVERFETCH_MIN=640,
+        PROMOTER_REC_SOURCE_EVENT_RELEVANCE_GATE_ENABLED=True,
+        PROMOTER_REC_SOURCE_EVENT_RELEVANCE_MIN_EMBEDDING_SCORE=0.57,
+        PROMOTER_REC_SOURCE_EVENT_RELEVANCE_TOP_K=4,
+    )
 
-    config = promoter_recommendation_scoring_from_env()
+    config = promoter_recommendation_scoring_from_config()
 
     assert config == PromoterRecommendationScoringConfig(
-        semantic_weight=0.35,
-        strength_weight=0.18,
-        direct_connection_weight=0.15,
-        co_played_connection_weight=0.08,
-        manual_connection_weight=0.04,
-        event_similarity_weight=0.05,
-        scale_fit_weight=0.05,
-        activity_weight=0.05,
-        recency_weight=0.05,
+        semantic_weight=35 / 85,
+        strength_weight=18 / 85,
+        co_played_connection_weight=8 / 85,
+        manual_connection_weight=4 / 85,
+        event_similarity_weight=5 / 85,
+        scale_fit_weight=5 / 85,
+        activity_weight=5 / 85,
+        recency_weight=5 / 85,
         strength_matched_artist_weight=0.70,
         strength_event_weight=0.30,
         strength_matched_artist_cap=6,
         strength_event_cap=24,
-        direct_connection_cap=4,
         warm_connection_cap=5,
         manual_warm_connection_cap=2,
         manual_warm_min_artist_semantic_score=0.52,
@@ -220,13 +249,8 @@ def test_promoter_recommendation_scoring_reads_and_normalizes_env(monkeypatch):
         event_similarity_shared_genre_weight=0.10,
         event_similarity_shared_lineup_weight=0.30,
         event_similarity_extracted_genre_weight=0.20,
-        event_similarity_shared_theme_bonus=0.03,
-        event_similarity_shared_mood_bonus=0.02,
         activity_event_cap=30,
-        existing_partner_direct_min=2,
         warm_relevant_connection_min=1,
-        direct_edge_strength_min=0.75,
-        direct_edge_strength_max=0.95,
         warm_edge_strength_min=0.45,
         warm_edge_strength_max=0.78,
         event_similarity_edge_strength_min=0.22,
@@ -263,195 +287,40 @@ def test_recommendation_scoring_reads_event_graph_weights_from_env(monkeypatch):
     assert weights["extracted_genres"].cap == 4
 
 
-def test_recommendation_scoring_supports_legacy_extracted_styles_env_keys(monkeypatch):
-    monkeypatch.delenv("EVENT_GRAPH_SHARED_EXTRACTED_GENRES_WEIGHT", raising=False)
-    monkeypatch.delenv("EVENT_GRAPH_SHARED_EXTRACTED_GENRES_CAP", raising=False)
-    monkeypatch.setenv("EVENT_GRAPH_SHARED_ARTISTS_WEIGHT", "40")
-    monkeypatch.setenv("EVENT_GRAPH_SHARED_PROMOTERS_WEIGHT", "20")
-    monkeypatch.setenv("EVENT_GRAPH_SAME_VENUE_WEIGHT", "5")
-    monkeypatch.setenv("EVENT_GRAPH_SHARED_GENRES_WEIGHT", "5")
-    monkeypatch.setenv("EVENT_GRAPH_SHARED_EXTRACTED_STYLES_WEIGHT", "30")
-    monkeypatch.setenv("EVENT_GRAPH_SHARED_EXTRACTED_STYLES_CAP", "4")
+def test_promoter_recommendation_scoring_uses_config_genre_weight_without_alias(monkeypatch):
+    _set_promoter_config(
+        monkeypatch,
+        PROMOTER_REC_EVENT_SIMILARITY_EXTRACTED_GENRE_WEIGHT=20.0,
+        PROMOTER_REC_EVENT_SIMILARITY_SAME_VENUE_WEIGHT=40.0,
+        PROMOTER_REC_EVENT_SIMILARITY_SHARED_GENRE_WEIGHT=10.0,
+        PROMOTER_REC_EVENT_SIMILARITY_SHARED_LINEUP_WEIGHT=30.0,
+    )
 
-    config = recommendation_scoring_from_env()
-    weights = {item.feature: item for item in config.event_graph_weights}
-
-    assert round(weights["artists"].weight, 4) == 0.4
-    assert round(weights["promoters"].weight, 4) == 0.2
-    assert round(weights["venues"].weight, 4) == 0.05
-    assert round(weights["genres"].weight, 4) == 0.05
-    assert round(weights["extracted_genres"].weight, 4) == 0.3
-    assert weights["extracted_genres"].cap == 4
-
-
-def test_promoter_recommendation_scoring_supports_legacy_extracted_style_weight_env_key(monkeypatch):
-    monkeypatch.delenv("PROMOTER_REC_EVENT_SIMILARITY_EXTRACTED_GENRE_WEIGHT", raising=False)
-    monkeypatch.setenv("PROMOTER_REC_EVENT_SIMILARITY_EXTRACTED_STYLE_WEIGHT", "20")
-    monkeypatch.setenv("PROMOTER_REC_EVENT_SIMILARITY_SAME_VENUE_WEIGHT", "40")
-    monkeypatch.setenv("PROMOTER_REC_EVENT_SIMILARITY_SHARED_GENRE_WEIGHT", "10")
-    monkeypatch.setenv("PROMOTER_REC_EVENT_SIMILARITY_SHARED_LINEUP_WEIGHT", "30")
-
-    config = promoter_recommendation_scoring_from_env()
+    config = promoter_recommendation_scoring_from_config()
 
     assert round(config.event_similarity_extracted_genre_weight, 4) == 0.2
 
 
-def test_promoter_recommendation_scoring_supports_legacy_warm_network_weight_env_key(monkeypatch):
-    monkeypatch.setenv("PROMOTER_REC_WARM_NETWORK_WEIGHT", "0.2")
-    monkeypatch.setenv("PROMOTER_REC_SEMANTIC_WEIGHT", "0.1")
-    monkeypatch.setenv("PROMOTER_REC_STRENGTH_WEIGHT", "0.1")
-    monkeypatch.setenv("PROMOTER_REC_DIRECT_CONNECTION_WEIGHT", "0.1")
-    monkeypatch.setenv("PROMOTER_REC_MANUAL_CONNECTION_WEIGHT", "0.1")
-    monkeypatch.setenv("PROMOTER_REC_EVENT_SIMILARITY_WEIGHT", "0.1")
-    monkeypatch.setenv("PROMOTER_REC_SCALE_FIT_WEIGHT", "0.1")
-    monkeypatch.setenv("PROMOTER_REC_ACTIVITY_WEIGHT", "0.1")
-    monkeypatch.setenv("PROMOTER_REC_RECENCY_WEIGHT", "0.1")
-
-    config = promoter_recommendation_scoring_from_env()
-
-    assert config.co_played_connection_weight > 0
+def test_promoter_recommendation_api_limit_max_reads_config(monkeypatch):
+    _set_promoter_config(monkeypatch, PROMOTER_REC_API_LIMIT_MAX=75)
+    assert promoter_recommendation_api_limit_max_from_config() == 75
 
 
-def test_promoter_recommendation_scoring_rejects_invalid_warm_range(monkeypatch):
-    monkeypatch.setenv("PROMOTER_REC_WARM_EDGE_STRENGTH_MIN", "0.9")
-    monkeypatch.setenv("PROMOTER_REC_WARM_EDGE_STRENGTH_MAX", "0.7")
-    try:
-        promoter_recommendation_scoring_from_env()
-    except ValueError as exc:
-        assert "PROMOTER_REC_WARM_EDGE_STRENGTH_MIN" in str(exc)
-    else:
-        raise AssertionError("Expected ValueError")
+def test_promoter_segment_quota_ratios_read_from_config(monkeypatch):
+    _set_promoter_config(
+        monkeypatch,
+        PROMOTER_REC_SEGMENT_QUOTA_SMALL_SMALL=0.7,
+        PROMOTER_REC_SEGMENT_QUOTA_SMALL_MEDIUM=0.2,
+        PROMOTER_REC_SEGMENT_QUOTA_SMALL_LARGE=0.1,
+        PROMOTER_REC_SEGMENT_QUOTA_MEDIUM_SMALL=0.2,
+        PROMOTER_REC_SEGMENT_QUOTA_MEDIUM_MEDIUM=0.5,
+        PROMOTER_REC_SEGMENT_QUOTA_MEDIUM_LARGE=0.3,
+        PROMOTER_REC_SEGMENT_QUOTA_LARGE_SMALL=0.1,
+        PROMOTER_REC_SEGMENT_QUOTA_LARGE_MEDIUM=0.2,
+        PROMOTER_REC_SEGMENT_QUOTA_LARGE_LARGE=0.7,
+    )
 
-
-def test_promoter_recommendation_scoring_rejects_invalid_manual_warm_cap(monkeypatch):
-    monkeypatch.setenv("PROMOTER_REC_MANUAL_WARM_CONNECTION_CAP", "0")
-    try:
-        promoter_recommendation_scoring_from_env()
-    except ValueError as exc:
-        assert "PROMOTER_REC_MANUAL_WARM_CONNECTION_CAP" in str(exc)
-    else:
-        raise AssertionError("Expected ValueError")
-
-
-def test_promoter_recommendation_scoring_rejects_invalid_manual_connection_weight(monkeypatch):
-    monkeypatch.setenv("PROMOTER_REC_MANUAL_CONNECTION_WEIGHT", "-0.1")
-    try:
-        promoter_recommendation_scoring_from_env()
-    except ValueError as exc:
-        assert "Scoring weights must be non-negative" in str(exc)
-    else:
-        raise AssertionError("Expected ValueError")
-
-
-def test_promoter_recommendation_scoring_rejects_invalid_manual_warm_min_semantic(monkeypatch):
-    monkeypatch.setenv("PROMOTER_REC_MANUAL_WARM_MIN_ARTIST_SEMANTIC_SCORE", "1.1")
-    try:
-        promoter_recommendation_scoring_from_env()
-    except ValueError as exc:
-        assert "PROMOTER_REC_MANUAL_WARM_MIN_ARTIST_SEMANTIC_SCORE" in str(exc)
-    else:
-        raise AssertionError("Expected ValueError")
-
-
-def test_promoter_recommendation_scoring_rejects_invalid_event_similarity_min_total_score(monkeypatch):
-    monkeypatch.setenv("PROMOTER_REC_EVENT_SIMILARITY_MIN_TOTAL_SCORE", "1.1")
-    try:
-        promoter_recommendation_scoring_from_env()
-    except ValueError as exc:
-        assert "PROMOTER_REC_EVENT_SIMILARITY_MIN_TOTAL_SCORE" in str(exc)
-    else:
-        raise AssertionError("Expected ValueError")
-
-
-def test_promoter_recommendation_scoring_rejects_invalid_event_similarity_min_embedding_score(
-    monkeypatch,
-):
-    monkeypatch.setenv("PROMOTER_REC_EVENT_SIMILARITY_MIN_EMBEDDING_SCORE", "1.1")
-    try:
-        promoter_recommendation_scoring_from_env()
-    except ValueError as exc:
-        assert "PROMOTER_REC_EVENT_SIMILARITY_MIN_EMBEDDING_SCORE" in str(exc)
-    else:
-        raise AssertionError("Expected ValueError")
-
-
-def test_promoter_recommendation_scoring_rejects_invalid_event_similarity_per_promoter_limit(monkeypatch):
-    monkeypatch.setenv("PROMOTER_REC_EVENT_SIMILARITY_PER_PROMOTER_LIMIT", "0")
-    try:
-        promoter_recommendation_scoring_from_env()
-    except ValueError as exc:
-        assert "PROMOTER_REC_EVENT_SIMILARITY_PER_PROMOTER_LIMIT" in str(exc)
-    else:
-        raise AssertionError("Expected ValueError")
-
-
-def test_promoter_recommendation_scoring_rejects_invalid_scale_fit_alpha(monkeypatch):
-    monkeypatch.setenv("PROMOTER_REC_SCALE_FIT_ALPHA", "0")
-    try:
-        promoter_recommendation_scoring_from_env()
-    except ValueError as exc:
-        assert "PROMOTER_REC_SCALE_FIT_ALPHA" in str(exc)
-    else:
-        raise AssertionError("Expected ValueError")
-
-
-def test_promoter_recommendation_scoring_rejects_invalid_scale_fit_tau(monkeypatch):
-    monkeypatch.setenv("PROMOTER_REC_SCALE_FIT_TAU", "-0.1")
-    try:
-        promoter_recommendation_scoring_from_env()
-    except ValueError as exc:
-        assert "PROMOTER_REC_SCALE_FIT_TAU" in str(exc)
-    else:
-        raise AssertionError("Expected ValueError")
-
-
-def test_promoter_recommendation_scoring_rejects_invalid_sql_candidate_limit(monkeypatch):
-    monkeypatch.setenv("PROMOTER_REC_SQL_CANDIDATE_LIMIT", "0")
-    try:
-        promoter_recommendation_scoring_from_env()
-    except ValueError as exc:
-        assert "PROMOTER_REC_SQL_CANDIDATE_LIMIT" in str(exc)
-    else:
-        raise AssertionError("Expected ValueError")
-
-
-def test_promoter_recommendation_scoring_rejects_invalid_semantic_artist_pool_limit(monkeypatch):
-    monkeypatch.setenv("PROMOTER_REC_SEMANTIC_ARTIST_POOL_LIMIT", "0")
-    try:
-        promoter_recommendation_scoring_from_env()
-    except ValueError as exc:
-        assert "PROMOTER_REC_SEMANTIC_ARTIST_POOL_LIMIT" in str(exc)
-    else:
-        raise AssertionError("Expected ValueError")
-
-
-def test_promoter_recommendation_scoring_rejects_invalid_semantic_artist_min_score(monkeypatch):
-    monkeypatch.setenv("PROMOTER_REC_SEMANTIC_ARTIST_MIN_SCORE", "1.1")
-    try:
-        promoter_recommendation_scoring_from_env()
-    except ValueError as exc:
-        assert "PROMOTER_REC_SEMANTIC_ARTIST_MIN_SCORE" in str(exc)
-    else:
-        raise AssertionError("Expected ValueError")
-
-
-def test_promoter_recommendation_api_limit_max_reads_env(monkeypatch):
-    monkeypatch.setenv("PROMOTER_REC_API_LIMIT_MAX", "75")
-    assert promoter_recommendation_api_limit_max_from_env() == 75
-
-
-def test_promoter_segment_quota_ratios_read_from_env(monkeypatch):
-    monkeypatch.setenv("PROMOTER_REC_SEGMENT_QUOTA_SMALL_SMALL", "0.7")
-    monkeypatch.setenv("PROMOTER_REC_SEGMENT_QUOTA_SMALL_MEDIUM", "0.2")
-    monkeypatch.setenv("PROMOTER_REC_SEGMENT_QUOTA_SMALL_LARGE", "0.1")
-    monkeypatch.setenv("PROMOTER_REC_SEGMENT_QUOTA_MEDIUM_SMALL", "0.2")
-    monkeypatch.setenv("PROMOTER_REC_SEGMENT_QUOTA_MEDIUM_MEDIUM", "0.5")
-    monkeypatch.setenv("PROMOTER_REC_SEGMENT_QUOTA_MEDIUM_LARGE", "0.3")
-    monkeypatch.setenv("PROMOTER_REC_SEGMENT_QUOTA_LARGE_SMALL", "0.1")
-    monkeypatch.setenv("PROMOTER_REC_SEGMENT_QUOTA_LARGE_MEDIUM", "0.2")
-    monkeypatch.setenv("PROMOTER_REC_SEGMENT_QUOTA_LARGE_LARGE", "0.7")
-
-    ratios = promoter_segment_quota_ratios_from_env()
+    ratios = promoter_segment_quota_ratios_from_config()
 
     assert ratios["small"]["small"] == pytest.approx(0.7)
     assert ratios["small"]["medium"] == pytest.approx(0.2)
@@ -464,29 +333,9 @@ def test_promoter_segment_quota_ratios_read_from_env(monkeypatch):
     assert ratios["large"]["large"] == pytest.approx(0.7)
 
 
-def test_promoter_segment_quota_ratios_reject_negative_values(monkeypatch):
-    monkeypatch.setenv("PROMOTER_REC_SEGMENT_QUOTA_SMALL_SMALL", "-0.1")
-    try:
-        promoter_segment_quota_ratios_from_env()
-    except ValueError as exc:
-        assert "Scoring weights must be non-negative" in str(exc)
-    else:
-        raise AssertionError("Expected ValueError")
-
-
-def test_promoter_segment_warm_share_reads_env(monkeypatch):
-    monkeypatch.setenv("PROMOTER_REC_SEGMENT_WARM_SHARE", "0.65")
-    assert promoter_segment_warm_share_from_env() == 0.65
-
-
-def test_promoter_segment_warm_share_rejects_invalid_value(monkeypatch):
-    monkeypatch.setenv("PROMOTER_REC_SEGMENT_WARM_SHARE", "1.2")
-    try:
-        promoter_segment_warm_share_from_env()
-    except ValueError as exc:
-        assert "PROMOTER_REC_SEGMENT_WARM_SHARE" in str(exc)
-    else:
-        raise AssertionError("Expected ValueError")
+def test_promoter_segment_warm_share_reads_config(monkeypatch):
+    _set_promoter_config(monkeypatch, PROMOTER_REC_SEGMENT_WARM_SHARE=0.65)
+    assert promoter_segment_warm_share_from_config() == 0.65
 
 
 def test_artist_recommendation_min_semantic_score_reads_env(monkeypatch):

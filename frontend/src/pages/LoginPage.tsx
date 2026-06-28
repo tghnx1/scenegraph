@@ -113,12 +113,28 @@ export function LoginPage({ onLogin }: LoginPageProps) {
   const navigate = useNavigate()
   const [username, setUsername] = useState(localStorage.getItem('last_username') ?? '')   // for keeping the username in the login mask
   const [password, setPassword] = useState('')
-  const [error, setError] = useState('')
+  const [error, setError] = useState(() => {
+    const message = sessionStorage.getItem('auth_message') ?? ''
+    sessionStorage.removeItem('auth_message')
+    return message
+  })
+
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isRegistering, setIsRegistering] = useState(false)
   const [email, setEmail] = useState('')
   const [passwordConfirm, setPasswordConfirm] = useState('')
   const [requestedRole, setRequestedRole] = useState<RegistrationRole>('artist') 
+
+  useEffect(() => {
+    const showLoginForm = () => {
+      setError('')
+      setIsRegistering(false)
+    }
+    window.addEventListener('show-login-form', showLoginForm)
+    return () => {
+      window.removeEventListener('show-login-form', showLoginForm)
+    }
+  }, [])
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -186,6 +202,8 @@ export function LoginPage({ onLogin }: LoginPageProps) {
         setError(response.message || 'Invalid username or password')
         return
       }
+      sessionStorage.removeItem('auth_message')
+      setError('')
 
       const authenticatedUsername = response.username ?? cleanUsername
       const role: AuthRole =
@@ -199,7 +217,6 @@ export function LoginPage({ onLogin }: LoginPageProps) {
       localStorage.setItem('role', role)
       localStorage.setItem('username', authenticatedUsername)
       localStorage.setItem('last_username', authenticatedUsername)
-      localStorage.setItem('artist_id', String(response.artist_id))
 
       if (response.user_id !== undefined) {
         localStorage.setItem('user_id', String(response.user_id))

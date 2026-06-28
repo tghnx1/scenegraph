@@ -1,7 +1,6 @@
 export type NodeType = 'artist' | 'event' | 'venue' | 'promoter'
 export type GraphEvidenceType =
   | 'semantic_bridge'
-  | 'direct_connection'
   | 'warm_network'
   | 'manual_connection'
   | 'event_similarity'

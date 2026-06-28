@@ -5,7 +5,7 @@ from datetime import date as DateValue
 from fastapi import APIRouter, HTTPException, Query
 
 from app.db import get_connection
-from app.recommendation_helpers import graph_node_id
+from app.recommendations.helpers import graph_node_id
 from app.schemas import GraphLink, GraphNode, GraphResponse
 
 router = APIRouter()

@@ -16,8 +16,13 @@ async function request<T>( //typescript generics, request<GraphData> returns Pro
     },
   })
 
-  if (res.status === 401) { //redirect to login
+  if (res.status === 401 || res.status === 403) { //redirect to login (401 unauthorized, 403 forbidden)
     localStorage.removeItem('token')
+    localStorage.removeItem('role')
+    localStorage.removeItem('username')
+    localStorage.removeItem('user_id')
+    localStorage.removeItem('artist_id')
+    sessionStorage.setItem('auth_message', 'Your account is no longer active.')
     window.location.href = '/login'
   }
 

@@ -322,7 +322,7 @@ export function PromoterRecommendationsPanel({
     try {
       const createdJob = await api.post<RecommendationJobCreatedResponse>(
         `${PROMOTER_RECOMMENDATIONS_API_PATH}/${recommendationArtistId}/promoters/jobs`,
-        { limit: 50, excludeExisting: true, debug: false },
+        { limit: 50, debug: false },
       )
       if (recommendationRequestIdRef.current !== requestId) return
       activeRecommendationJobRef.current = { jobId: createdJob.jobId, requestId }

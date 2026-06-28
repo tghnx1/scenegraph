@@ -32,7 +32,7 @@ NGINX_CERT_KEY ?= $(NGINX_CERT_DIR)/privkey.pem
 NGINX_CERT_FILE ?= $(NGINX_CERT_DIR)/fullchain.pem
 CERT_NAMES ?=
 
-.PHONY: help env cert build up upd upd-build debug-up debug-down down stop restart logs ps health load-dashboard load-dashboard-k6 ensure-ssl-certs prisma-migrate prisma-studio db-shell import-events backfill-normalized-texts backfill-lineup-residual backfill-artist-biographies extract-artist-tags refresh-embeddings validate-import refresh-data-check refresh-data-check-bio refresh-data-check-bio-embeddings full-pipeline import-dump export-dump clean reset-db list fclean
+.PHONY: help env cert build up upd upd-build debug-up debug-down down stop restart logs ps ensure-ssl-certs prisma-migrate db-shell full-pipeline import-dump export-dump clean list fclean
 
 help:
 	@printf "\n"
@@ -40,10 +40,10 @@ help:
 	@printf "\n"
 	@printf "  make env      Create .env from .env.example if missing\n"
 	@printf "  make cert     Generate nginx self-signed TLS certificate\n"
-	@printf "  make build    Build containers\n"
-	@printf "  make up       Start stack with recommendation-worker count from .env (fallback: 1)\n"
-	@printf "  make upd      Start dev stack with recommendation-worker count from .env (fallback: 1)\n"
-	@printf "  make upd-build Start build stack in background with nginx serving frontend dist\n"
+	@printf "  make build    Build local dev images only (usually unnecessary; make upd builds as needed)\n"
+	@printf "  make up       Start local dev stack in foreground with recommendation-worker count from .env (fallback: 1)\n"
+	@printf "  make upd      Start local dev stack in background (recommended default)\n"
+	@printf "  make upd-build Start production-like stack in background with nginx serving built frontend dist\n"
 	@printf "  make debug-up Start stack with backend connecting to the PyCharm debug server on localhost:5678\n"
 	@printf "  make debug-down Stop the debug stack\n"
 	@printf "  make down     Stop and remove containers\n"
@@ -51,30 +51,15 @@ help:
 	@printf "  make restart  Restart the stack in background\n"
 	@printf "  make logs     Follow compose logs\n"
 	@printf "  make ps       Show running services\n"
-	@printf "  make health   Check nginx and API health endpoints\n"
-	@printf "  make load-dashboard Run authenticated concurrent dashboard load test\n"
-	@printf "  make load-dashboard-k6 Run authenticated k6 dashboard load test through Docker\n"
 	@printf "  make prisma-migrate Apply Prisma migrations to Postgres\n"
-	@printf "  make prisma-studio  Open Prisma Studio on localhost:5555\n"
 	@printf "  make db-shell Open a psql shell inside the Postgres container\n"
-	@printf "  make import-events Import backend/data/ra_berlin_past_events_2026.json\n"
-	@printf "  make backfill-normalized-texts Fill normalized lineup and biography text fields\n"
-	@printf "  make backfill-lineup-residual Fill events.lineup_residual_text from lineup_raw\n"
-	@printf "  make backfill-artist-biographies Fill artists.biography_normalized from biography\n"
-	@printf "  make extract-artist-tags Extract structured artist tags from biographies with an LLM\n"
-	@printf "  make refresh-embeddings Backfill pgvector support if needed, then regenerate recommendation embeddings\n"
-	@printf "  make validate-import Run post-import integrity checks against the current DATABASE_URL\n"
-	@printf "  make refresh-data-check Run pipeline + import + validate on a check DB (default: scenegraph_check)\n"
-	@printf "  make refresh-data-check-bio Same as refresh-data-check, but includes artists biographies scraping\n"
-	@printf "  make refresh-data-check-bio-embeddings Same as refresh-data-check-bio + incremental embeddings for check DB\n"
-	@printf "  make full-pipeline Run the full ingestion pipeline in Docker (supports FULL_PIPELINE_MIN_DATE/FULL_PIPELINE_MAX_DATE)\n"
+	@printf "  make full-pipeline Preferred end-to-end import/enrichment flow in Docker\n"
 	@printf "  make import-dump   Import local/remote dump with interactive safety prompts\n"
 	@printf "  make export-dump   Export DB_NAME or .env/explicit DATABASE_URL dump; supports OUT=... FORMAT=sql|custom\n"
 	@printf "  make up/upd/upd-build auto-generate nginx SSL certs if nginx/certs is missing them\n"
-	@printf "  make clean    Stop stack and remove containers (keeps DB volumes)\n"
-	@printf "  make reset-db DANGEROUS: remove containers and DB volumes (requires RESET_DB=yes)\n"
+	@printf "  make clean    Stop stack and remove containers (keeps DB volumes and preserves .env)\n"
 	@printf "  make list     List Docker resources\n"
-	@printf "  make fclean   Remove containers, images, volumes, and builder cache\n"
+	@printf "  make fclean   Remove containers, images, volumes, and builder cache (preserves .env)\n"
 	@printf "\n"
 
 env:
@@ -132,71 +117,11 @@ logs:
 ps:
 	$(COMPOSE) ps
 
-health:
-	@printf "GET /health\n"
-	@curl -fsS http://localhost:8080/health && printf "\n"
-	@printf "\nGET /api/venues\n"
-	@curl -fsS http://localhost:8080/api/venues && printf "\n"
-
-load-dashboard: env
-	$(PYTHON) scripts/load_dashboard.py --requests "$${LOAD_REQUESTS:-100}" --concurrency "$${LOAD_CONCURRENCY:-100}" --mode "$${LOAD_MODE:-page}" --base-url "$${LOAD_BASE_URL:-https://localhost:8443}"
-
-load-dashboard-k6: env
-	docker run --rm -i --add-host=host.docker.internal:host-gateway -v "$$(pwd)":/work -w /work -e SG_K6_MODE="$${K6_MODE:-dashboard-api}" -e SG_K6_VUS="$${K6_VUS:-100}" -e SG_K6_ITERATIONS="$${K6_ITERATIONS:-100}" -e SG_K6_BASE_URL="$${K6_BASE_URL:-https://host.docker.internal:8443}" -e SG_K6_MAX_DURATION="$${K6_MAX_DURATION:-5m}" -e SG_K6_REQUEST_TIMEOUT="$${K6_REQUEST_TIMEOUT:-180s}" grafana/k6:latest run scripts/load_dashboard_k6.js
-
 prisma-migrate: env
 	$(COMPOSE) --profile tools run --rm --build prisma
 
-prisma-studio: env
-	$(COMPOSE) --profile tools run --rm --build --service-ports prisma npx prisma studio --hostname 0.0.0.0 --port 5555
-
 db-shell: env
 	$(COMPOSE) exec db psql -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"
-
-import-events: env
-	$(COMPOSE) exec backend python scripts/import_events.py
-
-backfill-normalized-texts: env
-	$(COMPOSE) exec backend python scripts/backfill_normalized_texts.py
-
-backfill-lineup-residual: env
-	$(COMPOSE) exec backend python scripts/backfill_normalized_texts.py --target lineup
-
-backfill-artist-biographies: env
-	$(COMPOSE) exec backend python scripts/backfill_normalized_texts.py --target biography
-
-extract-artist-tags: env
-	$(COMPOSE) exec backend python scripts/extract_artist_tags.py
-
-refresh-embeddings: env
-	$(COMPOSE) exec backend python scripts/backfill_embedding_vectors.py
-	$(COMPOSE) exec backend python scripts/generate_embeddings.py
-
-validate-import: env
-	$(COMPOSE) exec backend python scripts/validate_import.py
-
-refresh-data-check: env
-	@mkdir -p backend/data
-	@test -x "$(REFRESH_PARSE_PYTHON)" || (echo "Missing parser Python: $(REFRESH_PARSE_PYTHON). Create backend venv or override REFRESH_PARSE_PYTHON."; exit 1)
-	$(COMPOSE) exec -T -e DATABASE_URL="$(CHECK_DATABASE_URL)" backend python -c "import os,psycopg; conn=psycopg.connect(os.environ['DATABASE_URL']); cur=conn.cursor(); cur.execute(\"SELECT ra_event_id FROM events WHERE ra_event_id IS NOT NULL\"); print(\"\\n\".join(str(r[0]) for r in cur.fetchall())); conn.close()" > "$(REFRESH_EXISTING_EVENT_IDS_FILE)"
-	$(COMPOSE) exec -T -e DATABASE_URL="$(CHECK_DATABASE_URL)" backend python -c "import os,psycopg; conn=psycopg.connect(os.environ['DATABASE_URL']); cur=conn.cursor(); cur.execute(\"SELECT ra_artist_id FROM artists WHERE ra_artist_id IS NOT NULL\"); print(\"\\n\".join(str(r[0]) for r in cur.fetchall())); conn.close()" > "$(REFRESH_EXISTING_ARTIST_IDS_FILE)"
-	$(PYTHON) parsers/run_ra_pipeline.py --parse-python "$(REFRESH_PARSE_PYTHON)" --events-json "$(REFRESH_EVENTS_JSON)" --artists-json "$(REFRESH_ARTISTS_JSON)" --bio-json "$(REFRESH_BIO_JSON)" --skip-bio --cdp-url "$(REFRESH_CDP_URL)" --dedup-events-file "$(REFRESH_EXISTING_EVENT_IDS_FILE)" --dedup-artists-file "$(REFRESH_EXISTING_ARTIST_IDS_FILE)" $(REFRESH_PIPELINE_ARGS)
-	$(COMPOSE) exec -e DATABASE_URL="$(CHECK_DATABASE_URL)" backend python scripts/import_events.py "$(REFRESH_EVENTS_JSON_IN_CONTAINER)"
-	$(COMPOSE) exec -e DATABASE_URL="$(CHECK_DATABASE_URL)" backend python scripts/validate_import.py --require-embeddings --check-artist-id "$(CHECK_ARTIST_ID)"
-
-refresh-data-check-bio: env
-	@mkdir -p backend/data
-	@test -x "$(REFRESH_PARSE_PYTHON)" || (echo "Missing parser Python: $(REFRESH_PARSE_PYTHON). Create backend venv or override REFRESH_PARSE_PYTHON."; exit 1)
-	@test -x "$(REFRESH_BIO_PYTHON)" || (echo "Missing bio Python: $(REFRESH_BIO_PYTHON). Create playwright venv or override REFRESH_BIO_PYTHON."; exit 1)
-	@$(REFRESH_BIO_PYTHON) -c "import playwright" >/dev/null 2>&1 || (echo "Installing playwright in $(REFRESH_BIO_PYTHON) environment..."; $(REFRESH_BIO_PYTHON) -m pip install playwright)
-	$(COMPOSE) exec -T -e DATABASE_URL="$(CHECK_DATABASE_URL)" backend python -c "import os,psycopg; conn=psycopg.connect(os.environ['DATABASE_URL']); cur=conn.cursor(); cur.execute(\"SELECT ra_event_id FROM events WHERE ra_event_id IS NOT NULL\"); print(\"\\n\".join(str(r[0]) for r in cur.fetchall())); conn.close()" > "$(REFRESH_EXISTING_EVENT_IDS_FILE)"
-	$(COMPOSE) exec -T -e DATABASE_URL="$(CHECK_DATABASE_URL)" backend python -c "import os,psycopg; conn=psycopg.connect(os.environ['DATABASE_URL']); cur=conn.cursor(); cur.execute(\"SELECT ra_artist_id FROM artists WHERE ra_artist_id IS NOT NULL\"); print(\"\\n\".join(str(r[0]) for r in cur.fetchall())); conn.close()" > "$(REFRESH_EXISTING_ARTIST_IDS_FILE)"
-	$(PYTHON) parsers/run_ra_pipeline.py --parse-python "$(REFRESH_PARSE_PYTHON)" --bio-python "$(REFRESH_BIO_PYTHON)" --events-json "$(REFRESH_EVENTS_JSON)" --artists-json "$(REFRESH_ARTISTS_JSON)" --bio-json "$(REFRESH_BIO_JSON)" --cdp-url "$(REFRESH_CDP_URL)" --dedup-events-file "$(REFRESH_EXISTING_EVENT_IDS_FILE)" --dedup-artists-file "$(REFRESH_EXISTING_ARTIST_IDS_FILE)" $(REFRESH_PIPELINE_ARGS)
-	$(COMPOSE) exec -e DATABASE_URL="$(CHECK_DATABASE_URL)" backend python scripts/import_events.py "$(REFRESH_EVENTS_JSON_IN_CONTAINER)" --biographies-path "/app/data/artist_biographies.json"
-	$(COMPOSE) exec -e DATABASE_URL="$(CHECK_DATABASE_URL)" backend python scripts/validate_import.py --require-embeddings --check-artist-id "$(CHECK_ARTIST_ID)" --biographies-path "/app/data/artist_biographies.json"
-
-refresh-data-check-bio-embeddings: refresh-data-check-bio
-	$(COMPOSE) exec -e DATABASE_URL="$(CHECK_DATABASE_URL)" backend python scripts/generate_embeddings.py
 
 full-pipeline: env
 	$(COMPOSE) --profile tools run --rm --build tools python backend/scripts/full_pipeline.py \
@@ -230,17 +155,7 @@ list:
 
 clean:
 	$(COMPOSE) down --remove-orphans
-	rm .env
-
-reset-db:
-	@if [ "$$RESET_DB" != "yes" ]; then \
-		echo "Refusing to delete database volumes."; \
-		echo "Run: make reset-db RESET_DB=yes"; \
-		exit 1; \
-	fi
-	$(COMPOSE) down -v
 
 fclean:
 	$(COMPOSE) down --rmi all -v --remove-orphans
 	docker builder prune -f
-	rm .env

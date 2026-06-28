@@ -10,7 +10,7 @@ from app.main import app
 
 TEMP_USER_ID = 99_001
 TEMP_ARTIST_ID = 98_001
-TEMP_JOB_PARAMS = {"limit": 17, "excludeExisting": True, "debug": False}
+TEMP_JOB_PARAMS = {"limit": 17, "debug": False}
 
 client = TestClient(app)
 

@@ -1,6 +1,6 @@
 from contextlib import nullcontext
 
-from app import recommendation_worker
+from app.recommendations import worker as recommendation_worker
 
 
 # Drain every currently queued job, then stop immediately after the first empty claim.

@@ -7,9 +7,9 @@ from fastapi import APIRouter, Depends, HTTPException, Query, WebSocket, WebSock
 
 from app.auth import _user_id_from_jwt, get_current_user_id
 from app.db import get_connection
-from app.recommendation_job_events import recommendation_job_socket_hub
-from app.recommendation_jobs import create_recommendation_job, get_recommendation_job
-from app.recommendation_scoring import promoter_recommendation_api_limit_max_from_env
+from app.recommendations.job_events import recommendation_job_socket_hub
+from app.recommendations.jobs import create_recommendation_job, get_recommendation_job
+from app.recommendations.scoring import promoter_recommendation_api_limit_max_from_config
 from app.schemas import (
     PromoterRecommendationResponse,
     RecommendationJobCreatedResponse,
@@ -19,8 +19,7 @@ from app.schemas import (
 
 
 router = APIRouter()
-PROMOTER_REC_API_LIMIT_MAX = promoter_recommendation_api_limit_max_from_env()
-
+PROMOTER_REC_API_LIMIT_MAX = promoter_recommendation_api_limit_max_from_config()
 
 # Convert a database job row into the public API contract.
 def _job_response(row: dict[str, object]) -> RecommendationJobResponse:

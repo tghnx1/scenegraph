@@ -4,44 +4,14 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.db import get_connection
 from app.auth import get_current_user_id
-from app.event_similarity import build_artist_similar_events_response
-from app.recommendation_engine import build_similarity_response
-from app.recommendation_scoring import promoter_recommendation_api_limit_max_from_env
-from app.recommendation_services import (
-    build_artist_promoter_recommendation_response,
-    build_artist_semantic_response,
-)
-from app.schemas import (
-    ArtistSimilarEventsResponse,
-    ArtistTagItem,
-    ArtistTagsResponse,
-    PromoterRecommendationResponse,
-    SemanticArtistResponse,
-    SimilarityResponse,
-)
+from app.recommendations.scoring import promoter_recommendation_api_limit_max_from_config
+from app.recommendations.services import build_artist_promoter_recommendation_response
+from app.schemas import ArtistTagItem, ArtistTagsResponse, PromoterRecommendationResponse
 
 router = APIRouter()
-PROMOTER_REC_API_LIMIT_MAX = promoter_recommendation_api_limit_max_from_env()
+PROMOTER_REC_API_LIMIT_MAX = promoter_recommendation_api_limit_max_from_config()
 
 
-# Return semantic similar artists for a source artist.
-@router.get(
-    "/semantic/artists/{artist_id}",
-    response_model=SemanticArtistResponse,
-    response_model_exclude_none=True,
-)
-async def semantic_artists(
-    artist_id: int,
-    limit: int = Query(default=10, ge=1, le=100),
-    debug: bool = Query(default=False),
-) -> SemanticArtistResponse:
-    with get_connection() as connection:
-        return build_artist_semantic_response(
-            connection,
-            artist_id=artist_id,
-            limit=limit,
-            debug=debug,
-        )
 
 
 # Return extracted artist tags for inspection and debugging.
@@ -103,73 +73,9 @@ async def artist_tags(
     )
 
 
-# Backward-compatible alias for event similarity endpoint.
-@router.get(
-    "/recommendations/events/{event_id}",
-    response_model=SimilarityResponse,
-    response_model_exclude_none=True,
-    include_in_schema=False,
-)
-async def recommend_events_alias(
-    event_id: int,
-    limit: int = Query(default=10, ge=1, le=100),
-    debug: bool = Query(default=False),
-    exclude_same_promoter: bool = Query(default=True),
-) -> SimilarityResponse:
-    with get_connection() as connection:
-        return build_similarity_response(
-            connection,
-            entity_type="event",
-            entity_id=event_id,
-            limit=limit,
-            debug=debug,
-            exclude_same_promoter=exclude_same_promoter,
-        )
 
 
-# Return similar events for a given source event.
-@router.get(
-    "/recommendations/events/{event_id}/similar-events",
-    response_model=SimilarityResponse,
-    response_model_exclude_none=True,
-)
-async def recommend_similar_events(
-    event_id: int,
-    limit: int = Query(default=10, ge=1, le=100),
-    debug: bool = Query(default=False),
-    exclude_same_promoter: bool = Query(default=True),
-) -> SimilarityResponse:
-    with get_connection() as connection:
-        return build_similarity_response(
-            connection,
-            entity_type="event",
-            entity_id=event_id,
-            limit=limit,
-            debug=debug,
-            exclude_same_promoter=exclude_same_promoter,
-        )
 
-
-# Return similar events for an artist history (analytics/helper endpoint).
-@router.get(
-    "/recommendations/artists/{artist_id}/similar-events",
-    response_model=ArtistSimilarEventsResponse,
-    response_model_exclude_none=True,
-)
-async def recommend_similar_events_for_artist(
-    artist_id: int,
-    limit: int = Query(default=10, ge=1, le=100),
-    debug: bool = Query(default=False),
-    exclude_same_promoter: bool = Query(default=True),
-) -> ArtistSimilarEventsResponse:
-    with get_connection() as connection:
-        return build_artist_similar_events_response(
-            connection,
-            artist_id=artist_id,
-            limit=limit,
-            debug=debug,
-            exclude_same_promoter=exclude_same_promoter,
-        )
 
 
 # Return main Artist -> Recommended Promoters response.
@@ -181,7 +87,6 @@ async def recommend_similar_events_for_artist(
 async def recommend_promoters_for_artist(
     artist_id: int,
     limit: int = Query(default=10, ge=1, le=PROMOTER_REC_API_LIMIT_MAX),
-    exclude_existing: bool = Query(default=True),
     debug: bool = Query(default=False),
     user_id: int = Depends(get_current_user_id),
 ) -> PromoterRecommendationResponse:
@@ -190,7 +95,6 @@ async def recommend_promoters_for_artist(
             connection,
             artist_id=artist_id,
             limit=limit,
-            exclude_existing=exclude_existing,
             debug=debug,
             user_id=user_id,
         )

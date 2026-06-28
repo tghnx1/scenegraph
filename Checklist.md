@@ -4,9 +4,9 @@
 
 | Required | Section | Module | Status | Notes |
 | --- | --- | --- | --- | --- |
-| Mandatory | (1) General | with frontend, backend, and db | ✅ | `make upd-build` then `make list`. Frontend is built in nginx volume|
+| Mandatory | (1) General | with frontend, backend, and db | ✅ | `make upd` then `make list`. |
 | Mandatory | (2) General | use git with clear commit message | ✅ | check github commits |
-| Mandatory | (3) General | docker & run with single command | ✅ | `make upd-build` |
+| Mandatory | (3) General | docker & run with single command | ✅ | `make upd` |
 | Mandatory | (4) General | must work in chrome. | ✅ | - |
 | Mandatory | (5) General | no warning/errors (in the browser console) | ✅ | check the console (`make upd` has VITE dev server warnings) |
 | Mandatory | (6) General | include accessible Privacy Policy & Terms of Service | ✅ | - |

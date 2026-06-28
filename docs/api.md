@@ -46,12 +46,6 @@ curl -s http://localhost:8080/api/genres
 
 ## Artist recommendations
 
-Inspect semantic-only artist similarity:
-
-```bash
-curl -s "http://localhost:8080/api/semantic/artists/2178?limit=5"
-```
-
 Inspect extracted tags:
 
 ```bash
@@ -69,17 +63,7 @@ The response includes recommendation scores, reasons, evidence paths, segmented 
 Useful query parameters:
 
 - `limit` - number of recommendations
-- `exclude_existing` - exclude existing promoter relationships
 - `debug` - include additional scoring details
-
-## Event similarity
-
-```bash
-curl -s "http://localhost:8080/api/recommendations/events/100/similar-events?limit=5"
-curl -s "http://localhost:8080/api/recommendations/artists/2178/similar-events?limit=5"
-```
-
-Event similarity can combine semantic and graph signals including shared artists, promoters, venues, genres, and extracted genres.
 
 ## Graph endpoints
 

@@ -77,7 +77,7 @@ class RegisterRequest(BaseModel):
     email: str
     password: str
     password_confirm: str
-    role: Literal["artist", "agent"]
+    role: Literal["artist", "agent", "admin"]
 
 class RegisterResponse(BaseModel):
     success: bool
@@ -149,7 +149,7 @@ class SemanticArtistResponse(BaseModel):
 
 
 class RecommendationEvidenceItem(BaseModel):
-    type: Literal["semantic_bridge", "direct_connection", "warm_network", "manual_connection", "event_similarity"]
+    type: Literal["semantic_bridge", "warm_network", "manual_connection", "event_similarity"]
     path: str
 
 
@@ -203,7 +203,6 @@ class PromoterRecommendationItem(BaseModel):
     manualConnectionArtists: list[WarmConnectionArtistItem] = Field(default_factory=list)
     promoterInterestedSum: int = 0
     promoterSizeSegment: Literal["small", "medium", "large"] = "small"
-    directConnectionCount: int = 0
     evidence: list[RecommendationEvidenceItem] = Field(default_factory=list)
     reasonDetails: PromoterRecommendationReasonDetails = Field(
         default_factory=PromoterRecommendationReasonDetails
@@ -232,7 +231,6 @@ RecommendationJobStatus = Literal["queued", "running", "completed", "failed"]
 
 class RecommendationJobParams(BaseModel):
     limit: int = Field(default=50, ge=1)
-    excludeExisting: bool = True
     debug: bool = False
 
 
@@ -253,32 +251,6 @@ class RecommendationJobResponse(BaseModel):
     startedAt: datetime | None = None
     finishedAt: datetime | None = None
     updatedAt: datetime
-
-
-class ArtistSimilarEventItem(BaseModel):
-    id: int
-    type: Literal["event"] = "event"
-    name: str
-    score: float
-    scoreBreakdown: dict[str, float] = Field(default_factory=dict)
-    eventDate: DateValue | None = None
-    venueName: str | None = None
-    promoterId: int | None = None
-    promoterName: str | None = None
-    sourceEventId: int
-    sourceEventName: str
-    sourceEventDate: DateValue | None = None
-    reasons: list[str] = Field(default_factory=list)
-    debug: dict[str, object] | None = None
-
-
-class ArtistSimilarEventsResponse(BaseModel):
-    entityId: int
-    entityType: Literal["artist"] = "artist"
-    model: str
-    dimensions: int | None = None
-    similarEvents: list[ArtistSimilarEventItem]
-    debug: dict[str, object] | None = None
 
 
 class ArtistTagItem(BaseModel):
