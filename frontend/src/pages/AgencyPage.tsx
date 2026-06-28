@@ -76,7 +76,7 @@ export function AgencyPage() {
         artistId: selectedArtist?.id ?? null,
         emptyMessage: selectedArtist
           ? `Click "Get Rec" to load promoter recommendations for ${selectedArtist.name}. Loading time may be quite long. Let the wizard does its magic.`
-          : 'Search and select an artist, then click "Get Rec" to load promoter recommendations. Loading time may be quite long.',
+          : 'Select an artist to load recommendations.',
         getButtonLabel: 'Get Rec',
         controls: (
           <div className="w-[clamp(240px,28vw,360px)] min-w-0 shrink max-[900px]:w-full">

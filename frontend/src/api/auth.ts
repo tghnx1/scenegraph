@@ -170,6 +170,12 @@ export interface MeResponse {
   username: string
   role: AuthRole
   artist_id?: number | null
+  pending_artist_claim?: {
+    id: number
+    artist_id: number
+    artist_name: string
+    created_at: string
+  } | null
 }
 
 export const getMe = (): Promise<MeResponse> =>

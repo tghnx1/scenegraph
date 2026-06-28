@@ -12,6 +12,18 @@ interface BiographyPanelProps {
   manualConnections: ManualArtistConnectionsProps
   canEditBiography: boolean
   hasApprovedArtistProfile: boolean
+  pendingArtistClaim?: {
+    id: number
+    artist_id: number
+    artist_name: string
+    created_at?: string
+  } | null
+  onClaimSubmitted?: (claim: {
+    id: number
+    artist_id: number
+    artist_name: string
+    created_at: string
+  }) => void
 }
 
 export function BiographyPanel({
@@ -20,9 +32,12 @@ export function BiographyPanel({
   manualConnections,
   canEditBiography,
   hasApprovedArtistProfile,
+  pendingArtistClaim = null,
+  onClaimSubmitted,
 }: BiographyPanelProps) {
   const hasArtistProfileTarget = artistId !== null
   const shouldShowApprovedProfileWorkspace = hasApprovedArtistProfile && hasArtistProfileTarget
+  const isWaitingForClaimApproval = !hasApprovedArtistProfile && pendingArtistClaim !== null
   const [artistName, setArtistName] = useState('Artist profile')
   const [biography, setBiography] = useState('')
   const [draftBiography, setDraftBiography] = useState('')
@@ -42,13 +57,17 @@ export function BiographyPanel({
 
     if (artistId === null || !hasApprovedArtistProfile) {
       setIsLoading(false)
-      setArtistName(selectedArtistName ?? 'Artist profile')
+      setArtistName(pendingArtistClaim?.artist_name ?? selectedArtistName ?? 'Artist profile')
       setBiography('')
       setDraftBiography('')
       setLinkedArtists([])
       setIsEditing(false)
       setSuccess(null)
-      setError('This account is not linked to an artist profile yet.')
+      setError(
+        pendingArtistClaim
+          ? `Waiting approval to claim "${pendingArtistClaim.artist_name}"`
+          : 'This account is not linked to an artist profile yet.\nPlease select from the graph/search input field. The artist named in THIS panel is the one to be claimed.',
+      )
       return () => { isCurrent = false }
     }
 
@@ -75,7 +94,7 @@ export function BiographyPanel({
       })
 
     return () => { isCurrent = false }
-  }, [artistId, hasApprovedArtistProfile, selectedArtistName])
+  }, [artistId, hasApprovedArtistProfile, pendingArtistClaim, selectedArtistName])
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -124,8 +143,15 @@ export function BiographyPanel({
     setClaimMessage('')
 
     try {
-      await claimArtistProfile(artistId, reason)
-      setClaimMessage('Claim sent. An admin will review it.')
+      const claim = await claimArtistProfile(artistId, reason)
+      const claimedArtistName = artistName
+      onClaimSubmitted?.({
+        id: claim.claim_id,
+        artist_id: artistId,
+        artist_name: claimedArtistName,
+        created_at: new Date().toISOString(),
+      })
+      setClaimMessage(`Waiting approval to claim "${claimedArtistName}"`)
       setClaimReason('')
     } catch (requestError) {
       const message = requestError instanceof Error
@@ -158,7 +184,7 @@ export function BiographyPanel({
             Edit biography
           </Button>
         )}
-        {!canEditBiography && !isLoading && (
+        {!canEditBiography && !isLoading && !isWaitingForClaimApproval && (
           <div className="grid gap-2">
             <textarea
               value={claimReason}
@@ -176,7 +202,7 @@ export function BiographyPanel({
               disabled={isClaiming}
               onClick={handleClaimProfile}
             >
-              {isClaiming ? 'Sending claim...' : 'Claim biography'}
+              {isClaiming ? 'Sending claim...' : 'Claim this artist'}
             </Button>
           </div>
         )}
@@ -223,10 +249,10 @@ export function BiographyPanel({
       ) : null}
 
       {!shouldShowApprovedProfileWorkspace && error && (
-        <p className="m-0 rounded-xl border border-[var(--event-border-soft)] bg-[var(--event-soft)] p-3 text-sm text-[var(--event)]">{error}</p>
+        <p className="m-0 whitespace-pre-line rounded-xl border border-[var(--event-border-soft)] bg-[var(--event-soft)] p-3 text-sm text-[var(--event)]">{error}</p>
       )}
 
-      {shouldShowApprovedProfileWorkspace && error && <p className="m-0 rounded-xl border border-[var(--event-border-soft)] bg-[var(--event-soft)] p-3 text-sm text-[var(--event)]">{error}</p>}
+      {shouldShowApprovedProfileWorkspace && error && <p className="m-0 whitespace-pre-line rounded-xl border border-[var(--event-border-soft)] bg-[var(--event-soft)] p-3 text-sm text-[var(--event)]">{error}</p>}
       {success && <p className="m-0 rounded-xl border border-[var(--promoter-border)] bg-[var(--promoter-soft)] p-3 text-sm text-[var(--text)]">{success}</p>}
 
       {!isLoading && shouldShowApprovedProfileWorkspace && !error && (
@@ -251,7 +277,7 @@ export function BiographyPanel({
         </section>
       )}
 
-      {!isLoading && shouldShowApprovedProfileWorkspace && (
+      {!isLoading && shouldShowApprovedProfileWorkspace && canEditBiography && (
         <ManualArtistConnections {...manualConnections} />
       )}
     </article>

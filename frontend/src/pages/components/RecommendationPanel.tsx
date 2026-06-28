@@ -305,7 +305,7 @@ export function PromoterRecommendationsPanel({
 
   const handleLoadRecommendations = useCallback(async () => {
     if (recommendationArtistId === null) {
-      setRecommendationsError(targetControls?.emptyMessage ?? 'Select an artist to load recommendations.')
+      setRecommendationsError(targetControls?.emptyMessage ?? 'Claiming an artist is required to load recommendations.')
       return
     }
 
@@ -362,7 +362,7 @@ export function PromoterRecommendationsPanel({
     feedback: PromoterFeedbackValue,
   ) => {
     if (recommendationArtistId === null) {
-      setRecommendationsError(targetControls?.emptyMessage ?? 'Select an artist to load recommendations.')
+      setRecommendationsError(targetControls?.emptyMessage ?? 'Claiming an artist is required to load recommendations.')
       return
     }
 
@@ -605,7 +605,9 @@ export function PromoterRecommendationsPanel({
           <p className={recommendationsError ? 'm-0 text-[var(--event)]' : cn('m-0', mutedTextClass)}>
             {recommendationsError
               ?? (targetControls?.emptyMessage
-                ?? 'Click "Get Rec" to load recommendations. Loading time may be quite long. Let the wizard does its magic.')}
+                ?? (recommendationArtistId === null
+                  ? 'Claiming an artist is required to load recommendations.'
+                  : 'Click "Get Rec" to load recommendations. Loading time may be quite long. Let the wizard does its magic.'))}
           </p>
           {!targetControls && (
             <Button
