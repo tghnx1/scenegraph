@@ -62,72 +62,98 @@ export function AdminUsersPage({ compact = false, refreshVersion = 0, onActivity
 
   const handleApprove = async (user: PendingUser) => {
     //if (!confirm(`Approve ${user.username}?`)) return
-
-    await approveUser(user.id)
-    //setMessage(response.message)
-    await loadUsers()
-    await loadAllUsers()
-    await onActivityChanged?.()
+    try {
+      await approveUser(user.id)
+      setMessage('')
+      await loadUsers()
+      await loadAllUsers()
+      await onActivityChanged?.()
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message: 'Failed to approve user')
+    }
   }
 
   const handleReject = async (user: PendingUser) => {
-  if (!confirm(`Reject ${user.username}?`))
-    return
+    if (!confirm(`Reject ${user.username}?`))
+      return
 
-    await rejectUser(user.id)
-    //setMessage(response.message)
-    await loadUsers()
-    await loadAllUsers()
-    await onActivityChanged?.()
+    try{
+      await rejectUser(user.id)
+      setMessage('')
+      await loadUsers()
+      await loadAllUsers()
+      await onActivityChanged?.()
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Failed to reject user')
+    }
   }
 
   const handleDeactivate = async (user: UserItem) => {
     if (!confirm(`Deactivate ${user.username}?`)) return
 
-    await deactivateUser(user.id)
-    //setMessage(response.message)
-    await loadUsers()
-    await loadAllUsers()
-    await onActivityChanged?.()
+    try{
+      await deactivateUser(user.id)
+      setMessage('')
+      await loadUsers()
+      await loadAllUsers()
+      await onActivityChanged?.()
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Failed to deactivate user')
+    }
   }
 
   const handleActivate = async (user: UserItem) => {
     //if (!confirm(`Activate ${user.username}?`)) return
 
-    await activateUser(user.id)
-    //setMessage(response.message)
-    await loadUsers()
-    await loadAllUsers()
-    await onActivityChanged?.()
+    try {
+      await activateUser(user.id)
+      setMessage('')
+      await loadUsers()
+      await loadAllUsers()
+      await onActivityChanged?.()
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Failed to activate user')
+    }
   }
 
   const handleChangeRole = async (user: UserItem) => {
     const newRole = user.role === 'artist' ? 'agent' : 'artist'
 
     //if (!confirm(`Change ${user.username} to ${newRole}?`)) return
-
-    await changeUserRole(user.id, newRole)
-    //setMessage(response.message)
-    await loadUsers()
-    await loadAllUsers()
-    await onActivityChanged?.()
+    try{ 
+      await changeUserRole(user.id, newRole)
+      setMessage('')
+      await loadUsers()
+      await loadAllUsers()
+      await onActivityChanged?.()
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message: 'Failed to change role')
+    }
   }
 
   const handleApproveClaim = async (claim: ArtistClaim) => {
-    await approveArtistClaim(claim.id)
-    //setMessage(`Claim approved for ${claim.artist_name}`)
-    await loadClaims()
-    await loadUsers()
-    await onActivityChanged?.()
+    try {
+      await approveArtistClaim(claim.id)
+      setMessage('')
+      await loadClaims()
+      await loadUsers()
+      await onActivityChanged?.()
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message: 'Failed to approve claim')
+    }
   }
 
   const handleRejectClaim = async (claim: ArtistClaim) => {
     if (!window.confirm(`Reject claim for ${claim.artist_name}?`)) return
 
-    await rejectArtistClaim(claim.id)
-    //setMessage(`Claim rejected for ${claim.artist_name}`)
-    await loadClaims()
-    await onActivityChanged?.()
+    try {
+      await rejectArtistClaim(claim.id)
+      setMessage('')
+      await loadClaims()
+      await onActivityChanged?.()
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message: 'Failed to reject claim')
+    }
   }
 
   const pendingItems = [
@@ -158,7 +184,6 @@ export function AdminUsersPage({ compact = false, refreshVersion = 0, onActivity
       ) : (
       <h1 style={{ fontSize: 32 }}>Pending users</h1>)}
 
-      {message && <p>{message}</p>}
 
       <div
         className="dashboard-scroll-list"
@@ -280,6 +305,12 @@ export function AdminUsersPage({ compact = false, refreshVersion = 0, onActivity
       <div className="dashboard-section-heading" style={{ marginTop: 8, marginBottom: 4 }}>
         <span>List of users</span>
       </div>
+
+      {message && 
+        (<p style={{ color: 'var(--danger, #d94848', margin: 0 }}>
+          {message}
+        </p>
+      )}
 
       <div
         className="dashboard-scroll-list"

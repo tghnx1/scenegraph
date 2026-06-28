@@ -11,6 +11,7 @@ import { AboutPage } from './pages/AboutPage'
 import { applyTheme, getStoredTheme, type ThemeName } from './shared/styles/colors'
 import { Button } from '@/shared/ui/button'
 import { cn } from '@/shared/lib/cn-utils'
+import { useLocation } from 'react-router-dom'
 
 const navLinkClass = ({ isActive }: { isActive: boolean }) => cn(
   'rounded-lg border border-transparent px-2.5 py-1.5 text-sm font-semibold text-[var(--text-muted)] no-underline transition-all duration-150 hover:opacity-90',
@@ -51,6 +52,9 @@ export default function App() {
       ? <AgencyPage />
       : <GraphPage />
 
+  const location = useLocation()
+  const isLoginPage = location.pathname === '/login'
+  
   const handleAuthClick = async () => {
     if (isAuthenticated) {
       try {
@@ -65,6 +69,11 @@ export default function App() {
       localStorage.removeItem('user_id')
       localStorage.removeItem('artist_id')
       setAuthRole(null)
+      return
+    }
+
+    if (isLoginPage) {
+      window.dispatchEvent(new Event('show-login-form'))
       return
     }
 
