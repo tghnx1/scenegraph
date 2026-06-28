@@ -74,6 +74,7 @@ export function AgencyPage() {
       showBiography={false}
       recommendationTargetControls={{
         artistId: selectedArtist?.id ?? null,
+        artistName: selectedArtist?.name ?? null,
         emptyMessage: selectedArtist
           ? `Click "Get Rec" to load promoter recommendations for ${selectedArtist.name}. Loading time may be quite long. Let the wizard does its magic.`
           : 'Search and select an artist, then click "Get Rec" to load promoter recommendations. Loading time may be quite long.',

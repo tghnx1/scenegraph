@@ -193,10 +193,22 @@ async def logout(current_user: dict = Depends(get_current_user)) -> dict:
 
 @router.get("/me")
 async def get_me(current_user: dict = Depends(get_current_user)) -> dict:
+    artist_name = None
+    if current_user["artist_id"] is not None:
+        with get_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    "SELECT name FROM artists WHERE id = %s",
+                    (current_user["artist_id"],),
+                )
+                artist_row = cursor.fetchone()
+        artist_name = artist_row["name"] if artist_row else None
+
     return {
         "success": True,
         "user_id": current_user["id"],
         "username": current_user["username"],
         "role": current_user["role"],
         "artist_id": current_user["artist_id"],
+        "artist_name": artist_name,
     }

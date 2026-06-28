@@ -31,6 +31,10 @@ export function ProfilePage({ recommendationTargetControls, showBiography = true
     const stored = Number(localStorage.getItem('artist_id'))
     return Number.isInteger(stored) && stored > 0 ? stored : null
   })
+  const [assignedArtistName, setAssignedArtistName] = useState<string | null>(() => {
+    const stored = localStorage.getItem('artist_name')?.trim() ?? ''
+    return stored || null
+  })
 
   const refreshCurrentUser = async () => {
     try {
@@ -42,6 +46,13 @@ export function ProfilePage({ recommendationTargetControls, showBiography = true
       } else {
         localStorage.removeItem('artist_id')
         setAssignedArtistId(null)
+      }
+      if (response.artist_name) {
+        localStorage.setItem('artist_name', response.artist_name)
+        setAssignedArtistName(response.artist_name)
+      } else {
+        localStorage.removeItem('artist_name')
+        setAssignedArtistName(null)
       }
     } catch {
       // Keep the last known state when the session is unavailable.
@@ -97,6 +108,8 @@ export function ProfilePage({ recommendationTargetControls, showBiography = true
       ? storedArtistId
       : null
   const profileArtistId = isArtistUser ? storedArtistId : artistId
+  const recommendationTargetName = recommendationTargetControls?.artistName
+    ?? (isArtistUser ? assignedArtistName : selectedArtistName)
   const biographyArtistId = isArtistUser
     ? (profileArtistId ?? selectedDetailArtistId ?? selectedNodeArtistId)
     : artistId
@@ -186,6 +199,7 @@ export function ProfilePage({ recommendationTargetControls, showBiography = true
             <PromoterRecommendationsPanel
               isActive={activeWorkspaceTab === 'recommendations'}
               artistId={profileArtistId}
+              artistName={recommendationTargetName}
               targetControls={recommendationTargetControls}
               autoLoad={isArtistUser && profileArtistId !== null}
               emptyStateMessage={isArtistUser
