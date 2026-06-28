@@ -88,8 +88,8 @@ def get_current_user(
 
 
 def get_current_user_id(
-    authorization: str | None = Header(default=None, alias="Authorization"),
-    x_user_id: int | None = Header(default=None, alias="X-User-Id", ge=1),
+    authorization: str | None = Header(default=None, alias="Authorization")
+    # x_user_id: int | None = Header(default=None, alias="X-User-Id", ge=1),
 ) -> int:
     if authorization is not None:
         scheme, _, token = authorization.partition(" ")
@@ -97,8 +97,8 @@ def get_current_user_id(
             raise HTTPException(status_code=401, detail="Invalid token")
         with get_connection() as connection:
             return _user_id_from_jwt(token, connection)
-    if x_user_id is not None:
-        return x_user_id
+    # if x_user_id is not None:
+    #     return x_user_id
     raise HTTPException(status_code=401, detail="authenticated user required")
 
 
