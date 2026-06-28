@@ -32,7 +32,9 @@ def item_from_row(row: dict) -> ArtistKnownConnectionItem:
 )
 async def list_known_artists(
     artist_id: int,
+    current_user: dict = Depends(get_current_user),
 ) -> ArtistKnownConnectionResponse:
+    require_artist_access(current_user, artist_id)
     with get_connection() as connection:
         ensure_feedback_entity_exists(connection, entity_type="artist", entity_id=artist_id)
 

@@ -123,7 +123,7 @@ def test_manual_artist_connection_can_be_added_listed_and_upserted(artist_pair):
     path = f"/api/artists/{source_artist['id']}/known-artists"
     payload = {"connectedArtistId": connected_artist["id"]}
 
-    initial_list_response = client.get(path)
+    initial_list_response = client.get(path, headers=headers())
     assert initial_list_response.status_code == 200
     assert all(
         item["connectedArtistId"] != connected_artist["id"]
@@ -146,7 +146,7 @@ def test_manual_artist_connection_can_be_added_listed_and_upserted(artist_pair):
     assert upserted["connectedArtistId"] == connected_artist["id"]
     assert upserted["createdAt"] == created["createdAt"]
 
-    list_response = client.get(path)
+    list_response = client.get(path, headers=headers())
     assert list_response.status_code == 200
     matching_items = [
         item
@@ -268,13 +268,40 @@ def test_manual_artist_connection_rejects_other_artist_mutation_access(artist_pa
     assert delete_response.json()["detail"] == "You are not allowed to access this artist"
 
 
-def test_manual_artist_connection_get_remains_public(artist_pair):
-    source_artist, _ = artist_pair
+def test_manual_artist_connection_allows_owner_agent_and_admin_to_read(artist_pair):
+    source_artist, connected_artist = artist_pair
 
-    response = client.get(f"/api/artists/{source_artist['id']}/known-artists")
+    owner_response = client.get(
+        f"/api/artists/{source_artist['id']}/known-artists",
+        headers=headers(),
+    )
+    agent_response = client.get(
+        f"/api/artists/{connected_artist['id']}/known-artists",
+        headers=headers(AGENT_USER_ID),
+    )
+    admin_response = client.get(
+        f"/api/artists/{connected_artist['id']}/known-artists",
+        headers=headers(ADMIN_USER_ID),
+    )
 
-    assert response.status_code == 200
-    assert "items" in response.json()
+    assert owner_response.status_code == 200
+    assert "items" in owner_response.json()
+    assert agent_response.status_code == 200
+    assert "items" in agent_response.json()
+    assert admin_response.status_code == 200
+    assert "items" in admin_response.json()
+
+
+def test_manual_artist_connection_rejects_other_artist_read_access(artist_pair):
+    _, connected_artist = artist_pair
+
+    response = client.get(
+        f"/api/artists/{connected_artist['id']}/known-artists",
+        headers=headers(),
+    )
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "You are not allowed to access this artist"
 
 
 def test_manual_artist_connection_mutations_require_authentication(artist_pair):
@@ -287,3 +314,11 @@ def test_manual_artist_connection_mutations_require_authentication(artist_pair):
 
     assert create_response.status_code == 401
     assert delete_response.status_code == 401
+
+
+def test_manual_artist_connection_get_requires_authentication(artist_pair):
+    source_artist, _ = artist_pair
+
+    response = client.get(f"/api/artists/{source_artist['id']}/known-artists")
+
+    assert response.status_code == 401
