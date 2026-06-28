@@ -7,7 +7,10 @@ from typing import Any
 import psycopg
 
 from app.db import DATABASE_URL, get_connection
+from app.artist_refresh import refresh_artist_derived_data
 from app.recommendations.jobs import (
+    ARTIST_BIO_REFRESH_JOB_TYPE,
+    ARTIST_PROMOTERS_JOB_TYPE,
     JOB_CREATED_CHANNEL,
     claim_next_recommendation_job,
     complete_recommendation_job,
@@ -27,16 +30,25 @@ def _run_job(job: dict[str, Any]) -> None:
     """Compute one claimed recommendation job and persist its terminal state."""
     job_id = str(job["id"])
     try:
-        params = RecommendationJobParams.model_validate(job["params_json"])
+        job_type = str(job["job_type"])
         with get_connection() as connection:
-            result = build_artist_promoter_recommendation_response(
-                connection,
-                artist_id=int(job["artist_id"]),
-                limit=params.limit,
-                debug=params.debug,
-                user_id=int(job["user_id"]),
-            )
-            result_payload = result.model_dump(mode="json", exclude_none=True)
+            if job_type == ARTIST_PROMOTERS_JOB_TYPE:
+                params = RecommendationJobParams.model_validate(job["params_json"])
+                result = build_artist_promoter_recommendation_response(
+                    connection,
+                    artist_id=int(job["artist_id"]),
+                    limit=params.limit,
+                    debug=params.debug,
+                    user_id=int(job["user_id"]),
+                )
+                result_payload = result.model_dump(mode="json", exclude_none=True)
+            elif job_type == ARTIST_BIO_REFRESH_JOB_TYPE:
+                result_payload = refresh_artist_derived_data(
+                    connection,
+                    artist_id=int(job["artist_id"]),
+                )
+            else:
+                raise RuntimeError(f"Unsupported recommendation job type: {job_type}")
 
         with get_connection() as connection:
             complete_recommendation_job(

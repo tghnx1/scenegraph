@@ -5,7 +5,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, WebSocket, WebSocketDisconnect, status
 
-from app.auth import _user_id_from_jwt, get_current_user_id
+from app.auth import _user_id_from_jwt, get_current_user, require_artist_access
 from app.db import get_connection
 from app.recommendations.job_events import recommendation_job_socket_hub
 from app.recommendations.jobs import create_recommendation_job, get_recommendation_job
@@ -53,9 +53,10 @@ def _job_response(row: dict[str, object]) -> RecommendationJobResponse:
 def create_artist_promoter_job(
     artist_id: int,
     params: RecommendationJobParams,
-    user_id: int = Depends(get_current_user_id),
+    current_user: dict = Depends(get_current_user),
 ) -> RecommendationJobCreatedResponse:
     """Create a durable recommendation job and return without running recommendations."""
+    require_artist_access(current_user, artist_id)
     if params.limit > PROMOTER_REC_API_LIMIT_MAX:
         raise HTTPException(
             status_code=422,
@@ -70,7 +71,7 @@ def create_artist_promoter_job(
 
         row = create_recommendation_job(
             connection,
-            user_id=user_id,
+            user_id=int(current_user["id"]),
             artist_id=artist_id,
             params=params.model_dump(mode="json"),
         )
@@ -85,14 +86,14 @@ def create_artist_promoter_job(
 )
 def read_recommendation_job(
     job_id: UUID,
-    user_id: int = Depends(get_current_user_id),
+    current_user: dict = Depends(get_current_user),
 ) -> RecommendationJobResponse:
     """Return current job state and the result only to the owning user."""
     with get_connection() as connection:
         row = get_recommendation_job(
             connection,
             job_id=str(job_id),
-            user_id=user_id,
+            user_id=int(current_user["id"]),
         )
     if row is None:
         raise HTTPException(status_code=404, detail="Recommendation job not found")

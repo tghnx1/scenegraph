@@ -1,10 +1,10 @@
-import {useEffect, useState, type FormEvent} from 'react'
-import {Link} from 'react-router-dom'
+import { useEffect, useState, type FormEvent } from 'react'
+import { Link } from 'react-router-dom'
 import { Button } from '@/shared/ui/button'
 import { BIOGRAPHY_MAX_LENGTH, validateBiography } from '@/shared/lib/validation'
-import {fetchArtistBiography, updateArtistBiography, claimArtistProfile, } from '../../api/entityDetails'
-import type {ConnectedArtistItem} from '../../types/artist'
-import {ManualArtistConnections, type ManualArtistConnectionsProps} from './ManualArtistConnections'
+import { claimArtistProfile, fetchArtistBiography, updateArtistBiography } from '../../api/entityDetails'
+import type { ConnectedArtistItem } from '../../types/artist'
+import { ManualArtistConnections, type ManualArtistConnectionsProps } from './ManualArtistConnections'
 
 interface BiographyPanelProps {
   artistId: number | null
@@ -55,6 +55,9 @@ export function BiographyPanel({
   useEffect(() => {
     let isCurrent = true
 
+    setClaimError('')
+    setClaimMessage('')
+
     if (artistId === null || !hasApprovedArtistProfile) {
       setIsLoading(false)
       setArtistName(pendingArtistClaim?.artist_name ?? selectedArtistName ?? 'Artist profile')
@@ -66,7 +69,7 @@ export function BiographyPanel({
       setError(
         pendingArtistClaim
           ? `Waiting approval to claim "${pendingArtistClaim.artist_name}"`
-          : 'This account is not linked to an artist profile yet.\nPlease select from the graph/search input field. The artist named in THIS panel is the one to be claimed.',
+          : 'Claim your artist profile to unlock recommendations and biography editing.',
       )
       return () => { isCurrent = false }
     }
@@ -119,7 +122,7 @@ export function BiographyPanel({
     } catch (requestError) {
       const message = requestError instanceof Error
         ? requestError.message.replace(/^400:\s*/, '').replace(/^409:\s*/, '')
-      : 'Failed to save biography.'
+        : 'Failed to save biography.'
       setError(message)
     } finally {
       setIsSaving(false)
@@ -202,7 +205,7 @@ export function BiographyPanel({
               disabled={isClaiming}
               onClick={handleClaimProfile}
             >
-              {isClaiming ? 'Sending claim...' : 'Claim this artist'}
+              {isClaiming ? 'Sending claim...' : 'Claim artist profile'}
             </Button>
           </div>
         )}

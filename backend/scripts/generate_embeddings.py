@@ -103,13 +103,8 @@ def main() -> None:
 
     if args.batch_size < 1:
         raise ValueError("--batch-size must be at least 1")
-    if config.provider == "openai" and not os.environ.get("OPENAI_API_KEY"):
+    if not os.environ.get("OPENAI_API_KEY"):
         raise SystemExit("OPENAI_API_KEY must be set to generate embeddings")
-    if config.provider == "azure":
-        if not os.environ.get("AZURE_OPENAI_API_KEY"):
-            raise SystemExit("AZURE_OPENAI_API_KEY must be set to generate Azure embeddings")
-        if not os.environ.get("AZURE_OPENAI_ENDPOINT"):
-            raise SystemExit("AZURE_OPENAI_ENDPOINT must be set to generate Azure embeddings")
 
     with psycopg.connect(DATABASE_URL, row_factory=dict_row) as connection:
         total_embedded = 0

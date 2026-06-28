@@ -61,6 +61,7 @@ const REASON_PREFIX_PATTERN = /^(.+?:)\s*/
 
 export interface RecommendationTargetControls {
   artistId: number | null
+  artistName?: string | null
   controls: ReactNode
   emptyMessage: string
   getButtonLabel?: string
@@ -69,7 +70,10 @@ export interface RecommendationTargetControls {
 interface PromoterRecommendationsPanelProps {
   isActive: boolean
   artistId: number | null
+  artistName?: string | null
   targetControls?: RecommendationTargetControls
+  autoLoad?: boolean
+  emptyStateMessage?: string
   onSelectNode: (node: GraphNode | null) => void
 }
 
@@ -181,7 +185,10 @@ function initialStrengthThreshold(recommendations: PromoterRecommendationRespons
 export function PromoterRecommendationsPanel({
   isActive,
   artistId,
+  artistName,
   targetControls,
+  autoLoad = false,
+  emptyStateMessage,
   onSelectNode,
 }: PromoterRecommendationsPanelProps) {
   const [recommendationsData, setRecommendationsData] = useState<PromoterRecommendationResponse | null>(null)
@@ -205,12 +212,24 @@ export function PromoterRecommendationsPanel({
   const recommendationListRef = useRef<HTMLElement | null>(null)
   const recommendationRequestIdRef = useRef(0)
   const activeRecommendationJobRef = useRef<{ jobId: string; requestId: number } | null>(null)
+  const autoLoadTriggeredArtistIdRef = useRef<number | null>(null)
   const recommendationArtistId = targetControls
     ? targetControls.artistId
     : artistId
+  const recommendationTargetName = (
+    artistName
+    ?? targetControls?.artistName
+    ?? null
+  )?.trim() || null
+  const recommendationTargetLabel = recommendationTargetName
+    ?? (recommendationArtistId !== null ? `artist #${recommendationArtistId}` : null)
+  const recommendationHeaderLabel = recommendationTargetLabel
+    ? `Promoter Recommendations for ${recommendationTargetLabel}`
+    : 'Promoter Recommendations'
 
   useEffect(() => {
     recommendationRequestIdRef.current += 1
+    autoLoadTriggeredArtistIdRef.current = null
     setRecommendationsData(null)
     setActiveRecommendationJobId(null)
     activeRecommendationJobRef.current = null
@@ -305,7 +324,11 @@ export function PromoterRecommendationsPanel({
 
   const handleLoadRecommendations = useCallback(async () => {
     if (recommendationArtistId === null) {
-      setRecommendationsError(targetControls?.emptyMessage ?? 'Claiming an artist is required to load recommendations.')
+      setRecommendationsError(
+        targetControls?.emptyMessage
+          ?? emptyStateMessage
+          ?? 'Select an artist to load recommendations.',
+      )
       return
     }
 
@@ -336,7 +359,18 @@ export function PromoterRecommendationsPanel({
       setActiveRecommendationJobId(null)
       activeRecommendationJobRef.current = null
     }
-  }, [recommendationArtistId, refreshRecommendationJob, targetControls?.emptyMessage])
+  }, [emptyStateMessage, recommendationArtistId, refreshRecommendationJob, targetControls?.emptyMessage])
+
+  useEffect(() => {
+    if (!autoLoad) return
+    if (!isActive) return
+    if (recommendationArtistId === null) return
+    if (recommendationsData !== null || isRecommendationsLoading) return
+    if (autoLoadTriggeredArtistIdRef.current === recommendationArtistId) return
+
+    autoLoadTriggeredArtistIdRef.current = recommendationArtistId
+    void handleLoadRecommendations()
+  }, [autoLoad, handleLoadRecommendations, isActive, isRecommendationsLoading, recommendationArtistId, recommendationsData])
 
   const handleResetRecommendations = useCallback(() => {
     recommendationRequestIdRef.current += 1
@@ -362,7 +396,11 @@ export function PromoterRecommendationsPanel({
     feedback: PromoterFeedbackValue,
   ) => {
     if (recommendationArtistId === null) {
-      setRecommendationsError(targetControls?.emptyMessage ?? 'Claiming an artist is required to load recommendations.')
+      setRecommendationsError(
+        targetControls?.emptyMessage
+          ?? emptyStateMessage
+          ?? 'Select an artist to load recommendations.',
+      )
       return
     }
 
@@ -408,7 +446,7 @@ export function PromoterRecommendationsPanel({
     } finally {
       setPendingFeedbackPromoterId(null)
     }
-  }, [localFeedbackByPromoterId, localFeedbackIdByPromoterId, recommendationArtistId, recommendationsData, targetControls?.emptyMessage])
+  }, [emptyStateMessage, localFeedbackByPromoterId, localFeedbackIdByPromoterId, recommendationArtistId, recommendationsData, targetControls?.emptyMessage])
 
   const handleSelectRecommendation = useCallback((recommendationId: number) => {
     const recommendationNode = recommendationsData?.graph.nodes.find((node) => (
@@ -578,7 +616,7 @@ export function PromoterRecommendationsPanel({
       hidden={!isActive}
     >
       <div className={panelHeadingClass}>
-        <span className={labelClass}>Promoter Recommendations</span>
+        <span className={labelClass}>{recommendationHeaderLabel}</span>
         {(targetControls || recommendationsData) && (
           <div className="flex min-w-0 flex-nowrap items-center justify-end gap-2 max-[900px]:w-full max-[900px]:flex-wrap">
             {targetControls?.controls}
@@ -605,8 +643,9 @@ export function PromoterRecommendationsPanel({
           <p className={recommendationsError ? 'm-0 text-[var(--event)]' : cn('m-0', mutedTextClass)}>
             {recommendationsError
               ?? (targetControls?.emptyMessage
-                ?? (recommendationArtistId === null
-                  ? 'Claiming an artist is required to load recommendations.'
+                ?? emptyStateMessage
+                ?? (recommendationTargetLabel
+                  ? `Click "Get Rec" to load recommendations for ${recommendationTargetLabel}. Loading time may be quite long. Let the wizard does its magic.`
                   : 'Click "Get Rec" to load recommendations. Loading time may be quite long. Let the wizard does its magic.'))}
           </p>
           {!targetControls && (

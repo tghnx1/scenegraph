@@ -537,6 +537,41 @@ def import_artist_biographies(cursor: psycopg.Cursor, items: list[dict[str, Any]
 
         cursor.execute(
             """
+            SELECT biography_status
+            FROM artists
+            WHERE ra_artist_id = %s
+            """,
+            (ra_artist_id,),
+        )
+        artist_row = cursor.fetchone()
+        if artist_row is None:
+            missing_artist += 1
+            continue
+
+        if artist_row.get("biography_status") == "manually_edited":
+            cursor.execute(
+                """
+                UPDATE artists
+                SET biography_url = COALESCE(%s, biography_url)
+                WHERE ra_artist_id = %s
+                  AND (
+                    COALESCE(biography_url, '') IS DISTINCT FROM COALESCE(COALESCE(%s, biography_url), '')
+                  )
+                """,
+                (
+                    biography_url,
+                    ra_artist_id,
+                    biography_url,
+                ),
+            )
+            if cursor.rowcount > 0:
+                updated += cursor.rowcount
+            else:
+                unchanged += 1
+            continue
+
+        cursor.execute(
+            """
             UPDATE artists
             SET
                 biography = %s,

@@ -170,6 +170,7 @@ export interface MeResponse {
   username: string
   role: AuthRole
   artist_id?: number | null
+  artist_name?: string | null
   pending_artist_claim?: {
     id: number
     artist_id: number

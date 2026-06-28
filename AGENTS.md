@@ -44,7 +44,9 @@ High-signal context for OpenCode agents working in this repo. If it’s not here
 ## Data workflows (order matters)
 - Prefer `make full-pipeline` for the end-to-end ingestion flow.
 - It runs the full import pipeline in Docker, using the `backend/scripts/full_pipeline.py` coordinator from the `codex/data_import` work.
-- The coordinator scrapes and parses events and artists, optionally launches local Chromium for biography scraping, deduplicates against the database, imports the resulting JSON, backfills normalized texts, extracts tags, generates embeddings, and validates the import.
+- The coordinator scrapes and parses events and artists, can optionally launch local Chromium for biography scraping, deduplicates against the database, imports the resulting JSON, backfills normalized texts, extracts tags, generates embeddings, and validates the import.
+- Biography scraping is skipped by default (`FULL_PIPELINE_SKIP_BIO=yes`) and should be enabled explicitly only when you really need it.
+- The old always-on Compose `browser` service is gone; biography scraping now relies on the pipeline's on-demand local Chromium/CDP flow when enabled.
 - Control its behavior with `FULL_PIPELINE_*` variables such as date range, artifact directory, skip flags, and optional validation artist id.
 - Use the individual stage commands only when you are debugging a specific step or intentionally isolating a failure.
 

@@ -1,6 +1,7 @@
 import pytest
 from fastapi.testclient import TestClient
 from app.db import get_connection
+from app.auth import create_access_token
 from app.recommendations.event_similarity import artist_relevant_source_event_ids
 from app.main import app, extracted_tag_score
 from app.recommendations.scoring import (
@@ -9,7 +10,7 @@ from app.recommendations.scoring import (
 
 # docker compose exec backend sh -lc 'cd /app && pytest tests/test_graph_api.py -q'
 client = TestClient(app)
-client.headers.update({"X-User-Id": "1"})
+client.headers.update({"Authorization": f"Bearer {create_access_token({'sub': '1'})}"})
 
 
 def graph_has_genre_data() -> bool:

@@ -16,8 +16,13 @@ from app.event_tag_taxonomy import canonicalize_event_tag
 
 def test_event_extractor_key_is_v3_because_v2_rows_exist():
     assert (
-        EventTagExtractionConfig(model="gpt-test").extractor_key
-        == "llm_event_tags_v3:openai:chat_completions:gpt-test"
+        EventTagExtractionConfig(
+            model="gpt-test",
+            max_text_chars=7000,
+            max_tags=12,
+            chunk_chars=800,
+        ).extractor_key
+        == "llm_event_tags_v3:azure:chat_completions:gpt-test"
     )
 
 

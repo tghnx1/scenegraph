@@ -4,6 +4,7 @@ import pytest
 from fastapi.testclient import TestClient
 from psycopg.types.json import Jsonb
 
+from app.auth import create_access_token
 from app.db import get_connection
 from app.main import app
 
@@ -16,7 +17,7 @@ client = TestClient(app)
 
 
 def _headers() -> dict[str, str]:
-    return {"X-User-Id": str(TEMP_USER_ID)}
+    return {"Authorization": f"Bearer {create_access_token({'sub': str(TEMP_USER_ID)})}"}
 
 
 @pytest.fixture(autouse=True)
@@ -27,8 +28,19 @@ def temp_recommendation_job_entities() -> Generator[None, None, None]:
                 "DELETE FROM recommendation_jobs WHERE user_id = %s OR artist_id = %s",
                 (TEMP_USER_ID, TEMP_ARTIST_ID),
             )
-            cursor.execute("DELETE FROM artists WHERE id = %s", (TEMP_ARTIST_ID,))
             cursor.execute("DELETE FROM users WHERE id = %s", (TEMP_USER_ID,))
+            cursor.execute("DELETE FROM artists WHERE id = %s", (TEMP_ARTIST_ID,))
+            cursor.execute(
+                """
+                INSERT INTO artists (id, ra_artist_id, name)
+                VALUES (%s, %s, %s)
+                """,
+                (
+                    TEMP_ARTIST_ID,
+                    f"recommendation-job-test-{TEMP_ARTIST_ID}",
+                    "Recommendation Job Test Artist",
+                ),
+            )
             cursor.execute(
                 """
                 INSERT INTO users (id, username, email, password_hash, role, status)
@@ -44,15 +56,8 @@ def temp_recommendation_job_entities() -> Generator[None, None, None]:
                 ),
             )
             cursor.execute(
-                """
-                INSERT INTO artists (id, ra_artist_id, name)
-                VALUES (%s, %s, %s)
-                """,
-                (
-                    TEMP_ARTIST_ID,
-                    f"recommendation-job-test-{TEMP_ARTIST_ID}",
-                    "Recommendation Job Test Artist",
-                ),
+                "UPDATE users SET artist_id = %s WHERE id = %s",
+                (TEMP_ARTIST_ID, TEMP_USER_ID),
             )
 
     yield
@@ -63,8 +68,8 @@ def temp_recommendation_job_entities() -> Generator[None, None, None]:
                 "DELETE FROM recommendation_jobs WHERE user_id = %s OR artist_id = %s",
                 (TEMP_USER_ID, TEMP_ARTIST_ID),
             )
-            cursor.execute("DELETE FROM artists WHERE id = %s", (TEMP_ARTIST_ID,))
             cursor.execute("DELETE FROM users WHERE id = %s", (TEMP_USER_ID,))
+            cursor.execute("DELETE FROM artists WHERE id = %s", (TEMP_ARTIST_ID,))
 
 
 def test_recommendation_job_creation_allows_identical_jobs():

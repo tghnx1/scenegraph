@@ -82,7 +82,9 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
     configured_dimensions_raw = os.environ.get("OPENAI_EMBEDDING_DIMENSIONS", "").strip()
-    configured_dimensions = int(configured_dimensions_raw) if configured_dimensions_raw else 1536
+    if not configured_dimensions_raw:
+        raise SystemExit("OPENAI_EMBEDDING_DIMENSIONS must be set")
+    configured_dimensions = int(configured_dimensions_raw)
     event_ids = load_id_file(args.event_ids_file)
     artist_ids = load_id_file(args.artist_ids_file)
 
@@ -92,8 +94,9 @@ def main() -> None:
             cursor.execute(
                 """
                 ALTER TABLE IF EXISTS entity_embeddings
-                ADD COLUMN IF NOT EXISTS embedding_vec vector(1536)
-                """
+                ADD COLUMN IF NOT EXISTS embedding_vec vector(%s)
+                """,
+                (configured_dimensions,),
             )
             cursor.execute(
                 """

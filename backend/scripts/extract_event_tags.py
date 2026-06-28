@@ -11,9 +11,9 @@ from psycopg.rows import dict_row
 
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 
-from app.artist_tag_extraction import create_extraction_client, is_content_filter_error
 from app.event_tag_extraction import (
     EventTagExtractionConfig,
+    create_extraction_client,
     event_extraction_hash_input,
     event_source_fields,
     event_tag_extraction_text_hash,
@@ -156,16 +156,8 @@ def parse_args() -> argparse.Namespace:
 
 
 def ensure_provider_env(config: EventTagExtractionConfig) -> None:
-    if config.provider == "openai" and not os.environ.get("OPENAI_API_KEY"):
-        raise SystemExit("OPENAI_API_KEY must be set for OpenAI tag extraction")
-    if config.provider == "azure":
-        if not os.environ.get("AZURE_OPENAI_API_KEY"):
-            raise SystemExit("AZURE_OPENAI_API_KEY must be set for Azure tag extraction")
-        if config.api == "responses":
-            if not config.azure_responses_url:
-                raise SystemExit("AZURE_OPENAI_RESPONSES_URL must be set for Azure Responses tag extraction")
-        elif not os.environ.get("AZURE_OPENAI_ENDPOINT"):
-            raise SystemExit("AZURE_OPENAI_ENDPOINT must be set for Azure tag extraction")
+    if not os.environ.get("AZURE_OPENAI_API_KEY"):
+        raise SystemExit("AZURE_OPENAI_API_KEY must be set for Azure tag extraction")
 
 
 def main() -> None:
@@ -184,7 +176,7 @@ def main() -> None:
     if args.event_id is not None and args.batch_size != 1:
         args.batch_size = 1
 
-    client = create_extraction_client(config)  # type: ignore[arg-type]
+    client = create_extraction_client()
     processed = 0
     skipped = 0
     failed = 0

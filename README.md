@@ -50,7 +50,7 @@ See [docs/architecture.md](docs/architecture.md) for the component and data-flow
 
 **Frontend:** React, TypeScript, Vite
 
-**Optional enrichment providers:** OpenAI or Azure OpenAI, configured through environment variables
+**Optional enrichment providers:** OpenAI for embeddings and Azure OpenAI for extraction, configured through environment variables
 
 ## Repository structure
 
@@ -73,7 +73,7 @@ Requirements:
 
 - Docker with Docker Compose v2
 - GNU Make
-- Optional provider API key for extraction or embedding workflows
+- Optional provider API keys for embedding and extraction workflows
 
 Create a local environment file:
 
@@ -90,9 +90,21 @@ POSTGRES_PASSWORD=replace-with-a-local-password
 POSTGRES_PORT=5432
 DATABASE_URL=postgresql://scenegraph:replace-with-a-local-password@db:5432/scenegraph
 
-EMBEDDING_PROVIDER=openai
-OPENAI_API_KEY=replace-only-if-using-openai
-EXTRACTION_PROVIDER=openai
+OPENAI_API_KEY=replace-only-if-using-embeddings
+OPENAI_EMBEDDING_MODEL=text-embedding-3-small
+OPENAI_EMBEDDING_DIMENSIONS=1536
+
+AZURE_OPENAI_API_KEY=replace-only-if-using-extraction
+AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com
+AZURE_OPENAI_CHAT_API_VERSION=2025-01-01-preview
+AZURE_OPENAI_EXTRACTION_DEPLOYMENT=your-gpt-4-1-deployment
+
+ARTIST_TAG_EXTRACTION_MAX_BIO_CHARS=6000
+ARTIST_TAG_EXTRACTION_MAX_TAGS=32
+ARTIST_TAG_EXTRACTION_CHUNK_CHARS=600
+EVENT_TAG_EXTRACTION_MAX_TEXT_CHARS=7000
+EVENT_TAG_EXTRACTION_MAX_TAGS=12
+EVENT_TAG_EXTRACTION_CHUNK_CHARS=800
 VITE_API_URL=http://localhost:8080/api
 ```
 
@@ -130,7 +142,19 @@ Use the full local ingestion pipeline:
 make full-pipeline
 ```
 
-This runs the end-to-end import/enrichment flow in Docker. Optional extraction and embedding stages still require the corresponding provider configuration.
+This runs the end-to-end import/enrichment flow in Docker.
+
+Default behavior:
+
+- biography scraping is skipped by default
+- browser/CDP tooling is not kept as a permanent compose service anymore
+- optional extraction and embedding stages still require the corresponding provider configuration
+
+If you want biography scraping too, run:
+
+```bash
+make full-pipeline FULL_PIPELINE_SKIP_BIO=no
+```
 
 ## API examples
 

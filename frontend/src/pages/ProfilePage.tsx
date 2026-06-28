@@ -8,8 +8,7 @@ import { SearchInputField } from './components/SearchInputField.tsx'
 import { useGraphSearchDetails } from './hooks/useGraphSearchDetails.ts'
 import { useManualArtistConnections } from './hooks/useManualArtistConnections.ts'
 import { BiographyPanel } from './components/BiographyPanel.tsx'
-import { getMe } from '../api/auth'
-import type { MeResponse } from '../api/auth'
+import { getMe, type AuthRole, type MeResponse } from '../api/auth'
 
 type ProfileWorkspaceTab = 'graph' | 'recommendations'
 
@@ -21,28 +20,65 @@ interface ProfilePageProps {
 export function ProfilePage({ recommendationTargetControls, showBiography = true }: ProfilePageProps = {}) {
   const { detailsPanelProps, searchFormProps, selectedNode, setSelected } = useGraphSearchDetails()
   const [activeWorkspaceTab, setActiveWorkspaceTab] = useState<ProfileWorkspaceTab>('graph')
+  const [currentRole, setCurrentRole] = useState<AuthRole | null>(() => {
+    const storedRole = localStorage.getItem('role')
+    return storedRole === 'artist' || storedRole === 'agent' || storedRole === 'admin'
+      ? storedRole
+      : null
+  })
 
   const [assignedArtistId, setAssignedArtistId] = useState<number | null>(() => {
     const stored = Number(localStorage.getItem('artist_id'))
     return Number.isInteger(stored) && stored > 0 ? stored : null
-  }) 
+  })
+  const [assignedArtistName, setAssignedArtistName] = useState<string | null>(() => {
+    const stored = localStorage.getItem('artist_name')?.trim() ?? ''
+    return stored || null
+  })
   const [pendingArtistClaim, setPendingArtistClaim] = useState<NonNullable<MeResponse['pending_artist_claim']> | null>(null)
 
-  useEffect(() => {
-    getMe()
-    .then((response) => {
+  const refreshCurrentUser = async () => {
+    try {
+      const response = await getMe()
+      setCurrentRole(response.role)
+
       if (response.artist_id) {
         localStorage.setItem('artist_id', String(response.artist_id))
         setAssignedArtistId(response.artist_id)
-        setPendingArtistClaim(null)
       } else {
         localStorage.removeItem('artist_id')
         setAssignedArtistId(null)
-        setPendingArtistClaim(response.pending_artist_claim ?? null)
       }
-    })
-    .catch(() => {
-    })
+
+      if (response.artist_name) {
+        localStorage.setItem('artist_name', response.artist_name)
+        setAssignedArtistName(response.artist_name)
+      } else {
+        localStorage.removeItem('artist_name')
+        setAssignedArtistName(null)
+      }
+
+      setPendingArtistClaim(response.artist_id ? null : (response.pending_artist_claim ?? null))
+    } catch {
+      // Keep the last known state when the session is unavailable.
+    }
+  }
+
+  useEffect(() => {
+    void refreshCurrentUser()
+  }, [])
+
+  useEffect(() => {
+    const handleRefresh = () => {
+      void refreshCurrentUser()
+    }
+
+    window.addEventListener('focus', handleRefresh)
+    document.addEventListener('visibilitychange', handleRefresh)
+    return () => {
+      window.removeEventListener('focus', handleRefresh)
+      document.removeEventListener('visibilitychange', handleRefresh)
+    }
   }, [])
 
   const searchParams = new URLSearchParams(window.location.search)
@@ -55,9 +91,12 @@ export function ProfilePage({ recommendationTargetControls, showBiography = true
     selectedId > 0
 
   const storedArtistId = assignedArtistId
-
-  const hasAssignedArtist =storedArtistId !== null
+  const hasAssignedArtist = storedArtistId !== null
+  const isArtistUser = currentRole === 'artist'
   const selectedNodeArtistId = selectedNode?.type === 'artist' ? selectedNode.entityId : null
+  const selectedDetailArtistId = detailsPanelProps.selectedEntityDetail?.type === 'artist'
+    ? detailsPanelProps.selectedEntityDetail.id
+    : null
   const selectedDetailArtistName = detailsPanelProps.selectedEntityDetail?.type === 'artist'
     ? detailsPanelProps.selectedEntityDetail.name
     : null
@@ -69,17 +108,25 @@ export function ProfilePage({ recommendationTargetControls, showBiography = true
     ? selectedId
     : selectedNodeArtistId
       ? selectedNodeArtistId
-    : hasAssignedArtist
-      ? storedArtistId
-      : null
+      : hasAssignedArtist
+        ? storedArtistId
+        : null
+  const profileArtistId = isArtistUser ? storedArtistId : artistId
+  const recommendationTargetName = recommendationTargetControls?.artistName
+    ?? (isArtistUser ? assignedArtistName ?? pendingArtistClaim?.artist_name : selectedArtistName)
+  const biographyArtistId = isArtistUser
+    ? (profileArtistId ?? pendingArtistClaim?.artist_id ?? selectedDetailArtistId ?? selectedNodeArtistId)
+    : artistId
+  const biographySelectedArtistName = hasAssignedArtist
+    ? null
+    : pendingArtistClaim?.artist_name ?? selectedArtistName
 
-  const biographyArtistId = hasAssignedArtist ? storedArtistId : pendingArtistClaim?.artist_id ?? artistId
-  const biographySelectedArtistName = hasAssignedArtist ? null : pendingArtistClaim?.artist_name ?? selectedArtistName
-  const canEditBiography = 
-    hasAssignedArtist && storedArtistId === biographyArtistId
-
-  const manualConnectionSourceArtistId = showBiography && hasAssignedArtist ? storedArtistId : null
-  const manualConnections = useManualArtistConnections(manualConnectionSourceArtistId)
+  const canEditBiography =
+    hasAssignedArtist && storedArtistId === profileArtistId
+  const manualConnectionsArtistId = isArtistUser
+    ? profileArtistId
+    : artistId
+  const manualConnections = useManualArtistConnections(manualConnectionsArtistId)
   const isSingleRowWorkspace = !showBiography
 
   return (
@@ -108,8 +155,8 @@ export function ProfilePage({ recommendationTargetControls, showBiography = true
 
           <DetailsPanel
             {...detailsPanelProps}
-            manualArtistConnections={manualConnectionSourceArtistId !== null ? {
-              sourceArtistId: manualConnectionSourceArtistId,
+            manualArtistConnections={manualConnectionsArtistId !== null ? {
+              sourceArtistId: manualConnectionsArtistId,
               connectedArtistIds: manualConnections.connectedArtistIds,
               isLoading: manualConnections.isLoading,
               pendingArtistId: manualConnections.pendingArtistId,
@@ -160,8 +207,13 @@ export function ProfilePage({ recommendationTargetControls, showBiography = true
             </section>
             <PromoterRecommendationsPanel
               isActive={activeWorkspaceTab === 'recommendations'}
-              artistId={artistId}
+              artistId={profileArtistId}
+              artistName={recommendationTargetName}
               targetControls={recommendationTargetControls}
+              autoLoad={isArtistUser && profileArtistId !== null}
+              emptyStateMessage={isArtistUser
+                ? 'Claim your artist profile to load your own recommendations.'
+                : undefined}
               onSelectNode={setSelected}
             />
           </article>
