@@ -53,7 +53,7 @@ function dateOnly(date: string | null) {
   return date.split(/[T ]/)[0]
 }
 
-function ManualArtistConnectionButton({
+export function ManualArtistConnectionButton({
   artistId,
   control,
 }: {
