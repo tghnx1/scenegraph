@@ -32,9 +32,9 @@ export function ProfilePage({ recommendationTargetControls, showBiography = true
     return Number.isInteger(stored) && stored > 0 ? stored : null
   })
 
-  useEffect(() => {
-    getMe()
-    .then((response) => {
+  const refreshCurrentUser = async () => {
+    try {
+      const response = await getMe()
       setCurrentRole(response.role)
       if (response.artist_id) {
         localStorage.setItem('artist_id', String(response.artist_id))
@@ -43,9 +43,26 @@ export function ProfilePage({ recommendationTargetControls, showBiography = true
         localStorage.removeItem('artist_id')
         setAssignedArtistId(null)
       }
-    })
-    .catch(() => {
-    })
+    } catch {
+      // Keep the last known state when the session is unavailable.
+    }
+  }
+
+  useEffect(() => {
+    void refreshCurrentUser()
+  }, [])
+
+  useEffect(() => {
+    const handleRefresh = () => {
+      void refreshCurrentUser()
+    }
+
+    window.addEventListener('focus', handleRefresh)
+    document.addEventListener('visibilitychange', handleRefresh)
+    return () => {
+      window.removeEventListener('focus', handleRefresh)
+      document.removeEventListener('visibilitychange', handleRefresh)
+    }
   }, [])
 
   const searchParams = new URLSearchParams(window.location.search)
