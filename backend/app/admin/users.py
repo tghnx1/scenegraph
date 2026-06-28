@@ -6,6 +6,10 @@ from psycopg import Connection
 from app.auth import log_activity
 from app.schemas import ChangeRoleRequest
 
+import os 
+
+BOOTSTRAP_ADMIN_USERNAME = os.getenv("BOOTSTRAP_ADMIN_USERNAME")
+
 
 def list_pending_users(connection: Connection) -> list[dict]:
     with connection.cursor() as cursor:
@@ -60,6 +64,48 @@ def reject_user(connection: Connection, *, user_id: int, admin: dict) -> dict:
 
 def deactivate_user(connection: Connection, *, user_id: int, admin: dict) -> dict:
     with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT id, username, role, status
+            FROM users
+            WHERE id = %s
+            """,
+            (user_id,),
+        )
+        target_user = cursor.fetchone()
+
+        if target_user is None:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        if target_user["id"] == admin["id"]:
+            raise HTTPException(
+                status_code=400,
+                detail="You cannot deactivate your own account.",
+            )
+
+        if target_user["username"] == BOOTSTRAP_ADMIN_USERNAME:
+            raise HTTPException(
+                status_code=400,
+                detail="The bootstrap admin cannot be deactivated.",
+                )
+                                
+        if target_user["role"] == "admin":
+            cursor.execute(
+                """
+                SELECT id
+                FROM users
+                WHERE role = 'admin'
+                    AND status = 'approved'
+                """
+            )
+            approved_admins = cursor.fetchall()
+
+            if len(approved_admins) <= 1:
+                raise HTTPException(
+                    stauts_code=400,
+                    detail="At least one approved admin must remain active.",
+                )
+        
         cursor.execute(
             """
             UPDATE users

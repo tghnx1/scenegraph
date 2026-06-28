@@ -77,7 +77,7 @@ class RegisterRequest(BaseModel):
     email: str
     password: str
     password_confirm: str
-    role: Literal["artist", "agent"]
+    role: Literal["artist", "agent", "admin"]
 
 class RegisterResponse(BaseModel):
     success: bool

@@ -66,6 +66,23 @@ async def claim_artist_profile(
 
             cursor.execute(
                 """
+                SELECT id
+                FROM artist_claims
+                WHERE artist_id = %s
+                    AND status = 'pending'
+                LIMIT 1
+                """,
+                (artist_id,),
+            )
+            pending_claim = cursor.fetchone()
+            if pending_claim is not None:
+                raise HTTPException(
+                    status_code=409,
+                    detail="This artist profile already has a pending claim"
+                )
+
+            cursor.execute(
+                """
                 INSERT INTO artist_claims (user_id, artist_id, reason)
                 VALUES (%s, %s, %s)
                 RETURNING id
