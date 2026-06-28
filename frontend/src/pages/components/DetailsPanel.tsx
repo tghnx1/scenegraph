@@ -1,4 +1,4 @@
-import { RenderDetails } from './RenderDetails.tsx'
+import { ManualArtistConnectionButton, RenderDetails } from './RenderDetails.tsx'
 import { Badge } from '@/shared/ui/badge'
 import type { EntityDetail } from '../../types/entityDetail'
 import type { GraphNode } from '../../types/graph'
@@ -65,6 +65,9 @@ export function DetailsPanel({
                 {selectedNode.genres?.slice(0, 4).join(' · ') || 'No genres available'}
               </p>
             </div>
+            {selectedNode.type === 'artist' && (
+              <ManualArtistConnectionButton artistId={selectedNode.entityId} control={manualArtistConnections} />
+            )}
           </div>
 
           <section className="mt-5 grid gap-2.5">
