@@ -7,6 +7,7 @@ import time
 
 from fastapi.testclient import TestClient
 
+from app.auth import create_access_token
 from app.db import get_connection
 from app.recommendations.jobs import claim_next_recommendation_job, complete_recommendation_job, requeue_stale_running_jobs
 from app.recommendations.worker import _drain_queued_jobs
@@ -35,7 +36,7 @@ TEST_USERS = [
 
 
 def _headers(user_id: int) -> dict[str, str]:
-    return {"X-User-Id": str(user_id)}
+    return {"Authorization": f"Bearer {create_access_token({'sub': str(user_id)})}"}
 
 
 @contextmanager
@@ -52,10 +53,19 @@ def seeded_test_users() -> Generator[None, None, None]:
             for user in TEST_USERS:
                 cursor.execute(
                     """
-                    INSERT INTO users (id, username, email, password_hash, role, status, must_change_password)
-                    VALUES (%s, %s, %s, 'test-password-hash', 'artist', 'approved', FALSE)
+                    INSERT INTO users (
+                        id,
+                        username,
+                        email,
+                        password_hash,
+                        role,
+                        status,
+                        must_change_password,
+                        artist_id
+                    )
+                    VALUES (%s, %s, %s, 'test-password-hash', 'artist', 'approved', FALSE, %s)
                     """,
-                    (user["id"], user["username"], user["email"]),
+                    (user["id"], user["username"], user["email"], ARTIST_ID),
                 )
     try:
         yield

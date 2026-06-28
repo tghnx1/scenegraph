@@ -40,6 +40,9 @@ export function BiographyPanel({
   useEffect(() => {
     let isCurrent = true
 
+    setClaimError('')
+    setClaimMessage('')
+
     if (artistId === null || !hasApprovedArtistProfile) {
       setIsLoading(false)
       setArtistName(selectedArtistName ?? 'Artist profile')
@@ -48,7 +51,7 @@ export function BiographyPanel({
       setLinkedArtists([])
       setIsEditing(false)
       setSuccess(null)
-      setError('This account is not linked to an artist profile yet.')
+      setError('Claim your artist profile to unlock recommendations and biography editing.')
       return () => { isCurrent = false }
     }
 
@@ -176,7 +179,7 @@ export function BiographyPanel({
               disabled={isClaiming}
               onClick={handleClaimProfile}
             >
-              {isClaiming ? 'Sending claim...' : 'Claim biography'}
+              {isClaiming ? 'Sending claim...' : 'Claim artist profile'}
             </Button>
           </div>
         )}

@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
+from app.auth import get_current_user, require_artist_access
 from app.db import get_connection
 from app.recommendations.helpers import ensure_feedback_entity_exists
 from app.schemas import (
@@ -31,7 +32,9 @@ def item_from_row(row: dict) -> ArtistKnownConnectionItem:
 )
 async def list_known_artists(
     artist_id: int,
+    current_user: dict = Depends(get_current_user),
 ) -> ArtistKnownConnectionResponse:
+    require_artist_access(current_user, artist_id)
     with get_connection() as connection:
         ensure_feedback_entity_exists(connection, entity_type="artist", entity_id=artist_id)
 
@@ -65,7 +68,9 @@ async def list_known_artists(
 async def upsert_known_artist(
     artist_id: int,
     request: ArtistKnownConnectionRequest,
+    current_user: dict = Depends(get_current_user),
 ) -> ArtistKnownConnectionItem:
+    require_artist_access(current_user, artist_id)
     if artist_id == request.connectedArtistId:
         raise HTTPException(status_code=400, detail="source artist and connected artist must be different")
 
@@ -111,7 +116,9 @@ async def upsert_known_artist(
 async def delete_known_artist(
     artist_id: int,
     connected_artist_id: int,
+    current_user: dict = Depends(get_current_user),
 ) -> ArtistKnownConnectionItem:
+    require_artist_access(current_user, artist_id)
     with get_connection() as connection:
         with connection.cursor() as cursor:
             cursor.execute(

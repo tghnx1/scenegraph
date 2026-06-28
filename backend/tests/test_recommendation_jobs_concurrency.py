@@ -3,6 +3,7 @@ from contextlib import contextmanager
 
 from fastapi.testclient import TestClient
 
+from app.auth import create_access_token
 from app.db import get_connection
 from app.main import app
 
@@ -21,7 +22,7 @@ def _create_job(client: TestClient, user_id: int) -> dict[str, object]:
     """Create one recommendation job using a shared app client."""
     response = client.post(
         f"/api/recommendations/artists/{ARTIST_ID}/promoters/jobs",
-        headers={"X-User-Id": str(user_id)},
+        headers={"Authorization": f"Bearer {create_access_token({'sub': str(user_id)})}"},
         json={"limit": 10, "debug": False},
     )
     assert response.status_code == 202
@@ -45,10 +46,19 @@ def seeded_test_users():
             for user in TEST_USERS:
                 cursor.execute(
                     """
-                    INSERT INTO users (id, username, email, password_hash, role, status, must_change_password)
-                    VALUES (%s, %s, %s, 'test-password-hash', 'artist', 'approved', FALSE)
+                    INSERT INTO users (
+                        id,
+                        username,
+                        email,
+                        password_hash,
+                        role,
+                        status,
+                        must_change_password,
+                        artist_id
+                    )
+                    VALUES (%s, %s, %s, 'test-password-hash', 'artist', 'approved', FALSE, %s)
                     """,
-                    (user["id"], user["username"], user["email"]),
+                    (user["id"], user["username"], user["email"], ARTIST_ID),
                 )
     try:
         yield

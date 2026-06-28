@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.db import get_connection
-from app.auth import get_current_user_id
+from app.auth import get_current_user, require_artist_access
 from app.recommendations.scoring import promoter_recommendation_api_limit_max_from_config
 from app.recommendations.services import build_artist_promoter_recommendation_response
 from app.schemas import ArtistTagItem, ArtistTagsResponse, PromoterRecommendationResponse
@@ -88,13 +88,14 @@ async def recommend_promoters_for_artist(
     artist_id: int,
     limit: int = Query(default=10, ge=1, le=PROMOTER_REC_API_LIMIT_MAX),
     debug: bool = Query(default=False),
-    user_id: int = Depends(get_current_user_id),
+    current_user: dict = Depends(get_current_user),
 ) -> PromoterRecommendationResponse:
+    require_artist_access(current_user, artist_id)
     with get_connection() as connection:
         return build_artist_promoter_recommendation_response(
             connection,
             artist_id=artist_id,
             limit=limit,
             debug=debug,
-            user_id=user_id,
+            user_id=int(current_user["id"]),
         )

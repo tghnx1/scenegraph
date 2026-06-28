@@ -70,6 +70,8 @@ interface PromoterRecommendationsPanelProps {
   isActive: boolean
   artistId: number | null
   targetControls?: RecommendationTargetControls
+  autoLoad?: boolean
+  emptyStateMessage?: string
   onSelectNode: (node: GraphNode | null) => void
 }
 
@@ -182,6 +184,8 @@ export function PromoterRecommendationsPanel({
   isActive,
   artistId,
   targetControls,
+  autoLoad = false,
+  emptyStateMessage,
   onSelectNode,
 }: PromoterRecommendationsPanelProps) {
   const [recommendationsData, setRecommendationsData] = useState<PromoterRecommendationResponse | null>(null)
@@ -205,12 +209,14 @@ export function PromoterRecommendationsPanel({
   const recommendationListRef = useRef<HTMLElement | null>(null)
   const recommendationRequestIdRef = useRef(0)
   const activeRecommendationJobRef = useRef<{ jobId: string; requestId: number } | null>(null)
+  const autoLoadTriggeredArtistIdRef = useRef<number | null>(null)
   const recommendationArtistId = targetControls
     ? targetControls.artistId
     : artistId
 
   useEffect(() => {
     recommendationRequestIdRef.current += 1
+    autoLoadTriggeredArtistIdRef.current = null
     setRecommendationsData(null)
     setActiveRecommendationJobId(null)
     activeRecommendationJobRef.current = null
@@ -305,7 +311,11 @@ export function PromoterRecommendationsPanel({
 
   const handleLoadRecommendations = useCallback(async () => {
     if (recommendationArtistId === null) {
-      setRecommendationsError(targetControls?.emptyMessage ?? 'Select an artist to load recommendations.')
+      setRecommendationsError(
+        targetControls?.emptyMessage
+          ?? emptyStateMessage
+          ?? 'Select an artist to load recommendations.',
+      )
       return
     }
 
@@ -336,7 +346,18 @@ export function PromoterRecommendationsPanel({
       setActiveRecommendationJobId(null)
       activeRecommendationJobRef.current = null
     }
-  }, [recommendationArtistId, refreshRecommendationJob, targetControls?.emptyMessage])
+  }, [emptyStateMessage, recommendationArtistId, refreshRecommendationJob, targetControls?.emptyMessage])
+
+  useEffect(() => {
+    if (!autoLoad) return
+    if (!isActive) return
+    if (recommendationArtistId === null) return
+    if (recommendationsData !== null || isRecommendationsLoading) return
+    if (autoLoadTriggeredArtistIdRef.current === recommendationArtistId) return
+
+    autoLoadTriggeredArtistIdRef.current = recommendationArtistId
+    void handleLoadRecommendations()
+  }, [autoLoad, handleLoadRecommendations, isActive, isRecommendationsLoading, recommendationArtistId, recommendationsData])
 
   const handleResetRecommendations = useCallback(() => {
     recommendationRequestIdRef.current += 1
@@ -362,7 +383,11 @@ export function PromoterRecommendationsPanel({
     feedback: PromoterFeedbackValue,
   ) => {
     if (recommendationArtistId === null) {
-      setRecommendationsError(targetControls?.emptyMessage ?? 'Select an artist to load recommendations.')
+      setRecommendationsError(
+        targetControls?.emptyMessage
+          ?? emptyStateMessage
+          ?? 'Select an artist to load recommendations.',
+      )
       return
     }
 
@@ -408,7 +433,7 @@ export function PromoterRecommendationsPanel({
     } finally {
       setPendingFeedbackPromoterId(null)
     }
-  }, [localFeedbackByPromoterId, localFeedbackIdByPromoterId, recommendationArtistId, recommendationsData, targetControls?.emptyMessage])
+  }, [emptyStateMessage, localFeedbackByPromoterId, localFeedbackIdByPromoterId, recommendationArtistId, recommendationsData, targetControls?.emptyMessage])
 
   const handleSelectRecommendation = useCallback((recommendationId: number) => {
     const recommendationNode = recommendationsData?.graph.nodes.find((node) => (
@@ -605,6 +630,7 @@ export function PromoterRecommendationsPanel({
           <p className={recommendationsError ? 'm-0 text-[var(--event)]' : cn('m-0', mutedTextClass)}>
             {recommendationsError
               ?? (targetControls?.emptyMessage
+                ?? emptyStateMessage
                 ?? 'Click "Get Rec" to load recommendations. Loading time may be quite long. Let the wizard does its magic.')}
           </p>
           {!targetControls && (

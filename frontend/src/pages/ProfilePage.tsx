@@ -8,7 +8,7 @@ import { SearchInputField } from './components/SearchInputField.tsx'
 import { useGraphSearchDetails } from './hooks/useGraphSearchDetails.ts'
 import { useManualArtistConnections } from './hooks/useManualArtistConnections.ts'
 import { BiographyPanel } from './components/BiographyPanel.tsx'
-import { getMe } from '../api/auth'
+import { getMe, type AuthRole } from '../api/auth'
 
 type ProfileWorkspaceTab = 'graph' | 'recommendations'
 
@@ -20,6 +20,12 @@ interface ProfilePageProps {
 export function ProfilePage({ recommendationTargetControls, showBiography = true }: ProfilePageProps = {}) {
   const { detailsPanelProps, searchFormProps, selectedNode, setSelected } = useGraphSearchDetails()
   const [activeWorkspaceTab, setActiveWorkspaceTab] = useState<ProfileWorkspaceTab>('graph')
+  const [currentRole, setCurrentRole] = useState<AuthRole | null>(() => {
+    const storedRole = localStorage.getItem('role')
+    return storedRole === 'artist' || storedRole === 'agent' || storedRole === 'admin'
+      ? storedRole
+      : null
+  })
 
   const [assignedArtistId, setAssignedArtistId] = useState<number | null>(() => {
     const stored = Number(localStorage.getItem('artist_id'))
@@ -29,6 +35,7 @@ export function ProfilePage({ recommendationTargetControls, showBiography = true
   useEffect(() => {
     getMe()
     .then((response) => {
+      setCurrentRole(response.role)
       if (response.artist_id) {
         localStorage.setItem('artist_id', String(response.artist_id))
         setAssignedArtistId(response.artist_id)
@@ -52,8 +59,12 @@ export function ProfilePage({ recommendationTargetControls, showBiography = true
 
   const storedArtistId = assignedArtistId
 
-  const hasAssignedArtist =storedArtistId !== null
+  const hasAssignedArtist = storedArtistId !== null
+  const isArtistUser = currentRole === 'artist'
   const selectedNodeArtistId = selectedNode?.type === 'artist' ? selectedNode.entityId : null
+  const selectedDetailArtistId = detailsPanelProps.selectedEntityDetail?.type === 'artist'
+    ? detailsPanelProps.selectedEntityDetail.id
+    : null
   const selectedDetailArtistName = detailsPanelProps.selectedEntityDetail?.type === 'artist'
     ? detailsPanelProps.selectedEntityDetail.name
     : null
@@ -68,11 +79,15 @@ export function ProfilePage({ recommendationTargetControls, showBiography = true
     : hasAssignedArtist
       ? storedArtistId
       : null
+  const profileArtistId = isArtistUser ? storedArtistId : artistId
+  const biographyArtistId = isArtistUser
+    ? (profileArtistId ?? selectedDetailArtistId ?? selectedNodeArtistId)
+    : artistId
 
   const canEditBiography =
-    hasAssignedArtist && storedArtistId === artistId
+    hasAssignedArtist && storedArtistId === profileArtistId
 
-  const manualConnections = useManualArtistConnections(showBiography && hasAssignedArtist ? artistId : null)
+  const manualConnections = useManualArtistConnections(showBiography && hasAssignedArtist ? profileArtistId : null)
   const isSingleRowWorkspace = !showBiography
 
   return (
@@ -153,8 +168,12 @@ export function ProfilePage({ recommendationTargetControls, showBiography = true
             </section>
             <PromoterRecommendationsPanel
               isActive={activeWorkspaceTab === 'recommendations'}
-              artistId={artistId}
+              artistId={profileArtistId}
               targetControls={recommendationTargetControls}
+              autoLoad={isArtistUser && profileArtistId !== null}
+              emptyStateMessage={isArtistUser
+                ? 'Claim your artist profile to load your own recommendations.'
+                : undefined}
               onSelectNode={setSelected}
             />
           </article>
@@ -162,7 +181,7 @@ export function ProfilePage({ recommendationTargetControls, showBiography = true
         {showBiography && (
           <div className="col-span-2 max-[900px]:col-span-1">
             <BiographyPanel
-              artistId={artistId}
+              artistId={biographyArtistId}
               selectedArtistName={selectedArtistName}
               canEditBiography={canEditBiography}
               hasApprovedArtistProfile={hasAssignedArtist}

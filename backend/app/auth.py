@@ -22,7 +22,7 @@ PUBLIC_API_KEY = os.getenv("PUBLIC_API_KEY")
 if JWT_SECRET_KEY is None:
     raise RuntimeError("JWT_SECRET_KEY not configured")
 
-security = HTTPBearer()
+security = HTTPBearer(auto_error=False)
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 USERNAME_RE = re.compile(r"^[a-zA-Z0-9_-]{3,32}$")
 rate_limit_attempts: dict[str, list[float]] = {}
@@ -57,8 +57,10 @@ def _user_id_from_jwt(token: str, connection: Connection) -> int:
 
 
 def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(security),
+    credentials: HTTPAuthorizationCredentials | None = Depends(security),
 ) -> dict:
+    if credentials is None:
+        raise HTTPException(status_code=401, detail="authenticated user required")
     token = credentials.credentials
     try:
         payload = jwt.decode(token, JWT_SECRET_KEY, algorithms=[JWT_ALGORITHM])
@@ -106,6 +108,14 @@ def require_admin(current_user: dict = Depends(get_current_user)) -> dict:
     if current_user["role"] != "admin":
         raise HTTPException(status_code=403, detail="Admin token required")
     return current_user
+
+
+def require_artist_access(current_user: dict, artist_id: int) -> dict:
+    if current_user["role"] in {"agent", "admin"}:
+        return current_user
+    if current_user["role"] == "artist" and current_user["artist_id"] == artist_id:
+        return current_user
+    raise HTTPException(status_code=403, detail="You are not allowed to access this artist")
 
 
 def create_access_token(data: dict) -> str:

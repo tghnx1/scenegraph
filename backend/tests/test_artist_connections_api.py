@@ -3,11 +3,17 @@ from collections.abc import Generator
 import pytest
 from fastapi.testclient import TestClient
 
+from app.auth import create_access_token
 from app.db import get_connection
 from app.main import app
 
 
 client = TestClient(app)
+SOURCE_ARTIST_USER_ID = 93_101
+
+
+def headers() -> dict[str, str]:
+    return {"Authorization": f"Bearer {create_access_token({'sub': str(SOURCE_ARTIST_USER_ID)})}"}
 
 
 def delete_connection(source_artist_id: int, connected_artist_id: int) -> None:
@@ -55,9 +61,36 @@ def artist_pair() -> Generator[tuple[dict, dict], None, None]:
     connected_artist = {"id": row["connected_id"], "name": row["connected_name"]}
     delete_connection(source_artist["id"], connected_artist["id"])
 
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("DELETE FROM users WHERE id = %s", (SOURCE_ARTIST_USER_ID,))
+            cursor.execute(
+                """
+                INSERT INTO users (
+                    id,
+                    username,
+                    email,
+                    password_hash,
+                    role,
+                    status,
+                    artist_id
+                )
+                VALUES (%s, %s, %s, 'test-password-hash', 'artist', 'approved', %s)
+                """,
+                (
+                    SOURCE_ARTIST_USER_ID,
+                    f"artist-connections-test-{SOURCE_ARTIST_USER_ID}",
+                    f"artist-connections-test-{SOURCE_ARTIST_USER_ID}@example.com",
+                    source_artist["id"],
+                ),
+            )
+
     yield source_artist, connected_artist
 
     delete_connection(source_artist["id"], connected_artist["id"])
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("DELETE FROM users WHERE id = %s", (SOURCE_ARTIST_USER_ID,))
 
 
 def test_manual_artist_connection_can_be_added_listed_and_upserted(artist_pair):
@@ -65,14 +98,14 @@ def test_manual_artist_connection_can_be_added_listed_and_upserted(artist_pair):
     path = f"/api/artists/{source_artist['id']}/known-artists"
     payload = {"connectedArtistId": connected_artist["id"]}
 
-    initial_list_response = client.get(path)
+    initial_list_response = client.get(path, headers=headers())
     assert initial_list_response.status_code == 200
     assert all(
         item["connectedArtistId"] != connected_artist["id"]
         for item in initial_list_response.json()["items"]
     )
 
-    create_response = client.post(path, json=payload)
+    create_response = client.post(path, headers=headers(), json=payload)
     assert create_response.status_code == 200
     created = create_response.json()
     assert created["sourceArtistId"] == source_artist["id"]
@@ -81,14 +114,14 @@ def test_manual_artist_connection_can_be_added_listed_and_upserted(artist_pair):
     assert created["createdAt"]
     assert created["updatedAt"]
 
-    upsert_response = client.post(path, json=payload)
+    upsert_response = client.post(path, headers=headers(), json=payload)
     assert upsert_response.status_code == 200
     upserted = upsert_response.json()
     assert upserted["sourceArtistId"] == source_artist["id"]
     assert upserted["connectedArtistId"] == connected_artist["id"]
     assert upserted["createdAt"] == created["createdAt"]
 
-    list_response = client.get(path)
+    list_response = client.get(path, headers=headers())
     assert list_response.status_code == 200
     matching_items = [
         item
@@ -105,15 +138,16 @@ def test_manual_artist_connection_can_be_deleted(artist_pair):
 
     create_response = client.post(
         collection_path,
+        headers=headers(),
         json={"connectedArtistId": connected_artist["id"]},
     )
     assert create_response.status_code == 200
 
-    delete_response = client.delete(item_path)
+    delete_response = client.delete(item_path, headers=headers())
     assert delete_response.status_code == 200
     assert delete_response.json()["connectedArtistId"] == connected_artist["id"]
 
-    second_delete_response = client.delete(item_path)
+    second_delete_response = client.delete(item_path, headers=headers())
     assert second_delete_response.status_code == 404
     assert second_delete_response.json()["detail"] == "manual artist connection not found"
 
@@ -123,6 +157,7 @@ def test_manual_artist_connection_rejects_self_link(artist_pair):
 
     response = client.post(
         f"/api/artists/{source_artist['id']}/known-artists",
+        headers=headers(),
         json={"connectedArtistId": source_artist["id"]},
     )
 
@@ -136,11 +171,12 @@ def test_manual_artist_connection_rejects_missing_source_artist(artist_pair):
 
     response = client.post(
         f"/api/artists/{missing_artist_id}/known-artists",
+        headers=headers(),
         json={"connectedArtistId": connected_artist["id"]},
     )
 
-    assert response.status_code == 404
-    assert response.json()["detail"] == f"artist {missing_artist_id} not found"
+    assert response.status_code == 403
+    assert response.json()["detail"] == "You are not allowed to access this artist"
 
 
 def test_manual_artist_connection_rejects_missing_connected_artist(artist_pair):
@@ -149,6 +185,7 @@ def test_manual_artist_connection_rejects_missing_connected_artist(artist_pair):
 
     response = client.post(
         f"/api/artists/{source_artist['id']}/known-artists",
+        headers=headers(),
         json={"connectedArtistId": missing_artist_id},
     )
 
@@ -161,7 +198,28 @@ def test_manual_artist_connection_rejects_invalid_request_body(artist_pair):
 
     response = client.post(
         f"/api/artists/{source_artist['id']}/known-artists",
+        headers=headers(),
         json={},
     )
 
     assert response.status_code == 422
+
+
+def test_manual_artist_connection_rejects_other_artist_access(artist_pair):
+    _, connected_artist = artist_pair
+
+    response = client.get(
+        f"/api/artists/{connected_artist['id']}/known-artists",
+        headers=headers(),
+    )
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "You are not allowed to access this artist"
+
+
+def test_manual_artist_connection_requires_authentication(artist_pair):
+    source_artist, _ = artist_pair
+
+    response = client.get(f"/api/artists/{source_artist['id']}/known-artists")
+
+    assert response.status_code == 401
