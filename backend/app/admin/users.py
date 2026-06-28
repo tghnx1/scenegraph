@@ -63,9 +63,10 @@ def deactivate_user(connection: Connection, *, user_id: int, admin: dict) -> dic
         cursor.execute(
             """
             UPDATE users
-            SET status = 'deactivated'
+            SET status = 'deactivated',
+                artist_id = NULL
             WHERE id = %s
-            RETURNING id, username, email, role, status
+            RETURNING id, username, email, role, status, artist_id
             """,
             (user_id,),
         )
