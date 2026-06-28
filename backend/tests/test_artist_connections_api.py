@@ -10,10 +10,13 @@ from app.main import app
 
 client = TestClient(app)
 SOURCE_ARTIST_USER_ID = 93_101
+OTHER_ARTIST_USER_ID = 93_102
+AGENT_USER_ID = 93_103
+ADMIN_USER_ID = 93_104
 
 
-def headers() -> dict[str, str]:
-    return {"Authorization": f"Bearer {create_access_token({'sub': str(SOURCE_ARTIST_USER_ID)})}"}
+def headers(user_id: int = SOURCE_ARTIST_USER_ID) -> dict[str, str]:
+    return {"Authorization": f"Bearer {create_access_token({'sub': str(user_id)})}"}
 
 
 def delete_connection(source_artist_id: int, connected_artist_id: int) -> None:
@@ -60,10 +63,14 @@ def artist_pair() -> Generator[tuple[dict, dict], None, None]:
     source_artist = {"id": row["source_id"], "name": row["source_name"]}
     connected_artist = {"id": row["connected_id"], "name": row["connected_name"]}
     delete_connection(source_artist["id"], connected_artist["id"])
+    delete_connection(connected_artist["id"], source_artist["id"])
 
     with get_connection() as connection:
         with connection.cursor() as cursor:
-            cursor.execute("DELETE FROM users WHERE id = %s", (SOURCE_ARTIST_USER_ID,))
+            cursor.execute(
+                "DELETE FROM users WHERE id = ANY(%s)",
+                ([SOURCE_ARTIST_USER_ID, OTHER_ARTIST_USER_ID, AGENT_USER_ID, ADMIN_USER_ID],),
+            )
             cursor.execute(
                 """
                 INSERT INTO users (
@@ -75,22 +82,40 @@ def artist_pair() -> Generator[tuple[dict, dict], None, None]:
                     status,
                     artist_id
                 )
-                VALUES (%s, %s, %s, 'test-password-hash', 'artist', 'approved', %s)
+                VALUES
+                    (%s, %s, %s, 'test-password-hash', 'artist', 'approved', %s),
+                    (%s, %s, %s, 'test-password-hash', 'artist', 'approved', %s),
+                    (%s, %s, %s, 'test-password-hash', 'agent', 'approved', NULL),
+                    (%s, %s, %s, 'test-password-hash', 'admin', 'approved', NULL)
                 """,
                 (
                     SOURCE_ARTIST_USER_ID,
                     f"artist-connections-test-{SOURCE_ARTIST_USER_ID}",
                     f"artist-connections-test-{SOURCE_ARTIST_USER_ID}@example.com",
                     source_artist["id"],
+                    OTHER_ARTIST_USER_ID,
+                    f"artist-connections-test-{OTHER_ARTIST_USER_ID}",
+                    f"artist-connections-test-{OTHER_ARTIST_USER_ID}@example.com",
+                    connected_artist["id"],
+                    AGENT_USER_ID,
+                    f"artist-connections-test-{AGENT_USER_ID}",
+                    f"artist-connections-test-{AGENT_USER_ID}@example.com",
+                    ADMIN_USER_ID,
+                    f"artist-connections-test-{ADMIN_USER_ID}",
+                    f"artist-connections-test-{ADMIN_USER_ID}@example.com",
                 ),
             )
 
     yield source_artist, connected_artist
 
     delete_connection(source_artist["id"], connected_artist["id"])
+    delete_connection(connected_artist["id"], source_artist["id"])
     with get_connection() as connection:
         with connection.cursor() as cursor:
-            cursor.execute("DELETE FROM users WHERE id = %s", (SOURCE_ARTIST_USER_ID,))
+            cursor.execute(
+                "DELETE FROM users WHERE id = ANY(%s)",
+                ([SOURCE_ARTIST_USER_ID, OTHER_ARTIST_USER_ID, AGENT_USER_ID, ADMIN_USER_ID],),
+            )
 
 
 def test_manual_artist_connection_can_be_added_listed_and_upserted(artist_pair):
@@ -98,7 +123,7 @@ def test_manual_artist_connection_can_be_added_listed_and_upserted(artist_pair):
     path = f"/api/artists/{source_artist['id']}/known-artists"
     payload = {"connectedArtistId": connected_artist["id"]}
 
-    initial_list_response = client.get(path, headers=headers())
+    initial_list_response = client.get(path)
     assert initial_list_response.status_code == 200
     assert all(
         item["connectedArtistId"] != connected_artist["id"]
@@ -121,7 +146,7 @@ def test_manual_artist_connection_can_be_added_listed_and_upserted(artist_pair):
     assert upserted["connectedArtistId"] == connected_artist["id"]
     assert upserted["createdAt"] == created["createdAt"]
 
-    list_response = client.get(path, headers=headers())
+    list_response = client.get(path)
     assert list_response.status_code == 200
     matching_items = [
         item
@@ -205,21 +230,60 @@ def test_manual_artist_connection_rejects_invalid_request_body(artist_pair):
     assert response.status_code == 422
 
 
-def test_manual_artist_connection_rejects_other_artist_access(artist_pair):
-    _, connected_artist = artist_pair
+def test_manual_artist_connection_allows_agent_and_admin_to_mutate_any_artist(artist_pair):
+    source_artist, connected_artist = artist_pair
+    collection_path = f"/api/artists/{connected_artist['id']}/known-artists"
+    item_path = f"{collection_path}/{source_artist['id']}"
 
-    response = client.get(
-        f"/api/artists/{connected_artist['id']}/known-artists",
-        headers=headers(),
+    agent_create_response = client.post(
+        collection_path,
+        headers=headers(AGENT_USER_ID),
+        json={"connectedArtistId": source_artist["id"]},
     )
+    assert agent_create_response.status_code == 200
+    assert agent_create_response.json()["sourceArtistId"] == connected_artist["id"]
+    assert agent_create_response.json()["connectedArtistId"] == source_artist["id"]
 
-    assert response.status_code == 403
-    assert response.json()["detail"] == "You are not allowed to access this artist"
+    admin_delete_response = client.delete(item_path, headers=headers(ADMIN_USER_ID))
+    assert admin_delete_response.status_code == 200
+    assert admin_delete_response.json()["sourceArtistId"] == connected_artist["id"]
+    assert admin_delete_response.json()["connectedArtistId"] == source_artist["id"]
 
 
-def test_manual_artist_connection_requires_authentication(artist_pair):
+def test_manual_artist_connection_rejects_other_artist_mutation_access(artist_pair):
+    source_artist, connected_artist = artist_pair
+    collection_path = f"/api/artists/{connected_artist['id']}/known-artists"
+    item_path = f"{collection_path}/{source_artist['id']}"
+
+    create_response = client.post(
+        collection_path,
+        headers=headers(),
+        json={"connectedArtistId": source_artist["id"]},
+    )
+    delete_response = client.delete(item_path, headers=headers())
+
+    assert create_response.status_code == 403
+    assert create_response.json()["detail"] == "You are not allowed to access this artist"
+    assert delete_response.status_code == 403
+    assert delete_response.json()["detail"] == "You are not allowed to access this artist"
+
+
+def test_manual_artist_connection_get_remains_public(artist_pair):
     source_artist, _ = artist_pair
 
     response = client.get(f"/api/artists/{source_artist['id']}/known-artists")
 
-    assert response.status_code == 401
+    assert response.status_code == 200
+    assert "items" in response.json()
+
+
+def test_manual_artist_connection_mutations_require_authentication(artist_pair):
+    source_artist, connected_artist = artist_pair
+    collection_path = f"/api/artists/{source_artist['id']}/known-artists"
+    item_path = f"{collection_path}/{connected_artist['id']}"
+
+    create_response = client.post(collection_path, json={"connectedArtistId": connected_artist["id"]})
+    delete_response = client.delete(item_path)
+
+    assert create_response.status_code == 401
+    assert delete_response.status_code == 401
