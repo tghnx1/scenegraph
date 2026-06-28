@@ -1,1 +1,2 @@
-playwright==1.54.0
+# Playwright/browser automation is intentionally kept out of the tools image
+# because the event import pipeline does not need it.
