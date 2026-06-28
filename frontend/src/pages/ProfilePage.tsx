@@ -123,8 +123,10 @@ export function ProfilePage({ recommendationTargetControls, showBiography = true
 
   const canEditBiography =
     hasAssignedArtist && storedArtistId === profileArtistId
-
-  const manualConnections = useManualArtistConnections(showBiography && hasAssignedArtist ? profileArtistId : null)
+  const manualConnectionsArtistId = isArtistUser
+    ? profileArtistId
+    : artistId
+  const manualConnections = useManualArtistConnections(manualConnectionsArtistId)
   const isSingleRowWorkspace = !showBiography
 
   return (
@@ -153,8 +155,8 @@ export function ProfilePage({ recommendationTargetControls, showBiography = true
 
           <DetailsPanel
             {...detailsPanelProps}
-            manualArtistConnections={showBiography && hasAssignedArtist && artistId !== null ? {
-              sourceArtistId: artistId,
+            manualArtistConnections={manualConnectionsArtistId !== null ? {
+              sourceArtistId: manualConnectionsArtistId,
               connectedArtistIds: manualConnections.connectedArtistIds,
               isLoading: manualConnections.isLoading,
               pendingArtistId: manualConnections.pendingArtistId,
