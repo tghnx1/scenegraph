@@ -91,9 +91,3 @@ The graph required custom logic for relationship modeling, path explanation, fil
 ## Short explanation
 
 This module is chosen because the project is about relationships inside a music scene. The graph turns separate database records into a connected scene map. It is technically substantial because it requires backend graph generation, typed API responses, frontend force-graph rendering, filtering, node interaction, and recommendation path explanations. It adds value by making recommendations understandable and by helping users explore artists, events, venues, and promoters visually.
-
-## Boundary with the AI module
-
-The recommendation engine file owns scoring and ranking math.
-This file owns graph visualization, graph evidence, and path explanation UX.
-The two modules are connected, but they are intentionally documented separately so the evaluator sees one AI module and one graph/evidence module.
