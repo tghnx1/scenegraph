@@ -80,6 +80,166 @@ flowchart LR
     SUM[Final Weighted Sum] --> OUT[total score]
 ```
 
+## Low-Level Signal Breakdown
+
+The promoter recommendation score is assembled from smaller signals that come from different
+parts of the backend. The table below shows where each signal originates and what it contains.
+
+| Signal | What it means | Main code source | Built from |
+| --- | --- | --- | --- |
+| `semanticScore` | Artist-to-promoter semantic match | `backend/app/recommendations/services.py` + `helpers.py` | similar artists, style overlap, extracted-tag overlap |
+| `strengthScore` | Strength of the promoter relationship | `backend/app/recommendations/services.py` | matched artist count + event volume |
+| `warmNetworkScore` | Co-played artist links | `backend/app/recommendations/services.py` + `promoter_graph.py` | artists that shared source events with the source artist |
+| `manualConnectionScore` | Trusted manual artist links | `backend/app/recommendations/services.py` + `promoter_graph.py` | manually connected artists that also appear on promoter events |
+| `eventSimilarityScore` | Similar-event evidence for a promoter | `backend/app/recommendations/event_similarity.py` + `services.py` | similar events, semantic/embedding blend, same-promoter filtering |
+| `scaleFitScore` | Artist/promoter size compatibility | `backend/app/recommendations/services.py` | source artist event count vs promoter event count |
+| `activityScore` | How active the promoter is | `backend/app/recommendations/services.py` | promoter event count, capped |
+| `recencyScore` | Recency of promoter activity | `backend/app/recommendations/promoter_graph.py` | most recent event date |
+
+### How the lower-level nodes are counted
+
+- `semanticScore`
+  - `build_artist_semantic_candidates(...)` creates it from:
+    - `embedding_score` from `rank_similar_embeddings(...)`
+    - `style_score` from overlap between source artist style tags and candidate style tags
+    - `tag_score` from overlap between source extracted tags and candidate extracted tags
+  - the explicit semantic sub-scores are weighted and summed in
+    `/Users/tghnx1/code/scenegraph/backend/app/recommendations/helpers.py`
+
+- `strengthScore`
+  - computed from two capped counts in
+    `/Users/tghnx1/code/scenegraph/backend/app/recommendations/services.py`
+  - `matched_artist_count / strength_matched_artist_cap`
+  - `min(event_count, strength_event_cap) / strength_event_cap`
+  - then both parts are weighted and summed
+
+- `warmNetworkScore`
+  - counts co-played artists in `warm_promoters`
+  - source path is:
+    - source artist events
+    - artists that played on those events
+    - promoters for the events those artists played on
+  - the score uses `warm_connection_count / warm_connection_cap`
+
+- `manualConnectionScore`
+  - counts manually linked artists in `manual_warm_promoters`
+  - source path is:
+    - source artist
+    - manually trusted connected artist
+    - events that artist played on
+    - promoters for those events
+  - the score uses `manual_relevant_warm_connection_count / manual_warm_connection_cap`
+
+- `eventSimilarityScore`
+  - comes from `artist_similar_events_scored_rows(...)`
+  - built from:
+    - `symbolic_score`
+    - `shared_extracted_genres`
+    - `shared_themes`
+    - `shared_moods`
+    - `embedding_score`
+  - then blended through:
+    - `event_similarity_symbolic_weight`
+    - `event_similarity_embedding_weight`
+  - if `event_similarity_semantic_only` is enabled, the symbolic contribution is suppressed
+
+- `scaleFitScore`
+  - computed by comparing source artist scale and promoter scale in log-ratio space
+  - source artist scale is the number of distinct source events
+  - promoter scale is the promoter event count
+  - final score uses:
+    - `scale_fit_score(...)`
+    - `scale_bucket_match_multiplier(...)`
+
+- `activityScore`
+  - raw promoter event count is capped by `activity_event_cap`
+  - score = `min(raw_event_count, activity_event_cap) / activity_event_cap`
+  - this means bigger promoters get a higher score up to the cap
+
+- `recencyScore`
+  - based on the newest event date for that promoter
+  - `date_recency_score(...)` returns:
+    - `1.0` for a very recent event
+    - lower values as the event gets older
+    - `0.0` when the date is missing
+  - the current implementation decays linearly over roughly one year
+
+### Semantic score composition
+
+```mermaid
+flowchart TD
+    A[Source artist] --> B[rank_similar_embeddings]
+    A --> C[artist_semantic_metadata]
+    C --> D[style tags]
+    C --> E[extracted tags]
+
+    B --> F[embedding_score]
+    D --> G[style_score]
+    E --> H[tag_score]
+
+    F --> I[semantic_artist_score]
+    G --> I
+    H --> I
+    I --> J[semanticScore]
+```
+
+### Promoter signal composition
+
+```mermaid
+flowchart TD
+    A[Source artist] --> B[semantic_promoters CTE]
+    A --> C[warm_promoters CTE]
+    A --> D[manual_warm_promoters CTE]
+    A --> E[artist_similar_events pipeline]
+
+    B --> F[matched_artist_count]
+    B --> G[related_event_titles]
+    B --> H[semantic_score]
+
+    C --> I[warm_connection_count]
+    C --> J[warm_connection_artists]
+    C --> K[warm_event_count]
+
+    D --> L[manual_warm_connection_count]
+    D --> M[manual_warm_connection_artists]
+
+    E --> N[event_similarity_count]
+    E --> O[event_similarity_symbolic_score]
+    E --> P[event_similarity_embedding_score]
+    E --> Q[shared_extracted_genres]
+    E --> R[shared_themes]
+    E --> S[shared_moods]
+
+    F --> T[strengthScore]
+    G --> U[reasons + graph evidence]
+    H --> V[semanticScore]
+    I --> W[warmNetworkScore]
+    L --> X[manualConnectionScore]
+    N --> Y[eventSimilarityScore]
+    O --> Y
+    P --> Y
+    Q --> Z[semantic bridge reasons]
+```
+
+### Final score assembly
+
+```mermaid
+flowchart LR
+    V[semanticScore] --> S[weighted sum]
+    T[strengthScore] --> S
+    W[warmNetworkScore] --> S
+    X[manualConnectionScore] --> S
+    Y[eventSimilarityScore] --> S
+    SF[scaleFitScore] --> S
+    AC[activityScore] --> S
+    RC[recencyScore] --> S
+
+    S --> A[base total score]
+    A --> B[warm/manual adjustment]
+    B --> C[segment quota selection]
+    C --> D[final response order]
+```
+
 ## Scoring Formula (Current)
 
 For each promoter candidate:
@@ -88,7 +248,8 @@ For each promoter candidate:
 total_score =
   w_semantic       * semanticScore
 + w_strength       * strengthScore
-+ w_warm           * warmNetworkScore
++ w_co_played      * coPlayedConnectionScore
++ w_manual         * manualConnectionScore
 + w_event_similarity * eventSimilarityScore
 + w_scale_fit      * scaleFitScore
 + w_activity       * activityScore
@@ -98,12 +259,14 @@ total_score =
 Notes:
 
 - All promoter recommendation tuning lives in `backend/app/recommendations/config.yaml`.
-- Direct promoter relationships remain visible as evidence and status, but no longer contribute a separate weighted score component.
+- Direct promoter relationships remain visible as evidence and status, and they are split into:
+  - co-played warm network contribution
+  - manual trusted connection contribution
 - Caps and normalization controls live in `backend/app/recommendations/config.yaml`.
 
 ## Candidate Collection and Internal Limits
 
-Current limits are configurable through `.env` (no hardcoded literals):
+Current limits are configurable through `backend/app/recommendations/config.yaml` (no hardcoded literals):
 
 - `PROMOTER_REC_SQL_CANDIDATE_LIMIT`
 - `PROMOTER_REC_EVENT_SIMILARITY_OVERFETCH_MULTIPLIER`
@@ -140,6 +303,13 @@ Examples:
 - `4 similar artists connected: A, B, C, D`
 - `2 similar promoter events: Event X, Event Y`
 - `5 related promoter events: ...`
+
+These phrases come from:
+
+- `co-played artists connected` from warm network evidence
+- `similar artists connected` from semantic artist matches
+- `similar promoter events` from the event-similarity pipeline
+- `related promoter events` from the promoter’s own related event titles
 
 ## Event Similarity in Promoter Pipeline
 
@@ -178,5 +348,5 @@ Graph payload includes local evidence neighborhood only (not full database graph
    - warm/discovery share
    - filtered-out counters
    - manual quality review
-3. Adjust `.env` only (no scoring hardcodes).
+3. Adjust `backend/app/recommendations/config.yaml` only (no scoring hardcodes).
 4. Re-run benchmark and commit tuned config separately.
