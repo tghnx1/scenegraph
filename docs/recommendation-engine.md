@@ -14,7 +14,7 @@ This document is the source of truth for the project AI / recommendation scoring
 In Scenegraph, the AI path is represented by promoter recommendations for an artist. The engine combines content-based signals (artist/event embeddings and extracted tags), relationship-based ranking inputs (co-played artists, manual artist links, promoter event history), and feedback-aware scoring signals that improve recommendation quality over repeated user interaction.
 
 This document intentionally stops at ranking, scoring, and debug-scoring explanation.
-Graph visualization, graph payload structure, and evidence-path rendering are documented in `frontend/docs/custom_module_graph.md`.
+Graph visualization, graph payload structure, and evidence-path rendering are documented in `docs/custom_module_graph.md`.
 
 ## MVP Product Surface
 
