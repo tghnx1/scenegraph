@@ -40,13 +40,15 @@ interface GraphFiltersProps {
 }
 
 interface GraphDateInputProps {
+  id: string
   label: string
+  name: string
   value: string
   onCommit: (value: string | undefined) => void
   disabled?: boolean
 }
 
-export function GraphDateInput({ label, value, onCommit, disabled = false }: GraphDateInputProps) {
+export function GraphDateInput({ id, label, name, value, onCommit, disabled = false }: GraphDateInputProps) {
   const displayValue = isoDateToDisplayDate(value)
   const [inputValue, setInputValue] = useState(displayValue)
 
@@ -76,6 +78,8 @@ export function GraphDateInput({ label, value, onCommit, disabled = false }: Gra
 
   return (
     <input
+      id={id}
+      name={name}
       className={inputClass}
       type="text"
       value={inputValue}
@@ -152,6 +156,8 @@ export function GraphFilters({
           {renderInfoButton('genre', 'Filter by Genre')}
         </span>
         <select
+          id="graph-filter-genre"
+          name="graph-filter-genre"
           className={inputClass}
           value={filters.genre ?? ''}
           onChange={(event) => updateFilter({ genre: event.target.value || undefined })}
@@ -189,13 +195,17 @@ export function GraphFilters({
         </span>
         <div className="grid grid-cols-[repeat(2,minmax(0,1fr))_auto] gap-2">
           <GraphDateInput
+            id="graph-filter-date-from"
             label="Date from"
+            name="graph-filter-date-from"
             value={draftDateFrom}
             onCommit={(dateFrom) => setDraftDateFrom(dateFrom ?? '')}
             disabled={areEventFiltersDisabled}
           />
           <GraphDateInput
+            id="graph-filter-date-to"
             label="Date to"
+            name="graph-filter-date-to"
             value={draftDateTo}
             onCommit={(dateTo) => setDraftDateTo(dateTo ?? '')}
             disabled={areEventFiltersDisabled}

@@ -213,7 +213,7 @@ export function SearchInputField({
         <input
           id={inputId}
           className="min-w-0 flex-1 border-0 bg-transparent text-sm font-[inherit] text-[var(--text)] outline-none placeholder:text-[var(--text-placeholder)]"
-          type="search"
+          type="text"
           autoComplete="off"
           autoCorrect="off"
           spellCheck={false}

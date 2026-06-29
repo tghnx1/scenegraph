@@ -198,13 +198,17 @@ export function OverviewChart({
       <span className="inline-flex items-center gap-1.5 text-[0.72rem] uppercase tracking-[0.14em] text-[var(--accent)]">Filter by Date</span>
       <div className="grid gap-2">
         <GraphDateInput
+          id="chart-overview-date-from"
           label="Date from"
+          name="chart-overview-date-from"
           value={draftDateFrom}
           disabled={isUnavailable}
           onCommit={(value) => setDraftDateFrom(value ?? '')}
         />
         <GraphDateInput
+          id="chart-overview-date-to"
           label="Date to"
+          name="chart-overview-date-to"
           value={draftDateTo}
           disabled={isUnavailable}
           onCommit={(value) => setDraftDateTo(value ?? '')}
