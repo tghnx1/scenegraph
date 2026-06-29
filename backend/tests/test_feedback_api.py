@@ -3,6 +3,7 @@ from collections.abc import Generator
 import pytest
 from fastapi.testclient import TestClient
 
+from app.auth import create_access_token
 from app.db import get_connection
 from app.main import app
 
@@ -17,7 +18,7 @@ client = TestClient(app)
 
 
 def headers(user_id: int) -> dict[str, str]:
-    return {"X-User-Id": str(user_id)}
+    return {"Authorization": f"Bearer {create_access_token({'sub': str(user_id)})}"}
 
 
 def payload(**updates) -> dict:
@@ -58,6 +59,39 @@ def feedback_entities() -> Generator[None, None, None]:
                     f"feedback-test-promoter-{OTHER_PROMOTER_ID}",
                 ),
             )
+            cursor.execute("DELETE FROM users WHERE id = ANY(%s)", ([USER_ONE, USER_TWO],))
+            cursor.execute(
+                """
+                INSERT INTO users (
+                    id,
+                    username,
+                    email,
+                    password_hash,
+                    role,
+                    status,
+                    artist_id
+                )
+                VALUES
+                    (%s, %s, %s, %s, %s, %s, %s),
+                    (%s, %s, %s, %s, %s, %s, %s)
+                """,
+                (
+                    USER_ONE,
+                    f"feedback-test-user-{USER_ONE}",
+                    f"feedback-test-user-{USER_ONE}@example.com",
+                    "hash",
+                    "artist",
+                    "approved",
+                    None,
+                    USER_TWO,
+                    f"feedback-test-user-{USER_TWO}",
+                    f"feedback-test-user-{USER_TWO}@example.com",
+                    "hash",
+                    "artist",
+                    "approved",
+                    None,
+                ),
+            )
             cursor.execute(
                 "DELETE FROM recommendation_feedback WHERE user_id = ANY(%s)",
                 ([USER_ONE, USER_TWO],),
@@ -71,6 +105,7 @@ def feedback_entities() -> Generator[None, None, None]:
                 "DELETE FROM recommendation_feedback WHERE user_id = ANY(%s)",
                 ([USER_ONE, USER_TWO],),
             )
+            cursor.execute("DELETE FROM users WHERE id = ANY(%s)", ([USER_ONE, USER_TWO],))
             cursor.execute(
                 "DELETE FROM promoters WHERE id = ANY(%s)",
                 ([CANDIDATE_PROMOTER_ID, OTHER_PROMOTER_ID],),

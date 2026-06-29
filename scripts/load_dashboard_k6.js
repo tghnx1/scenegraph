@@ -80,12 +80,23 @@ export function setup() {
   );
 
   const ok = check(response, {
+    'login request completed': (res) => !res.error && res.body !== null,
     'login returned 200': (res) => res.status === 200,
-    'login returned access token': (res) => Boolean(res.json('access_token')),
+    'login returned access token': (res) => {
+      if (res.body === null) return false;
+      try {
+        return Boolean(res.json('access_token'));
+      } catch (_) {
+        return false;
+      }
+    },
   });
 
   if (!ok) {
-    fail(`Login failed: status=${response.status} body=${response.body}`);
+    fail(
+      `Login failed: status=${response.status} error=${response.error || ''} ` +
+        `body=${response.body || ''}`,
+    );
   }
 
   return { token: response.json('access_token') };
