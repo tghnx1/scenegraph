@@ -128,6 +128,45 @@ def present_style_label(value: str) -> str:
     return " ".join(format_token(token) for token in lowered.split(" "))
 
 
+def _update_artist_biography_row(
+    db,
+    *,
+    artist_id: int,
+    biography: str,
+    user_id: int,
+    enqueue_refresh_job: bool = True,
+) -> dict:
+    biography = biography.strip()
+    biography_normalized = normalize_biography_text(biography)
+
+    with db.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE artists
+            SET biography = %s,
+                biography_normalized = %s,
+                biography_status = 'manually_edited'
+            WHERE id = %s
+            RETURNING id, name, biography, biography_normalized;
+            """,
+            (biography, biography_normalized, artist_id),
+        )
+        artist = cur.fetchone()
+
+    if not artist:
+        raise HTTPException(status_code=404, detail="Artist not found")
+
+    if enqueue_refresh_job:
+        create_artist_bio_refresh_job(
+            db,
+            user_id=user_id,
+            artist_id=artist_id,
+            params={"trigger": "artist_biography_update"},
+        )
+
+    return artist
+
+
 @router.get("/{id}", response_model=ArtistResponse)
 def get_artist(
     id: int,
@@ -231,31 +270,13 @@ async def update_artist_biography(
                 status_code=403,
                 detail="You can only edit your own artist profile"
             )
-        
-        biography = request.biography.strip()
-        biography_normalized = normalize_biography_text(biography)
-        with db.cursor() as cur:
-            cur.execute(
-                """
-                UPDATE artists
-                SET biography = %s,
-                    biography_normalized = %s,
-                    biography_status = 'manually_edited'
-                WHERE id = %s
-                RETURNING id, name, biography, biography_normalized;
-                """,
-                (biography, biography_normalized, id),
-            )
-            artist = cur.fetchone()
 
-        if not artist:
-            raise HTTPException(status_code=404, detail="Artist not found")
-
-        create_artist_bio_refresh_job(
+        artist = _update_artist_biography_row(
             db,
-            user_id=current_user_id,
             artist_id=id,
-            params={"trigger": "artist_biography_update"},
+            biography=request.biography,
+            user_id=current_user_id,
+            enqueue_refresh_job=True,
         )
 
     return ArtistBiographyResponse(
