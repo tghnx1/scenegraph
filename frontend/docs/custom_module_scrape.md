@@ -1,4 +1,4 @@
-# Custom Major Module: Music Scene Data Ingestion Pipeline
+# Custom Major Module: Automated Music Scene Ingestion and Enrichment Pipeline
 
 ## Module claim
 
@@ -8,27 +8,33 @@ Claim:
 
 Module name:
 
-**Automated Music Scene Data Ingestion Pipeline**
+**Automated Music Scene Ingestion and Enrichment Pipeline**
 
 ## What the module does
 
-This module collects real event and artist data from external music-scene sources and prepares it for the application.
+This module collects real event and artist data from external music-scene sources, prepares it for the application, and refreshes derived enrichment when artist biography data changes.
+
+It runs in two main ways:
+
+- the end-to-end import pipeline started by `make full-pipeline`
+- automatic enrichment refresh after an artist biography changes in the app
 
 The pipeline is responsible for:
 
-- collects event data
-- extracts artists, venues, promoters, genres, and event details
-- collects artist biography information
-- saves structured JSON output
-- imports the data into PostgreSQL
-- validates the imported data
-- prepares the data for the graph and recommendation features
+- collecting event data
+- extracting artists, venues, promoters, genres, and event details
+- collecting artist biography information
+- saving structured JSON output
+- importing the data into PostgreSQL
+- validating the imported data
+- preparing the data for the graph and recommendation features
+- refreshing tags, normalized text, and embeddings when biography content changes
 
 ## Why we chose this module
 
 The project needs real music-scene data to be useful. Manually entering artists, events, venues, and promoters would be slow and unrealistic.
 
-This needs to be done because the application depends on fresh and structured event data. The graph and recommendation features becomes meaningful when the database contains real relationships from the music scene.
+This needs to be done because the application depends on fresh and structured event data. The graph and recommendation features become meaningful when the database contains real relationships from the music scene, and the enrichment refresh keeps biographies, tags, and embeddings up to date after biography edits.
 
 ## Technical challenges
 
@@ -42,6 +48,7 @@ Main technical challenges:
 - handling past and future events
 - extracting artists from event lineups
 - scraping artist biographies separately
+- updating derived text and tags when biography content is edited
 - avoiding duplicate events, artists, promoters, and genres
 - normalizing raw text into clean database fields
 - importing nested JSON data into relational database tables
@@ -76,7 +83,7 @@ It includes:
 - integrity validation
 - integration with the graph and recommendation system
 
-The module solves a real project problem: how to transform external, inconsistent event listings into clean application data. It combines scraping, parsing, normalization, database import, and validation.
+The module solves a real project problem: how to transform external, inconsistent event listings into clean application data and keep the derived enrichment fresh when biographies change. It combines scraping, parsing, normalization, database import, and validation.
 
 ## Main implementation files
 
@@ -102,4 +109,4 @@ The module solves a real project problem: how to transform external, inconsisten
 
 ## Short explanation
 
-This module is chosen because the project needs real music-scene data. The ingestion pipeline collects external event and artist information, normalizes it, imports it into the database, and validates that the graph relationships are usable. It is technically complex because it combines scraping, GraphQL collection, browser automation, parsing, deduplication, database import, and integrity checks. It adds value by powering the graph, dashboard, and recommendation features with real data.
+This module is chosen because the project needs real music-scene data. The ingestion pipeline collects external event and artist information, normalizes it, imports it into the database, and validates that the graph relationships are usable. It is technically complex because it combines scraping, GraphQL collection, browser automation, parsing, deduplication, database import, integrity checks, and refresh logic for derived enrichment after biography edits. It adds value by powering the graph, dashboard, and recommendation features with real data.

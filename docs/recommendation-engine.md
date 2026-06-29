@@ -2,6 +2,20 @@
 
 This document is the current source of truth for the MVP recommendation flow in this repository.
 
+## AI Module Requirement Coverage
+
+This document is the source of truth for the project AI / recommendation scoring module.
+
+- Major: Recommendation system using machine learning.
+  - Personalized recommendations based on user behavior.
+  - Collaborative filtering or content-based filtering.
+  - Continuously improve recommendations over time.
+
+In Scenegraph, the AI path is represented by promoter recommendations for an artist. The engine combines content-based signals (artist/event embeddings and extracted tags), relationship-based ranking inputs (co-played artists, manual artist links, promoter event history), and feedback-aware scoring signals that improve recommendation quality over repeated user interaction.
+
+This document intentionally stops at ranking, scoring, and debug-scoring explanation.
+Graph visualization, graph payload structure, and evidence-path rendering are documented in `frontend/docs/custom_module_graph.md`.
+
 ## MVP Product Surface
 
 Main user-facing flow:
@@ -27,11 +41,8 @@ Each recommendation includes:
 
 - final `score`
 - component `scoreBreakdown`
-- human-readable `reasons`
-- relationship counters (`warmConnectionCount`, `manualConnectionCount`, etc.)
-- `warmConnectionArtists` (names + ids for warm links)
-- `evidence` path types (`semantic_bridge`, `warm_network`, `manual_connection`, `event_similarity`)
-- graph payload (`nodes`, `links`) for explanation UI
+- human-readable score `reasons`
+- relationship counters for warm/manual links
 - optional debug payload (`rawSignals`, `normalizedScores`, `weightedScores`, top-level candidate counters)
 
 ## High-Level Data Flow
@@ -332,13 +343,71 @@ With `debug=true`:
   - `normalizedScores`
   - `weightedScores`
 
-Graph payload includes local evidence neighborhood only (not full database graph).
+Graph payload and evidence-neighborhood rendering are owned by `docs/custom_module.md`.
+
+### Feedback Debug Test
+
+Use this flow to verify that recommendation feedback is reflected in the debug scoring payload.
+
+1. Get an API token:
+
+```bash
+TOKEN="$(curl -sk -X POST https://localhost:8443/api/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"maksim","password":"123"}' \
+  | python3 -c 'import sys,json; print(json.load(sys.stdin)["access_token"])')"
+```
+
+2. Post a recommendation job in debug mode:
+
+```bash
+curl -sk -X POST "https://localhost:8443/api/recommendations/artists/2178/promoters/jobs" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{"limit":10,"debug":true}'
+```
+
+Expected shape:
+
+```json
+{
+  "jobId": "f0a7a302-aa95-40b9-a1ab-cc37a58145ee",
+  "status": "queued"
+}
+```
+
+3. Fetch the job result:
+
+```bash
+JOB_ID=f0a7a302-aa95-40b9-a1ab-cc37a58145ee
+
+curl -sk "https://localhost:8443/api/recommendations/jobs/$JOB_ID" \
+  -H "Authorization: Bearer $TOKEN" \
+  | python3 -m json.tool
+```
+
+If the job is still `queued` or `running`, repeat the same request after a few seconds.
+
+4. Check the feedback boost:
+
+- Run the debug recommendation job before submitting feedback and save the payload.
+- Submit positive or negative feedback for one recommendation.
+- Run the same debug recommendation job again.
+- Compare recommendation order, final score, `scoreBreakdown`, `rawSignals`, `normalizedScores`, and `weightedScores`.
+- Positive feedback should increase the relevant feedback-aware contribution; negative feedback should decrease or suppress it.
+
+Notes:
+
+- Always use the real JWT from `/api/login`; placeholders such as `YOUR_TOKEN` or `123` return `Invalid token`.
+- `debug: true` is required because normal recommendation responses may omit internal scoring details.
+- Artist users can only request recommendations for the artist profile linked to their account. Agents and admins can access any artist profile.
 
 ## Known Product/Engineering Tradeoffs
 
 - warm-first selection improves personal-network visibility but can suppress higher-score discovery candidates.
 - SQL pre-limit improves latency but may drop some relevant promoters before full scoring.
 - reason verbosity is intentionally high for analyst workflows; UI may later need compact mode.
+- graph evidence and visual path rendering are intentionally separated into the custom module doc so the AI module stays focused on ranking.
 
 ## Operational Tuning Workflow
 

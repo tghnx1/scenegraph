@@ -1,4 +1,4 @@
-# Custom Major Module: Interactive Scene Graph
+# Custom Major Module: Interactive Scene Graph and Evidence Explorer
 
 ## Module claim
 
@@ -12,7 +12,7 @@ Module name:
 
 ## What the module does
 
-The module turns the project data into an interactive graph. Instead of showing artists, events, venues, and promoters as separate lists, it shows how they are connected.
+The module turns the project data into an interactive graph. Instead of showing artists, events, venues, and promoters as separate lists, it shows how they are connected and why the system considers them related.
 
 The graph can display:
 
@@ -21,7 +21,7 @@ The graph can display:
 - venues
 - promoters
 - relationships between them, such as artists playing at events, events happening at venues, and promoters organizing events
-- recommendation evidence paths that explain why a promoter or connection is relevant
+- recommendation evidence paths that explain why a promoter, artist, venue, or event is relevant
 
 The frontend graph is interactive. Users can click nodes, filter the visible graph, inspect selected entities, and view focused relationship paths.
 
@@ -35,11 +35,11 @@ The project is an experimental exploration of a music scene. A graph is a natura
 - promoters organize events
 - similar artists and events can lead to useful recommendations
 
-A normal table or list can show the data, but does not clearly show the network inverconnectivity. The graph helps users understand the structure of the scene visually.
+A normal table or list can show the data, but does not clearly show the network connectivity. The graph helps users understand the structure of the scene visually.
 
 ## Technical challenges
 
-This module is more than a simple chart because the graph is generated from real application data.
+This module is more than a simple chart because the graph is generated from real application data and from recommendation evidence built from that data.
 
 Main technical challenges:
 
@@ -91,3 +91,9 @@ The graph required custom logic for relationship modeling, path explanation, fil
 ## Short explanation
 
 This module is chosen because the project is about relationships inside a music scene. The graph turns separate database records into a connected scene map. It is technically substantial because it requires backend graph generation, typed API responses, frontend force-graph rendering, filtering, node interaction, and recommendation path explanations. It adds value by making recommendations understandable and by helping users explore artists, events, venues, and promoters visually.
+
+## Boundary with the AI module
+
+The recommendation engine file owns scoring and ranking math.
+This file owns graph visualization, graph evidence, and path explanation UX.
+The two modules are connected, but they are intentionally documented separately so the evaluator sees one AI module and one graph/evidence module.

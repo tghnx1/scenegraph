@@ -18,6 +18,42 @@ existing synchronous endpoint.
    `GET /api/recommendations/jobs/{job_id}`. Full recommendation data never travels through
    WebSocket notifications.
 
+### Current workflow diagram
+
+```mermaid
+sequenceDiagram
+    participant FE as Frontend
+    participant API as FastAPI API
+    participant DB as PostgreSQL
+    participant W as Recommendation worker
+    participant WS as WebSocket listener
+
+    FE->>API: POST /api/recommendations/artists/{artist_id}/promoters/jobs
+    API->>DB: INSERT recommendation_jobs row (queued)
+    API->>DB: pg_notify(scenegraph_recommendation_job_created)
+    DB-->>W: NOTIFY job created
+    W->>DB: SELECT ... FOR UPDATE SKIP LOCKED
+    W->>DB: update job running / completed / failed
+    W->>DB: pg_notify(scenegraph_recommendation_job_updated)
+    DB-->>WS: NOTIFY job updated
+    WS-->>FE: {type, jobId, status}
+    FE->>API: GET /api/recommendations/jobs/{job_id}
+    API->>DB: read durable job state + result payload
+    API-->>FE: final job result
+```
+
+### State lifecycle
+
+```mermaid
+stateDiagram-v2
+    [*] --> queued: job created
+    queued --> running: worker claims job
+    running --> completed: scoring finished
+    running --> failed: error / exception
+    completed --> [*]
+    failed --> [*]
+```
+
 PostgreSQL is the source of truth. Notifications are wake-up signals only. Workers drain queued
 rows once at startup so jobs created while workers were offline are not lost. Frontend clients
 also re-read their active job after WebSocket or PostgreSQL-listener reconnects.
