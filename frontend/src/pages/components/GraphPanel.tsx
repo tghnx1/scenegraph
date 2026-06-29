@@ -566,6 +566,7 @@ export function ScenegraphMapPanel({
             isGenresLoading={isGenresLoading}
             genresError={genresError}
             displayedDateRange={displayedDateRange}
+            isEgoGraphMode={isEgoGraphMode}
             onChange={handleGraphFiltersChange}
           />
         </article>
