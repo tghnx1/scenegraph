@@ -28,24 +28,24 @@ async def list_venues() -> VenuesResponse:
     return VenuesResponse(venues=[Venue(**venue) for venue in venues])
 
 
-# @router.get("/public/venues")
-# async def public_venues(_: None = Depends(require_public_api_key), limit: int = 20, offset: int = 0) -> dict:
-#     check_rate_limit("public:venues", max_attempts=100, window_seconds=60)
-#     limit = min(max(limit, 1), 100)
-#     offset = max(offset, 0)
-#     with get_connection() as connection:
-#         with connection.cursor() as cursor:
-#             cursor.execute(
-#                 """
-#                 SELECT id, name
-#                 FROM venues
-#                 ORDER BY name ASC
-#                 LIMIT %s OFFSET %s
-#                 """,
-#                 (limit, offset),
-#             )
-#             rows = cursor.fetchall()
-#     return {"success": True, "limit": limit, "offset": offset, "venues": rows}
+@router.get("/public/venues")
+async def public_venues(_: None = Depends(require_public_api_key), limit: int = 20, offset: int = 0) -> dict:
+    check_rate_limit("public:venues", max_attempts=100, window_seconds=60)
+    limit = min(max(limit, 1), 100)
+    offset = max(offset, 0)
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id, name
+                FROM venues
+                ORDER BY name ASC
+                LIMIT %s OFFSET %s
+                """,
+                (limit, offset),
+            )
+            rows = cursor.fetchall()
+    return {"success": True, "limit": limit, "offset": offset, "venues": rows}
 
 
 @router.get("/public/artists")
@@ -108,21 +108,21 @@ async def public_promoters(_: None = Depends(require_public_api_key), limit: int
     return {"success": True, "limit": limit, "offset": offset, "promoters": rows}
 
 
-# @router.get("/public/genres")
-# async def get_public_genres(_: None = Depends(require_public_api_key), limit: int = 20, offset: int = 0) -> dict:
-#     check_rate_limit("public:genres", max_attempts=100, window_seconds=60)
-#     limit = min(max(limit, 1), 100)
-#     offset = max(offset, 0)
-#     with get_connection() as connection:
-#         with connection.cursor() as cursor:
-#             cursor.execute(
-#                 """
-#                 SELECT id, name
-#                 FROM genres
-#                 ORDER BY name ASC
-#                 LIMIT %s OFFSET %s
-#                 """,
-#                 (limit, offset),
-#             )
-#             rows = cursor.fetchall()
-#     return {"success": True, "limit": limit, "offset": offset, "genres": rows}
+@router.get("/public/genres")
+async def get_public_genres(_: None = Depends(require_public_api_key), limit: int = 20, offset: int = 0) -> dict:
+    check_rate_limit("public:genres", max_attempts=100, window_seconds=60)
+    limit = min(max(limit, 1), 100)
+    offset = max(offset, 0)
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id, name
+                FROM genres
+                ORDER BY name ASC
+                LIMIT %s OFFSET %s
+                """,
+                (limit, offset),
+            )
+            rows = cursor.fetchall()
+    return {"success": True, "limit": limit, "offset": offset, "genres": rows}
