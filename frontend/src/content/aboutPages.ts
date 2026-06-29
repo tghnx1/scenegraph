@@ -23,7 +23,7 @@ export const aboutPages: Record<AboutPageKey, AboutPageContent> = {
       {
         heading: 'Who operates this service',
         paragraphs: [
-          '[Scenegraph Team]\n[Harzerstraße 42, Neukölln, Berlin]\nEmail: [scenegraph email]',
+          '[Scenegraph Team]\n[Harzerstraße 42, Neukölln, Berlin]\nEmail: [mkokorev@student.42berlin.de]',
         ],
       },
       {
@@ -60,7 +60,7 @@ export const aboutPages: Record<AboutPageKey, AboutPageContent> = {
       {
         heading: 'Retention and your rights',
         paragraphs: [
-          'Account information is retained while an account is active or as needed for administration and security. Depending on applicable law, you may request access, correction, deletion, restriction, objection, or portability of your personal data. Send requests to [scenegraph privacy email].',
+          'Account information is retained while an account is active or as needed for administration and security. Depending on applicable law, you may request access, correction, deletion, restriction, objection, or portability of your personal data. Send requests to [mkokorev@student.42berlin.de].',
         ],
       },
     ],
@@ -106,7 +106,7 @@ export const aboutPages: Record<AboutPageKey, AboutPageContent> = {
       },
       {
         heading: 'Contact',
-        paragraphs: ['Questions about these terms can be sent to [scenegraph email].'],
+        paragraphs: ['Questions about these terms can be sent to [mkokorev@student.42berlin.de].'],
       },
     ],
   },
@@ -152,18 +152,18 @@ export const aboutPages: Record<AboutPageKey, AboutPageContent> = {
     sections: [
       {
         heading: 'General enquiries',
-        paragraphs: ['Email: [scenegraph email]'],
+        paragraphs: ['Email: [mkokorev@student.42berlin.de]'],
       },
       {
         heading: 'Privacy requests',
         paragraphs: [
-          'For access, correction, or deletion requests concerning personal data, email [scenegraph privacy email].',
+          'For access, correction, or deletion requests concerning personal data, email [mkokorev@student.42berlin.de].',
         ],
       },
       {
         heading: 'Corrections',
         paragraphs: [
-          'To report incorrect artist, event, venue, promoter, or relationship information, email [scenegraph data corrections email] and include the relevant name or page URL.',
+          'To report incorrect artist, event, venue, promoter, or relationship information, email [mkokorev@student.42berlin.de] and include the relevant name or page URL.',
         ],
       },
       {
