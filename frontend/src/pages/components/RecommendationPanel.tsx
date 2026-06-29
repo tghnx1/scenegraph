@@ -639,7 +639,7 @@ export function PromoterRecommendationsPanel({
         )}
       </div>
       {recommendationsData === null && !isRecommendationsLoading && (
-        <div className="grid min-h-0 place-items-center gap-3 rounded-2xl border border-[var(--surface-border-soft)] bg-[var(--surface-soft)] p-6 text-center">
+        <div className="grid min-h-0 place-items-center gap-3 rounded-2xl border border-[var(--surface-border-soft)] bg-[var(--surface-soft)] p-6 text-center max-[900px]:min-h-[42dvh]">
           <p className={recommendationsError ? 'm-0 text-[var(--event)]' : cn('m-0', mutedTextClass)}>
             {recommendationsError
               ?? (targetControls?.emptyMessage
