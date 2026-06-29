@@ -18,6 +18,11 @@ const FILTER_DESCRIPTIONS = {
   limit: 'Limit the number of events. Higher limits make the rendering heavier.',
   date: 'Dates in DD.MM.YYYY format.',
 }
+const EGO_FILTER_DESCRIPTIONS = {
+  ...FILTER_DESCRIPTIONS,
+  genre: 'Genre filtering is disabled while viewing an ego graph.',
+  date: 'Date filtering is disabled while viewing an ego graph.',
+}
 
 const groupClass = 'grid gap-2'
 const labelClass = 'inline-flex items-center gap-1.5 text-[0.72rem] uppercase tracking-[0.14em] text-[var(--accent)]'
@@ -30,6 +35,7 @@ interface GraphFiltersProps {
   isGenresLoading: boolean
   genresError: string | null
   displayedDateRange: { from: string; to: string } | null
+  isEgoGraphMode?: boolean
   onChange: (filters: GraphParams) => void
 }
 
@@ -91,9 +97,12 @@ export function GraphFilters({
   isGenresLoading,
   genresError,
   displayedDateRange,
+  isEgoGraphMode = false,
   onChange,
 }: GraphFiltersProps) {
   const [activeInfo, setActiveInfo] = useState<keyof typeof FILTER_DESCRIPTIONS | null>(null)
+  const filterDescriptions = isEgoGraphMode ? EGO_FILTER_DESCRIPTIONS : FILTER_DESCRIPTIONS
+  const areEventFiltersDisabled = isEgoGraphMode
   const updateFilter = (next: Partial<GraphParams>) => {
     onChange({ ...filters, ...next })
   }
@@ -128,7 +137,7 @@ export function GraphFilters({
             'absolute top-[calc(100%+8px)] z-20 w-[min(300px,calc(100vw-48px))] rounded-lg border border-[var(--surface-border)] bg-[var(--surface-panel)] px-3 py-2.5 text-left text-[0.82rem] font-semibold leading-snug text-[var(--text)] shadow-[var(--surface-shadow)] max-[700px]:left-1/2 max-[700px]:right-auto max-[700px]:top-auto max-[700px]:bottom-[calc(100%+8px)] max-[700px]:z-[120] max-[700px]:max-h-[45dvh] max-[700px]:w-[min(300px,calc(100vw-32px))] max-[700px]:-translate-x-1/2 max-[700px]:translate-y-0 max-[700px]:overflow-y-auto',
             key === 'limit' ? 'right-0' : 'left-0',
           )} role="tooltip">
-            {FILTER_DESCRIPTIONS[key]}
+            {filterDescriptions[key]}
           </span>
         )}
       </span>
@@ -137,7 +146,7 @@ export function GraphFilters({
 
   return (
     <section className="grid gap-3.5 border-b border-[var(--surface-border-soft)] pb-4 min-[1100px]:grid-cols-[minmax(180px,1fr)_minmax(300px,1.35fr)_auto] min-[1100px]:items-end min-[1100px]:border-b-0 min-[1100px]:pb-0" aria-label="Graph filters">
-      <div className={groupClass}>
+      <div className={cn(groupClass, areEventFiltersDisabled && 'opacity-45 blur-[0.4px] grayscale')}>
         <span className={labelClass}>
           Filter by Genre
           {renderInfoButton('genre', 'Filter by Genre')}
@@ -146,7 +155,7 @@ export function GraphFilters({
           className={inputClass}
           value={filters.genre ?? ''}
           onChange={(event) => updateFilter({ genre: event.target.value || undefined })}
-          disabled={isGenresLoading && genreOptions.length === 0}
+          disabled={areEventFiltersDisabled || (isGenresLoading && genreOptions.length === 0)}
           aria-label="Genre"
         >
           <option value="">
@@ -164,9 +173,10 @@ export function GraphFilters({
       </div>
 
       <form
-        className={cn(groupClass, 'min-w-0')}
+        className={cn(groupClass, 'min-w-0', areEventFiltersDisabled && 'opacity-45 blur-[0.4px] grayscale')}
         onSubmit={(event) => {
           event.preventDefault()
+          if (areEventFiltersDisabled) return
           updateFilter({
             dateFrom: draftDateFrom || undefined,
             dateTo: draftDateTo || undefined,
@@ -182,17 +192,19 @@ export function GraphFilters({
             label="Date from"
             value={draftDateFrom}
             onCommit={(dateFrom) => setDraftDateFrom(dateFrom ?? '')}
+            disabled={areEventFiltersDisabled}
           />
           <GraphDateInput
             label="Date to"
             value={draftDateTo}
             onCommit={(dateTo) => setDraftDateTo(dateTo ?? '')}
+            disabled={areEventFiltersDisabled}
           />
           <Button
             type="submit"
             size="sm"
             className="rounded-full"
-            disabled={draftDateFrom === dateFromValue && draftDateTo === dateToValue}
+            disabled={areEventFiltersDisabled || (draftDateFrom === dateFromValue && draftDateTo === dateToValue)}
           >
             Apply dates
           </Button>
