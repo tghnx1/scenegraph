@@ -22,6 +22,7 @@ from app.event_tag_extraction import (
     extract_event_tags_with_llm,
     fetch_event_texts,
     has_current_event_tag_extraction,
+    is_content_filter_error,
     replace_event_tags,
 )
 

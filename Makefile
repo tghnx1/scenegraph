@@ -32,7 +32,7 @@ NGINX_CERT_KEY ?= $(NGINX_CERT_DIR)/privkey.pem
 NGINX_CERT_FILE ?= $(NGINX_CERT_DIR)/fullchain.pem
 CERT_NAMES ?=
 
-.PHONY: help env cert build up upd upd-build debug-up debug-down down stop restart logs ps ensure-ssl-certs prisma-migrate db-shell full-pipeline import-dump export-dump clean list fclean
+.PHONY: help env cert build up upd upd-build debug-up debug-down down stop restart logs ps ensure-ssl-certs prisma-migrate db-shell full-pipeline full-pipeline-local-chrome import-dump export-dump clean list fclean
 
 help:
 	@printf "\n"
@@ -63,6 +63,8 @@ help:
 	@printf "                       FULL_PIPELINE_EVENTS_JSON=backend/data/events.json FULL_PIPELINE_ARTIFACTS_DIR=backend/data/import_runs\n"
 	@printf "                       FULL_PIPELINE_VALIDATE_ARTIST_ID=2178 FULL_PIPELINE_DEDUP_WITH_DB=yes|no\n"
 	@printf "                       FULL_PIPELINE_SKIP_BIO=yes|no (default yes) FULL_PIPELINE_SKIP_TAGS=yes|no FULL_PIPELINE_SKIP_EMBEDDINGS=yes|no\n"
+	@printf "  make full-pipeline-local-chrome Run full-pipeline with biography scraping through real local Chrome CDP\n"
+	@printf "                       first start Chrome with --remote-debugging-port=9222; accepts the same FULL_PIPELINE_* flags\n"
 	@printf "  make import-dump   Import local/remote dump with interactive safety prompts\n"
 	@printf "                flags: DUMP=/abs/path/dump.sql DUMP_FORMAT=sql|custom DB_NAME=scenegraph_check DATABASE_URL=postgresql://...\n"
 	@printf "                       RESET_DB=1 PG_CLIENT_IMAGE=postgres:18 REMOTE_RESTORE_MODE=clean|data-only\n"
@@ -150,6 +152,18 @@ full-pipeline: env
 		$$(test "$(FULL_PIPELINE_SKIP_TAGS)" = "yes" && printf '%s' '--skip-tags' || true) \
 		$$(test "$(FULL_PIPELINE_SKIP_EMBEDDINGS)" = "yes" && printf '%s' '--skip-embeddings' || true) \
 		$$(test -n "$(FULL_PIPELINE_VALIDATE_ARTIST_ID)" && printf '%s %s' '--validate-artist-id' "$(FULL_PIPELINE_VALIDATE_ARTIST_ID)" || true)
+
+full-pipeline-local-chrome: env
+	FULL_PIPELINE_MIN_DATE="$(FULL_PIPELINE_MIN_DATE)" \
+	FULL_PIPELINE_MAX_DATE="$(FULL_PIPELINE_MAX_DATE)" \
+	FULL_PIPELINE_ARTIFACTS_DIR="$(FULL_PIPELINE_ARTIFACTS_DIR)" \
+	FULL_PIPELINE_EVENTS_JSON="$(FULL_PIPELINE_EVENTS_JSON)" \
+	FULL_PIPELINE_DEDUP_WITH_DB="$(FULL_PIPELINE_DEDUP_WITH_DB)" \
+	FULL_PIPELINE_SKIP_BIO=no \
+	FULL_PIPELINE_SKIP_TAGS="$(FULL_PIPELINE_SKIP_TAGS)" \
+	FULL_PIPELINE_SKIP_EMBEDDINGS="$(FULL_PIPELINE_SKIP_EMBEDDINGS)" \
+	FULL_PIPELINE_VALIDATE_ARTIST_ID="$(FULL_PIPELINE_VALIDATE_ARTIST_ID)" \
+	./scripts/full_pipeline_local_chrome.sh
 
 import-dump: env
 	@DUMP="$(DUMP)" DB_NAME="$(DB_NAME)" DATABASE_URL="$(DATABASE_URL)" RESET_DB="$(RESET_DB)" DUMP_FORMAT="$(DUMP_FORMAT)" PG_CLIENT_IMAGE="$(PG_CLIENT_IMAGE)" REMOTE_RESTORE_MODE="$(REMOTE_RESTORE_MODE)" CONFIRM_IMPORT="$(CONFIRM_IMPORT)" IMPORT_DUMP_NONINTERACTIVE="$(IMPORT_DUMP_NONINTERACTIVE)" sh ./scripts/import_dump.sh

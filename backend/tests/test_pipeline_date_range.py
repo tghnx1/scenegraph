@@ -376,6 +376,68 @@ def test_full_pipeline_succeeds_when_date_filter_leaves_no_new_events(monkeypatc
     assert events_json.with_name("artist_ids.txt").read_text(encoding="utf-8") == ""
 
 
+def test_full_pipeline_backfills_existing_scope_when_dedup_leaves_no_new_events(monkeypatch, tmp_path):
+    install_import_stubs()
+    module = load_module(
+        "scenegraph_full_pipeline_existing_scope",
+        REPO_ROOT / "backend" / "scripts" / "full_pipeline.py",
+    )
+    today = datetime.now().strftime("%Y-%m-%d")
+    events_json = tmp_path / "events.json"
+    seen_stages: list[str] = []
+    seen_commands: list[list[str]] = []
+
+    monkeypatch.setattr(module, "ensure_writable_parent", lambda path: None)
+    monkeypatch.setattr(module, "ensure_db_ready", lambda: None)
+    monkeypatch.setattr(module, "ensure_playwright_available", lambda: None)
+    monkeypatch.setattr(module, "ensure_cdp_ready", lambda cdp_url: None)
+    monkeypatch.setattr(module, "ensure_provider_env", lambda skip_tags, skip_embeddings: None)
+    monkeypatch.setattr(
+        module,
+        "fetch_existing_scope_ids",
+        lambda database_url, min_date, max_date: ([2454507], [2178]),
+    )
+
+    def fake_run_stage(name, command, cwd=None, env=None):
+        seen_stages.append(name)
+        seen_commands.append(command)
+        if name == "scrape-and-parse":
+            events_json.write_text("[]", encoding="utf-8")
+
+    monkeypatch.setattr(module, "run_stage", fake_run_stage)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "full_pipeline.py",
+            "--min-date",
+            today,
+            "--max-date",
+            today,
+            "--events-json",
+            str(events_json),
+            "--skip-bio",
+        ],
+    )
+
+    exit_code = module.main()
+
+    assert exit_code == 0
+    assert seen_stages == [
+        "scrape-and-parse",
+        "backfill-normalized-texts",
+        "extract-event-tags",
+        "extract-artist-tags",
+        "generate-embeddings",
+        "backfill-embedding-vectors",
+        "validate-import",
+    ]
+    event_tag_cmd = next(command for command in seen_commands if "extract_event_tags.py" in " ".join(map(str, command)))
+    assert "--continue-on-error" in event_tag_cmd
+    assert events_json.with_name("event_ids.txt").read_text(encoding="utf-8").splitlines() == ["2454507"]
+    assert events_json.with_name("artist_ids.txt").read_text(encoding="utf-8").splitlines() == ["2178"]
+
+
 def test_run_stage_records_success_and_failure(monkeypatch):
     install_import_stubs()
     module = load_module(

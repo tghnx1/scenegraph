@@ -97,6 +97,42 @@ def extract_artist_ids(events: list[dict[str, object]]) -> list[int]:
     return ids
 
 
+def fetch_existing_scope_ids(database_url: str, min_date: str, max_date: str) -> tuple[list[int], list[int]]:
+    with psycopg.connect(database_url, row_factory=dict_row) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT DISTINCT e.ra_event_id AS event_id
+                FROM events e
+                WHERE e.event_date::date >= %s::date
+                  AND e.event_date::date <= %s::date
+                  AND e.ra_event_id IS NOT NULL
+                ORDER BY e.ra_event_id ASC
+                """,
+                (min_date, max_date),
+            )
+            event_rows = cursor.fetchall()
+
+            cursor.execute(
+                """
+                SELECT DISTINCT a.ra_artist_id AS artist_id
+                FROM events e
+                JOIN event_artists ea ON ea.event_id = e.id
+                JOIN artists a ON a.id = ea.artist_id
+                WHERE e.event_date::date >= %s::date
+                  AND e.event_date::date <= %s::date
+                  AND a.ra_artist_id IS NOT NULL
+                ORDER BY a.ra_artist_id ASC
+                """,
+                (min_date, max_date),
+            )
+            artist_rows = cursor.fetchall()
+
+    event_ids = sorted({int(row["event_id"]) for row in event_rows if row.get("event_id") is not None})
+    artist_ids = sorted({int(row["artist_id"]) for row in artist_rows if row.get("artist_id") is not None})
+    return event_ids, artist_ids
+
+
 def safe_path_part(value: str) -> str:
     return "".join(char if char.isalnum() or char in {"-", "_"} else "_" for char in value).strip("_")
 
@@ -402,6 +438,8 @@ def main() -> int:
             raise SystemExit(f"Expected a JSON list in {events_json}")
 
         import_events_json = events_json
+        import_event_ids: list[int] = []
+        import_artist_ids: list[int] = []
         if args.min_date or args.max_date:
             import_events_json = run_artifacts_dir / "import.json"
             filtered_events = [
@@ -410,39 +448,55 @@ def main() -> int:
                 if isinstance(event, dict) and event_in_date_range(event, min_date, max_date)
             ]
             import_events_json.write_text(json.dumps(filtered_events, ensure_ascii=False, indent=2), encoding="utf-8")
-            event_ids = extract_event_ids(filtered_events)
-            artist_ids = extract_artist_ids(filtered_events)
-            write_id_file(event_ids_file, event_ids)
-            write_id_file(artist_ids_file, artist_ids)
+            import_event_ids = extract_event_ids(filtered_events)
+            import_artist_ids = extract_artist_ids(filtered_events)
+            write_id_file(event_ids_file, import_event_ids)
+            write_id_file(artist_ids_file, import_artist_ids)
             print(f"[pipeline] Filtered {len(filtered_events)} events for import into {import_events_json}")
         else:
-            event_ids = extract_event_ids(events_payload)
-            artist_ids = extract_artist_ids(events_payload)
-            write_id_file(event_ids_file, event_ids)
-            write_id_file(artist_ids_file, artist_ids)
+            import_event_ids = extract_event_ids(events_payload)
+            import_artist_ids = extract_artist_ids(events_payload)
+            write_id_file(event_ids_file, import_event_ids)
+            write_id_file(artist_ids_file, import_artist_ids)
 
         ACTIVE_IMPORT_LOGGER.update(
             import_json=import_events_json,
             metrics={
-                "event_count": len(set(event_ids)),
-                "artist_count": len(set(artist_ids)),
+                "event_count": len(set(import_event_ids)),
+                "artist_count": len(set(import_artist_ids)),
             },
         )
 
-        if not event_ids:
+        pipeline_event_ids = import_event_ids
+        pipeline_artist_ids = import_artist_ids
+        if not pipeline_event_ids and (not args.skip_tags or not args.skip_embeddings):
+            print(
+                "[pipeline] No new events matched the requested date range after dedup/filtering; "
+                "loading existing DB records for enrichment/backfill."
+            )
+            pipeline_event_ids, pipeline_artist_ids = fetch_existing_scope_ids(
+                os.environ["DATABASE_URL"],
+                min_date,
+                max_date,
+            )
+            write_id_file(event_ids_file, pipeline_event_ids)
+            write_id_file(artist_ids_file, pipeline_artist_ids)
+
+        if not import_event_ids and not pipeline_event_ids:
             print("[pipeline] No events matched the requested date range after dedup/filtering; nothing to import.")
             ACTIVE_IMPORT_LOGGER.update(status="succeeded")
             print("\nFull pipeline completed successfully.")
             return 0
 
-        import_cmd = [
-            str(args.parse_python),
-            str(REPO_ROOT / "backend" / "scripts" / "import_events.py"),
-            str(import_events_json),
-        ]
-        if not args.skip_bio:
-            import_cmd.extend(["--biographies-path", str(bio_json)])
-        run_stage("import-to-db", import_cmd)
+        if import_event_ids:
+            import_cmd = [
+                str(args.parse_python),
+                str(REPO_ROOT / "backend" / "scripts" / "import_events.py"),
+                str(import_events_json),
+            ]
+            if not args.skip_bio:
+                import_cmd.extend(["--biographies-path", str(bio_json)])
+            run_stage("import-to-db", import_cmd)
 
         run_stage(
             "backfill-normalized-texts",
@@ -464,6 +518,7 @@ def main() -> int:
                     str(REPO_ROOT / "backend" / "scripts" / "extract_event_tags.py"),
                     "--event-ids-file",
                     str(event_ids_file),
+                    "--continue-on-error",
                 ],
             )
             run_stage(
@@ -516,7 +571,7 @@ def main() -> int:
             validate_cmd.extend(["--biographies-path", str(bio_json)])
         run_stage("validate-import", validate_cmd)
 
-        final_metrics = ACTIVE_IMPORT_LOGGER.collect_metrics(event_ids, artist_ids) if ACTIVE_IMPORT_LOGGER.enabled else {}
+        final_metrics = ACTIVE_IMPORT_LOGGER.collect_metrics(pipeline_event_ids, pipeline_artist_ids) if ACTIVE_IMPORT_LOGGER.enabled else {}
         ACTIVE_IMPORT_LOGGER.update(status="succeeded", metrics=final_metrics)
         print("\nFull pipeline completed successfully.")
         return 0
