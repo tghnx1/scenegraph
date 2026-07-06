@@ -3,9 +3,12 @@ import json
 import os
 import tempfile
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 SCRIPT_DIR = Path(__file__).resolve().parent
+
+
+BIO_COMPLETE_STATUSES = {"ok", "not_found", "empty", "manually_edited"}
 
 
 def resolve_data_dir(default_root: Path) -> Path:
@@ -70,7 +73,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--dedup-db",
         action="store_true",
-        help="Skip artists that already exist in the database (artists.ra_artist_id).",
+        help=(
+            "Skip only DB artists whose biography is already complete or terminal. "
+            "Existing artists with missing/failed/pending biographies are still emitted for refresh."
+        ),
     )
     parser.add_argument(
         "--database-url",
@@ -87,29 +93,48 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def load_existing_artist_ids_from_db(database_url: str) -> set[str]:
+def normalize_optional_text(value: Any) -> str:
+    if value is None:
+        return ""
+    return str(value).strip()
+
+
+def artist_bio_is_complete(row: dict[str, Any] | None) -> bool:
+    if row is None:
+        return False
+
+    status = normalize_optional_text(row.get("biography_status")).casefold()
+    if status == "manually_edited":
+        return True
+    if normalize_optional_text(row.get("biography")):
+        return True
+    return status in BIO_COMPLETE_STATUSES
+
+
+def load_existing_artist_bio_state_from_db(database_url: str) -> dict[str, dict[str, Any]]:
     try:
         import psycopg  # type: ignore
+        from psycopg.rows import dict_row  # type: ignore
     except Exception as exc:
         raise RuntimeError(
             "psycopg is required for --dedup-db. Install it or run with a Python env that has psycopg."
         ) from exc
 
-    existing_ids: set[str] = set()
-    with psycopg.connect(database_url) as connection:
+    existing: dict[str, dict[str, Any]] = {}
+    with psycopg.connect(database_url, row_factory=dict_row) as connection:
         with connection.cursor() as cursor:
             cursor.execute(
                 """
-                SELECT ra_artist_id
+                SELECT ra_artist_id, biography, biography_status
                 FROM artists
                 WHERE ra_artist_id IS NOT NULL
                 """
             )
             for row in cursor.fetchall():
-                value = row[0]
+                value = row.get("ra_artist_id")
                 if value is not None:
-                    existing_ids.add(str(value))
-    return existing_ids
+                    existing[str(value)] = dict(row)
+    return existing
 
 
 def load_existing_artist_ids_from_file(path: Path) -> set[str]:
@@ -130,12 +155,15 @@ def main() -> None:
 
     unique_artists = {}
     skipped_existing = 0
+    refresh_existing = 0
+    existing_artist_state: dict[str, dict[str, Any]] = {}
     existing_artist_ids: set[str] = set()
     if args.dedup_db:
         if not args.database_url:
             raise ValueError("--dedup-db requires --database-url or DATABASE_URL")
-        existing_artist_ids = load_existing_artist_ids_from_db(args.database_url)
-        print(f"Loaded {len(existing_artist_ids)} existing artists from DB for dedup")
+        existing_artist_state = load_existing_artist_bio_state_from_db(args.database_url)
+        existing_artist_ids = set(existing_artist_state)
+        print(f"Loaded {len(existing_artist_ids)} existing artists from DB for bio-aware dedup")
     if args.existing_artist_ids_file:
         file_ids = load_existing_artist_ids_from_file(args.existing_artist_ids_file)
         before = len(existing_artist_ids)
@@ -165,8 +193,10 @@ def main() -> None:
 
                 artist_id = str(artist_id)
                 if artist_id in existing_artist_ids:
-                    skipped_existing += 1
-                    continue
+                    if artist_id not in existing_artist_state or artist_bio_is_complete(existing_artist_state[artist_id]):
+                        skipped_existing += 1
+                        continue
+                    refresh_existing += 1
 
                 if artist_id not in unique_artists:
                     unique_artists[artist_id] = {
@@ -178,7 +208,8 @@ def main() -> None:
 
     print(
         f"Saved {len(unique_artists)} artists to {args.output} from {len(event_files)} event file(s); "
-        f"skipped_existing_db_artists={skipped_existing}"
+        f"skipped_existing_complete_artists={skipped_existing}; "
+        f"included_existing_refresh_artists={refresh_existing}"
     )
 
 

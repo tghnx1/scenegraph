@@ -4,6 +4,8 @@ import importlib.util
 import subprocess
 import types
 import sys
+
+import pytest
 from datetime import datetime
 from pathlib import Path
 
@@ -11,7 +13,24 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
+def resolve_module_path(path: Path) -> Path:
+    if path.exists():
+        return path
+    marker = ("backend", "scripts")
+    parts = path.parts
+    for index in range(len(parts) - 1):
+        if parts[index:index + 2] == marker:
+            backend_relative = Path(*parts[index + 1:])
+            candidate = Path.cwd() / backend_relative
+            if candidate.exists():
+                return candidate
+    if "parsers" in path.parts:
+        pytest.skip(f"parser source is not mounted in this test environment: {path}")
+    return path
+
+
 def load_module(module_name: str, path: Path):
+    path = resolve_module_path(path)
     spec = importlib.util.spec_from_file_location(module_name, path)
     assert spec and spec.loader
     module = importlib.util.module_from_spec(spec)
@@ -437,6 +456,73 @@ def test_full_pipeline_backfills_existing_scope_when_dedup_leaves_no_new_events(
     assert events_json.with_name("event_ids.txt").read_text(encoding="utf-8").splitlines() == ["2454507"]
     assert events_json.with_name("artist_ids.txt").read_text(encoding="utf-8").splitlines() == ["2178"]
 
+
+def test_full_pipeline_imports_biographies_for_existing_scope_without_new_events(monkeypatch, tmp_path):
+    install_import_stubs()
+    module = load_module(
+        "scenegraph_full_pipeline_existing_bio_scope",
+        REPO_ROOT / "backend" / "scripts" / "full_pipeline.py",
+    )
+    today = datetime.now().strftime("%Y-%m-%d")
+    events_json = tmp_path / "events.json"
+    bio_json = tmp_path / "artist_biographies.json"
+    seen_stages: list[str] = []
+    seen_commands: list[list[str]] = []
+
+    monkeypatch.setattr(module, "ensure_writable_parent", lambda path: None)
+    monkeypatch.setattr(module, "ensure_db_ready", lambda: None)
+    monkeypatch.setattr(module, "ensure_playwright_available", lambda: None)
+    monkeypatch.setattr(module, "ensure_cdp_ready", lambda cdp_url: None)
+    monkeypatch.setattr(module, "ensure_provider_env", lambda skip_tags, skip_embeddings: None)
+    monkeypatch.setattr(
+        module,
+        "fetch_existing_scope_ids",
+        lambda database_url, min_date, max_date: ([2454507], [2178]),
+    )
+
+    def fake_run_stage(name, command, cwd=None, env=None):
+        seen_stages.append(name)
+        seen_commands.append(command)
+        if name == "scrape-and-parse":
+            events_json.write_text("[]", encoding="utf-8")
+            bio_json.write_text(
+                '[{"id":"2178","biography":"Fresh bio","status":"ok"}]',
+                encoding="utf-8",
+            )
+
+    monkeypatch.setattr(module, "run_stage", fake_run_stage)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "full_pipeline.py",
+            "--min-date",
+            today,
+            "--max-date",
+            today,
+            "--events-json",
+            str(events_json),
+            "--bio-json",
+            str(bio_json),
+            "--skip-tags",
+            "--skip-embeddings",
+        ],
+    )
+
+    exit_code = module.main()
+
+    assert exit_code == 0
+    assert seen_stages == [
+        "scrape-and-parse",
+        "import-to-db",
+        "backfill-normalized-texts",
+        "validate-import",
+    ]
+    import_cmd = next(command for command in seen_commands if "import_events.py" in " ".join(map(str, command)))
+    assert "--biographies-path" in import_cmd
+    assert str(bio_json) in import_cmd
+    assert events_json.with_name("event_ids.txt").read_text(encoding="utf-8").splitlines() == ["2454507"]
+    assert events_json.with_name("artist_ids.txt").read_text(encoding="utf-8").splitlines() == ["2178"]
 
 def test_run_stage_records_success_and_failure(monkeypatch):
     install_import_stubs()

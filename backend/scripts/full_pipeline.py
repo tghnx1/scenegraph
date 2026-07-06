@@ -469,7 +469,7 @@ def main() -> int:
 
         pipeline_event_ids = import_event_ids
         pipeline_artist_ids = import_artist_ids
-        if not pipeline_event_ids and (not args.skip_tags or not args.skip_embeddings):
+        if not pipeline_event_ids and (not args.skip_bio or not args.skip_tags or not args.skip_embeddings):
             print(
                 "[pipeline] No new events matched the requested date range after dedup/filtering; "
                 "loading existing DB records for enrichment/backfill."
@@ -488,13 +488,14 @@ def main() -> int:
             print("\nFull pipeline completed successfully.")
             return 0
 
-        if import_event_ids:
+        should_import_biographies = not args.skip_bio and bio_json.exists()
+        if import_event_ids or should_import_biographies:
             import_cmd = [
                 str(args.parse_python),
                 str(REPO_ROOT / "backend" / "scripts" / "import_events.py"),
                 str(import_events_json),
             ]
-            if not args.skip_bio:
+            if should_import_biographies:
                 import_cmd.extend(["--biographies-path", str(bio_json)])
             run_stage("import-to-db", import_cmd)
 
