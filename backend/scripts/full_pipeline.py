@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shutil
 import shlex
 import subprocess
 import sys
@@ -37,6 +38,7 @@ DEFAULT_IMPORT_RUNS_DIR = Path(
 DEFAULT_CDP_URL = os.environ.get("SCENEGRAPH_CDP_URL", "http://127.0.0.1:9222")
 DEFAULT_MIN_DATE = "2021-01-01"
 DEFAULT_MAX_DATE = ""
+DEFAULT_KEEP_RUNS = int(os.environ.get("FULL_PIPELINE_KEEP_RUNS", "10"))
 ACTIVE_IMPORT_LOGGER = ImportRunLogger.disabled()
 
 
@@ -154,6 +156,31 @@ def build_run_artifacts(
     )
 
 
+def cleanup_old_import_runs(artifacts_dir: Path, keep_runs: int) -> list[Path]:
+    if keep_runs <= 0:
+        print("[pipeline] Import run cleanup disabled (keep_runs <= 0)")
+        return []
+
+    if not artifacts_dir.exists():
+        return []
+
+    run_dirs = [path for path in artifacts_dir.iterdir() if path.is_dir()]
+    if len(run_dirs) <= keep_runs:
+        print(f"[pipeline] Import run cleanup: keeping {len(run_dirs)}/{keep_runs} run directories")
+        return []
+
+    run_dirs.sort(key=lambda path: path.stat().st_mtime, reverse=True)
+    stale_dirs = run_dirs[keep_runs:]
+    for stale_dir in stale_dirs:
+        shutil.rmtree(stale_dir)
+
+    print(
+        "[pipeline] Import run cleanup: "
+        f"removed={len(stale_dirs)}, kept={min(len(run_dirs), keep_runs)}, artifacts_dir={artifacts_dir}"
+    )
+    return stale_dirs
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run the full Scenegraph ingestion pipeline in Docker.")
     parser.add_argument("--min-date", default=DEFAULT_MIN_DATE, help="Oldest event date to crawl (YYYY-MM-DD).")
@@ -181,6 +208,12 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         default=DEFAULT_IMPORT_RUNS_DIR,
         help="Directory for per-run artifacts when --events-json is omitted.",
+    )
+    parser.add_argument(
+        "--keep-runs",
+        type=int,
+        default=DEFAULT_KEEP_RUNS,
+        help="Keep this many newest per-run artifact directories after a successful pipeline run. Set <= 0 to disable cleanup.",
     )
     parser.add_argument(
         "--artists-json",
@@ -423,6 +456,7 @@ def main() -> int:
             min_date,
             "--events-max-date",
             max_date,
+            "--refresh-existing-events",
         ]
         if args.dedup_with_db:
             parse_cmd.append("--dedup-with-db")
@@ -459,16 +493,12 @@ def main() -> int:
             write_id_file(event_ids_file, import_event_ids)
             write_id_file(artist_ids_file, import_artist_ids)
 
-        ACTIVE_IMPORT_LOGGER.update(
-            import_json=import_events_json,
-            metrics={
-                "event_count": len(set(import_event_ids)),
-                "artist_count": len(set(import_artist_ids)),
-            },
-        )
-
+        new_import_event_count = len(set(import_event_ids))
+        new_import_artist_count = len(set(import_artist_ids))
         pipeline_event_ids = import_event_ids
         pipeline_artist_ids = import_artist_ids
+        enrichment_scope = "new_import"
+
         if not pipeline_event_ids and (not args.skip_bio or not args.skip_tags or not args.skip_embeddings):
             print(
                 "[pipeline] No new events matched the requested date range after dedup/filtering; "
@@ -481,10 +511,38 @@ def main() -> int:
             )
             write_id_file(event_ids_file, pipeline_event_ids)
             write_id_file(artist_ids_file, pipeline_artist_ids)
+            enrichment_scope = "existing_db_slice" if pipeline_event_ids else "empty"
+
+        enrichment_event_count = len(set(pipeline_event_ids))
+        enrichment_artist_count = len(set(pipeline_artist_ids))
+        scope_metadata = {
+            "newImportEvents": new_import_event_count,
+            "newImportArtists": new_import_artist_count,
+            "enrichmentEvents": enrichment_event_count,
+            "enrichmentArtists": enrichment_artist_count,
+            "enrichmentScope": enrichment_scope,
+        }
+        print(
+            "[pipeline] Scope summary: "
+            f"new_import_events={new_import_event_count}, "
+            f"new_import_artists={new_import_artist_count}, "
+            f"enrichment_scope={enrichment_scope}, "
+            f"enrichment_events={enrichment_event_count}, "
+            f"enrichment_artists={enrichment_artist_count}"
+        )
+        ACTIVE_IMPORT_LOGGER.update(
+            import_json=import_events_json,
+            metrics={
+                "event_count": enrichment_event_count,
+                "artist_count": enrichment_artist_count,
+            },
+            metadata=scope_metadata,
+        )
 
         if not import_event_ids and not pipeline_event_ids:
             print("[pipeline] No events matched the requested date range after dedup/filtering; nothing to import.")
             ACTIVE_IMPORT_LOGGER.update(status="succeeded")
+            cleanup_old_import_runs(args.artifacts_dir.expanduser().resolve(), args.keep_runs)
             print("\nFull pipeline completed successfully.")
             return 0
 
@@ -574,6 +632,7 @@ def main() -> int:
 
         final_metrics = ACTIVE_IMPORT_LOGGER.collect_metrics(pipeline_event_ids, pipeline_artist_ids) if ACTIVE_IMPORT_LOGGER.enabled else {}
         ACTIVE_IMPORT_LOGGER.update(status="succeeded", metrics=final_metrics)
+        cleanup_old_import_runs(args.artifacts_dir.expanduser().resolve(), args.keep_runs)
         print("\nFull pipeline completed successfully.")
         return 0
     except BaseException as exc:

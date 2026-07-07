@@ -17,6 +17,7 @@ FULL_PIPELINE_SKIP_TAGS ?= no
 FULL_PIPELINE_SKIP_EMBEDDINGS ?= no
 FULL_PIPELINE_EVENTS_JSON ?=
 FULL_PIPELINE_ARTIFACTS_DIR ?= backend/data/import_runs
+FULL_PIPELINE_KEEP_RUNS ?= 10
 REFRESH_EVENTS_JSON ?= backend/data/ra_berlin_past_events_2026.json
 REFRESH_EVENTS_JSON_IN_CONTAINER ?= /app/data/ra_berlin_past_events_2026.json
 REFRESH_ARTISTS_JSON ?= backend/data/artists.json
@@ -60,6 +61,7 @@ help:
 	@printf "  make full-pipeline Preferred end-to-end import/enrichment flow in Docker\n"
 	@printf "                flags: FULL_PIPELINE_MIN_DATE=2024-01-01 FULL_PIPELINE_MAX_DATE=2024-12-31\n"
 	@printf "                       FULL_PIPELINE_EVENTS_JSON=backend/data/events.json FULL_PIPELINE_ARTIFACTS_DIR=backend/data/import_runs\n"
+	@printf "                       FULL_PIPELINE_KEEP_RUNS=10 keeps newest import artifact directories by mtime after successful runs\n"
 	@printf "                       FULL_PIPELINE_VALIDATE_ARTIST_ID=2178 FULL_PIPELINE_DEDUP_WITH_DB=yes|no\n"
 	@printf "                       FULL_PIPELINE_SKIP_BIO=yes|no (default yes) FULL_PIPELINE_SKIP_TAGS=yes|no FULL_PIPELINE_SKIP_EMBEDDINGS=yes|no\n"
 	@printf "  make import-dump   Import local/remote dump with interactive safety prompts\n"
@@ -138,6 +140,7 @@ db-shell: env
 	$(COMPOSE) exec db psql -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"
 
 full-pipeline: env
+	@set -a; [ -f .env ] && . ./.env; set +a; \
 	FULL_PIPELINE_MIN_DATE="$(FULL_PIPELINE_MIN_DATE)" \
 	FULL_PIPELINE_MAX_DATE="$(FULL_PIPELINE_MAX_DATE)" \
 	FULL_PIPELINE_ARTIFACTS_DIR="$(FULL_PIPELINE_ARTIFACTS_DIR)" \
@@ -147,6 +150,7 @@ full-pipeline: env
 	FULL_PIPELINE_SKIP_TAGS="$(FULL_PIPELINE_SKIP_TAGS)" \
 	FULL_PIPELINE_SKIP_EMBEDDINGS="$(FULL_PIPELINE_SKIP_EMBEDDINGS)" \
 	FULL_PIPELINE_VALIDATE_ARTIST_ID="$(FULL_PIPELINE_VALIDATE_ARTIST_ID)" \
+	FULL_PIPELINE_KEEP_RUNS="$(if $(filter command line environment,$(origin FULL_PIPELINE_KEEP_RUNS)),$(FULL_PIPELINE_KEEP_RUNS),$${FULL_PIPELINE_KEEP_RUNS:-$(FULL_PIPELINE_KEEP_RUNS)})" \
 	./scripts/full_pipeline.sh
 
 import-dump: env

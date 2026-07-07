@@ -18,6 +18,7 @@ FULL_PIPELINE_SKIP_BIO="${FULL_PIPELINE_SKIP_BIO:-yes}"
 FULL_PIPELINE_SKIP_TAGS="${FULL_PIPELINE_SKIP_TAGS:-no}"
 FULL_PIPELINE_SKIP_EMBEDDINGS="${FULL_PIPELINE_SKIP_EMBEDDINGS:-no}"
 FULL_PIPELINE_VALIDATE_ARTIST_ID="${FULL_PIPELINE_VALIDATE_ARTIST_ID:-}"
+FULL_PIPELINE_KEEP_RUNS="${FULL_PIPELINE_KEEP_RUNS:-10}"
 
 wait_for_cdp() {
   attempts="${1:-30}"
@@ -79,7 +80,8 @@ build_pipeline_args() {
   set -- \
     backend/scripts/full_pipeline.py \
     --min-date "$FULL_PIPELINE_MIN_DATE" \
-    --artifacts-dir "$FULL_PIPELINE_ARTIFACTS_DIR"
+    --artifacts-dir "$FULL_PIPELINE_ARTIFACTS_DIR" \
+    --keep-runs "$FULL_PIPELINE_KEEP_RUNS"
 
   if [ -n "$FULL_PIPELINE_MAX_DATE" ]; then
     set -- "$@" --max-date "$FULL_PIPELINE_MAX_DATE"

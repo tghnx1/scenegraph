@@ -246,6 +246,7 @@ class ImportRunLogger:
         error: object | None = None,
         metrics: dict[str, Any] | None = None,
         import_json: Path | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> None:
         if not self.enabled:
             return
@@ -258,6 +259,8 @@ class ImportRunLogger:
             values["import_json"] = str(import_json)
         if metrics:
             values.update(metrics)
+        if metadata:
+            values["metadata"] = json.dumps(metadata)
         if status in {"succeeded", "failed"}:
             values["finished_at"] = "CURRENT_TIMESTAMP"
         if not values:
@@ -269,7 +272,10 @@ class ImportRunLogger:
             if value == "CURRENT_TIMESTAMP" and column == "finished_at":
                 assignments.append(f"{column} = CURRENT_TIMESTAMP")
                 continue
-            assignments.append(f"{column} = %s")
+            if column == "metadata":
+                assignments.append("metadata = metadata || %s::jsonb")
+            else:
+                assignments.append(f"{column} = %s")
             params.append(value)
         assignments.append("updated_at = CURRENT_TIMESTAMP")
         params.append(self.run_id)

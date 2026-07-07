@@ -429,6 +429,25 @@ def flatten_events(events_by_year: Dict[str, List[dict]]) -> List[dict]:
     return flattened
 
 
+def upsert_event_in_dataset(events_by_year: Dict[str, List[dict]], event: dict) -> str:
+    event_id = str(event.get("id") or "").strip()
+    year = event_year(event)
+    if event_id:
+        for existing_year, events in list(events_by_year.items()):
+            for index, existing_event in enumerate(events):
+                if str(existing_event.get("id") or "").strip() != event_id:
+                    continue
+                if existing_year == year:
+                    events[index] = event
+                else:
+                    del events[index]
+                    events_by_year.setdefault(year, []).append(event)
+                return "updated"
+
+    events_by_year.setdefault(year, []).append(event)
+    return "inserted"
+
+
 def save_events_dataset(
     out_path: Path,
     events_by_year: Dict[str, List[dict]],
@@ -509,6 +528,14 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         default=None,
         help="Optional newline-delimited file of RA event IDs to skip.",
+    )
+    parser.add_argument(
+        "--refresh-existing-in-range",
+        action="store_true",
+        help=(
+            "Fetch and replace event details for RA event IDs discovered in the requested date range, "
+            "even when they already exist in the local archive or database dedup set."
+        ),
     )
     return parser.parse_args()
 
@@ -640,7 +667,9 @@ def main():
     """
 
     new_events_count = 0
+    refreshed_events_count = 0
     dirty_years: Set[str] = set()
+    seen_range_ids: Set[str] = set()
 
     for chunk_start, chunk_end in date_chunks:
         print(f"\n--- Fetching event IDs for date range {chunk_start} to {chunk_end} ---")
@@ -689,8 +718,13 @@ def main():
                 print(f"  Found {len(page_event_ids)} events on page {page}.")
 
                 for eid in page_event_ids:
+                    eid_text = str(eid)
+                    if eid_text in seen_range_ids:
+                        continue
+                    seen_range_ids.add(eid_text)
+
                     # Deduplication check
-                    if str(eid) in scraped_ids:
+                    if eid_text in scraped_ids and not args.refresh_existing_in_range:
                         # print(f"    Skipping {eid} (Already scraped)")
                         continue
 
@@ -701,13 +735,17 @@ def main():
                         event = data["data"]["event"]
                         # 3. Remove Exact Date Validation
                         year = event_year(event)
-                        events_by_year.setdefault(year, []).append(event)
+                        action = upsert_event_in_dataset(events_by_year, event)
                         dirty_years.add(year)
-                        scraped_ids.add(str(eid))
-                        new_events_count += 1
+                        scraped_ids.add(eid_text)
+                        if action == "updated":
+                            refreshed_events_count += 1
+                        else:
+                            new_events_count += 1
 
                         # 5. Add Checkpointing
-                        if new_events_count % checkpoint_every == 0:
+                        processed_events_count = new_events_count + refreshed_events_count
+                        if processed_events_count % checkpoint_every == 0:
                             dirty_to_save = (
                                 set(events_by_year.keys())
                                 if needs_full_reshard and use_yearly_output(out_file)
@@ -764,7 +802,10 @@ def main():
     for backup_path in backup_paths:
         print(f"[Backup] Updated rolling backup at {backup_path}")
 
-    print(f"\\nFinished! Successfully compiled {total_event_count(events_by_year)} total past events to {out_file}")
+    print(
+        f"\\nFinished! Successfully compiled {total_event_count(events_by_year)} total past events to {out_file} "
+        f"(artifact_new={new_events_count}, refreshed={refreshed_events_count})"
+    )
 
 if __name__ == "__main__":
     main()

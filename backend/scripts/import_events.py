@@ -389,6 +389,19 @@ def link(cursor: psycopg.Cursor, table: str, event_id: int, target_column: str, 
     )
 
 
+def reset_event_relations(cursor: psycopg.Cursor, event_id: int, event: dict[str, Any]) -> None:
+    relation_tables = {
+        "artists": "event_artists",
+        "genres": "event_genres",
+        "promoters": "event_promoters",
+        "images": "event_images",
+    }
+    for payload_field, table in relation_tables.items():
+        if payload_field not in event:
+            continue
+        cursor.execute(f"DELETE FROM {table} WHERE event_id = %s", (event_id,))
+
+
 def import_event(cursor: psycopg.Cursor, event: dict[str, Any]) -> None:
     venue_id = upsert_venue(cursor, event.get("venue"))
     title = str(event.get("title") or "").strip() or f"RA event {event['id']}"
@@ -445,6 +458,8 @@ def import_event(cursor: psycopg.Cursor, event: dict[str, Any]) -> None:
         ),
     )
     event_id = cursor.fetchone()["id"]
+
+    reset_event_relations(cursor, event_id, event)
 
     for artist in event.get("artists", []):
         artist_id = upsert_lookup(
@@ -658,7 +673,8 @@ def main() -> None:
     print(f"Imported {len(events)} events")
     print(
         "Imported artist biographies: "
-        f"updated={bio_updated}, unchanged={bio_unchanged}, missing_artist={bio_missing_artist}"
+        f"updated={bio_updated}, unchanged={bio_unchanged}, "
+        f"skipped_missing_artist={bio_missing_artist}"
     )
 
 

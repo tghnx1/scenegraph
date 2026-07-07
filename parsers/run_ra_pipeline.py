@@ -324,6 +324,14 @@ def parse_args() -> argparse.Namespace:
         help="Optional newline-delimited file with existing RA event IDs for dedup.",
     )
     parser.add_argument(
+        "--refresh-existing-events",
+        action="store_true",
+        help=(
+            "When crawling a date range, refetch matching event details even if the RA event ID "
+            "already exists in the local archive or database."
+        ),
+    )
+    parser.add_argument(
         "--dedup-artists-file",
         type=Path,
         default=None,
@@ -397,6 +405,8 @@ def start_parse_process(args: argparse.Namespace) -> subprocess.Popen:
             cmd.extend(["--database-url", args.dedup_db_url])
     if args.dedup_events_file:
         cmd.extend(["--existing-event-ids-file", str(args.dedup_events_file)])
+    if args.refresh_existing_events:
+        cmd.append("--refresh-existing-in-range")
     announce("[pipeline] Starting parse_past_events.py")
     return subprocess.Popen(cmd, cwd=str(GRAPHQL_DIR))
 

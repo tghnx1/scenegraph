@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import os
 import subprocess
 import types
 import sys
@@ -78,6 +79,104 @@ def test_today_range_collapses_to_one_chunk():
     assert module.get_month_chunks(today, today) == [(today, today)]
 
 
+def test_parse_past_events_replaces_existing_event_in_archive():
+    module = load_module(
+        "scenegraph_parse_past_events_refresh",
+        REPO_ROOT / "parsers" / "graphql_parser" / "parse_past_events.py",
+    )
+    events_by_year = {
+        "2026": [
+            {"id": "2472941", "title": "Old title", "date": "2026-06-26T00:00:00+00:00"},
+            {"id": "111", "title": "Unchanged", "date": "2026-06-26T00:00:00+00:00"},
+        ]
+    }
+
+    action = module.upsert_event_in_dataset(
+        events_by_year,
+        {"id": "2472941", "title": "Fresh title", "date": "2026-06-26T00:00:00+00:00"},
+    )
+
+    assert action == "updated"
+    assert len(events_by_year["2026"]) == 2
+    assert events_by_year["2026"][0]["title"] == "Fresh title"
+
+
+def test_run_ra_pipeline_forwards_refresh_existing_events(monkeypatch, tmp_path):
+    module = load_module(
+        "scenegraph_run_ra_pipeline_refresh",
+        REPO_ROOT / "parsers" / "run_ra_pipeline.py",
+    )
+    captured_commands: list[list[str]] = []
+
+    class FakeProcess:
+        pass
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "run_ra_pipeline.py",
+            "--events-json",
+            str(tmp_path / "events.json"),
+            "--artists-json",
+            str(tmp_path / "artists.json"),
+            "--bio-json",
+            str(tmp_path / "bio.json"),
+            "--refresh-existing-events",
+            "--skip-bio",
+        ],
+    )
+    monkeypatch.setattr(
+        subprocess,
+        "Popen",
+        lambda command, cwd=None: captured_commands.append(command) or FakeProcess(),
+    )
+
+    args = module.parse_args()
+    module.start_parse_process(args)
+
+    assert "--refresh-existing-in-range" in captured_commands[0]
+
+
+def test_cleanup_old_import_runs_keeps_newest_by_mtime(tmp_path):
+    install_import_stubs()
+    module = load_module(
+        "scenegraph_full_pipeline_cleanup",
+        REPO_ROOT / "backend" / "scripts" / "full_pipeline.py",
+    )
+    artifacts_dir = tmp_path / "import_runs"
+    artifacts_dir.mkdir()
+
+    for index in range(12):
+        run_dir = artifacts_dir / f"run_{index:02d}"
+        run_dir.mkdir()
+        (run_dir / "events.json").write_text("[]", encoding="utf-8")
+        os.utime(run_dir, (index, index))
+
+    removed = module.cleanup_old_import_runs(artifacts_dir, keep_runs=10)
+
+    remaining = sorted(path.name for path in artifacts_dir.iterdir() if path.is_dir())
+    removed_names = sorted(path.name for path in removed)
+    assert removed_names == ["run_00", "run_01"]
+    assert remaining == [f"run_{index:02d}" for index in range(2, 12)]
+
+
+def test_cleanup_old_import_runs_can_be_disabled(tmp_path):
+    install_import_stubs()
+    module = load_module(
+        "scenegraph_full_pipeline_cleanup_disabled",
+        REPO_ROOT / "backend" / "scripts" / "full_pipeline.py",
+    )
+    artifacts_dir = tmp_path / "import_runs"
+    artifacts_dir.mkdir()
+    (artifacts_dir / "run_00").mkdir()
+
+    removed = module.cleanup_old_import_runs(artifacts_dir, keep_runs=0)
+
+    assert removed == []
+    assert (artifacts_dir / "run_00").exists()
+
+
 def test_full_pipeline_forwards_today_range(monkeypatch, tmp_path):
     install_import_stubs()
     module = load_module(
@@ -98,7 +197,25 @@ def test_full_pipeline_forwards_today_range(monkeypatch, tmp_path):
     )
     seen_commands: list[list[str]] = []
     seen_stages: list[str] = []
+    logger_updates: list[dict] = []
 
+    class FakeImportLogger:
+        enabled = False
+
+        @classmethod
+        def disabled(cls):
+            return cls()
+
+        @classmethod
+        def start(cls, **_kwargs):
+            return cls()
+
+        def update(self, **kwargs):
+            logger_updates.append(kwargs)
+
+    monkeypatch.setattr(module, "ACTIVE_IMPORT_LOGGER", FakeImportLogger())
+    monkeypatch.setattr(module.ImportRunLogger, "disabled", FakeImportLogger.disabled)
+    monkeypatch.setattr(module.ImportRunLogger, "start", FakeImportLogger.start)
     monkeypatch.setattr(module, "ensure_writable_parent", lambda path: None)
     monkeypatch.setattr(module, "ensure_db_ready", lambda: None)
     monkeypatch.setattr(module, "ensure_playwright_available", lambda: None)
@@ -139,6 +256,7 @@ def test_full_pipeline_forwards_today_range(monkeypatch, tmp_path):
     joined_commands = [" ".join(map(str, command)) for command in seen_commands]
     assert any("--events-min-date" in command and today in command for command in joined_commands)
     assert any("--events-max-date" in command and today in command for command in joined_commands)
+    assert "--refresh-existing-events" in seen_commands[0]
     import_cmd = next(command for command in seen_commands if "import_events.py" in " ".join(map(str, command)))
     assert any(str(part).endswith("import.json") for part in import_cmd)
     backfill_cmd = next(command for command in seen_commands if "backfill_normalized_texts.py" in " ".join(map(str, command)))
@@ -148,6 +266,14 @@ def test_full_pipeline_forwards_today_range(monkeypatch, tmp_path):
     artist_ids_file = next(Path(part) for part in backfill_cmd if str(part).endswith("artist_ids.txt"))
     assert event_ids_file.read_text(encoding="utf-8").splitlines() == ["1"]
     assert artist_ids_file.read_text(encoding="utf-8").splitlines() == ["10", "11"]
+    scope_update = next(update for update in logger_updates if update.get("metadata", {}).get("enrichmentScope"))
+    assert scope_update["metadata"] == {
+        "newImportEvents": 1,
+        "newImportArtists": 2,
+        "enrichmentEvents": 1,
+        "enrichmentArtists": 2,
+        "enrichmentScope": "new_import",
+    }
 
 
 def test_full_pipeline_runs_generate_embeddings_before_backfill_vectors(monkeypatch, tmp_path):
@@ -405,7 +531,25 @@ def test_full_pipeline_backfills_existing_scope_when_dedup_leaves_no_new_events(
     events_json = tmp_path / "events.json"
     seen_stages: list[str] = []
     seen_commands: list[list[str]] = []
+    logger_updates: list[dict] = []
 
+    class FakeImportLogger:
+        enabled = False
+
+        @classmethod
+        def disabled(cls):
+            return cls()
+
+        @classmethod
+        def start(cls, **_kwargs):
+            return cls()
+
+        def update(self, **kwargs):
+            logger_updates.append(kwargs)
+
+    monkeypatch.setattr(module, "ACTIVE_IMPORT_LOGGER", FakeImportLogger())
+    monkeypatch.setattr(module.ImportRunLogger, "disabled", FakeImportLogger.disabled)
+    monkeypatch.setattr(module.ImportRunLogger, "start", FakeImportLogger.start)
     monkeypatch.setattr(module, "ensure_writable_parent", lambda path: None)
     monkeypatch.setattr(module, "ensure_db_ready", lambda: None)
     monkeypatch.setattr(module, "ensure_playwright_available", lambda: None)
@@ -455,6 +599,14 @@ def test_full_pipeline_backfills_existing_scope_when_dedup_leaves_no_new_events(
     assert "--continue-on-error" in event_tag_cmd
     assert events_json.with_name("event_ids.txt").read_text(encoding="utf-8").splitlines() == ["2454507"]
     assert events_json.with_name("artist_ids.txt").read_text(encoding="utf-8").splitlines() == ["2178"]
+    scope_update = next(update for update in logger_updates if update.get("metadata", {}).get("enrichmentScope"))
+    assert scope_update["metadata"] == {
+        "newImportEvents": 0,
+        "newImportArtists": 0,
+        "enrichmentEvents": 1,
+        "enrichmentArtists": 1,
+        "enrichmentScope": "existing_db_slice",
+    }
 
 
 def test_full_pipeline_imports_biographies_for_existing_scope_without_new_events(monkeypatch, tmp_path):
