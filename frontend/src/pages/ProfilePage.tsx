@@ -19,7 +19,7 @@ interface ProfilePageProps {
 
 export function ProfilePage({ recommendationTargetControls, showBiography = true }: ProfilePageProps = {}) {
   const { detailsPanelProps, searchFormProps, selectedNode, setSelected } = useGraphSearchDetails()
-  const [activeWorkspaceTab, setActiveWorkspaceTab] = useState<ProfileWorkspaceTab>('graph')
+  const [activeWorkspaceTab, setActiveWorkspaceTab] = useState<ProfileWorkspaceTab>('recommendations')
   const [currentRole, setCurrentRole] = useState<AuthRole | null>(() => {
     const storedRole = localStorage.getItem('role')
     return storedRole === 'artist' || storedRole === 'agent' || storedRole === 'admin'
@@ -171,19 +171,6 @@ export function ProfilePage({ recommendationTargetControls, showBiography = true
             <div className="inline-flex w-fit gap-1 rounded-xl bg-[var(--surface-input)] p-1" role="tablist" aria-label="Profile graph views">
               <Button
                 type="button"
-                id="profile-workspace-tab-graph"
-                variant={activeWorkspaceTab === 'graph' ? 'default' : 'ghost'}
-                size="sm"
-                className={cn('rounded-lg', activeWorkspaceTab === 'graph' && 'border-[var(--selection-border)] bg-[var(--selection-soft)]')}
-                role="tab"
-                aria-selected={activeWorkspaceTab === 'graph'}
-                aria-controls="profile-workspace-panel-graph"
-                onClick={() => setActiveWorkspaceTab('graph')}
-              >
-                Graph
-              </Button>
-              <Button
-                type="button"
                 id="profile-workspace-tab-recommendations"
                 variant={activeWorkspaceTab === 'recommendations' ? 'default' : 'ghost'}
                 size="sm"
@@ -194,6 +181,19 @@ export function ProfilePage({ recommendationTargetControls, showBiography = true
                 onClick={() => setActiveWorkspaceTab('recommendations')}
               >
                 Recommendations
+              </Button>
+              <Button
+                type="button"
+                id="profile-workspace-tab-graph"
+                variant={activeWorkspaceTab === 'graph' ? 'default' : 'ghost'}
+                size="sm"
+                className={cn('rounded-lg', activeWorkspaceTab === 'graph' && 'border-[var(--selection-border)] bg-[var(--selection-soft)]')}
+                role="tab"
+                aria-selected={activeWorkspaceTab === 'graph'}
+                aria-controls="profile-workspace-panel-graph"
+                onClick={() => setActiveWorkspaceTab('graph')}
+              >
+                Graph
               </Button>
             </div>
             <section
