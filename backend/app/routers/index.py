@@ -2,7 +2,6 @@ from fastapi import APIRouter
 
 from app.routers import (
     admin_users,
-    artist_claims,
     artist_connections,
     artists,
     composition,
@@ -32,7 +31,6 @@ router.include_router(venues.router, prefix="/venue", tags=["venues"])
 router.include_router(events.router, prefix="/event", tags=["events"])
 router.include_router(promoters.router, prefix="/promoter", tags=["promoters"])
 router.include_router(artist_connections.router, prefix="/artists", tags=["artist-connections"])
-router.include_router(artist_claims.router, tags=["artist-claims"])
 router.include_router(recommendations.router, tags=["recommendations"])
 router.include_router(feedback.router, tags=["feedback"])
 router.include_router(graph.router, tags=["graph"])

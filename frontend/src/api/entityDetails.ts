@@ -32,9 +32,3 @@ export const updateArtistBiography = (
   biography: string,
 ): Promise<ArtistBiographyResponse> =>
   api.patch<ArtistBiographyResponse>(`/artist/${artistId}/biography`, {biography})
-
-export const claimArtistProfile = (
-  artistId: number,
-  reason: string,
-): Promise<{ success: boolean; message: string; claim_id: number }> =>
-  api.post(`/artists/${artistId}/claim`, { reason })

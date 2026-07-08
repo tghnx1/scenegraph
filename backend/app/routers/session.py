@@ -83,6 +83,9 @@ async def register(register_data: RegisterRequest) -> RegisterResponse:
     if register_data.role not in {"artist", "agent", "admin"}:
         return RegisterResponse(success=False, message="Invalid role")
 
+    if register_data.role == "artist" and register_data.artist_id is None:
+        return RegisterResponse(success=False, message="Please select your artist profile")
+
     with get_connection() as connection:
         with connection.cursor() as cursor:
             cursor.execute(
@@ -97,6 +100,48 @@ async def register(register_data: RegisterRequest) -> RegisterResponse:
 
             if existing_user is not None:
                 return RegisterResponse(success=False, message="Username or email already exists")
+
+            selected_artist = None
+            if register_data.role == "artist":
+                cursor.execute(
+                    """
+                    SELECT id, name
+                    FROM artists
+                    WHERE id = %s
+                    """,
+                    (register_data.artist_id,),
+                )
+                selected_artist = cursor.fetchone()
+                if selected_artist is None:
+                    return RegisterResponse(success=False, message="Selected artist profile does not exist")
+
+                cursor.execute(
+                    """
+                    SELECT id, username
+                    FROM users
+                    WHERE artist_id = %s
+                      AND status IN ('pending', 'approved')
+                    LIMIT 1
+                    """,
+                    (register_data.artist_id,),
+                )
+                assigned_user = cursor.fetchone()
+                if assigned_user is not None:
+                    return RegisterResponse(success=False, message="This artist profile is already assigned")
+
+                cursor.execute(
+                    """
+                    SELECT id
+                    FROM artist_claims
+                    WHERE artist_id = %s
+                      AND status = 'pending'
+                    LIMIT 1
+                    """,
+                    (register_data.artist_id,),
+                )
+                pending_claim = cursor.fetchone()
+                if pending_claim is not None:
+                    return RegisterResponse(success=False, message="This artist profile already has a pending registration")
 
             hashed_password = pwd_context.hash(register_data.password)
             cursor.execute(
@@ -114,12 +159,25 @@ async def register(register_data: RegisterRequest) -> RegisterResponse:
             )
             created_user = cursor.fetchone()
 
+            if register_data.role == "artist" and selected_artist is not None:
+                cursor.execute(
+                    """
+                    INSERT INTO artist_claims (user_id, artist_id, reason)
+                    VALUES (%s, %s, %s)
+                    """,
+                    (
+                        created_user["id"],
+                        selected_artist["id"],
+                        "Requested during registration",
+                    ),
+                )
+
             log_activity(
                 connection,
                 created_user["id"],
                 register_data.username,
                 "registration",
-                "User account",
+                selected_artist["name"] if selected_artist is not None else "User account",
             )
             connection.commit()
 

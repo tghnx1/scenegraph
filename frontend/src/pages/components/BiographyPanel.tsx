@@ -2,7 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { Button } from '@/shared/ui/button'
 import { BIOGRAPHY_MAX_LENGTH, validateBiography } from '@/shared/lib/validation'
-import { claimArtistProfile, fetchArtistBiography, updateArtistBiography } from '../../api/entityDetails'
+import { fetchArtistBiography, updateArtistBiography } from '../../api/entityDetails'
 import type { ConnectedArtistItem } from '../../types/artist'
 import { ManualArtistConnections, type ManualArtistConnectionsProps } from './ManualArtistConnections'
 
@@ -12,18 +12,6 @@ interface BiographyPanelProps {
   manualConnections: ManualArtistConnectionsProps
   canEditBiography: boolean
   hasApprovedArtistProfile: boolean
-  pendingArtistClaim?: {
-    id: number
-    artist_id: number
-    artist_name: string
-    created_at?: string
-  } | null
-  onClaimSubmitted?: (claim: {
-    id: number
-    artist_id: number
-    artist_name: string
-    created_at: string
-  }) => void
 }
 
 export function BiographyPanel({
@@ -32,12 +20,9 @@ export function BiographyPanel({
   manualConnections,
   canEditBiography,
   hasApprovedArtistProfile,
-  pendingArtistClaim = null,
-  onClaimSubmitted,
 }: BiographyPanelProps) {
   const hasArtistProfileTarget = artistId !== null
   const shouldShowApprovedProfileWorkspace = hasApprovedArtistProfile && hasArtistProfileTarget
-  const isWaitingForClaimApproval = !hasApprovedArtistProfile && pendingArtistClaim !== null
   const [artistName, setArtistName] = useState('Artist profile')
   const [biography, setBiography] = useState('')
   const [draftBiography, setDraftBiography] = useState('')
@@ -47,30 +32,19 @@ export function BiographyPanel({
   const [isSaving, setIsSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
-  const [claimReason, setClaimReason] = useState('')
-  const [claimMessage, setClaimMessage] = useState('')
-  const [claimError, setClaimError] = useState('')
-  const [isClaiming, setIsClaiming] = useState(false)
 
   useEffect(() => {
     let isCurrent = true
 
-    setClaimError('')
-    setClaimMessage('')
-
     if (artistId === null || !hasApprovedArtistProfile) {
       setIsLoading(false)
-      setArtistName(pendingArtistClaim?.artist_name ?? selectedArtistName ?? 'Artist profile')
+      setArtistName(selectedArtistName ?? 'Artist profile')
       setBiography('')
       setDraftBiography('')
       setLinkedArtists([])
       setIsEditing(false)
       setSuccess(null)
-      setError(
-        pendingArtistClaim
-          ? `Waiting approval to claim "${pendingArtistClaim.artist_name}"`
-          : 'Claim your artist profile to unlock recommendations and biography editing.',
-      )
+      setError('Artist profiles are selected during registration and approved together with the account.')
       return () => { isCurrent = false }
     }
 
@@ -97,7 +71,7 @@ export function BiographyPanel({
       })
 
     return () => { isCurrent = false }
-  }, [artistId, hasApprovedArtistProfile, pendingArtistClaim, selectedArtistName])
+  }, [artistId, hasApprovedArtistProfile, selectedArtistName])
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -129,43 +103,6 @@ export function BiographyPanel({
     }
   }
 
-  const handleClaimProfile = async () => {
-    if (artistId === null) {
-      setClaimError('Select an artist profile before sending a claim.')
-      return
-    }
-
-    const reason = claimReason.trim()
-    if (reason.length < 6) {
-      setClaimError('Please explain your claim in at least 6 characters.')
-      return
-    }
-
-    setIsClaiming(true)
-    setClaimError('')
-    setClaimMessage('')
-
-    try {
-      const claim = await claimArtistProfile(artistId, reason)
-      const claimedArtistName = artistName
-      onClaimSubmitted?.({
-        id: claim.claim_id,
-        artist_id: artistId,
-        artist_name: claimedArtistName,
-        created_at: new Date().toISOString(),
-      })
-      setClaimMessage(`Waiting approval to claim "${claimedArtistName}"`)
-      setClaimReason('')
-    } catch (requestError) {
-      const message = requestError instanceof Error
-        ? requestError.message.replace(/^400:\s*/, '').replace(/^409:\s*/, '')
-        : 'Failed to send claim.'
-      setClaimError(message)
-    } finally {
-      setIsClaiming(false)
-    }
-  }
-
   return (
     <article className="grid gap-4 rounded-3xl border border-[color-mix(in_srgb,var(--text)_10%,transparent)] bg-[color-mix(in_srgb,var(--background)_42%,transparent)] p-5 shadow-[0_10px_24px_rgba(0,0,0,0.12)] backdrop-blur-sm">
       <div className="flex items-center justify-between gap-3">
@@ -186,28 +123,6 @@ export function BiographyPanel({
           >
             Edit biography
           </Button>
-        )}
-        {!canEditBiography && !isLoading && !isWaitingForClaimApproval && (
-          <div className="grid gap-2">
-            <textarea
-              value={claimReason}
-              onChange={(event) => setClaimReason(event.target.value)}
-              placeholder="Explain why this is your artist profile."
-              className="min-h-24 w-full rounded-xl border border-[var(--control-border)] bg-[var(--surface-input)] p-3 text-sm"
-            />
-
-            {claimError && <p style={{ color: 'var(--danger, #d94848)' }}>{claimError}</p>}
-            {claimMessage && <p>{claimMessage}</p>}
-
-            <Button
-              type="button"
-              size="sm"
-              disabled={isClaiming}
-              onClick={handleClaimProfile}
-            >
-              {isClaiming ? 'Sending claim...' : 'Claim artist profile'}
-            </Button>
-          </div>
         )}
       </div>
 

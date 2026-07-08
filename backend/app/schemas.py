@@ -78,6 +78,7 @@ class RegisterRequest(BaseModel):
     password: str
     password_confirm: str
     role: Literal["artist", "agent", "admin"]
+    artist_id: int | None = None
 
 class RegisterResponse(BaseModel):
     success: bool
@@ -97,9 +98,6 @@ class ChangePasswordResponse(BaseModel):
 class ChangeRoleRequest(BaseModel):
     role: Literal["artist", "agent"]
 
-
-class ArtistClaimRequest(BaseModel):
-    reason: str
 
 class SimilarityItem(BaseModel):
     id: int

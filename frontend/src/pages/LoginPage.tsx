@@ -4,6 +4,10 @@ import { useNavigate } from 'react-router-dom'
 import { ChevronDown } from 'lucide-react'
 // import { ChevronsUpDown } from 'lucide-react'
 import { validateLoginForm, validateRegistrationForm } from '@/shared/lib/validation'
+import { SEARCH_RESULT_LIMIT, fetchSearch } from '../api/search'
+import { useApi } from '../api/useApi'
+import type { SearchResponse, SearchResult } from '../types/search'
+import { useDebouncedValue } from './hooks/useDebouncedValue'
 
 interface LoginPageProps {
   onLogin: (role: AuthRole, redirect?: boolean) => void }
@@ -19,6 +23,7 @@ const REGISTRATION_ROLES = [
 ] as const
 
 type RegistrationRole = (typeof REGISTRATION_ROLES)[number]['value']
+const EMPTY_SEARCH_RESPONSE: SearchResponse = { query: '', results: [] }
 
 function RoleSelect({value, onChange}: {value: RegistrationRole; onChange: (role: RegistrationRole) => void}) {
   const [isOpen, setIsOpen] = useState(false)
@@ -124,6 +129,24 @@ export function LoginPage({ onLogin }: LoginPageProps) {
   const [email, setEmail] = useState('')
   const [passwordConfirm, setPasswordConfirm] = useState('')
   const [requestedRole, setRequestedRole] = useState<RegistrationRole>('artist') 
+  const [artistSearchValue, setArtistSearchValue] = useState('')
+  const [selectedArtist, setSelectedArtist] = useState<SearchResult | null>(null)
+  const debouncedArtistSearchValue = useDebouncedValue(artistSearchValue.trim(), 350)
+  const shouldFetchArtistSearch =
+    isRegistering &&
+    requestedRole === 'artist' &&
+    debouncedArtistSearchValue.length >= 2 &&
+    debouncedArtistSearchValue === artistSearchValue.trim()
+  const { data: artistSearchData, isLoading: isArtistSearchLoading } = useApi<SearchResponse>(
+    () => (
+      shouldFetchArtistSearch
+        ? fetchSearch(debouncedArtistSearchValue, SEARCH_RESULT_LIMIT, 'artist')
+        : Promise.resolve(EMPTY_SEARCH_RESPONSE)
+    ),
+    [debouncedArtistSearchValue, shouldFetchArtistSearch]
+  )
+  const artistResults = (artistSearchData?.results ?? []).filter((result) => result.type === 'artist')
+  const isArtistSearchWaiting = artistSearchValue.trim().length >= 2 && debouncedArtistSearchValue !== artistSearchValue.trim()
 
   useEffect(() => {
     const showLoginForm = () => {
@@ -148,28 +171,39 @@ export function LoginPage({ onLogin }: LoginPageProps) {
         setError(validationError)
         return
       }
-
-      setIsSubmitting(true)
-      const response = await register(
-        cleanUsername,
-        cleanEmail,
-        password,
-        passwordConfirm,
-        requestedRole,
-      )
-
-      if (!response.success) {
-        setError(response.message)
-        setIsSubmitting(false)
+      if (requestedRole === 'artist' && selectedArtist === null) {
+        setError('Please select your artist profile from the search results.')
         return
       }
 
-      setError('Registration successful. Please wait for admin approval.')
-      setIsRegistering(false)
-      setPassword('')
-      setPasswordConfirm('')
-      setEmail('')
-      setIsSubmitting(false)
+      setIsSubmitting(true)
+      try {
+        const response = await register(
+          cleanUsername,
+          cleanEmail,
+          password,
+          passwordConfirm,
+          requestedRole,
+          requestedRole === 'artist' ? selectedArtist?.id ?? null : null,
+        )
+
+        if (!response.success) {
+          setError(response.message)
+          return
+        }
+
+        setError('Registration successful. Please wait for admin approval.')
+        setIsRegistering(false)
+        setPassword('')
+        setPasswordConfirm('')
+        setEmail('')
+        setArtistSearchValue('')
+        setSelectedArtist(null)
+      } catch (requestError) {
+        setError(requestError instanceof Error ? requestError.message : 'Registration failed.')
+      } finally {
+        setIsSubmitting(false)
+      }
       return
     }
 
@@ -182,21 +216,6 @@ export function LoginPage({ onLogin }: LoginPageProps) {
     setIsSubmitting(true)
 
     try {
-      if (isRegistering) {
-        const response = await register(cleanUsername, cleanEmail, password, passwordConfirm, requestedRole)
-        if (!response.success) {
-          setError(response.message)
-          return
-        }
-
-        setError('Registration successful. Please wait for admin approval.')
-        setIsRegistering(false)
-        setPassword('')
-        setPasswordConfirm('')
-        setEmail('')
-        return
-      }
-
       const response = await login(cleanUsername, password)
       if (!response.success || !response.access_token) {
         setError(response.message || 'Invalid username or password')
@@ -287,8 +306,77 @@ export function LoginPage({ onLogin }: LoginPageProps) {
           {isRegistering && (
             <RoleSelect
               value={requestedRole}
-              onChange={setRequestedRole}
+              onChange={(nextRole) => {
+                setRequestedRole(nextRole)
+                if (nextRole !== 'artist') {
+                  setArtistSearchValue('')
+                  setSelectedArtist(null)
+                }
+              }}
             />
+          )}
+          {isRegistering && requestedRole === 'artist' && (
+            <label style={{ display: 'grid', gap: 6, color: colorVar('--text-muted'), fontSize: 14, position: 'relative' }}>
+              Artist profile
+              <input
+                style={inputStyle}
+                type="search"
+                value={artistSearchValue}
+                onChange={(event) => {
+                  const nextValue = event.target.value
+                  setArtistSearchValue(nextValue)
+                  setSelectedArtist((currentArtist) => (
+                    currentArtist && currentArtist.name !== nextValue ? null : currentArtist
+                  ))
+                }}
+                placeholder="Search your artist name..."
+                autoComplete="off"
+                required
+              />
+              {selectedArtist && (
+                <span style={{ color: 'var(--accent)', fontSize: 13 }}>
+                  Selected: {selectedArtist.name}
+                </span>
+              )}
+              {!selectedArtist && artistSearchValue.trim().length >= 2 && (
+                <div
+                  style={{
+                    display: 'grid',
+                    gap: 4,
+                    maxHeight: 180,
+                    overflowY: 'auto',
+                    border: `1px solid ${colorAlpha('--text', 18)}`,
+                    borderRadius: 8,
+                    background: colorAlpha('--background', 92),
+                    padding: 6,
+                  }}
+                >
+                  {(isArtistSearchWaiting || isArtistSearchLoading) && (
+                    <span style={{ padding: '8px 10px', color: colorVar('--text-muted') }}>Searching...</span>
+                  )}
+                  {!isArtistSearchWaiting && !isArtistSearchLoading && artistResults.length === 0 && (
+                    <span style={{ padding: '8px 10px', color: colorVar('--text-muted') }}>No artist matches</span>
+                  )}
+                  {!isArtistSearchWaiting && !isArtistSearchLoading && artistResults.map((artist) => (
+                    <button
+                      key={artist.id}
+                      type="button"
+                      style={{
+                        ...loginButtonStyle,
+                        textAlign: 'left',
+                        color: colorVar('--text'),
+                      }}
+                      onClick={() => {
+                        setSelectedArtist(artist)
+                        setArtistSearchValue(artist.name)
+                      }}
+                    >
+                      {artist.name}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </label>
           )}
           <label style={{ display: 'grid', gap: 6, color: colorVar('--text-muted'), fontSize: 14 }}>
             Password

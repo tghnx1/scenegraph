@@ -15,10 +15,24 @@ def list_pending_users(connection: Connection) -> list[dict]:
     with connection.cursor() as cursor:
         cursor.execute(
             """
-            SELECT id, username, email, role, status, created_at
+            SELECT
+                users.id,
+                users.username,
+                users.email,
+                users.role,
+                users.status,
+                users.created_at,
+                artist_claims.id AS artist_claim_id,
+                artist_claims.artist_id,
+                artists.name AS artist_name
             FROM users
-            WHERE status = 'pending'
-            ORDER BY created_at ASC
+            LEFT JOIN artist_claims
+                ON artist_claims.user_id = users.id
+               AND artist_claims.status = 'pending'
+            LEFT JOIN artists
+                ON artists.id = artist_claims.artist_id
+            WHERE users.status = 'pending'
+            ORDER BY users.created_at ASC
             """
         )
         return cursor.fetchall()
@@ -28,17 +42,79 @@ def approve_user(connection: Connection, *, user_id: int, admin: dict) -> dict:
     with connection.cursor() as cursor:
         cursor.execute(
             """
-            UPDATE users
-            SET status = 'approved'
-            WHERE id = %s
-            RETURNING id, username, email, role, status
+            SELECT
+                users.id,
+                users.username,
+                users.email,
+                users.role,
+                users.status,
+                artist_claims.id AS artist_claim_id,
+                artist_claims.artist_id,
+                artists.name AS artist_name
+            FROM users
+            LEFT JOIN artist_claims
+                ON artist_claims.user_id = users.id
+               AND artist_claims.status = 'pending'
+            LEFT JOIN artists
+                ON artists.id = artist_claims.artist_id
+            WHERE users.id = %s
+            FOR UPDATE OF users
             """,
             (user_id,),
         )
+        target_user = cursor.fetchone()
+        if target_user is None:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        if target_user["role"] == "artist" and target_user["artist_id"] is not None:
+            cursor.execute(
+                """
+                SELECT id, username
+                FROM users
+                WHERE artist_id = %s
+                  AND id != %s
+                  AND status IN ('pending', 'approved')
+                LIMIT 1
+                """,
+                (target_user["artist_id"], user_id),
+            )
+            assigned_user = cursor.fetchone()
+            if assigned_user is not None:
+                raise HTTPException(status_code=409, detail="Artist profile is already assigned")
+
+        cursor.execute(
+            """
+            UPDATE users
+            SET status = 'approved',
+                artist_id = COALESCE(%s, artist_id)
+            WHERE id = %s
+            RETURNING id, username, email, role, status, artist_id
+            """,
+            (target_user["artist_id"], user_id),
+        )
         updated_user = cursor.fetchone()
-    if updated_user is None:
-        raise HTTPException(status_code=404, detail="User not found")
+
+        if target_user["artist_claim_id"] is not None:
+            cursor.execute(
+                """
+                UPDATE artist_claims
+                SET status = 'approved',
+                    decided_at = CURRENT_TIMESTAMP,
+                    decided_by = %s
+                WHERE id = %s
+                """,
+                (admin["id"], target_user["artist_claim_id"]),
+            )
+
     log_activity(connection, admin["id"], admin["username"], "user approved", updated_user["username"])
+    if target_user["artist_name"] is not None:
+        log_activity(
+            connection,
+            admin["id"],
+            admin["username"],
+            "artist claim approved",
+            f"{updated_user['username']} → {target_user['artist_name']}",
+        )
     connection.commit()
     return updated_user
 
@@ -55,6 +131,17 @@ def reject_user(connection: Connection, *, user_id: int, admin: dict) -> dict:
             (user_id,),
         )
         updated_user = cursor.fetchone()
+        cursor.execute(
+            """
+            UPDATE artist_claims
+            SET status = 'rejected',
+                decided_at = CURRENT_TIMESTAMP,
+                decided_by = %s
+            WHERE user_id = %s
+              AND status = 'pending'
+            """,
+            (admin["id"], user_id),
+        )
     if updated_user is None:
         raise HTTPException(status_code=404, detail="User not found")
     log_activity(connection, admin["id"], admin["username"], "user registration rejected", updated_user["username"])

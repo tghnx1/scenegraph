@@ -8,7 +8,7 @@ import { SearchInputField } from './components/SearchInputField.tsx'
 import { useGraphSearchDetails } from './hooks/useGraphSearchDetails.ts'
 import { useManualArtistConnections } from './hooks/useManualArtistConnections.ts'
 import { BiographyPanel } from './components/BiographyPanel.tsx'
-import { getMe, type AuthRole, type MeResponse } from '../api/auth'
+import { getMe, type AuthRole } from '../api/auth'
 
 type ProfileWorkspaceTab = 'graph' | 'recommendations'
 
@@ -35,8 +35,6 @@ export function ProfilePage({ recommendationTargetControls, showBiography = true
     const stored = localStorage.getItem('artist_name')?.trim() ?? ''
     return stored || null
   })
-  const [pendingArtistClaim, setPendingArtistClaim] = useState<NonNullable<MeResponse['pending_artist_claim']> | null>(null)
-
   const refreshCurrentUser = async () => {
     try {
       const response = await getMe()
@@ -58,7 +56,6 @@ export function ProfilePage({ recommendationTargetControls, showBiography = true
         setAssignedArtistName(null)
       }
 
-      setPendingArtistClaim(response.artist_id ? null : (response.pending_artist_claim ?? null))
     } catch {
       // Keep the last known state when the session is unavailable.
     }
@@ -113,13 +110,13 @@ export function ProfilePage({ recommendationTargetControls, showBiography = true
         : null
   const profileArtistId = isArtistUser ? storedArtistId : artistId
   const recommendationTargetName = recommendationTargetControls?.artistName
-    ?? (isArtistUser ? assignedArtistName ?? pendingArtistClaim?.artist_name : selectedArtistName)
+    ?? (isArtistUser ? assignedArtistName : selectedArtistName)
   const biographyArtistId = isArtistUser
-    ? (profileArtistId ?? pendingArtistClaim?.artist_id ?? selectedDetailArtistId ?? selectedNodeArtistId)
+    ? (profileArtistId ?? selectedDetailArtistId ?? selectedNodeArtistId)
     : artistId
   const biographySelectedArtistName = hasAssignedArtist
     ? null
-    : pendingArtistClaim?.artist_name ?? selectedArtistName
+    : selectedArtistName
 
   const canEditBiography =
     hasAssignedArtist && storedArtistId === profileArtistId
@@ -225,8 +222,6 @@ export function ProfilePage({ recommendationTargetControls, showBiography = true
               selectedArtistName={biographySelectedArtistName}
               canEditBiography={canEditBiography}
               hasApprovedArtistProfile={hasAssignedArtist}
-              pendingArtistClaim={pendingArtistClaim}
-              onClaimSubmitted={(claim) => setPendingArtistClaim(claim)}
               manualConnections={{
                 connections: manualConnections.connections,
                 isLoading: manualConnections.isLoading,

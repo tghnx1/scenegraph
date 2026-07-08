@@ -40,6 +40,9 @@ export interface PendingUser {
   role: AuthRole
   status: string
   created_at: string
+  artist_claim_id?: number | null
+  artist_id?: number | null
+  artist_name?: string | null
 }
 
 export const getPendingUsers = (): Promise<{ success: boolean; users: PendingUser[] }> =>
@@ -65,6 +68,7 @@ export const register = (
   password: string,
   password_confirm: string,
   role: AuthRole,
+  artist_id?: number | null,
 ): Promise<RegisterResponse> =>
   api.post<RegisterResponse>('/register', {
     username,
@@ -72,6 +76,7 @@ export const register = (
     password,
     password_confirm,
     role,
+    artist_id,
   })
 
 export interface ActivityLogItem {
@@ -140,30 +145,6 @@ export const changeUserRole = (
 ): Promise<{ success: boolean; message: string }> =>
   api.post(`/admin/users/${userId}/role`, { role })
 
-export interface ArtistClaim {
-  id: number
-  status: 'pending' | 'approved' | 'rejected'
-  reason: string
-  created_at: string
-  username: string
-  email: string
-  artist_name: string
-  artist_id: number
-}
-
-export const getArtistClaims = (): Promise<{ success: boolean; claims: ArtistClaim[] }> =>
-  api.get('/admin/artist-claims')
-
-export const approveArtistClaim = (
-  claimId: number,
-): Promise<{ success: boolean; message: string }> =>
-  api.post(`/admin/artist-claims/${claimId}/approve`, undefined)
-
-export const rejectArtistClaim = (
-  claimId: number,
-): Promise<{ success: boolean; message: string }> =>
-  api.post(`/admin/artist-claims/${claimId}/reject`, undefined)
-
 export interface MeResponse {
   success: boolean
   user_id: number
@@ -171,12 +152,6 @@ export interface MeResponse {
   role: AuthRole
   artist_id?: number | null
   artist_name?: string | null
-  pending_artist_claim?: {
-    id: number
-    artist_id: number
-    artist_name: string
-    created_at: string
-  } | null
 }
 
 export const getMe = (): Promise<MeResponse> =>

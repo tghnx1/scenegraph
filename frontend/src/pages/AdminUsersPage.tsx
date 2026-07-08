@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
 import { changeUserRole, approveUser, rejectUser, getPendingUsers, getUsers,
-  deactivateUser, activateUser, type PendingUser, type UserItem,
-  getArtistClaims, approveArtistClaim, rejectArtistClaim, type ArtistClaim, } from '../api/auth'
+  deactivateUser, activateUser, type PendingUser, type UserItem } from '../api/auth'
 
 interface AdminUsersPageProps {
   compact?: boolean
@@ -13,7 +12,6 @@ export function AdminUsersPage({ compact = false, refreshVersion = 0, onActivity
   const [users, setUsers] = useState<PendingUser[]>([])
   const [message, setMessage] = useState('')
   const [allUsers, setAllUsers] = useState<UserItem[]>([])
-  const [claims, setClaims] = useState<ArtistClaim[]>([])
 
   const adminButtonStyle = {
     padding: '8px 12px',
@@ -43,19 +41,9 @@ export function AdminUsersPage({ compact = false, refreshVersion = 0, onActivity
     }
   }
 
-  const loadClaims = async () => {
-    try {
-      const response = await getArtistClaims()
-      setClaims(response.claims.filter((claim) => claim.status === 'pending'))
-    } catch (error) {
-      console.error(error)
-    }
-  }
-
   useEffect(() => {
     loadUsers()
     loadAllUsers()
-    loadClaims()
   }, [refreshVersion])
 
 
@@ -131,47 +119,6 @@ export function AdminUsersPage({ compact = false, refreshVersion = 0, onActivity
     }
   }
 
-  const handleApproveClaim = async (claim: ArtistClaim) => {
-    try {
-      await approveArtistClaim(claim.id)
-      setMessage('')
-      await loadClaims()
-      await loadUsers()
-      await onActivityChanged?.()
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message: 'Failed to approve claim')
-    }
-  }
-
-  const handleRejectClaim = async (claim: ArtistClaim) => {
-    if (!window.confirm(`Reject claim for ${claim.artist_name}?`)) return
-
-    try {
-      await rejectArtistClaim(claim.id)
-      setMessage('')
-      await loadClaims()
-      await onActivityChanged?.()
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message: 'Failed to reject claim')
-    }
-  }
-
-  const pendingItems = [
-    ...users.map((user) => ({
-      type: 'user' as const,
-      created_at: user.created_at,
-      item: user,
-    })),
-    ...claims.map((claim) => ({
-      type: 'claim' as const,
-      created_at: claim.created_at,
-      item: claim,
-    })),
-  ].sort(
-    (a, b) =>
-      new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-  )
-
   return (
     <section className="min-w-0" style={{ display: 'grid', gap: 12}}>
       {compact ? (
@@ -179,7 +126,7 @@ export function AdminUsersPage({ compact = false, refreshVersion = 0, onActivity
           className="mb-3 flex flex-wrap items-center justify-between gap-2"
           style={{ minHeight:38 }}
         >
-          <span>Pending user registrations and artist claims</span>
+          <span>Pending user registrations</span>
         </div>
       ) : (
       <h1 style={{ fontSize: 32 }}>Pending users</h1>)}
@@ -189,11 +136,7 @@ export function AdminUsersPage({ compact = false, refreshVersion = 0, onActivity
         className="dashboard-scroll-list"
         style={{ maxHeight: 130, overflowY: 'auto', display: 'grid', gap: 12, paddingRight: 16, paddingTop: 4 }}
       >
-        {pendingItems.map((entry) => {
-          if (entry.type === 'user') {
-            const user = entry.item
-
-            return (
+        {users.map((user) => (
               <div
                 key={`user-${user.id}`}
                 className="dashboard-table-row"
@@ -217,7 +160,15 @@ export function AdminUsersPage({ compact = false, refreshVersion = 0, onActivity
                   <strong>{user.username}</strong>
                   <span> — {user.email}</span>
                   <span> — {user.role}</span>
+                  {user.role === 'artist' && user.artist_name && (
+                    <span> — claims: {user.artist_name}</span>
+                  )}
                 </div>
+                {user.role === 'artist' && !user.artist_name && (
+                  <p style={{ margin: 0, fontSize: 13, color: 'var(--danger, #d94848)' }}>
+                    No artist profile selected during registration.
+                  </p>
+                )}
 
                 <div style={{display: 'flex', gap: 8}}>
                   <button
@@ -240,66 +191,7 @@ export function AdminUsersPage({ compact = false, refreshVersion = 0, onActivity
                   </button>
                 </div>
               </div>
-            )
-          }
-
-          const claim = entry.item
-
-          return (
-            <div
-              key={`claim-${claim.id}`}
-              className="dashboard-table-row"
-              style={{
-                display: 'grid',
-                gridTemplateColumns: '1fr',
-                gap: 8,
-                padding: '12px 16px',
-                minHeight: 120,
-                alignItems: 'start',
-                background: 'color-mix(in srgb, var(--accent) 10%, var(--background) 90%)',
-                borderRadius: 12,
-                border: '2px solid color-mix(in srgb, var(--accent) 65%, var(--background) 35%)',
-              }}
-            >
-              <div style={{ whiteSpace: 'normal', overflow: 'visible' }}>
-                <strong>Artist claim</strong>
-                <span> — {claim.username}</span>
-                <span> — {claim.email}</span>
-                <span> — claims: {claim.artist_name}</span>
-              </div>
-
-              <p style={{ margin: 0, fontSize: 13, color: 'var(--text-muted)' }}>
-                Reason: {claim.reason}
-              </p>
-
-              <div style={{ display: 'flex', gap: 8 }}>
-                <button
-                  type="button"
-                  style={{
-                    ...adminButtonStyle,
-                    width: 110,
-                    alignSelf: 'start',
-                  }}
-                  onClick={() => handleApproveClaim(claim)}
-                >
-                  Approve
-                </button>
-
-                <button
-                  type="button"
-                  style={{
-                    ...adminButtonStyle,
-                    width: 110,
-                    alignSelf: 'start',
-                  }}
-                  onClick={() => handleRejectClaim(claim)}
-                >
-                  Reject
-                </button>
-              </div>
-            </div>
-          )
-        })}
+        ))}
       </div>
 
       <div className="dashboard-section-heading" style={{ marginTop: 8, marginBottom: 4 }}>
