@@ -5,6 +5,11 @@ export interface SearchResultItem {
   type: SearchEntityType
   id: number
   name: string
+  genres?: string[] | null
+  biography_normalized?: string | null
+  biography_preview?: string | null
+  latest_event_title?: string | null
+  latest_event_date?: string | null
 }
 
 export interface SearchResponse {

@@ -114,6 +114,17 @@ const inputStyle: CSSProperties = {
   outline: 'none',
 }
 
+const artistClaimMeta = (artist: SearchResult) => {
+  const normalizedBio = artist.biography_normalized?.trim()
+  const bioSnippet = normalizedBio || artist.biography_preview?.trim() || 'No bio yet'
+  const latestEvent = artist.latest_event_title
+    ? `Latest event: ${artist.latest_event_title}${artist.latest_event_date ? ` · ${artist.latest_event_date}` : ''}`
+    : 'No recent events'
+  const genres = artist.genres?.length ? artist.genres.join(' · ') : 'No tags yet'
+
+  return { bioSnippet, latestEvent, genres }
+}
+
 export function LoginPage({ onLogin }: LoginPageProps) {
   const navigate = useNavigate()
   const [username, setUsername] = useState(localStorage.getItem('last_username') ?? '')   // for keeping the username in the login mask
@@ -334,9 +345,19 @@ export function LoginPage({ onLogin }: LoginPageProps) {
                 required
               />
               {selectedArtist && (
-                <span style={{ color: 'var(--accent)', fontSize: 13 }}>
-                  Selected: {selectedArtist.name}
-                </span>
+                <div style={{ display: 'grid', gap: 4, color: 'var(--accent)', fontSize: 13 }}>
+                  <strong>Selected: {selectedArtist.name}</strong>
+                  {(() => {
+                    const meta = artistClaimMeta(selectedArtist)
+                    return (
+                      <div style={{ display: 'grid', gap: 2, color: colorVar('--text-muted') }}>
+                        <span>{meta.bioSnippet}</span>
+                        <span>{meta.latestEvent}</span>
+                        <span>{meta.genres}</span>
+                      </div>
+                    )
+                  })()}
+                </div>
               )}
               {!selectedArtist && artistSearchValue.trim().length >= 2 && (
                 <div
@@ -363,6 +384,8 @@ export function LoginPage({ onLogin }: LoginPageProps) {
                       type="button"
                       style={{
                         ...loginButtonStyle,
+                        display: 'grid',
+                        gap: 4,
                         textAlign: 'left',
                         color: colorVar('--text'),
                       }}
@@ -371,7 +394,23 @@ export function LoginPage({ onLogin }: LoginPageProps) {
                         setArtistSearchValue(artist.name)
                       }}
                     >
-                      {artist.name}
+                      <strong>{artist.name}</strong>
+                      {(() => {
+                        const meta = artistClaimMeta(artist)
+                        return (
+                          <>
+                            <span style={{ color: colorVar('--text-muted'), fontSize: 12, fontWeight: 500 }}>
+                              {meta.bioSnippet}
+                            </span>
+                            <span style={{ color: colorVar('--text-muted'), fontSize: 12, fontWeight: 500 }}>
+                              {meta.latestEvent}
+                            </span>
+                            <span style={{ color: colorVar('--text-muted'), fontSize: 12, fontWeight: 500 }}>
+                              {meta.genres}
+                            </span>
+                          </>
+                        )
+                      })()}
                     </button>
                   ))}
                 </div>
