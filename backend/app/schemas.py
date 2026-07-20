@@ -75,21 +75,25 @@ class LoginResponse(BaseModel):
 class RegisterRequest(BaseModel):
     username: str
     email: str
+    instagram_url: str
     password: str
     password_confirm: str
-    role: Literal["artist", "agent", "admin"]
     artist_id: int | None = None
+    new_artist_name: str | None = None
+
 
 class RegisterResponse(BaseModel):
     success: bool
     message: str
     user_id: int | None = None
 
+
 class ChangePasswordRequest(BaseModel):
     username: str
     current_password: str
     new_password: str
     new_password_confirm: str
+
 
 class ChangePasswordResponse(BaseModel):
     success: bool

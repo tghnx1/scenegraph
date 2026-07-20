@@ -156,19 +156,33 @@ export function AdminUsersPage({ compact = false, refreshVersion = 0, onActivity
                 }}
               >
 
-                <div style={{ whiteSpace: 'normal', overflow: 'visible', textOverflow: 'ellipsis' }}>
-                  <strong>{user.username}</strong>
-                  <span> — {user.email}</span>
-                  <span> — {user.role}</span>
-                  {user.role === 'artist' && user.artist_name && (
-                    <span> — claims: {user.artist_name}</span>
+                <div style={{ display: 'grid', gap: 4 }}>
+                  <div style={{ whiteSpace: 'normal', overflow: 'visible', textOverflow: 'ellipsis' }}>
+                    <strong>{user.username}</strong>
+                    <span> — {user.email}</span>
+                    <span> — {user.role}</span>
+                  </div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, color: 'var(--text-muted)', fontSize: 13 }}>
+                    <span>Registration: {new Date(user.created_at).toLocaleString()}</span>
+                    {user.artist_name && <span>Artist: {user.artist_name}</span>}
+                    {user.artist_source && <span>Source: {user.artist_source === 'resident_advisor' ? 'Resident Advisor' : 'User-created profile'}</span>}
+                    {user.artist_instagram_url && (
+                      <a href={user.artist_instagram_url} target="_blank" rel="noreferrer noopener">
+                        Instagram
+                      </a>
+                    )}
+                    {user.artist_content_url && (
+                      <a href={user.artist_content_url} target="_blank" rel="noreferrer noopener">
+                        RA page
+                      </a>
+                    )}
+                  </div>
+                  {user.role === 'artist' && !user.artist_name && (
+                    <p style={{ margin: 0, fontSize: 13, color: 'var(--danger, #d94848)' }}>
+                      No artist profile selected during registration.
+                    </p>
                   )}
                 </div>
-                {user.role === 'artist' && !user.artist_name && (
-                  <p style={{ margin: 0, fontSize: 13, color: 'var(--danger, #d94848)' }}>
-                    No artist profile selected during registration.
-                  </p>
-                )}
 
                 <div style={{display: 'flex', gap: 8}}>
                   <button
@@ -228,11 +242,28 @@ export function AdminUsersPage({ compact = false, refreshVersion = 0, onActivity
                   : '1px solid color-mix(in srgb, var(--text) 18%, transparent)',
             }}
           >
-            <div className="min-w-0 break-words" style={{ whiteSpace: 'normal', overflow: 'visible', textOverflow: 'ellipsis' }}>
-              <strong>{user.username}</strong>
-              <span> — {user.email}</span>
-              <span> — {user.role}</span>
-              <span> — {user.status}</span>
+            <div className="min-w-0 break-words" style={{ display: 'grid', gap: 4 }}>
+              <div style={{ whiteSpace: 'normal', overflow: 'visible', textOverflow: 'ellipsis' }}>
+                <strong>{user.username}</strong>
+                <span> — {user.email}</span>
+                <span> — {user.role}</span>
+                <span> — {user.status}</span>
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, color: 'var(--text-muted)', fontSize: 13 }}>
+                <span>Registration: {new Date(user.created_at).toLocaleString()}</span>
+                {user.artist_name && <span>Artist: {user.artist_name}</span>}
+                {user.artist_source && <span>Source: {user.artist_source === 'resident_advisor' ? 'Resident Advisor' : 'User-created profile'}</span>}
+                {user.artist_instagram_url && (
+                  <a href={user.artist_instagram_url} target="_blank" rel="noreferrer noopener">
+                    Instagram
+                  </a>
+                )}
+                {user.artist_content_url && (
+                  <a href={user.artist_content_url} target="_blank" rel="noreferrer noopener">
+                    RA page
+                  </a>
+                )}
+              </div>
             </div>
 
             {['approved', 'deactivated', 'rejected'].includes(user.status) && (

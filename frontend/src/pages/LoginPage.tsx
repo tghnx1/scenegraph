@@ -1,9 +1,7 @@
 import { login, register, type AuthRole } from '../api/auth'
-import { type CSSProperties, useEffect, useRef, useState, type FormEvent } from 'react'
+import { type CSSProperties, useEffect, useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ChevronDown } from 'lucide-react'
-// import { ChevronsUpDown } from 'lucide-react'
-import { validateLoginForm, validateRegistrationForm } from '@/shared/lib/validation'
+import { validateArtistProfileName, validateLoginForm, validateRegistrationForm } from '@/shared/lib/validation'
 import { SEARCH_RESULT_LIMIT, fetchSearch } from '../api/search'
 import { useApi } from '../api/useApi'
 import type { SearchResponse, SearchResult } from '../types/search'
@@ -16,77 +14,8 @@ const colorVar = (name: string) => `var(${name})`
 const colorAlpha = (name: string, percent: number) =>
   `color-mix(in srgb, var(${name}) ${percent}%, transparent)`
 
-const REGISTRATION_ROLES = [
-  {value: 'artist', label: 'Artist'},
-  {value: 'agent', label: 'Agent'},
-  {value: 'admin', label: 'Admin'},
-] as const
-
-type RegistrationRole = (typeof REGISTRATION_ROLES)[number]['value']
+type RegistrationMode = 'search' | 'new_artist'
 const EMPTY_SEARCH_RESPONSE: SearchResponse = { query: '', results: [] }
-
-function RoleSelect({value, onChange}: {value: RegistrationRole; onChange: (role: RegistrationRole) => void}) {
-  const [isOpen, setIsOpen] = useState(false)
-  const containerRef = useRef<HTMLDivElement>(null)
-  const selectedRole = REGISTRATION_ROLES.find((role) => role.value === value) ?? REGISTRATION_ROLES[0]
-
-  useEffect(() => {
-    if (!isOpen) return
-
-    const closeOnOutsideClick = (event: MouseEvent) => {
-      if (!containerRef.current?.contains(event.target as Node)) setIsOpen(false)
-    }
-
-    document.addEventListener('mousedown', closeOnOutsideClick)
-    return () => document.removeEventListener('mousedown', closeOnOutsideClick)
-  }, [isOpen])
-
-  return (
-    <div className="relative" ref={containerRef}>
-      <button
-        type="button"
-        className="flex h-10 w-full min-w-0 items-center justify-between rounded-md border border-[var(--control-border)] bg-[var(--surface-input)] px-3 py-2 text-left text-sm text-[var(--text)] outline-none transition-[border-color,box-shadow] hover:border-[var(--focus-border)] focus-visible:border-[var(--focus-border)] focus-visible:ring-3 focus-visible:ring-[var(--focus-ring)]"
-        aria-haspopup="listbox"
-        aria-expanded={isOpen}
-        onClick={() => setIsOpen((open) => !open)}
-        onKeyDown={(event) => {
-          if (event.key === 'Escape') setIsOpen(false)
-          if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
-            event.preventDefault()
-            setIsOpen(true)
-          }
-        }}
-      >
-        <span>{selectedRole.label}</span>
-        <ChevronDown className="size-4 text-[var(--text-muted)]" aria-hidden="true" />
-        {/* <ChevronsUpDown className="size-4 text-[var(--text-muted)]" aria-hidden="true" /> */}
-      </button>
-      {isOpen && (
-        <div
-          className="absolute left-0 right-0 top-[calc(100%+6px)] z-30 grid gap-1 rounded-xl border border-[var(--surface-border)] bg-[var(--surface-dropdown)] p-1.5 shadow-[var(--surface-shadow)]"
-          role="listbox"
-          aria-label="Requested role"
-        >
-          {REGISTRATION_ROLES.map((role) => (
-            <button
-              type="button"
-              className="rounded-lg border border-transparent bg-transparent px-3 py-2 text-left text-sm text-[var(--text)] outline-none transition-colors hover:bg-[var(--control-bg)] focus-visible:bg-[var(--control-bg)]"
-              role="option"
-              aria-selected={role.value === value}
-              key={role.value}
-              onClick={() => {
-                onChange(role.value)
-                setIsOpen(false)
-              }}
-            >
-              {role.label}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  )
-}
 
 const loginButtonStyle: CSSProperties = {
   textDecoration: 'none',
@@ -120,9 +49,13 @@ const artistClaimMeta = (artist: SearchResult) => {
   const latestEvent = artist.latest_event_title
     ? `Latest event: ${artist.latest_event_title}${artist.latest_event_date ? ` · ${artist.latest_event_date}` : ''}`
     : 'No recent events'
-  const genres = artist.genres?.length ? artist.genres.join(' · ') : 'No tags yet'
+  const genres = artist.genres?.length
+    ? [...new Set(artist.genres.map((genre) => genre.trim()).filter(Boolean))].join(' · ')
+    : 'No tags yet'
+  const eventCount = artist.event_count ?? 0
+  const source = artist.ra_artist_id ? 'Resident Advisor profile' : 'User-created profile'
 
-  return { bioSnippet, latestEvent, genres }
+  return { bioSnippet, latestEvent, genres, eventCount, source }
 }
 
 export function LoginPage({ onLogin }: LoginPageProps) {
@@ -138,14 +71,15 @@ export function LoginPage({ onLogin }: LoginPageProps) {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isRegistering, setIsRegistering] = useState(false)
   const [email, setEmail] = useState('')
+  const [instagramUrl, setInstagramUrl] = useState('')
   const [passwordConfirm, setPasswordConfirm] = useState('')
-  const [requestedRole, setRequestedRole] = useState<RegistrationRole>('artist') 
+  const [registrationMode, setRegistrationMode] = useState<RegistrationMode>('search')
   const [artistSearchValue, setArtistSearchValue] = useState('')
   const [selectedArtist, setSelectedArtist] = useState<SearchResult | null>(null)
   const debouncedArtistSearchValue = useDebouncedValue(artistSearchValue.trim(), 350)
   const shouldFetchArtistSearch =
     isRegistering &&
-    requestedRole === 'artist' &&
+    registrationMode === 'search' &&
     debouncedArtistSearchValue.length >= 2 &&
     debouncedArtistSearchValue === artistSearchValue.trim()
   const { data: artistSearchData, isLoading: isArtistSearchLoading } = useApi<SearchResponse>(
@@ -177,39 +111,49 @@ export function LoginPage({ onLogin }: LoginPageProps) {
     const cleanEmail = email.trim()
 
     if (isRegistering) {
-      const validationError = validateRegistrationForm(cleanUsername, cleanEmail, password, passwordConfirm)
+      const validationError = validateRegistrationForm(cleanUsername, cleanEmail, instagramUrl, password, passwordConfirm)
       if (validationError) {
         setError(validationError)
         return
       }
-      if (requestedRole === 'artist' && selectedArtist === null) {
+      if (registrationMode === 'search' && selectedArtist === null) {
         setError('Please select your artist profile from the search results.')
         return
+      }
+      if (registrationMode === 'new_artist') {
+        const artistNameError = validateArtistProfileName(artistSearchValue)
+        if (artistNameError) {
+          setError(artistNameError)
+          return
+        }
       }
 
       setIsSubmitting(true)
       try {
-        const response = await register(
-          cleanUsername,
-          cleanEmail,
+        const response = await register({
+          username: cleanUsername,
+          email: cleanEmail,
+          instagram_url: instagramUrl.trim(),
           password,
-          passwordConfirm,
-          requestedRole,
-          requestedRole === 'artist' ? selectedArtist?.id ?? null : null,
-        )
+          password_confirm: passwordConfirm,
+          artist_id: registrationMode === 'search' ? selectedArtist?.id ?? null : null,
+          new_artist_name: registrationMode === 'new_artist' ? artistSearchValue.trim() : null,
+        })
 
         if (!response.success) {
           setError(response.message)
           return
         }
 
-        setError('Registration successful. Please wait for admin approval.')
+        setError('Registration submitted. Your account will be available after manual review.')
         setIsRegistering(false)
         setPassword('')
         setPasswordConfirm('')
         setEmail('')
+        setInstagramUrl('')
         setArtistSearchValue('')
         setSelectedArtist(null)
+        setRegistrationMode('search')
       } catch (requestError) {
         setError(requestError instanceof Error ? requestError.message : 'Registration failed.')
       } finally {
@@ -293,7 +237,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
         </h1>
         <form onSubmit={handleSubmit} style={{ display: 'grid', gap: 14, marginTop: 24 }}>
           <label style={{ display: 'grid', gap: 6, color: colorVar('--text-muted'), fontSize: 14 }}>
-            Username
+            Login username
             <input
               style={inputStyle}
               value={username}
@@ -301,6 +245,11 @@ export function LoginPage({ onLogin }: LoginPageProps) {
               autoComplete="username"
               required
             />
+            {isRegistering && (
+              <span style={{ fontSize: 12, color: colorVar('--text-muted') }}>
+                This is the username you will use to sign in.
+              </span>
+            )}
           </label>
           {isRegistering && (
             <label style={{ display: 'grid', gap: 6, color: colorVar('--text-muted'), fontSize: 14 }}>
@@ -315,56 +264,93 @@ export function LoginPage({ onLogin }: LoginPageProps) {
             </label>
           )}
           {isRegistering && (
-            <RoleSelect
-              value={requestedRole}
-              onChange={(nextRole) => {
-                setRequestedRole(nextRole)
-                if (nextRole !== 'artist') {
-                  setArtistSearchValue('')
-                  setSelectedArtist(null)
-                }
-              }}
-            />
-          )}
-          {isRegistering && requestedRole === 'artist' && (
-            <label style={{ display: 'grid', gap: 6, color: colorVar('--text-muted'), fontSize: 14, position: 'relative' }}>
-              Artist profile
+            <label style={{ display: 'grid', gap: 6, color: colorVar('--text-muted'), fontSize: 14 }}>
+              Instagram URL
               <input
                 style={inputStyle}
-                type="search"
-                value={artistSearchValue}
-                onChange={(event) => {
-                  const nextValue = event.target.value
-                  setArtistSearchValue(nextValue)
-                  setSelectedArtist((currentArtist) => (
-                    currentArtist && currentArtist.name !== nextValue ? null : currentArtist
-                  ))
-                }}
-                placeholder="Search your artist name..."
-                autoComplete="off"
+                type="url"
+                value={instagramUrl}
+                onChange={(event) => setInstagramUrl(event.target.value)}
+                placeholder="https://www.instagram.com/yourprofile"
+                autoComplete="url"
                 required
               />
-              {selectedArtist && (
-                <div style={{ display: 'grid', gap: 4, color: 'var(--accent)', fontSize: 13 }}>
-                  <strong>Selected: {selectedArtist.name}</strong>
+            </label>
+          )}
+          {isRegistering && (
+            <div style={{ display: 'grid', gap: 10 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                <label style={{ display: 'grid', gap: 6, color: colorVar('--text-muted'), fontSize: 14, flex: 1 }}>
+                  {registrationMode === 'search' ? 'Artist profile search' : 'New artist profile name'}
+                  <input
+                    style={inputStyle}
+                    type={registrationMode === 'search' ? 'search' : 'text'}
+                    value={artistSearchValue}
+                    onChange={(event) => {
+                      const nextValue = event.target.value
+                      setArtistSearchValue(nextValue)
+                      if (registrationMode === 'search') {
+                        setSelectedArtist((currentArtist) => (
+                          currentArtist && currentArtist.name !== nextValue ? null : currentArtist
+                        ))
+                      }
+                    }}
+                    placeholder={
+                      registrationMode === 'search'
+                        ? 'Search your artist name...'
+                        : 'Enter the artist name to create'
+                    }
+                    autoComplete="off"
+                    required
+                  />
+                </label>
+              </div>
+
+              {registrationMode === 'search' && selectedArtist && (
+                <div
+                  style={{
+                    display: 'grid',
+                    gap: 6,
+                    border: `1px solid ${colorAlpha('--text', 18)}`,
+                    borderRadius: 10,
+                    background: colorAlpha('--background', 90),
+                    padding: 12,
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                    <strong style={{ color: colorVar('--text') }}>Selected profile: {selectedArtist.name}</strong>
+                    <button
+                      type="button"
+                      style={{ ...loginButtonStyle, padding: '4px 8px', fontSize: 12 }}
+                      onClick={() => {
+                        setSelectedArtist(null)
+                        setArtistSearchValue('')
+                      }}
+                    >
+                      Clear
+                    </button>
+                  </div>
                   {(() => {
                     const meta = artistClaimMeta(selectedArtist)
                     return (
-                      <div style={{ display: 'grid', gap: 2, color: colorVar('--text-muted') }}>
+                      <div style={{ display: 'grid', gap: 4, color: colorVar('--text-muted'), fontSize: 13 }}>
+                        <span>{meta.source}</span>
                         <span>{meta.bioSnippet}</span>
                         <span>{meta.latestEvent}</span>
                         <span>{meta.genres}</span>
+                        <span>{meta.eventCount} linked events</span>
                       </div>
                     )
                   })()}
                 </div>
               )}
-              {!selectedArtist && artistSearchValue.trim().length >= 2 && (
+
+              {registrationMode === 'search' && artistSearchValue.trim().length >= 2 && !selectedArtist && (
                 <div
                   style={{
                     display: 'grid',
                     gap: 4,
-                    maxHeight: 180,
+                    maxHeight: 200,
                     overflowY: 'auto',
                     border: `1px solid ${colorAlpha('--text', 18)}`,
                     borderRadius: 8,
@@ -400,6 +386,9 @@ export function LoginPage({ onLogin }: LoginPageProps) {
                         return (
                           <>
                             <span style={{ color: colorVar('--text-muted'), fontSize: 12, fontWeight: 500 }}>
+                              {meta.source} · {meta.eventCount} linked events
+                            </span>
+                            <span style={{ color: colorVar('--text-muted'), fontSize: 12, fontWeight: 500 }}>
                               {meta.bioSnippet}
                             </span>
                             <span style={{ color: colorVar('--text-muted'), fontSize: 12, fontWeight: 500 }}>
@@ -415,7 +404,54 @@ export function LoginPage({ onLogin }: LoginPageProps) {
                   ))}
                 </div>
               )}
-            </label>
+
+              {registrationMode === 'new_artist' && (
+                <div
+                  style={{
+                    display: 'grid',
+                    gap: 6,
+                    border: `1px solid ${colorAlpha('--text', 18)}`,
+                    borderRadius: 10,
+                    background: colorAlpha('--background', 90),
+                    padding: 12,
+                  }}
+                >
+                  <strong>New artist profile preview</strong>
+                  <span style={{ color: colorVar('--text-muted'), fontSize: 13 }}>
+                    We will create a new artist profile with this name and send it to admin review.
+                  </span>
+                  <span style={{ color: colorVar('--text'), fontSize: 14 }}>
+                    {artistSearchValue.trim() || 'Artist name is still empty'}
+                  </span>
+                </div>
+              )}
+
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                {registrationMode === 'search' ? (
+                  <button
+                    type="button"
+                    style={loginButtonStyle}
+                    onClick={() => {
+                      setRegistrationMode('new_artist')
+                      setSelectedArtist(null)
+                    }}
+                  >
+                    Can&apos;t find your profile? Create a new one
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    style={loginButtonStyle}
+                    onClick={() => {
+                      setRegistrationMode('search')
+                      setSelectedArtist(null)
+                    }}
+                  >
+                    Search existing profiles instead
+                  </button>
+                )}
+              </div>
+            </div>
           )}
           <label style={{ display: 'grid', gap: 6, color: colorVar('--text-muted'), fontSize: 14 }}>
             Password
@@ -457,8 +493,12 @@ export function LoginPage({ onLogin }: LoginPageProps) {
               if (!isRegistering) {
                 setUsername('')
                 setEmail('')
+                setInstagramUrl('')
                 setPassword('')
                 setPasswordConfirm('')
+                setArtistSearchValue('')
+                setSelectedArtist(null)
+                setRegistrationMode('search')
               }
               setIsRegistering(!isRegistering)
               setError('')

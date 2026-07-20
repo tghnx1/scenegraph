@@ -5,6 +5,8 @@ export interface SearchResultItem {
   type: SearchEntityType
   id: number
   name: string
+  ra_artist_id?: string | null
+  event_count?: number | null
   genres?: string[] | null
   biography_normalized?: string | null
   biography_preview?: string | null

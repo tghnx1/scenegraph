@@ -43,6 +43,9 @@ export interface PendingUser {
   artist_claim_id?: number | null
   artist_id?: number | null
   artist_name?: string | null
+  artist_source?: string | null
+  artist_instagram_url?: string | null
+  artist_content_url?: string | null
 }
 
 export const getPendingUsers = (): Promise<{ success: boolean; users: PendingUser[] }> =>
@@ -62,22 +65,15 @@ export interface RegisterResponse {
   user_id?: number
 }
 
-export const register = (
-  username: string,
-  email: string,
-  password: string,
-  password_confirm: string,
-  role: AuthRole,
-  artist_id?: number | null,
-): Promise<RegisterResponse> =>
-  api.post<RegisterResponse>('/register', {
-    username,
-    email,
-    password,
-    password_confirm,
-    role,
-    artist_id,
-  })
+export const register = (data: {
+  username: string
+  email: string
+  instagram_url: string
+  password: string
+  password_confirm: string
+  artist_id?: number | null
+  new_artist_name?: string | null
+}): Promise<RegisterResponse> => api.post<RegisterResponse>('/register', data)
 
 export interface ActivityLogItem {
   id: number
@@ -124,6 +120,10 @@ export interface UserItem {
   role: AuthRole
   status: string
   created_at: string
+  artist_name?: string | null
+  artist_source?: string | null
+  artist_instagram_url?: string | null
+  artist_content_url?: string | null
 }
 
 export const getUsers = (): Promise<{ success: boolean; users: UserItem[] }> =>

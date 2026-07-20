@@ -6,7 +6,7 @@ from psycopg import Connection
 from app.auth import log_activity
 from app.schemas import ChangeRoleRequest
 
-import os 
+import os
 
 BOOTSTRAP_ADMIN_USERNAME = os.getenv("BOOTSTRAP_ADMIN_USERNAME")
 
@@ -24,7 +24,14 @@ def list_pending_users(connection: Connection) -> list[dict]:
                 users.created_at,
                 artist_claims.id AS artist_claim_id,
                 artist_claims.artist_id,
-                artists.name AS artist_name
+                artist_claims.instagram_url AS artist_instagram_url,
+                artists.name AS artist_name,
+                artists.content_url AS artist_content_url,
+                artists.ra_artist_id AS artist_ra_artist_id,
+                CASE
+                    WHEN artists.ra_artist_id IS NULL THEN 'user_created'
+                    ELSE 'resident_advisor'
+                END AS artist_source
             FROM users
             LEFT JOIN artist_claims
                 ON artist_claims.user_id = users.id
@@ -50,7 +57,14 @@ def approve_user(connection: Connection, *, user_id: int, admin: dict) -> dict:
                 users.status,
                 artist_claims.id AS artist_claim_id,
                 artist_claims.artist_id,
-                artists.name AS artist_name
+                artist_claims.instagram_url AS artist_instagram_url,
+                artists.name AS artist_name,
+                artists.content_url AS artist_content_url,
+                artists.ra_artist_id AS artist_ra_artist_id,
+                CASE
+                    WHEN artists.ra_artist_id IS NULL THEN 'user_created'
+                    ELSE 'resident_advisor'
+                END AS artist_source
             FROM users
             LEFT JOIN artist_claims
                 ON artist_claims.user_id = users.id
@@ -106,7 +120,7 @@ def approve_user(connection: Connection, *, user_id: int, admin: dict) -> dict:
                 (admin["id"], target_user["artist_claim_id"]),
             )
 
-    log_activity(connection, admin["id"], admin["username"], "user approved", updated_user["username"])
+    log_activity(connection, admin["id"], admin["username"], "user approved", updated_user["username"], commit=False)
     if target_user["artist_name"] is not None:
         log_activity(
             connection,
@@ -114,13 +128,115 @@ def approve_user(connection: Connection, *, user_id: int, admin: dict) -> dict:
             admin["username"],
             "artist claim approved",
             f"{updated_user['username']} → {target_user['artist_name']}",
+            commit=False,
         )
     connection.commit()
     return updated_user
 
 
+def _delete_safe_user_created_artist(connection: Connection, artist_id: int) -> bool:
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT
+                a.id,
+                a.ra_artist_id,
+                EXISTS(SELECT 1 FROM event_artists ea WHERE ea.artist_id = a.id) AS has_event_artists,
+                EXISTS(SELECT 1 FROM recommendation_jobs rj WHERE rj.artist_id = a.id) AS has_recommendation_jobs,
+                EXISTS(SELECT 1 FROM artist_extracted_tags aet WHERE aet.artist_id = a.id) AS has_artist_tags,
+                EXISTS(SELECT 1 FROM artist_tag_extraction_runs atr WHERE atr.artist_id = a.id) AS has_artist_tag_runs,
+                EXISTS(
+                    SELECT 1
+                    FROM artist_manual_connections amc
+                    WHERE amc.source_artist_id = a.id OR amc.connected_artist_id = a.id
+                ) AS has_manual_connections,
+                EXISTS(
+                    SELECT 1
+                    FROM users u
+                    WHERE u.artist_id = a.id
+                      AND u.status IN ('pending', 'approved')
+                ) AS has_assigned_users,
+                EXISTS(
+                    SELECT 1
+                    FROM artist_claims ac
+                    WHERE ac.artist_id = a.id
+                      AND ac.status IN ('pending', 'approved')
+                ) AS has_active_claims
+            FROM artists a
+            WHERE a.id = %s
+            """,
+            (artist_id,),
+        )
+        artist_row = cursor.fetchone()
+        if artist_row is None:
+            return False
+
+        if (
+            artist_row["ra_artist_id"] is not None
+            or artist_row["has_event_artists"]
+            or artist_row["has_recommendation_jobs"]
+            or artist_row["has_artist_tags"]
+            or artist_row["has_artist_tag_runs"]
+            or artist_row["has_manual_connections"]
+            or artist_row["has_assigned_users"]
+            or artist_row["has_active_claims"]
+        ):
+            return False
+
+        cursor.execute(
+            """
+            DELETE FROM artist_claims
+            WHERE artist_id = %s
+              AND status = 'rejected'
+            """,
+            (artist_id,),
+        )
+        cursor.execute(
+            """
+            DELETE FROM artists
+            WHERE id = %s
+            """,
+            (artist_id,),
+        )
+        return cursor.rowcount > 0
+
+
 def reject_user(connection: Connection, *, user_id: int, admin: dict) -> dict:
     with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT
+                users.id,
+                users.username,
+                users.email,
+                users.role,
+                users.status,
+                artist_claims.id AS artist_claim_id,
+                artist_claims.artist_id,
+                artist_claims.instagram_url AS artist_instagram_url,
+                artists.name AS artist_name,
+                artists.content_url AS artist_content_url,
+                artists.ra_artist_id AS artist_ra_artist_id,
+                CASE
+                    WHEN artists.ra_artist_id IS NULL THEN 'user_created'
+                    ELSE 'resident_advisor'
+                END AS artist_source
+            FROM users
+            LEFT JOIN artist_claims
+                ON artist_claims.user_id = users.id
+               AND artist_claims.status = 'pending'
+            LEFT JOIN artists
+                ON artists.id = artist_claims.artist_id
+            WHERE users.id = %s
+            FOR UPDATE OF users
+            """,
+            (user_id,),
+        )
+        target_user = cursor.fetchone()
+
+        if target_user is None:
+            raise HTTPException(status_code=404, detail="User not found")
+
         cursor.execute(
             """
             UPDATE users
@@ -131,20 +247,32 @@ def reject_user(connection: Connection, *, user_id: int, admin: dict) -> dict:
             (user_id,),
         )
         updated_user = cursor.fetchone()
-        cursor.execute(
-            """
-            UPDATE artist_claims
-            SET status = 'rejected',
-                decided_at = CURRENT_TIMESTAMP,
-                decided_by = %s
-            WHERE user_id = %s
-              AND status = 'pending'
-            """,
-            (admin["id"], user_id),
-        )
+
+        if target_user["artist_claim_id"] is not None:
+            cursor.execute(
+                """
+                UPDATE artist_claims
+                SET status = 'rejected',
+                    decided_at = CURRENT_TIMESTAMP,
+                    decided_by = %s
+                WHERE id = %s
+                """,
+                (admin["id"], target_user["artist_claim_id"]),
+            )
+
+        if target_user["artist_id"] is not None and target_user["artist_ra_artist_id"] is None:
+            _delete_safe_user_created_artist(connection, int(target_user["artist_id"]))
+
     if updated_user is None:
         raise HTTPException(status_code=404, detail="User not found")
-    log_activity(connection, admin["id"], admin["username"], "user registration rejected", updated_user["username"])
+    log_activity(
+        connection,
+        admin["id"],
+        admin["username"],
+        "user registration rejected",
+        updated_user["username"],
+        commit=False,
+    )
     connection.commit()
     return updated_user
 

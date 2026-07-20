@@ -80,11 +80,19 @@ async def register(register_data: RegisterRequest) -> RegisterResponse:
     if validation_error:
         return RegisterResponse(success=False, message=validation_error)
 
-    if register_data.role not in {"artist", "agent", "admin"}:
-        return RegisterResponse(success=False, message="Invalid role")
+    has_existing_artist = register_data.artist_id is not None
+    has_new_artist_name = bool(register_data.new_artist_name and register_data.new_artist_name.strip())
+    if has_existing_artist == has_new_artist_name:
+        return RegisterResponse(
+            success=False,
+            message="Select an existing artist profile or create a new artist profile",
+        )
 
-    if register_data.role == "artist" and register_data.artist_id is None:
-        return RegisterResponse(success=False, message="Please select your artist profile")
+    clean_new_artist_name = register_data.new_artist_name.strip() if register_data.new_artist_name else None
+    if clean_new_artist_name is not None and len(clean_new_artist_name) < 2:
+        return RegisterResponse(success=False, message="Artist name must be at least 2 characters")
+    if clean_new_artist_name is not None and len(clean_new_artist_name) > 100:
+        return RegisterResponse(success=False, message="Artist name is too long")
 
     with get_connection() as connection:
         with connection.cursor() as cursor:
@@ -102,7 +110,7 @@ async def register(register_data: RegisterRequest) -> RegisterResponse:
                 return RegisterResponse(success=False, message="Username or email already exists")
 
             selected_artist = None
-            if register_data.role == "artist":
+            if has_existing_artist:
                 cursor.execute(
                     """
                     SELECT id, name
@@ -142,32 +150,65 @@ async def register(register_data: RegisterRequest) -> RegisterResponse:
                 pending_claim = cursor.fetchone()
                 if pending_claim is not None:
                     return RegisterResponse(success=False, message="This artist profile already has a pending registration")
+            else:
+                cursor.execute(
+                    """
+                    SELECT pg_advisory_xact_lock(hashtext(LOWER(BTRIM(%s))))
+                    """,
+                    (clean_new_artist_name,),
+                )
+                cursor.execute(
+                    """
+                    SELECT id, name
+                    FROM artists
+                    WHERE LOWER(BTRIM(name)) = LOWER(BTRIM(%s))
+                    LIMIT 1
+                    """,
+                    (clean_new_artist_name,),
+                )
+                selected_artist = cursor.fetchone()
+                if selected_artist is not None:
+                    return RegisterResponse(
+                        success=False,
+                        message="An artist profile with this name already exists. Please search and claim it instead.",
+                    )
+                cursor.execute(
+                    """
+                    INSERT INTO artists (name, ra_artist_id, content_url)
+                    VALUES (%s, NULL, NULL)
+                    RETURNING id, name
+                    """,
+                    (clean_new_artist_name,),
+                )
+                selected_artist = cursor.fetchone()
 
             hashed_password = pwd_context.hash(register_data.password)
             cursor.execute(
                 """
-                INSERT INTO users (username, email, password_hash, role)
-                VALUES (%s, %s, %s, %s)
+                INSERT INTO users (username, email, password_hash, role, status)
+                VALUES (%s, %s, %s, %s, %s)
                 RETURNING id
                 """,
                 (
                     register_data.username,
                     register_data.email,
                     hashed_password,
-                    register_data.role,
+                    "artist",
+                    "pending",
                 ),
             )
             created_user = cursor.fetchone()
 
-            if register_data.role == "artist" and selected_artist is not None:
+            if selected_artist is not None:
                 cursor.execute(
                     """
-                    INSERT INTO artist_claims (user_id, artist_id, reason)
-                    VALUES (%s, %s, %s)
+                    INSERT INTO artist_claims (user_id, artist_id, instagram_url, reason)
+                    VALUES (%s, %s, %s, %s)
                     """,
                     (
                         created_user["id"],
                         selected_artist["id"],
+                        register_data.instagram_url.strip(),
                         "Requested during registration",
                     ),
                 )
@@ -178,6 +219,7 @@ async def register(register_data: RegisterRequest) -> RegisterResponse:
                 register_data.username,
                 "registration",
                 selected_artist["name"] if selected_artist is not None else "User account",
+                commit=False,
             )
             connection.commit()
 

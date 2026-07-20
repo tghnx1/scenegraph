@@ -7,21 +7,22 @@ datasource db {
 }
 
 model Artist {
-  id              BigInt        @id @default(autoincrement())
-  raArtistId      String        @unique @map("ra_artist_id")
-  name            String
-  contentUrl      String?       @map("content_url")
-  urlSafeName     String?       @map("url_safe_name")
-  biography           String?
-  biographyNormalized String?       @map("biography_normalized")
-  biographyUrl        String?       @map("biography_url")
-  biographyStatus     String?       @map("biography_status")
-  eventArtists        EventArtist[]
+  id                   BigInt                 @id @default(autoincrement())
+  raArtistId           String?                @unique @map("ra_artist_id")
+  name                 String
+  contentUrl           String?                @map("content_url")
+  urlSafeName          String?                @map("url_safe_name")
+  biography            String?
+  biographyNormalized   String?                @map("biography_normalized")
+  biographyUrl         String?                @map("biography_url")
+  biographyStatus      String?                @map("biography_status")
+  eventArtists         EventArtist[]
+  artistClaims         ArtistClaim[]          @relation("artist_claim_artist")
   manualKnownArtists     ArtistManualConnection[] @relation("manual_known_source")
   manuallyKnownByArtists ArtistManualConnection[] @relation("manual_known_connected")
-  extractedTags       ArtistExtractedTag[]
-  tagExtractionRuns   ArtistTagExtractionRun[]
-  recommendationJobs  RecommendationJob[]
+  extractedTags        ArtistExtractedTag[]
+  tagExtractionRuns    ArtistTagExtractionRun[]
+  recommendationJobs   RecommendationJob[]
 
   @@map("artists")
 }
@@ -263,16 +264,39 @@ model RecommendationFeedback {
   @@map("recommendation_feedback")
 }
 
+model ArtistClaim {
+  id             BigInt    @id @default(autoincrement())
+  userId         BigInt    @map("user_id")
+  artistId       BigInt    @map("artist_id")
+  instagramUrl   String?   @map("instagram_url")
+  reason         String
+  status         String    @default("pending")
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  decidedAt      DateTime? @map("decided_at") @db.Timestamptz(6)
+  decidedBy      BigInt?   @map("decided_by")
+  user           User      @relation("artist_claim_user", fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  artist         Artist    @relation("artist_claim_artist", fields: [artistId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  decidedByUser  User?     @relation("artist_claim_decided_by", fields: [decidedBy], references: [id], onDelete: SetNull, onUpdate: Cascade)
+
+  @@index([userId, status])
+  @@index([artistId, status])
+  @@map("artist_claims")
+}
+
 model User {
-  id                  BigInt    @id @default(autoincrement())
-  username            String    @unique
-  email               String    @unique
-  passwordHash        String    @map("password_hash")
-  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-  role                String    @default("artist")
-  status              String    @default("pending")
-  mustChangePassword  Boolean   @default(false) @map("must_change_password")
-  recommendationJobs RecommendationJob[]
+  id                  BigInt            @id @default(autoincrement())
+  username            String            @unique
+  email               String            @unique
+  passwordHash        String            @map("password_hash")
+  createdAt           DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  role                String            @default("artist")
+  status              String            @default("pending")
+  artistId            BigInt?           @map("artist_id")
+  mustChangePassword  Boolean           @default(false) @map("must_change_password")
+  artist              Artist?           @relation(fields: [artistId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  artistClaims        ArtistClaim[]     @relation("artist_claim_user")
+  decidedArtistClaims ArtistClaim[]     @relation("artist_claim_decided_by")
+  recommendationJobs  RecommendationJob[]
 
   @@map("users")
 }

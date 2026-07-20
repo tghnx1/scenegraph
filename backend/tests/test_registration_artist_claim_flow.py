@@ -7,6 +7,8 @@ from app.main import app
 
 ADMIN_USER_ID = 95_001
 ARTIST_ID = 95_002
+EXISTING_ARTIST_NAME = "Registration Claim Artist"
+NEW_ARTIST_NAME = "Registration New Artist"
 
 client = TestClient(app)
 
@@ -15,7 +17,7 @@ def admin_headers() -> dict[str, str]:
     return {"Authorization": f"Bearer {create_access_token({'sub': str(ADMIN_USER_ID)})}"}
 
 
-def cleanup(username: str, email: str) -> None:
+def cleanup(username: str, email: str, *, artist_name: str | None = None) -> None:
     with get_connection() as connection:
         with connection.cursor() as cursor:
             cursor.execute(
@@ -26,13 +28,17 @@ def cleanup(username: str, email: str) -> None:
                 """,
                 (username, email, ARTIST_ID),
             )
+            if artist_name is not None:
+                cursor.execute("DELETE FROM artist_claims WHERE artist_id IN (SELECT id FROM artists WHERE name = %s)", (artist_name,))
             cursor.execute("DELETE FROM users WHERE username = %s OR email = %s", (username, email))
             cursor.execute("DELETE FROM users WHERE id = %s", (ADMIN_USER_ID,))
             cursor.execute("DELETE FROM artists WHERE id = %s", (ARTIST_ID,))
+            if artist_name is not None:
+                cursor.execute("DELETE FROM artists WHERE name = %s", (artist_name,))
 
 
-def seed_admin_and_artist(username: str, email: str) -> None:
-    cleanup(username, email)
+def seed_admin_and_existing_artist(username: str, email: str) -> None:
+    cleanup(username, email, artist_name=NEW_ARTIST_NAME)
     with get_connection() as connection:
         with connection.cursor() as cursor:
             cursor.execute(
@@ -40,8 +46,25 @@ def seed_admin_and_artist(username: str, email: str) -> None:
                 INSERT INTO artists (id, ra_artist_id, name)
                 VALUES (%s, %s, %s)
                 """,
-                (ARTIST_ID, f"registration-claim-test-{ARTIST_ID}", "Registration Claim Artist"),
+                (ARTIST_ID, f"registration-claim-test-{ARTIST_ID}", EXISTING_ARTIST_NAME),
             )
+            cursor.execute(
+                """
+                INSERT INTO users (id, username, email, password_hash, role, status)
+                VALUES (%s, %s, %s, 'test-password-hash', 'admin', 'approved')
+                """,
+                (
+                    ADMIN_USER_ID,
+                    f"registration-claim-admin-{ADMIN_USER_ID}",
+                    f"registration-claim-admin-{ADMIN_USER_ID}@example.com",
+                ),
+            )
+
+
+def seed_admin(username: str, email: str) -> None:
+    cleanup(username, email, artist_name=NEW_ARTIST_NAME)
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
             cursor.execute(
                 """
                 INSERT INTO users (id, username, email, password_hash, role, status)
@@ -58,16 +81,16 @@ def seed_admin_and_artist(username: str, email: str) -> None:
 def test_artist_registration_claim_is_approved_with_user_once():
     username = "registration-claim-user"
     email = "registration-claim-user@example.com"
-    seed_admin_and_artist(username, email)
+    seed_admin_and_existing_artist(username, email)
     try:
         register_response = client.post(
             "/api/register",
             json={
                 "username": username,
                 "email": email,
+                "instagram_url": "https://www.instagram.com/registrationclaimuser",
                 "password": "Password123",
                 "password_confirm": "Password123",
-                "role": "artist",
                 "artist_id": ARTIST_ID,
             },
         )
@@ -83,7 +106,9 @@ def test_artist_registration_claim_is_approved_with_user_once():
             if user["id"] == user_id
         )
         assert pending_user["artist_id"] == ARTIST_ID
-        assert pending_user["artist_name"] == "Registration Claim Artist"
+        assert pending_user["artist_name"] == EXISTING_ARTIST_NAME
+        assert pending_user["artist_source"] == "resident_advisor"
+        assert pending_user["artist_instagram_url"] == "https://www.instagram.com/registrationclaimuser"
 
         approve_response = client.post(f"/api/admin/users/{user_id}/approve", headers=admin_headers())
         assert approve_response.status_code == 200
@@ -119,20 +144,147 @@ def test_artist_registration_claim_is_approved_with_user_once():
         cleanup(username, email)
 
 
-def test_artist_registration_requires_artist_profile_selection():
+def test_artist_registration_can_create_new_artist_profile_and_pending_claim():
+    username = "registration-new-artist-user"
+    email = "registration-new-artist-user@example.com"
+    seed_admin(username, email)
+    try:
+        register_response = client.post(
+            "/api/register",
+            json={
+                "username": username,
+                "email": email,
+                "instagram_url": "https://www.instagram.com/registrationnewartist",
+                "password": "Password123",
+                "password_confirm": "Password123",
+                "new_artist_name": NEW_ARTIST_NAME,
+            },
+        )
+        assert register_response.status_code == 200
+        register_payload = register_response.json()
+        assert register_payload["success"] is True
+        user_id = register_payload["user_id"]
+
+        with get_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT id, ra_artist_id, name, content_url
+                    FROM artists
+                    WHERE name = %s
+                    """,
+                    (NEW_ARTIST_NAME,),
+                )
+                artist_row = cursor.fetchone()
+
+        assert artist_row is not None
+        assert artist_row["ra_artist_id"] is None
+        assert artist_row["content_url"] is None
+
+        pending_response = client.get("/api/admin/users/pending", headers=admin_headers())
+        assert pending_response.status_code == 200
+        pending_user = next(
+            user for user in pending_response.json()["users"]
+            if user["id"] == user_id
+        )
+        assert pending_user["artist_name"] == NEW_ARTIST_NAME
+        assert pending_user["artist_source"] == "user_created"
+        assert pending_user["artist_instagram_url"] == "https://www.instagram.com/registrationnewartist"
+
+        approve_response = client.post(f"/api/admin/users/{user_id}/approve", headers=admin_headers())
+        assert approve_response.status_code == 200
+        assert approve_response.json()["success"] is True
+
+        with get_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT status, artist_id
+                    FROM users
+                    WHERE id = %s
+                    """,
+                    (user_id,),
+                )
+                user_row = cursor.fetchone()
+                cursor.execute(
+                    """
+                    SELECT status, decided_by
+                    FROM artist_claims
+                    WHERE user_id = %s
+                      AND artist_id = %s
+                    """,
+                    (user_id, artist_row["id"]),
+                )
+                claim_row = cursor.fetchone()
+
+        assert user_row["status"] == "approved"
+        assert user_row["artist_id"] == artist_row["id"]
+        assert claim_row["status"] == "approved"
+        assert claim_row["decided_by"] == ADMIN_USER_ID
+    finally:
+        cleanup(username, email, artist_name=NEW_ARTIST_NAME)
+
+
+def test_artist_registration_requires_exactly_one_artist_target():
     response = client.post(
         "/api/register",
         json={
             "username": "claim_missing_artist",
             "email": "registration-claim-missing-artist@example.com",
+            "instagram_url": "https://www.instagram.com/claim_missing_artist",
             "password": "Password123",
             "password_confirm": "Password123",
-            "role": "artist",
         },
     )
 
     assert response.status_code == 200
     assert response.json() == {
         "success": False,
-        "message": "Please select your artist profile",
+        "message": "Select an existing artist profile or create a new artist profile",
     }
+
+
+def test_rejecting_new_artist_registration_removes_unused_artist_record():
+    username = "reject-new-artist"
+    email = "reject-new-artist@example.com"
+    seed_admin(username, email)
+    try:
+        register_response = client.post(
+            "/api/register",
+            json={
+                "username": username,
+                "email": email,
+                "instagram_url": "https://www.instagram.com/registrationrejectnewartist",
+                "password": "Password123",
+                "password_confirm": "Password123",
+                "new_artist_name": NEW_ARTIST_NAME,
+            },
+        )
+        assert register_response.status_code == 200
+        user_id = register_response.json()["user_id"]
+
+        reject_response = client.post(f"/api/admin/users/{user_id}/reject", headers=admin_headers())
+        assert reject_response.status_code == 200
+        assert reject_response.json()["success"] is True
+
+        with get_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT status FROM users WHERE id = %s", (user_id,))
+                user_row = cursor.fetchone()
+                cursor.execute("SELECT id FROM artists WHERE name = %s", (NEW_ARTIST_NAME,))
+                artist_row = cursor.fetchone()
+                cursor.execute(
+                    """
+                    SELECT status
+                    FROM artist_claims
+                    WHERE user_id = %s
+                    """,
+                    (user_id,),
+                )
+                claim_row = cursor.fetchone()
+
+        assert user_row["status"] == "rejected"
+        assert artist_row is None
+        assert claim_row is None
+    finally:
+        cleanup(username, email, artist_name=NEW_ARTIST_NAME)

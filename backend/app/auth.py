@@ -4,6 +4,7 @@ import os
 import re
 from datetime import datetime, timedelta, timezone
 from time import time
+from urllib.parse import urlparse
 
 from fastapi import Depends, Header, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -25,6 +26,7 @@ if JWT_SECRET_KEY is None:
 security = HTTPBearer(auto_error=False)
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 USERNAME_RE = re.compile(r"^[a-zA-Z0-9_-]{3,32}$")
+INSTAGRAM_HOSTS = {"instagram.com", "www.instagram.com", "m.instagram.com"}
 rate_limit_attempts: dict[str, list[float]] = {}
 
 
@@ -140,11 +142,31 @@ def validate_registration_input(register_data: RegisterRequest) -> str | None:
         return "Username must be 3-32 characters and contain only letters, numbers, _ or -"
     if "@" not in register_data.email or len(register_data.email) > 254:
         return "Invalid email"
+    if not validate_instagram_url(register_data.instagram_url):
+        return "Instagram URL must point to an Instagram profile"
     if len(register_data.password) < 8:
         return "Password must be at least 8 characters"
     if len(register_data.password) > 128:
         return "Password is too long"
     return None
+
+
+def validate_instagram_url(value: str) -> bool:
+    candidate = value.strip()
+    if not candidate:
+        return False
+
+    parsed = urlparse(candidate if "://" in candidate else f"https://{candidate}")
+    host = (parsed.hostname or "").lower()
+    path = parsed.path.strip("/")
+
+    return (
+        parsed.scheme in {"http", "https"}
+        and host in INSTAGRAM_HOSTS
+        and bool(path)
+        and "/" not in path
+        and len(path) <= 30
+    )
 
 
 def validate_password(password: str) -> str | None:
@@ -161,6 +183,8 @@ def log_activity(
     username: str | None,
     event_type: str,
     target: str | None = None,
+    *,
+    commit: bool = True,
 ) -> None:
     with connection.cursor() as cursor:
         cursor.execute(
@@ -170,7 +194,8 @@ def log_activity(
             """,
             (user_id, username, event_type, target),
         )
-    connection.commit()
+    if commit:
+        connection.commit()
 
 
 def require_public_api_key(api_key: str | None = Header(alias="X-API-Key")) -> None:
