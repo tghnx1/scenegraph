@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends
+from psycopg import errors as pg_errors
 
 from app.auth import (
     check_rate_limit,
@@ -89,139 +90,163 @@ async def register(register_data: RegisterRequest) -> RegisterResponse:
         )
 
     clean_new_artist_name = register_data.new_artist_name.strip() if register_data.new_artist_name else None
+    clean_instagram_url = register_data.instagram_url.strip()
     if clean_new_artist_name is not None and len(clean_new_artist_name) < 2:
         return RegisterResponse(success=False, message="Artist name must be at least 2 characters")
     if clean_new_artist_name is not None and len(clean_new_artist_name) > 100:
         return RegisterResponse(success=False, message="Artist name is too long")
 
     with get_connection() as connection:
-        with connection.cursor() as cursor:
-            cursor.execute(
-                """
-                SELECT id
-                FROM users
-                WHERE username = %s OR email = %s
-                """,
-                (register_data.username, register_data.email),
-            )
-            existing_user = cursor.fetchone()
-
-            if existing_user is not None:
-                return RegisterResponse(success=False, message="Username or email already exists")
-
-            selected_artist = None
-            if has_existing_artist:
+        try:
+            with connection.cursor() as cursor:
                 cursor.execute(
                     """
-                    SELECT id, name
-                    FROM artists
-                    WHERE id = %s
+                    SELECT pg_advisory_xact_lock(hashtext(LOWER(BTRIM(%s))))
                     """,
-                    (register_data.artist_id,),
+                    (clean_instagram_url,),
                 )
-                selected_artist = cursor.fetchone()
-                if selected_artist is None:
-                    return RegisterResponse(success=False, message="Selected artist profile does not exist")
+                if has_existing_artist:
+                    cursor.execute(
+                        """
+                        SELECT pg_advisory_xact_lock(%s)
+                        """,
+                        (register_data.artist_id,),
+                    )
 
                 cursor.execute(
                     """
-                    SELECT id, username
+                    SELECT id
                     FROM users
-                    WHERE artist_id = %s
-                      AND status IN ('pending', 'approved')
-                    LIMIT 1
+                    WHERE username = %s OR email = %s
                     """,
-                    (register_data.artist_id,),
+                    (register_data.username, register_data.email),
                 )
-                assigned_user = cursor.fetchone()
-                if assigned_user is not None:
-                    return RegisterResponse(success=False, message="This artist profile is already assigned")
+                existing_user = cursor.fetchone()
+
+                if existing_user is not None:
+                    return RegisterResponse(success=False, message="Username or email already exists")
+
+                selected_artist = None
+                if has_existing_artist:
+                    cursor.execute(
+                        """
+                        SELECT id, name
+                        FROM artists
+                        WHERE id = %s
+                        """,
+                        (register_data.artist_id,),
+                    )
+                    selected_artist = cursor.fetchone()
+                    if selected_artist is None:
+                        return RegisterResponse(success=False, message="Selected artist profile does not exist")
+
+                    cursor.execute(
+                        """
+                        SELECT id, username
+                        FROM users
+                        WHERE artist_id = %s
+                          AND status IN ('pending', 'approved')
+                        LIMIT 1
+                        """,
+                        (register_data.artist_id,),
+                    )
+                    assigned_user = cursor.fetchone()
+                    if assigned_user is not None:
+                        return RegisterResponse(success=False, message="This artist profile is already assigned")
+
+                    cursor.execute(
+                        """
+                        SELECT id
+                        FROM artist_claims
+                        WHERE artist_id = %s
+                          AND status IN ('pending', 'approved')
+                        LIMIT 1
+                        """,
+                        (register_data.artist_id,),
+                    )
+                    active_claim = cursor.fetchone()
+                    if active_claim is not None:
+                        return RegisterResponse(success=False, message="This artist profile already has a registration in progress")
+                else:
+                    cursor.execute(
+                        """
+                        INSERT INTO artists (name, ra_artist_id, content_url)
+                        VALUES (%s, NULL, NULL)
+                        RETURNING id, name
+                        """,
+                        (clean_new_artist_name,),
+                    )
+                    selected_artist = cursor.fetchone()
 
                 cursor.execute(
                     """
                     SELECT id
                     FROM artist_claims
-                    WHERE artist_id = %s
-                      AND status = 'pending'
+                    WHERE LOWER(BTRIM(instagram_url)) = LOWER(BTRIM(%s))
+                      AND status IN ('pending', 'approved')
                     LIMIT 1
                     """,
-                    (register_data.artist_id,),
+                    (clean_instagram_url,),
                 )
-                pending_claim = cursor.fetchone()
-                if pending_claim is not None:
-                    return RegisterResponse(success=False, message="This artist profile already has a pending registration")
-            else:
-                cursor.execute(
-                    """
-                    SELECT pg_advisory_xact_lock(hashtext(LOWER(BTRIM(%s))))
-                    """,
-                    (clean_new_artist_name,),
-                )
-                cursor.execute(
-                    """
-                    SELECT id, name
-                    FROM artists
-                    WHERE LOWER(BTRIM(name)) = LOWER(BTRIM(%s))
-                    LIMIT 1
-                    """,
-                    (clean_new_artist_name,),
-                )
-                selected_artist = cursor.fetchone()
-                if selected_artist is not None:
+                existing_claim = cursor.fetchone()
+                if existing_claim is not None:
                     return RegisterResponse(
                         success=False,
-                        message="An artist profile with this name already exists. Please search and claim it instead.",
+                        message="This Instagram URL is already used by another registration",
                     )
+
+                hashed_password = pwd_context.hash(register_data.password)
                 cursor.execute(
                     """
-                    INSERT INTO artists (name, ra_artist_id, content_url)
-                    VALUES (%s, NULL, NULL)
-                    RETURNING id, name
-                    """,
-                    (clean_new_artist_name,),
-                )
-                selected_artist = cursor.fetchone()
-
-            hashed_password = pwd_context.hash(register_data.password)
-            cursor.execute(
-                """
-                INSERT INTO users (username, email, password_hash, role, status)
-                VALUES (%s, %s, %s, %s, %s)
-                RETURNING id
-                """,
-                (
-                    register_data.username,
-                    register_data.email,
-                    hashed_password,
-                    "artist",
-                    "pending",
-                ),
-            )
-            created_user = cursor.fetchone()
-
-            if selected_artist is not None:
-                cursor.execute(
-                    """
-                    INSERT INTO artist_claims (user_id, artist_id, instagram_url, reason)
-                    VALUES (%s, %s, %s, %s)
+                    INSERT INTO users (username, email, password_hash, role, status)
+                    VALUES (%s, %s, %s, %s, %s)
+                    RETURNING id
                     """,
                     (
-                        created_user["id"],
-                        selected_artist["id"],
-                        register_data.instagram_url.strip(),
-                        "Requested during registration",
+                        register_data.username,
+                        register_data.email,
+                        hashed_password,
+                        "artist",
+                        "pending",
                     ),
                 )
+                created_user = cursor.fetchone()
 
-            log_activity(
-                connection,
-                created_user["id"],
-                register_data.username,
-                "registration",
-                selected_artist["name"] if selected_artist is not None else "User account",
-                commit=False,
-            )
-            connection.commit()
+                if selected_artist is not None:
+                    cursor.execute(
+                        """
+                        INSERT INTO artist_claims (user_id, artist_id, instagram_url, reason)
+                        VALUES (%s, %s, %s, %s)
+                        """,
+                        (
+                            created_user["id"],
+                            selected_artist["id"],
+                            clean_instagram_url,
+                            "Requested during registration",
+                        ),
+                    )
+
+                log_activity(
+                    connection,
+                    created_user["id"],
+                    register_data.username,
+                    "registration",
+                    selected_artist["name"] if selected_artist is not None else "User account",
+                    commit=False,
+                )
+                connection.commit()
+        except pg_errors.UniqueViolation as exc:
+            connection.rollback()
+            constraint_name = getattr(getattr(exc, "diag", None), "constraint_name", None)
+            if constraint_name == "artist_claims_active_artist_unique_idx":
+                return RegisterResponse(success=False, message="This artist profile already has a registration in progress")
+            if constraint_name == "artist_claims_active_instagram_unique_idx":
+                return RegisterResponse(success=False, message="This Instagram URL is already used by another registration")
+            if constraint_name == "users_username_key":
+                return RegisterResponse(success=False, message="Username already exists")
+            if constraint_name == "users_email_key":
+                return RegisterResponse(success=False, message="Email already exists")
+            raise
 
     return RegisterResponse(
         success=True,

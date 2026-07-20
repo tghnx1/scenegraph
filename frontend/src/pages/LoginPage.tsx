@@ -402,6 +402,29 @@ export function LoginPage({ onLogin }: LoginPageProps) {
                       })()}
                     </button>
                   ))}
+                  {!isArtistSearchWaiting && !isArtistSearchLoading && artistSearchValue.trim().length >= 2 && (
+                    <button
+                      type="button"
+                      style={{
+                        ...loginButtonStyle,
+                        display: 'grid',
+                        gap: 4,
+                        textAlign: 'left',
+                        color: colorVar('--text'),
+                        marginTop: 4,
+                        borderStyle: 'dashed',
+                      }}
+                      onClick={() => {
+                        setRegistrationMode('new_artist')
+                        setSelectedArtist(null)
+                      }}
+                    >
+                      <strong>Create new artist "{artistSearchValue.trim()}"</strong>
+                      <span style={{ color: colorVar('--text-muted'), fontSize: 12, fontWeight: 500 }}>
+                        None of these profiles are mine. Create a new artist profile with this name.
+                      </span>
+                    </button>
+                  )}
                 </div>
               )}
 
@@ -426,19 +449,8 @@ export function LoginPage({ onLogin }: LoginPageProps) {
                 </div>
               )}
 
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                {registrationMode === 'search' ? (
-                  <button
-                    type="button"
-                    style={loginButtonStyle}
-                    onClick={() => {
-                      setRegistrationMode('new_artist')
-                      setSelectedArtist(null)
-                    }}
-                  >
-                    Can&apos;t find your profile? Create a new one
-                  </button>
-                ) : (
+              {registrationMode === 'new_artist' && (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                   <button
                     type="button"
                     style={loginButtonStyle}
@@ -449,8 +461,8 @@ export function LoginPage({ onLogin }: LoginPageProps) {
                   >
                     Search existing profiles instead
                   </button>
-                )}
-              </div>
+                </div>
+              )}
             </div>
           )}
           <label style={{ display: 'grid', gap: 6, color: colorVar('--text-muted'), fontSize: 14 }}>

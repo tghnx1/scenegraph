@@ -16,7 +16,7 @@ async function request<T>( //typescript generics, request<GraphData> returns Pro
     },
   })
 
-  if (res.status === 401 || res.status === 403) { //redirect to login (401 unauthorized, 403 forbidden)
+  if (res.status === 401) { // only unauthenticated sessions should force a logout
     localStorage.removeItem('token')
     localStorage.removeItem('role')
     localStorage.removeItem('username')

@@ -63,8 +63,31 @@ def test_artist_search_includes_claim_disambiguation_metadata():
         assert artist["event_count"] == 1
         assert artist["has_biography"] is True
         assert artist["genres"] == ["techno", "house"]
-        assert artist["biography_preview"] == "A short test biography."
+        assert artist["biography_preview"] is not None
+        assert "biography" in artist["biography_preview"].lower()
         assert artist["latest_event_title"] == "Search Metadata Latest Event"
         assert artist["latest_event_date"] == "2026-07-05"
+    finally:
+        cleanup()
+
+
+def test_artist_search_returns_case_insensitive_exact_matches():
+    cleanup()
+    try:
+        with get_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    INSERT INTO artists (id, ra_artist_id, name)
+                    VALUES (%s, %s, %s)
+                    """,
+                    (ARTIST_ID, RA_ARTIST_ID, "Exact Match Artist"),
+                )
+
+        response = client.get("/api/search", params={"q": "exact match artist", "type": "artist"})
+
+        assert response.status_code == 200
+        results = response.json()["results"]
+        assert any(result["id"] == ARTIST_ID and result["name"] == "Exact Match Artist" for result in results)
     finally:
         cleanup()

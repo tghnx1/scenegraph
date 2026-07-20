@@ -9,6 +9,7 @@ ADMIN_USER_ID = 95_001
 ARTIST_ID = 95_002
 EXISTING_ARTIST_NAME = "Registration Claim Artist"
 NEW_ARTIST_NAME = "Registration New Artist"
+DUPLICATE_ARTIST_NAME = "Registration Duplicate Display Name"
 
 client = TestClient(app)
 
@@ -223,6 +224,140 @@ def test_artist_registration_can_create_new_artist_profile_and_pending_claim():
         assert claim_row["decided_by"] == ADMIN_USER_ID
     finally:
         cleanup(username, email, artist_name=NEW_ARTIST_NAME)
+
+
+def test_artist_registration_allows_duplicate_display_names():
+    username = "registration-duplicate-name-user"
+    email = "registration-duplicate-name-user@example.com"
+    seed_admin_and_existing_artist(username, email)
+    try:
+        with get_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    INSERT INTO artists (ra_artist_id, name)
+                    VALUES (%s, %s)
+                    """,
+                    (f"registration-duplicate-name-test-{ARTIST_ID + 1}", DUPLICATE_ARTIST_NAME),
+                )
+
+        register_response = client.post(
+            "/api/register",
+            json={
+                "username": username,
+                "email": email,
+                "instagram_url": "https://www.instagram.com/registrationduplicatename",
+                "password": "Password123",
+                "password_confirm": "Password123",
+                "new_artist_name": DUPLICATE_ARTIST_NAME,
+            },
+        )
+
+        assert register_response.status_code == 200
+        assert register_response.json()["success"] is True
+
+        with get_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT id, ra_artist_id, name
+                    FROM artists
+                    WHERE name = %s
+                    ORDER BY id
+                    """,
+                    (DUPLICATE_ARTIST_NAME,),
+                )
+                artist_rows = cursor.fetchall()
+
+        assert len(artist_rows) == 2
+        assert artist_rows[0]["name"] == DUPLICATE_ARTIST_NAME
+        assert artist_rows[1]["name"] == DUPLICATE_ARTIST_NAME
+        assert any(row["ra_artist_id"] is None for row in artist_rows)
+        assert any(row["ra_artist_id"] is not None for row in artist_rows)
+    finally:
+        cleanup(username, email, artist_name=DUPLICATE_ARTIST_NAME)
+
+
+def test_artist_registration_rejects_duplicate_artist_claim_targets():
+    username = "dup-artist-user"
+    email = "dup-artist-user@example.com"
+    seed_admin_and_existing_artist(username, email)
+    try:
+        first_response = client.post(
+            "/api/register",
+            json={
+                "username": username,
+                "email": email,
+                "instagram_url": "https://www.instagram.com/registrationduplicateartistone",
+                "password": "Password123",
+                "password_confirm": "Password123",
+                "artist_id": ARTIST_ID,
+            },
+        )
+        assert first_response.status_code == 200
+        assert first_response.json()["success"] is True
+
+        second_response = client.post(
+            "/api/register",
+            json={
+                "username": "dup-artist-user2",
+                "email": "dup-artist-user2@example.com",
+                "instagram_url": "https://www.instagram.com/registrationduplicateartisttwo",
+                "password": "Password123",
+                "password_confirm": "Password123",
+                "artist_id": ARTIST_ID,
+            },
+        )
+
+        assert second_response.status_code == 200
+        assert second_response.json() == {
+            "success": False,
+            "message": "This artist profile already has a registration in progress",
+        }
+    finally:
+        cleanup(username, email)
+        cleanup("dup-artist-user2", "dup-artist-user2@example.com")
+
+
+def test_artist_registration_rejects_duplicate_instagram_url():
+    username = "dup-inst-user"
+    email = "dup-inst-user@example.com"
+    seed_admin(username, email)
+    try:
+        first_response = client.post(
+            "/api/register",
+            json={
+                "username": username,
+                "email": email,
+                "instagram_url": "https://www.instagram.com/registrationduplicateinstagram",
+                "password": "Password123",
+                "password_confirm": "Password123",
+                "new_artist_name": NEW_ARTIST_NAME,
+            },
+        )
+        assert first_response.status_code == 200
+        assert first_response.json()["success"] is True
+
+        second_response = client.post(
+            "/api/register",
+            json={
+                "username": "dup-inst-user2",
+                "email": "dup-inst-user2@example.com",
+                "instagram_url": "https://www.instagram.com/registrationduplicateinstagram",
+                "password": "Password123",
+                "password_confirm": "Password123",
+                "new_artist_name": "Registration Another Artist Name",
+            },
+        )
+
+        assert second_response.status_code == 200
+        assert second_response.json() == {
+            "success": False,
+            "message": "This Instagram URL is already used by another registration",
+        }
+    finally:
+        cleanup(username, email, artist_name=NEW_ARTIST_NAME)
+        cleanup("dup-inst-user2", "dup-inst-user2@example.com", artist_name="Registration Another Artist Name")
 
 
 def test_artist_registration_requires_exactly_one_artist_target():
