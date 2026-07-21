@@ -254,8 +254,8 @@ def reject_user(connection: Connection, *, user_id: int, admin: dict) -> dict:
 
         log_activity(
             connection,
-            target_user["id"],
-            target_user["username"],
+            admin["id"],
+            admin["username"],
             "user registration rejected",
             target_user["username"],
             commit=False,

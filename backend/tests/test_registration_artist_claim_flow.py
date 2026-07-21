@@ -511,10 +511,11 @@ def test_rejecting_existing_ra_artist_registration_deletes_user_and_claim_but_pr
                     FROM activity_log
                     WHERE event_type = 'user registration rejected'
                       AND username = %s
+                      AND target = %s
                     ORDER BY id DESC
                     LIMIT 1
                     """,
-                    (username,),
+                    (ADMIN_USERNAME, username),
                 )
                 activity_row = cursor.fetchone()
 
@@ -523,8 +524,8 @@ def test_rejecting_existing_ra_artist_registration_deletes_user_and_claim_but_pr
         assert artist_row["ra_artist_id"] == f"registration-claim-test-{ARTIST_ID}"
         assert claim_row is None
         assert activity_row is not None
-        assert activity_row["user_id"] is None
-        assert activity_row["username"] == username
+        assert activity_row["user_id"] == ADMIN_USER_ID
+        assert activity_row["username"] == ADMIN_USERNAME
         assert activity_row["target"] == username
 
         rerun_response = client.post(
@@ -585,10 +586,11 @@ def test_rejecting_new_artist_registration_deletes_user_claim_and_unused_artist_
                     FROM activity_log
                     WHERE event_type = 'user registration rejected'
                       AND username = %s
+                      AND target = %s
                     ORDER BY id DESC
                     LIMIT 1
                     """,
-                    (username,),
+                    (ADMIN_USERNAME, username),
                 )
                 activity_row = cursor.fetchone()
 
@@ -596,8 +598,8 @@ def test_rejecting_new_artist_registration_deletes_user_claim_and_unused_artist_
         assert artist_row is None
         assert claim_row is None
         assert activity_row is not None
-        assert activity_row["user_id"] is None
-        assert activity_row["username"] == username
+        assert activity_row["user_id"] == ADMIN_USER_ID
+        assert activity_row["username"] == ADMIN_USERNAME
         assert activity_row["target"] == username
 
         rerun_response = client.post(
