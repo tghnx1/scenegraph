@@ -399,13 +399,18 @@ def list_users(connection: Connection) -> list[dict]:
                 artists.name AS artist_name,
                 artists.content_url AS artist_content_url,
                 artists.ra_artist_id AS artist_ra_artist_id,
+                artist_claims.instagram_url AS artist_instagram_url,
                 CASE
+                    WHEN artists.id IS NULL THEN NULL
                     WHEN artists.ra_artist_id IS NULL THEN 'user_created'
                     ELSE 'resident_advisor'
                 END AS artist_source
             FROM users
             LEFT JOIN artists
                 ON artists.id = users.artist_id
+            LEFT JOIN artist_claims
+                ON artist_claims.user_id = users.id
+               AND artist_claims.status = 'approved'
             ORDER BY users.created_at DESC
             """
         )
