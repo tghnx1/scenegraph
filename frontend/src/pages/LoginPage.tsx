@@ -247,7 +247,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
             />
             {isRegistering && (
               <span style={{ fontSize: 12, color: colorVar('--text-muted') }}>
-                This is the username you will use to sign in.
+                This is your login handle for sign in. It can be different from your public artist name.
               </span>
             )}
           </label>
@@ -303,6 +303,9 @@ export function LoginPage({ onLogin }: LoginPageProps) {
                     autoComplete="off"
                     required
                   />
+                  <span style={{ fontSize: 12, color: colorVar('--text-muted') }}>
+                    This is your public artist name. It can be the same as another artist name.
+                  </span>
                 </label>
               </div>
 
@@ -425,27 +428,6 @@ export function LoginPage({ onLogin }: LoginPageProps) {
                       </span>
                     </button>
                   )}
-                </div>
-              )}
-
-              {registrationMode === 'new_artist' && (
-                <div
-                  style={{
-                    display: 'grid',
-                    gap: 6,
-                    border: `1px solid ${colorAlpha('--text', 18)}`,
-                    borderRadius: 10,
-                    background: colorAlpha('--background', 90),
-                    padding: 12,
-                  }}
-                >
-                  <strong>New artist profile preview</strong>
-                  <span style={{ color: colorVar('--text-muted'), fontSize: 13 }}>
-                    We will create a new artist profile with this name and send it to admin review.
-                  </span>
-                  <span style={{ color: colorVar('--text'), fontSize: 14 }}>
-                    {artistSearchValue.trim() || 'Artist name is still empty'}
-                  </span>
                 </div>
               )}
 

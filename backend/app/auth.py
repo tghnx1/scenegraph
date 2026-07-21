@@ -152,21 +152,31 @@ def validate_registration_input(register_data: RegisterRequest) -> str | None:
 
 
 def validate_instagram_url(value: str) -> bool:
+    return normalize_instagram_url(value) is not None
+
+
+def normalize_instagram_url(value: str) -> str | None:
     candidate = value.strip()
     if not candidate:
-        return False
+        return None
 
     parsed = urlparse(candidate if "://" in candidate else f"https://{candidate}")
     host = (parsed.hostname or "").lower()
     path = parsed.path.strip("/")
-
-    return (
+    if not (
         parsed.scheme in {"http", "https"}
         and host in INSTAGRAM_HOSTS
         and bool(path)
         and "/" not in path
         and len(path) <= 30
-    )
+    ):
+        return None
+
+    username = path.lstrip("@").split("?")[0].split("#")[0].lower()
+    if not re.fullmatch(r"[A-Za-z0-9._]{1,30}", username):
+        return None
+
+    return f"https://www.instagram.com/{username}/"
 
 
 def validate_password(password: str) -> str | None:

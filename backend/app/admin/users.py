@@ -281,7 +281,7 @@ def deactivate_user(connection: Connection, *, user_id: int, admin: dict) -> dic
     with connection.cursor() as cursor:
         cursor.execute(
             """
-            SELECT id, username, role, status
+            SELECT id, username, role, status, artist_id
             FROM users
             WHERE id = %s
             """,
@@ -302,8 +302,8 @@ def deactivate_user(connection: Connection, *, user_id: int, admin: dict) -> dic
             raise HTTPException(
                 status_code=400,
                 detail="The bootstrap admin cannot be deactivated.",
-                )
-                                
+            )
+
         if target_user["role"] == "admin":
             cursor.execute(
                 """
@@ -317,15 +317,14 @@ def deactivate_user(connection: Connection, *, user_id: int, admin: dict) -> dic
 
             if len(approved_admins) <= 1:
                 raise HTTPException(
-                    stauts_code=400,
+                    status_code=400,
                     detail="At least one approved admin must remain active.",
                 )
-        
+
         cursor.execute(
             """
             UPDATE users
-            SET status = 'deactivated',
-                artist_id = NULL
+            SET status = 'deactivated'
             WHERE id = %s
             RETURNING id, username, email, role, status, artist_id
             """,
@@ -344,16 +343,29 @@ def activate_user(connection: Connection, *, user_id: int, admin: dict) -> dict:
     with connection.cursor() as cursor:
         cursor.execute(
             """
+            SELECT id, username, role, status
+            FROM users
+            WHERE id = %s
+            """,
+            (user_id,),
+        )
+        target_user = cursor.fetchone()
+        if target_user is None:
+            raise HTTPException(status_code=404, detail="User not found")
+        if target_user["status"] != "deactivated":
+            raise HTTPException(status_code=400, detail="Only deactivated users can be activated")
+        cursor.execute(
+            """
             UPDATE users
             SET status = 'approved'
             WHERE id = %s
-            RETURNING id, username, email, role, status
+            RETURNING id, username, email, role, status, artist_id
             """,
             (user_id,),
         )
         updated_user = cursor.fetchone()
-    if updated_user is None:
-        raise HTTPException(status_code=404, detail="User not found")
+        if updated_user is None:
+            raise HTTPException(status_code=404, detail="User not found")
     log_activity(connection, updated_user["id"], updated_user["username"], "activation", f"Activated by {admin['username']}")
     log_activity(connection, admin["id"], admin["username"], "user activated", updated_user["username"])
     connection.commit()
@@ -377,9 +389,24 @@ def list_users(connection: Connection) -> list[dict]:
     with connection.cursor() as cursor:
         cursor.execute(
             """
-            SELECT id, username, email, role, status, created_at
+            SELECT
+                users.id,
+                users.username,
+                users.email,
+                users.role,
+                users.status,
+                users.created_at,
+                artists.name AS artist_name,
+                artists.content_url AS artist_content_url,
+                artists.ra_artist_id AS artist_ra_artist_id,
+                CASE
+                    WHEN artists.ra_artist_id IS NULL THEN 'user_created'
+                    ELSE 'resident_advisor'
+                END AS artist_source
             FROM users
-            ORDER BY created_at DESC
+            LEFT JOIN artists
+                ON artists.id = users.artist_id
+            ORDER BY users.created_at DESC
             """
         )
         return cursor.fetchall()

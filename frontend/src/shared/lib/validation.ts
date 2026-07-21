@@ -7,7 +7,7 @@ export const BIOGRAPHY_MAX_LENGTH = 6000
 const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/
 const DISPLAY_DATE_PATTERN = /^\d{2}\.\d{2}\.\d{4}$/
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-const INSTAGRAM_PROFILE_PATTERN = /^(https?:\/\/)?(www\.)?instagram\.com\/[A-Za-z0-9._]{1,30}\/?$/i
+const INSTAGRAM_PROFILE_PATTERN = /^(https?:\/\/)?((www|m)\.)?instagram\.com\/[A-Za-z0-9._]{1,30}\/?(?:[?#].*)?$/i
 
 export function isoDateToDisplayDate(value: string) {
   if (!ISO_DATE_PATTERN.test(value)) return value

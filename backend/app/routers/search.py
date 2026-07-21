@@ -32,6 +32,15 @@ ARTIST_SEARCH_SELECT = """
             SELECT *
             FROM artists
             WHERE name ILIKE %s
+              AND (
+                  ra_artist_id IS NOT NULL
+                  OR EXISTS (
+                      SELECT 1
+                      FROM users
+                      WHERE users.artist_id = artists.id
+                        AND users.status = 'approved'
+                  )
+              )
         ) a
         LEFT JOIN LATERAL (
             SELECT COUNT(*)::int AS event_count

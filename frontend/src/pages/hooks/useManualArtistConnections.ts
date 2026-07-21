@@ -89,6 +89,7 @@ export function useManualArtistConnections(artistId: number | null) {
     isLoading,
     pendingArtistId,
     error,
+    add,
     remove,
     toggle,
   }

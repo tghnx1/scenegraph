@@ -156,6 +156,12 @@ function hiddenReasonItems(recommendation: PromoterRecommendationResponse['recom
   return normalizedItems.slice(hiddenStartIndex)
 }
 
+function isProfileSetupRecommendationError(error: string | null): boolean {
+  if (!error) return false
+  const normalizedError = error.toLocaleLowerCase()
+  return normalizedError.includes('embedding found for artist') || normalizedError.includes('no text-embedding')
+}
+
 function recommendationScore(recommendation: PromoterRecommendationResponse['recommendations'][number]): number {
   const directScore = recommendation.score
   if (typeof directScore === 'number' && Number.isFinite(directScore)) {
@@ -371,6 +377,8 @@ export function PromoterRecommendationsPanel({
     autoLoadTriggeredArtistIdRef.current = recommendationArtistId
     void handleLoadRecommendations()
   }, [autoLoad, handleLoadRecommendations, isActive, isRecommendationsLoading, recommendationArtistId, recommendationsData])
+
+  const isProfileSetupError = isProfileSetupRecommendationError(recommendationsError)
 
   const handleResetRecommendations = useCallback(() => {
     recommendationRequestIdRef.current += 1
@@ -639,24 +647,57 @@ export function PromoterRecommendationsPanel({
         )}
       </div>
       {recommendationsData === null && !isRecommendationsLoading && (
-        <div className="grid min-h-0 place-items-center gap-3 rounded-2xl border border-[var(--surface-border-soft)] bg-[var(--surface-soft)] p-6 text-center">
-          <p className={recommendationsError ? 'm-0 text-[var(--event)]' : cn('m-0', mutedTextClass)}>
-            {recommendationsError
-              ?? (targetControls?.emptyMessage
-                ?? emptyStateMessage
-                ?? (recommendationTargetLabel
-                  ? `Click "Get Rec" to load recommendations for ${recommendationTargetLabel}. Loading time may be quite long. Let the wizard does its magic.`
-                  : 'Click "Get Rec" to load recommendations. Loading time may be quite long. Let the wizard does its magic.'))}
-          </p>
-          {!targetControls && (
-            <Button
-              type="button"
-              onClick={() => void handleLoadRecommendations()}
-            >
-              {recommendationsError ? 'Retry' : 'Get Rec'}
-            </Button>
-          )}
-        </div>
+        isProfileSetupError ? (
+          <div className="grid min-h-0 gap-4 rounded-2xl border border-[var(--surface-border-soft)] bg-[var(--surface-soft)] p-6">
+            <div className="grid gap-2 text-left">
+              <span className={labelClass}>Profile setup needed</span>
+              <h3 className="m-0 text-xl font-semibold text-[var(--text)]">
+                Complete your artist profile to unlock recommendations
+              </h3>
+              <p className="m-0 text-sm leading-6 text-[var(--text-muted)]">
+                Add a full bio so we can understand your sound and scene, then add 3–5 artists you know, collaborate with, or who can recommend you to promoters.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button asChild type="button" size="sm">
+                <a href="#artist-biography-panel">Add bio</a>
+              </Button>
+              <Button asChild type="button" size="sm" variant="outline">
+                <a href="#artist-manual-connections">Add artists you know</a>
+              </Button>
+            </div>
+            {!targetControls && (
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                className="w-fit px-0 text-[var(--text-muted)] hover:bg-transparent hover:text-[var(--text)]"
+                onClick={() => void handleLoadRecommendations()}
+              >
+                Check again
+              </Button>
+            )}
+          </div>
+        ) : (
+          <div className="grid min-h-0 place-items-center gap-3 rounded-2xl border border-[var(--surface-border-soft)] bg-[var(--surface-soft)] p-6 text-center">
+            <p className={recommendationsError ? 'm-0 text-[var(--event)]' : cn('m-0', mutedTextClass)}>
+              {recommendationsError
+                ?? (targetControls?.emptyMessage
+                  ?? emptyStateMessage
+                  ?? (recommendationTargetLabel
+                    ? `Click "Get Rec" to load recommendations for ${recommendationTargetLabel}. Loading time may be quite long. Let the wizard does its magic.`
+                    : 'Click "Get Rec" to load recommendations. Loading time may be quite long. Let the wizard does its magic.'))}
+            </p>
+            {!targetControls && (
+              <Button
+                type="button"
+                onClick={() => void handleLoadRecommendations()}
+              >
+                {recommendationsError ? 'Retry' : 'Get Rec'}
+              </Button>
+            )}
+          </div>
+        )
       )}
       {isRecommendationsLoading && (
         <RecommendationLoading activity={RECOMMENDATION_LOADING_MESSAGES[recommendationLoadingMessageIndex]} />

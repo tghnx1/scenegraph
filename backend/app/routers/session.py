@@ -8,6 +8,7 @@ from app.auth import (
     create_access_token,
     get_current_user,
     log_activity,
+    normalize_instagram_url,
     pwd_context,
     validate_password,
     validate_registration_input,
@@ -90,11 +91,13 @@ async def register(register_data: RegisterRequest) -> RegisterResponse:
         )
 
     clean_new_artist_name = register_data.new_artist_name.strip() if register_data.new_artist_name else None
-    clean_instagram_url = register_data.instagram_url.strip()
+    normalized_instagram_url = normalize_instagram_url(register_data.instagram_url)
     if clean_new_artist_name is not None and len(clean_new_artist_name) < 2:
         return RegisterResponse(success=False, message="Artist name must be at least 2 characters")
     if clean_new_artist_name is not None and len(clean_new_artist_name) > 100:
         return RegisterResponse(success=False, message="Artist name is too long")
+    if normalized_instagram_url is None:
+        return RegisterResponse(success=False, message="Instagram URL must point to an Instagram profile")
 
     with get_connection() as connection:
         try:
@@ -103,7 +106,7 @@ async def register(register_data: RegisterRequest) -> RegisterResponse:
                     """
                     SELECT pg_advisory_xact_lock(hashtext(LOWER(BTRIM(%s))))
                     """,
-                    (clean_instagram_url,),
+                    (normalized_instagram_url,),
                 )
                 if has_existing_artist:
                     cursor.execute(
@@ -167,16 +170,6 @@ async def register(register_data: RegisterRequest) -> RegisterResponse:
                     active_claim = cursor.fetchone()
                     if active_claim is not None:
                         return RegisterResponse(success=False, message="This artist profile already has a registration in progress")
-                else:
-                    cursor.execute(
-                        """
-                        INSERT INTO artists (name, ra_artist_id, content_url)
-                        VALUES (%s, NULL, NULL)
-                        RETURNING id, name
-                        """,
-                        (clean_new_artist_name,),
-                    )
-                    selected_artist = cursor.fetchone()
 
                 cursor.execute(
                     """
@@ -186,7 +179,7 @@ async def register(register_data: RegisterRequest) -> RegisterResponse:
                       AND status IN ('pending', 'approved')
                     LIMIT 1
                     """,
-                    (clean_instagram_url,),
+                    (normalized_instagram_url,),
                 )
                 existing_claim = cursor.fetchone()
                 if existing_claim is not None:
@@ -194,6 +187,17 @@ async def register(register_data: RegisterRequest) -> RegisterResponse:
                         success=False,
                         message="This Instagram URL is already used by another registration",
                     )
+
+                if has_new_artist_name:
+                    cursor.execute(
+                        """
+                        INSERT INTO artists (name, ra_artist_id, content_url)
+                        VALUES (%s, NULL, NULL)
+                        RETURNING id, name
+                        """,
+                        (clean_new_artist_name,),
+                    )
+                    selected_artist = cursor.fetchone()
 
                 hashed_password = pwd_context.hash(register_data.password)
                 cursor.execute(
@@ -221,7 +225,7 @@ async def register(register_data: RegisterRequest) -> RegisterResponse:
                         (
                             created_user["id"],
                             selected_artist["id"],
-                            clean_instagram_url,
+                            normalized_instagram_url,
                             "Requested during registration",
                         ),
                     )

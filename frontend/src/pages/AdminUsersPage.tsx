@@ -13,6 +13,11 @@ export function AdminUsersPage({ compact = false, refreshVersion = 0, onActivity
   const [message, setMessage] = useState('')
   const [allUsers, setAllUsers] = useState<UserItem[]>([])
 
+  const toRaUrl = (value: string) =>
+    value.startsWith('http')
+      ? value
+      : `https://ra.co${value.startsWith('/') ? value : `/${value}`}`
+
   const adminButtonStyle = {
     padding: '8px 12px',
     background: 'color-mix(in srgb, var(--background) 88%, var(--text) 8%)',
@@ -172,7 +177,7 @@ export function AdminUsersPage({ compact = false, refreshVersion = 0, onActivity
                       </a>
                     )}
                     {user.artist_content_url && (
-                      <a href={user.artist_content_url} target="_blank" rel="noreferrer noopener">
+                      <a href={toRaUrl(user.artist_content_url)} target="_blank" rel="noreferrer noopener">
                         RA page
                       </a>
                     )}
@@ -259,7 +264,7 @@ export function AdminUsersPage({ compact = false, refreshVersion = 0, onActivity
                   </a>
                 )}
                 {user.artist_content_url && (
-                  <a href={user.artist_content_url} target="_blank" rel="noreferrer noopener">
+                  <a href={toRaUrl(user.artist_content_url)} target="_blank" rel="noreferrer noopener">
                     RA page
                   </a>
                 )}

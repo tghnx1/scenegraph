@@ -21,8 +21,6 @@ export function BiographyPanel({
   canEditBiography,
   hasApprovedArtistProfile,
 }: BiographyPanelProps) {
-  const hasArtistProfileTarget = artistId !== null
-  const shouldShowApprovedProfileWorkspace = hasApprovedArtistProfile && hasArtistProfileTarget
   const [artistName, setArtistName] = useState('Artist profile')
   const [biography, setBiography] = useState('')
   const [draftBiography, setDraftBiography] = useState('')
@@ -32,6 +30,9 @@ export function BiographyPanel({
   const [isSaving, setIsSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
+
+  const hasArtistProfileTarget = artistId !== null
+  const shouldShowApprovedProfileWorkspace = hasApprovedArtistProfile && hasArtistProfileTarget
 
   useEffect(() => {
     let isCurrent = true
@@ -73,6 +74,13 @@ export function BiographyPanel({
     return () => { isCurrent = false }
   }, [artistId, hasApprovedArtistProfile, selectedArtistName])
 
+  const hasBiographyText = biography.trim().length > 0
+  const shouldShowProfileSetupPrompt = shouldShowApprovedProfileWorkspace
+    && !isLoading
+    && !isEditing
+    && !hasBiographyText
+    && linkedArtists.length === 0
+
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     if (artistId === null) return
@@ -104,9 +112,12 @@ export function BiographyPanel({
   }
 
   return (
-    <article className="grid gap-4 rounded-3xl border border-[color-mix(in_srgb,var(--text)_10%,transparent)] bg-[color-mix(in_srgb,var(--background)_42%,transparent)] p-5 shadow-[0_10px_24px_rgba(0,0,0,0.12)] backdrop-blur-sm">
+    <article
+      id="artist-biography-panel"
+      className="grid gap-4 rounded-3xl border border-[color-mix(in_srgb,var(--text)_10%,transparent)] bg-[color-mix(in_srgb,var(--background)_42%,transparent)] p-5 shadow-[0_10px_24px_rgba(0,0,0,0.12)] backdrop-blur-sm"
+    >
       <div className="flex items-center justify-between gap-3">
-        <div>
+        <div id="artist-biography-heading">
           <span className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--accent)]">Biography</span>
           <h2>{artistName}</h2>
         </div>
@@ -161,9 +172,44 @@ export function BiographyPanel({
           </div>
         </form>
       ) : shouldShowApprovedProfileWorkspace ? (
-        <p className={biography ? 'm-0 whitespace-pre-wrap text-sm leading-6 text-[var(--text)]' : 'm-0 text-sm text-[var(--text-muted)]'}>
-          {biography || 'No biography added yet. Select Edit to introduce yourself.'}
-        </p>
+        <>
+          {shouldShowProfileSetupPrompt && (
+            <section className="grid gap-3 rounded-2xl border border-[var(--surface-border-soft)] bg-[var(--surface-soft)] p-4">
+              <div className="grid gap-2">
+                <span className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--accent)]">
+                  Complete your artist profile
+                </span>
+                <p className="m-0 text-sm leading-6 text-[var(--text-muted)]">
+                  Add a full bio so we can understand your sound and scene, then add 3–5 artists you know, collaborate with, or who can recommend you to promoters.
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {canEditBiography && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={() => {
+                      setDraftBiography(biography)
+                      setError(null)
+                      setSuccess(null)
+                      setIsEditing(true)
+                    }}
+                  >
+                    Add bio
+                  </Button>
+                )}
+                <Button asChild type="button" size="sm" variant="outline">
+                  <a href="#artist-manual-connections">Add artists you know</a>
+                </Button>
+              </div>
+            </section>
+          )}
+          {!shouldShowProfileSetupPrompt && (
+            <p className={biography ? 'm-0 whitespace-pre-wrap text-sm leading-6 text-[var(--text)]' : 'm-0 text-sm text-[var(--text-muted)]'}>
+              {biography || 'No biography added yet. Add a full bio to unlock better recommendations.'}
+            </p>
+          )}
+        </>
       ) : null}
 
       {!shouldShowApprovedProfileWorkspace && error && (
@@ -196,7 +242,7 @@ export function BiographyPanel({
       )}
 
       {!isLoading && shouldShowApprovedProfileWorkspace && canEditBiography && (
-        <ManualArtistConnections {...manualConnections} />
+        <ManualArtistConnections {...manualConnections} onAdd={manualConnections.onAdd} />
       )}
     </article>
   )

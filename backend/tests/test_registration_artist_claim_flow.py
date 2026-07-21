@@ -1,6 +1,6 @@
 from fastapi.testclient import TestClient
 
-from app.auth import create_access_token
+from app.auth import create_access_token, rate_limit_attempts
 from app.db import get_connection
 from app.main import app
 
@@ -32,10 +32,33 @@ def cleanup(username: str, email: str, *, artist_name: str | None = None) -> Non
             if artist_name is not None:
                 cursor.execute("DELETE FROM artist_claims WHERE artist_id IN (SELECT id FROM artists WHERE name = %s)", (artist_name,))
             cursor.execute("DELETE FROM users WHERE username = %s OR email = %s", (username, email))
+            cursor.execute("DELETE FROM users WHERE artist_id = %s", (ARTIST_ID,))
+            cursor.execute("DELETE FROM artist_claims WHERE artist_id = %s", (ARTIST_ID,))
+            cursor.execute(
+                """
+                DELETE FROM artist_claims
+                WHERE instagram_url ILIKE ANY(%s)
+                """,
+                ([ 
+                    "%registrationclaimuser%",
+                    "%registrationnewartist%",
+                    "%registrationduplicateinstagram%",
+                    "%registrationduplicateartistone%",
+                    "%registrationduplicateartisttwo%",
+                    "%registrationduplicatename%",
+                    "%registrationrejectnewartist%",
+                ],),
+            )
             cursor.execute("DELETE FROM users WHERE id = %s", (ADMIN_USER_ID,))
             cursor.execute("DELETE FROM artists WHERE id = %s", (ARTIST_ID,))
             if artist_name is not None:
                 cursor.execute("DELETE FROM artists WHERE name = %s", (artist_name,))
+            cursor.execute(
+                "DELETE FROM artists WHERE ra_artist_id IN (%s, %s)",
+                (f"registration-claim-test-{ARTIST_ID}", f"registration-duplicate-name-test-{ARTIST_ID + 1}"),
+            )
+            connection.commit()
+    rate_limit_attempts.pop(f"register:{email}", None)
 
 
 def seed_admin_and_existing_artist(username: str, email: str) -> None:
@@ -60,6 +83,8 @@ def seed_admin_and_existing_artist(username: str, email: str) -> None:
                     f"registration-claim-admin-{ADMIN_USER_ID}@example.com",
                 ),
             )
+            connection.commit()
+            connection.commit()
 
 
 def seed_admin(username: str, email: str) -> None:
@@ -77,6 +102,8 @@ def seed_admin(username: str, email: str) -> None:
                     f"registration-claim-admin-{ADMIN_USER_ID}@example.com",
                 ),
             )
+            connection.commit()
+            connection.commit()
 
 
 def test_artist_registration_claim_is_approved_with_user_once():
@@ -109,7 +136,7 @@ def test_artist_registration_claim_is_approved_with_user_once():
         assert pending_user["artist_id"] == ARTIST_ID
         assert pending_user["artist_name"] == EXISTING_ARTIST_NAME
         assert pending_user["artist_source"] == "resident_advisor"
-        assert pending_user["artist_instagram_url"] == "https://www.instagram.com/registrationclaimuser"
+        assert pending_user["artist_instagram_url"] == "https://www.instagram.com/registrationclaimuser/"
 
         approve_response = client.post(f"/api/admin/users/{user_id}/approve", headers=admin_headers())
         assert approve_response.status_code == 200
@@ -190,7 +217,7 @@ def test_artist_registration_can_create_new_artist_profile_and_pending_claim():
         )
         assert pending_user["artist_name"] == NEW_ARTIST_NAME
         assert pending_user["artist_source"] == "user_created"
-        assert pending_user["artist_instagram_url"] == "https://www.instagram.com/registrationnewartist"
+        assert pending_user["artist_instagram_url"] == "https://www.instagram.com/registrationnewartist/"
 
         approve_response = client.post(f"/api/admin/users/{user_id}/approve", headers=admin_headers())
         assert approve_response.status_code == 200
@@ -233,6 +260,7 @@ def test_artist_registration_allows_duplicate_display_names():
     try:
         with get_connection() as connection:
             with connection.cursor() as cursor:
+                cursor.execute("DELETE FROM artists WHERE ra_artist_id = %s", (f"registration-duplicate-name-test-{ARTIST_ID + 1}",))
                 cursor.execute(
                     """
                     INSERT INTO artists (ra_artist_id, name)
@@ -322,6 +350,10 @@ def test_artist_registration_rejects_duplicate_artist_claim_targets():
 def test_artist_registration_rejects_duplicate_instagram_url():
     username = "dup-inst-user"
     email = "dup-inst-user@example.com"
+    second_username = "dup-inst-user2"
+    second_email = "dup-inst-user2@example.com"
+    first_artist_name = NEW_ARTIST_NAME
+    second_artist_name = "Registration Orphan Artist"
     seed_admin(username, email)
     try:
         first_response = client.post(
@@ -329,24 +361,26 @@ def test_artist_registration_rejects_duplicate_instagram_url():
             json={
                 "username": username,
                 "email": email,
-                "instagram_url": "https://www.instagram.com/registrationduplicateinstagram",
+                "instagram_url": "https://m.instagram.com/RegistrationDuplicateInstagram/?igsh=123",
                 "password": "Password123",
                 "password_confirm": "Password123",
-                "new_artist_name": NEW_ARTIST_NAME,
+                "new_artist_name": first_artist_name,
             },
         )
         assert first_response.status_code == 200
-        assert first_response.json()["success"] is True
+        first_payload = first_response.json()
+        assert first_payload["success"] is True
+        first_user_id = first_payload["user_id"]
 
         second_response = client.post(
             "/api/register",
             json={
-                "username": "dup-inst-user2",
-                "email": "dup-inst-user2@example.com",
-                "instagram_url": "https://www.instagram.com/registrationduplicateinstagram",
+                "username": second_username,
+                "email": second_email,
+                "instagram_url": "https://www.instagram.com/registrationduplicateinstagram/",
                 "password": "Password123",
                 "password_confirm": "Password123",
-                "new_artist_name": "Registration Another Artist Name",
+                "new_artist_name": second_artist_name,
             },
         )
 
@@ -355,9 +389,44 @@ def test_artist_registration_rejects_duplicate_instagram_url():
             "success": False,
             "message": "This Instagram URL is already used by another registration",
         }
+
+        with get_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT id
+                    FROM artists
+                    WHERE name = %s
+                    """,
+                    (second_artist_name,),
+                )
+                second_artist_row = cursor.fetchone()
+                cursor.execute(
+                    """
+                    SELECT instagram_url
+                    FROM artist_claims
+                    WHERE user_id = %s
+                    """,
+                    (first_user_id,),
+                )
+                first_claim_row = cursor.fetchone()
+                cursor.execute(
+                    """
+                    SELECT id
+                    FROM users
+                    WHERE username = %s OR email = %s
+                    """,
+                    (second_username, second_email),
+                )
+                second_user_row = cursor.fetchone()
+
+        assert second_artist_row is None
+        assert second_user_row is None
+        assert first_claim_row is not None
+        assert first_claim_row["instagram_url"] == "https://www.instagram.com/registrationduplicateinstagram/"
     finally:
-        cleanup(username, email, artist_name=NEW_ARTIST_NAME)
-        cleanup("dup-inst-user2", "dup-inst-user2@example.com", artist_name="Registration Another Artist Name")
+        cleanup(username, email, artist_name=first_artist_name)
+        cleanup(second_username, second_email, artist_name=second_artist_name)
 
 
 def test_artist_registration_requires_exactly_one_artist_target():

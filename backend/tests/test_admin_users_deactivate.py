@@ -27,6 +27,7 @@ def _cleanup() -> None:
         with connection.cursor() as cursor:
             cursor.execute("DELETE FROM users WHERE id = %s", (TEMP_USER_ID,))
             cursor.execute("DELETE FROM artists WHERE id = %s", (TEMP_ARTIST_ID,))
+            connection.commit()
 
 
 def _seed_user() -> None:
@@ -68,9 +69,10 @@ def _seed_user() -> None:
                     TEMP_ARTIST_ID,
                 ),
             )
+            connection.commit()
 
 
-def test_deactivate_user_unclaims_artist_profile():
+def test_deactivate_user_keeps_artist_profile_link():
     _seed_user()
     try:
         response = client.post(
@@ -81,7 +83,7 @@ def test_deactivate_user_unclaims_artist_profile():
         payload = response.json()
         assert payload["success"] is True
         assert payload["user"]["status"] == "deactivated"
-        assert payload["user"]["artist_id"] is None
+        assert payload["user"]["artist_id"] == TEMP_ARTIST_ID
 
         with get_connection() as connection:
             with connection.cursor() as cursor:
@@ -93,9 +95,29 @@ def test_deactivate_user_unclaims_artist_profile():
 
         assert row is not None
         assert row["status"] == "deactivated"
-        assert row["artist_id"] is None
+        assert row["artist_id"] == TEMP_ARTIST_ID
 
         protected_response = client.get("/api/me", headers=temp_user_headers())
         assert protected_response.status_code == 403
+    finally:
+        _cleanup()
+
+
+def test_rejected_user_cannot_be_activated_without_deactivation():
+    _seed_user()
+    try:
+        with get_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    "UPDATE users SET status = 'rejected' WHERE id = %s",
+                    (TEMP_USER_ID,),
+                )
+
+        response = client.post(
+            f"/api/admin/users/{TEMP_USER_ID}/activate",
+            headers=admin_headers(),
+        )
+        assert response.status_code == 400
+        assert response.json()["detail"] == "Only deactivated users can be activated"
     finally:
         _cleanup()

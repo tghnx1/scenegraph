@@ -209,7 +209,7 @@ export function ProfilePage({ recommendationTargetControls, showBiography = true
               targetControls={recommendationTargetControls}
               autoLoad={isArtistUser && profileArtistId !== null}
               emptyStateMessage={isArtistUser
-                ? 'Claim your artist profile to load your own recommendations.'
+                ? 'Complete your artist profile to unlock recommendations.'
                 : undefined}
               onSelectNode={setSelected}
             />
@@ -227,6 +227,7 @@ export function ProfilePage({ recommendationTargetControls, showBiography = true
                 isLoading: manualConnections.isLoading,
                 pendingArtistId: manualConnections.pendingArtistId,
                 error: manualConnections.error,
+                onAdd: manualConnections.add,
                 onRemove: manualConnections.remove,
               }}
             />

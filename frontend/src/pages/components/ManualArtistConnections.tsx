@@ -1,15 +1,40 @@
-import {useState} from 'react'
+import {useMemo, useState} from 'react'
 import {Link} from 'react-router-dom'
-import { X } from 'lucide-react'
+import { Plus, Search, X } from 'lucide-react'
 import { Button } from '@/shared/ui/button'
+import { cn } from '@/shared/lib/cn-utils'
+import { fetchSearch } from '@/api/search'
+import { useApi } from '@/api/useApi'
 import type {ManualArtistConnection} from '../../api/manualArtistConnections'
+import type { SearchResponse, SearchResult } from '../../types/search'
+import { useDebouncedValue } from '../hooks/useDebouncedValue'
 
 export interface ManualArtistConnectionsProps {
   connections: ManualArtistConnection[]
   isLoading: boolean
   pendingArtistId: number | null
   error: string | null
+  onAdd: (connectedArtistId: number) => Promise<void>
   onRemove: (connectedArtistId: number) => Promise<void>
+}
+
+const EMPTY_SEARCH_RESPONSE: SearchResponse = { query: '', results: [] }
+
+function normalizeSnippet(value: string, maxLength = 120) {
+  const normalized = value.replace(/\s+/g, ' ').trim()
+  if (!normalized) return ''
+  if (normalized.length <= maxLength) return normalized
+  return `${normalized.slice(0, maxLength - 1).trimEnd()}…`
+}
+
+function artistResultMeta(result: SearchResult) {
+  const bioSnippet = normalizeSnippet(result.biography_normalized ?? result.biography_preview ?? '')
+  if (bioSnippet) return bioSnippet
+
+  const details: string[] = []
+  if (result.genres?.length) details.push(result.genres.slice(0, 3).join(' · '))
+  if (result.latest_event_title) details.push(`Latest event: ${result.latest_event_title}`)
+  return details.join(' • ')
 }
 
 export function ManualArtistConnections({
@@ -17,13 +42,37 @@ export function ManualArtistConnections({
   isLoading,
   pendingArtistId,
   error,
+  onAdd,
   onRemove,
 }: ManualArtistConnectionsProps) {
   const [isInfoOpen, setIsInfoOpen] = useState(false)
+  const helperCopy = 'Add 3–5 artists you know, collaborate with, or who can recommend you to promoters.'
+  const [isAddingOpen, setIsAddingOpen] = useState(false)
+  const [searchValue, setSearchValue] = useState('')
+  const debouncedSearchValue = useDebouncedValue(searchValue.trim(), 300)
+  const shouldSearch = isAddingOpen && debouncedSearchValue.length >= 2
+  const { data: searchData, isLoading: isSearchLoading, error: searchError } = useApi<SearchResponse>(
+    () => (shouldSearch ? fetchSearch(debouncedSearchValue, 8, 'artist') : Promise.resolve(EMPTY_SEARCH_RESPONSE)),
+    [debouncedSearchValue, shouldSearch],
+  )
+
+  const artistResults = useMemo(
+    () => (searchData?.results ?? []).filter((result) => result.type === 'artist'),
+    [searchData?.results],
+  )
+
+  const handleAddArtist = async (artistId: number) => {
+    await onAdd(artistId)
+    setSearchValue('')
+  }
 
   return (
-    <section className="grid gap-3" aria-labelledby="manual-artist-connections-heading">
-      <div className="flex items-center justify-between gap-3 border-b border-[var(--surface-border-soft)] pb-2">
+    <section
+      id="artist-manual-connections"
+      className="grid gap-4"
+      aria-labelledby="manual-artist-connections-heading"
+    >
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--surface-border-soft)] pb-2">
         <div className="flex items-center gap-1.5">
           <h3 id="manual-artist-connections-heading">Artists you know</h3>
           <span className="relative inline-grid place-items-center">
@@ -42,14 +91,115 @@ export function ManualArtistConnections({
                 className="absolute left-0 top-[calc(100%+8px)] z-20 w-[min(300px,calc(100vw-48px))] rounded-lg border border-[var(--surface-border)] bg-[var(--surface-panel)] px-3 py-2.5 text-left text-[0.82rem] font-semibold leading-snug text-[var(--text)] shadow-[var(--surface-shadow)] max-[700px]:left-1/2 max-[700px]:right-auto max-[700px]:top-auto max-[700px]:bottom-[calc(100%+8px)] max-[700px]:z-[120] max-[700px]:max-h-[45dvh] max-[700px]:w-[min(300px,calc(100vw-32px))] max-[700px]:-translate-x-1/2 max-[700px]:translate-y-0 max-[700px]:overflow-y-auto"
                 role="tooltip"
               >
-                Add artists from their details panel.
+                {helperCopy}
               </span>
             )}
           </span>
         </div>
+        {!isAddingOpen && (
+          <Button
+            type="button"
+            size="icon"
+            variant="outline"
+            className="size-10 rounded-full"
+            onClick={() => setIsAddingOpen(true)}
+            aria-label="Add artist"
+          >
+            <Plus aria-hidden="true" />
+          </Button>
+        )}
       </div>
 
+      <p className="m-0 text-sm text-[var(--text-muted)]">
+        {helperCopy}
+      </p>
+
       {error && <p className="m-0 rounded-xl border border-[var(--event-border-soft)] bg-[var(--event-soft)] p-3 text-sm text-[var(--event)]">{error}</p>}
+
+      {!isAddingOpen && (
+        <button
+          type="button"
+          className="grid min-h-28 place-items-center rounded-2xl border border-dashed border-[var(--surface-border)] bg-[var(--surface-soft)] text-[var(--text-muted)] transition-colors hover:border-[var(--selection-border)] hover:bg-[var(--selection-soft)] hover:text-[var(--text)] focus-visible:border-[var(--selection-border)] focus-visible:bg-[var(--selection-soft)] focus-visible:text-[var(--text)] focus-visible:outline-none"
+          onClick={() => setIsAddingOpen(true)}
+          aria-label="Add artist"
+        >
+          <span className="inline-grid place-items-center gap-2">
+            <span className="grid size-12 place-items-center rounded-full border border-[var(--surface-border-soft)] bg-[var(--surface-panel)]">
+              <Plus className="size-6" aria-hidden="true" />
+            </span>
+            <span className="text-sm font-semibold">Add artist</span>
+          </span>
+        </button>
+      )}
+
+      {isAddingOpen && (
+        <section className="grid gap-3 rounded-2xl border border-[var(--surface-border-soft)] bg-[var(--surface-soft)] p-4" aria-labelledby="artist-search-heading">
+          <div className="flex items-center gap-2">
+            <Search className="size-4 text-[var(--text-muted)]" aria-hidden="true" />
+            <h4 id="artist-search-heading" className="m-0 text-sm font-semibold text-[var(--text)]">
+              Search and add an artist
+            </h4>
+          </div>
+          <label className="grid gap-2">
+            <span className="sr-only">Search artists</span>
+            <input
+              className="w-full rounded-xl border border-[var(--control-border)] bg-[var(--surface-input)] px-3 py-2.5 text-sm text-[var(--text)] outline-none placeholder:text-[var(--text-placeholder)] focus:border-[var(--focus-border)] focus:shadow-[0_0_0_3px_var(--focus-ring)]"
+              type="search"
+              value={searchValue}
+              onChange={(event) => setSearchValue(event.target.value)}
+              placeholder="Search artist name..."
+              autoComplete="off"
+              spellCheck={false}
+            />
+          </label>
+
+          {searchValue.trim().length < 2 ? (
+            <p className="m-0 text-sm text-[var(--text-muted)]">
+              Start typing to find an artist, then add them to your profile.
+            </p>
+          ) : isSearchLoading ? (
+            <p className="m-0 text-sm text-[var(--text-muted)]">Searching artists...</p>
+          ) : searchError ? (
+            <p className="m-0 rounded-xl border border-[var(--event-border-soft)] bg-[var(--event-soft)] p-3 text-sm text-[var(--event)]">
+              {searchError}
+            </p>
+          ) : artistResults.length > 0 ? (
+            <div className="grid gap-2">
+              {artistResults.map((artist) => {
+                const isPending = pendingArtistId === artist.id
+                const isAlreadyAdded = connections.some((connection) => connection.connectedArtistId === artist.id)
+                return (
+                  <button
+                    key={artist.id}
+                    type="button"
+                    className={cn(
+                      'grid gap-2 rounded-2xl border border-[var(--surface-border-soft)] bg-[var(--surface-panel)] p-3 text-left transition-colors hover:border-[var(--selection-border)] hover:bg-[var(--selection-soft)]',
+                      isAlreadyAdded && 'opacity-80',
+                    )}
+                    onClick={() => void handleAddArtist(artist.id)}
+                    disabled={isPending || isAlreadyAdded}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="grid gap-1">
+                        <strong className="text-[var(--text)]">{artist.name}</strong>
+                        <span className="text-sm text-[var(--text-muted)]">
+                          {artistResultMeta(artist) || 'Artist profile'}
+                        </span>
+                      </div>
+                      <span className="rounded-full border border-[var(--control-border)] bg-[var(--control-bg)] px-2 py-0.5 text-xs font-semibold text-[var(--text)]">
+                        {isAlreadyAdded ? 'Added' : isPending ? 'Adding…' : 'Add'}
+                      </span>
+                    </div>
+                  </button>
+                )
+              })}
+            </div>
+          ) : (
+            <p className="m-0 text-sm text-[var(--text-muted)]">No artist matches yet.</p>
+          )}
+        </section>
+      )}
+
       {isLoading ? (
         <p>Loading known artists...</p>
       ) : connections.length > 0 ? (
@@ -79,7 +229,24 @@ export function ManualArtistConnections({
           ))}
         </div>
       ) : (
-        <p className="m-0 text-sm text-[var(--text-muted)]">No manually linked artists yet.</p>
+        <div className="grid gap-3 rounded-2xl border border-[var(--surface-border-soft)] bg-[var(--surface-soft)] p-4">
+          <p className="m-0 text-sm text-[var(--text-muted)]">No artists added yet.</p>
+          {!isAddingOpen && (
+            <button
+              type="button"
+              className="grid min-h-28 place-items-center rounded-2xl border border-dashed border-[var(--surface-border)] bg-[var(--surface-soft)] text-[var(--text-muted)] transition-colors hover:border-[var(--selection-border)] hover:bg-[var(--selection-soft)] hover:text-[var(--text)] focus-visible:border-[var(--selection-border)] focus-visible:bg-[var(--selection-soft)] focus-visible:text-[var(--text)] focus-visible:outline-none"
+              onClick={() => setIsAddingOpen(true)}
+              aria-label="Add artist"
+            >
+              <span className="inline-grid place-items-center gap-2">
+                <span className="grid size-12 place-items-center rounded-full border border-[var(--surface-border-soft)] bg-[var(--surface-panel)]">
+                  <Plus className="size-6" aria-hidden="true" />
+                </span>
+                <span className="text-sm font-semibold">Add artist</span>
+              </span>
+            </button>
+          )}
+        </div>
       )}
     </section>
   )
