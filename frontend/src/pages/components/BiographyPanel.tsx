@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { Button } from '@/shared/ui/button'
 import { BIOGRAPHY_MAX_LENGTH, validateBiography } from '@/shared/lib/validation'
@@ -12,6 +12,7 @@ interface BiographyPanelProps {
   manualConnections: ManualArtistConnectionsProps
   canEditBiography: boolean
   hasApprovedArtistProfile: boolean
+  onBiographyStatusChange?: (status: { isLoading: boolean; hasBiography: boolean | null }) => void
 }
 
 export function BiographyPanel({
@@ -20,6 +21,7 @@ export function BiographyPanel({
   manualConnections,
   canEditBiography,
   hasApprovedArtistProfile,
+  onBiographyStatusChange,
 }: BiographyPanelProps) {
   const [artistName, setArtistName] = useState('Artist profile')
   const [biography, setBiography] = useState('')
@@ -33,6 +35,9 @@ export function BiographyPanel({
 
   const hasArtistProfileTarget = artistId !== null
   const shouldShowApprovedProfileWorkspace = hasApprovedArtistProfile && hasArtistProfileTarget
+  const reportBiographyStatus = useCallback((status: { isLoading: boolean; hasBiography: boolean | null }) => {
+    onBiographyStatusChange?.(status)
+  }, [onBiographyStatusChange])
 
   useEffect(() => {
     let isCurrent = true
@@ -45,12 +50,14 @@ export function BiographyPanel({
       setLinkedArtists([])
       setIsEditing(false)
       setSuccess(null)
-      setError('Artist profiles are selected during registration and approved together with the account.')
+      setError(null)
+      reportBiographyStatus({ isLoading: false, hasBiography: null })
       return () => { isCurrent = false }
     }
 
     setIsLoading(true)
     setError(null)
+    reportBiographyStatus({ isLoading: true, hasBiography: null })
     fetchArtistBiography(artistId)
       .then((artist) => {
         if (!isCurrent) return
@@ -59,6 +66,10 @@ export function BiographyPanel({
         setBiography(nextBiography)
         setDraftBiography(nextBiography)
         setLinkedArtists(artist.connected_artists)
+        reportBiographyStatus({
+          isLoading: false,
+          hasBiography: nextBiography.trim().length > 0,
+        })
       })
       .catch((requestError) => {
         if (!isCurrent) return
@@ -66,20 +77,14 @@ export function BiographyPanel({
           ? requestError.message.replace(/^400:\s*/, '').replace(/^409:\s*/, '')
           : 'Failed to load biography.'
         setError(message)
+        reportBiographyStatus({ isLoading: false, hasBiography: null })
       })
       .finally(() => {
         if (isCurrent) setIsLoading(false)
       })
 
     return () => { isCurrent = false }
-  }, [artistId, hasApprovedArtistProfile, selectedArtistName])
-
-  const hasBiographyText = biography.trim().length > 0
-  const shouldShowProfileSetupPrompt = shouldShowApprovedProfileWorkspace
-    && !isLoading
-    && !isEditing
-    && !hasBiographyText
-    && linkedArtists.length === 0
+  }, [artistId, hasApprovedArtistProfile, reportBiographyStatus, selectedArtistName])
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -101,6 +106,10 @@ export function BiographyPanel({
       setDraftBiography(response.biography)
       setIsEditing(false)
       setSuccess('Biography saved.')
+      reportBiographyStatus({
+        isLoading: false,
+        hasBiography: response.biography.trim().length > 0,
+      })
     } catch (requestError) {
       const message = requestError instanceof Error
         ? requestError.message.replace(/^400:\s*/, '').replace(/^409:\s*/, '')
@@ -114,7 +123,8 @@ export function BiographyPanel({
   return (
     <article
       id="artist-biography-panel"
-      className="grid gap-4 rounded-3xl border border-[color-mix(in_srgb,var(--text)_10%,transparent)] bg-[color-mix(in_srgb,var(--background)_42%,transparent)] p-5 shadow-[0_10px_24px_rgba(0,0,0,0.12)] backdrop-blur-sm"
+      tabIndex={-1}
+      className="scroll-mt-28 grid gap-4 rounded-3xl border border-[color-mix(in_srgb,var(--text)_10%,transparent)] bg-[color-mix(in_srgb,var(--background)_42%,transparent)] p-5 shadow-[0_10px_24px_rgba(0,0,0,0.12)] backdrop-blur-sm"
     >
       <div className="flex items-center justify-between gap-3">
         <div id="artist-biography-heading">
@@ -173,41 +183,29 @@ export function BiographyPanel({
         </form>
       ) : shouldShowApprovedProfileWorkspace ? (
         <>
-          {shouldShowProfileSetupPrompt && (
-            <section className="grid gap-3 rounded-2xl border border-[var(--surface-border-soft)] bg-[var(--surface-soft)] p-4">
-              <div className="grid gap-2">
-                <span className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--accent)]">
-                  Complete your artist profile
-                </span>
-                <p className="m-0 text-sm leading-6 text-[var(--text-muted)]">
-                  Add a full bio so we can understand your sound and scene, then add 3–5 artists you know, collaborate with, or who can recommend you to promoters.
-                </p>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {canEditBiography && (
-                  <Button
-                    type="button"
-                    size="sm"
-                    onClick={() => {
-                      setDraftBiography(biography)
-                      setError(null)
-                      setSuccess(null)
-                      setIsEditing(true)
-                    }}
-                  >
-                    Add bio
-                  </Button>
-                )}
-                <Button asChild type="button" size="sm" variant="outline">
-                  <a href="#artist-manual-connections">Add artists you know</a>
-                </Button>
-              </div>
-            </section>
-          )}
-          {!shouldShowProfileSetupPrompt && (
-            <p className={biography ? 'm-0 whitespace-pre-wrap text-sm leading-6 text-[var(--text)]' : 'm-0 text-sm text-[var(--text-muted)]'}>
-              {biography || 'No biography added yet. Add a full bio to unlock better recommendations.'}
+          {biography ? (
+            <p className="m-0 whitespace-pre-wrap text-sm leading-6 text-[var(--text)]">
+              {biography}
             </p>
+          ) : (
+            <div className="grid gap-3 rounded-2xl border border-[var(--surface-border-soft)] bg-[var(--surface-soft)] p-4">
+              <p className="m-0 text-sm text-[var(--text-muted)]">No biography added yet.</p>
+              {canEditBiography && (
+                <Button
+                  type="button"
+                  size="sm"
+                  className="w-fit"
+                  onClick={() => {
+                    setDraftBiography(biography)
+                    setError(null)
+                    setSuccess(null)
+                    setIsEditing(true)
+                  }}
+                >
+                  Add bio
+                </Button>
+              )}
+            </div>
           )}
         </>
       ) : null}
@@ -219,13 +217,13 @@ export function BiographyPanel({
       {shouldShowApprovedProfileWorkspace && error && <p className="m-0 whitespace-pre-line rounded-xl border border-[var(--event-border-soft)] bg-[var(--event-soft)] p-3 text-sm text-[var(--event)]">{error}</p>}
       {success && <p className="m-0 rounded-xl border border-[var(--promoter-border)] bg-[var(--promoter-soft)] p-3 text-sm text-[var(--text)]">{success}</p>}
 
-      {!isLoading && shouldShowApprovedProfileWorkspace && !error && (
+      {!isLoading && shouldShowApprovedProfileWorkspace && !error && linkedArtists.length > 0 && (
         <section className="grid gap-3" aria-labelledby="biography-linked-artists-heading">
           <div className="flex items-center justify-between gap-3 border-b border-[var(--surface-border-soft)] pb-2">
             <h3 id="biography-linked-artists-heading">Linked artists</h3>
           </div>
           <div className="grid grid-cols-[repeat(auto-fit,minmax(150px,1fr))] gap-2">
-            {linkedArtists.length > 0 ? linkedArtists.map((artist) => (
+            {linkedArtists.map((artist) => (
               <Link
                 key={artist.id}
                 to={`/graph?selectedType=artist&selectedId=${encodeURIComponent(artist.id)}`}
@@ -234,9 +232,7 @@ export function BiographyPanel({
                 <strong>{artist.name}</strong>
                 <span className="text-sm text-[var(--text-muted)]">{artist.shared_events} shared event{artist.shared_events === 1 ? '' : 's'}</span>
               </Link>
-            )) : (
-              <p className="m-0 text-sm text-[var(--text-muted)]">No linked artists yet.</p>
-            )}
+            ))}
           </div>
         </section>
       )}

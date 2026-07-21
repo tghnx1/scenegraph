@@ -45,7 +45,6 @@ export function ManualArtistConnections({
   onAdd,
   onRemove,
 }: ManualArtistConnectionsProps) {
-  const [isInfoOpen, setIsInfoOpen] = useState(false)
   const helperCopy = 'Add 3–5 artists you know, collaborate with, or who can recommend you to promoters.'
   const [isAddingOpen, setIsAddingOpen] = useState(false)
   const [searchValue, setSearchValue] = useState('')
@@ -69,54 +68,32 @@ export function ManualArtistConnections({
   return (
     <section
       id="artist-manual-connections"
-      className="grid gap-4"
+      tabIndex={-1}
+      className="scroll-mt-28 grid gap-4"
       aria-labelledby="manual-artist-connections-heading"
     >
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--surface-border-soft)] pb-2">
-        <div className="flex items-center gap-1.5">
+        <div className="grid gap-1">
           <h3 id="manual-artist-connections-heading">Artists you know</h3>
-          <span className="relative inline-grid place-items-center">
-            <button
-              type="button"
-              className="grid size-5 cursor-help place-items-center rounded-full border border-[var(--surface-border)] bg-[var(--surface-panel)] p-0 text-[var(--text-muted)] opacity-90 transition-all hover:-translate-y-px hover:border-[var(--focus-border)] hover:bg-[var(--surface-strong)] hover:text-[var(--text)] hover:opacity-100 focus-visible:-translate-y-px focus-visible:border-[var(--focus-border)] focus-visible:bg-[var(--surface-strong)] focus-visible:text-[var(--text)] focus-visible:opacity-100 focus-visible:outline-none"
-              aria-label="Explain how to add artists"
-              aria-expanded={isInfoOpen}
-              onClick={() => setIsInfoOpen((isOpen) => !isOpen)}
-              onBlur={() => setIsInfoOpen(false)}
-            >
-              <span className="block size-[13px] rounded-full text-center font-serif text-[0.7rem] font-extrabold italic leading-[13px]" aria-hidden="true">i</span>
-            </button>
-            {isInfoOpen && (
-              <span
-                className="absolute left-0 top-[calc(100%+8px)] z-20 w-[min(300px,calc(100vw-48px))] rounded-lg border border-[var(--surface-border)] bg-[var(--surface-panel)] px-3 py-2.5 text-left text-[0.82rem] font-semibold leading-snug text-[var(--text)] shadow-[var(--surface-shadow)] max-[700px]:left-1/2 max-[700px]:right-auto max-[700px]:top-auto max-[700px]:bottom-[calc(100%+8px)] max-[700px]:z-[120] max-[700px]:max-h-[45dvh] max-[700px]:w-[min(300px,calc(100vw-32px))] max-[700px]:-translate-x-1/2 max-[700px]:translate-y-0 max-[700px]:overflow-y-auto"
-                role="tooltip"
-              >
-                {helperCopy}
-              </span>
-            )}
-          </span>
+          <p className="m-0 text-sm text-[var(--text-muted)]">
+            {helperCopy}
+          </p>
         </div>
-        {!isAddingOpen && (
+        {!isAddingOpen && connections.length > 0 && (
           <Button
             type="button"
-            size="icon"
+            size="sm"
             variant="outline"
-            className="size-10 rounded-full"
             onClick={() => setIsAddingOpen(true)}
-            aria-label="Add artist"
           >
-            <Plus aria-hidden="true" />
+            Add artist
           </Button>
         )}
       </div>
 
-      <p className="m-0 text-sm text-[var(--text-muted)]">
-        {helperCopy}
-      </p>
-
-      {error && <p className="m-0 rounded-xl border border-[var(--event-border-soft)] bg-[var(--event-soft)] p-3 text-sm text-[var(--event)]">{error}</p>}
-
-      {!isAddingOpen && (
+      {isLoading && connections.length === 0 && !isAddingOpen ? (
+        <p className="m-0 text-sm text-[var(--text-muted)]">Loading known artists...</p>
+      ) : connections.length === 0 && !isAddingOpen ? (
         <button
           type="button"
           className="grid min-h-28 place-items-center rounded-2xl border border-dashed border-[var(--surface-border)] bg-[var(--surface-soft)] text-[var(--text-muted)] transition-colors hover:border-[var(--selection-border)] hover:bg-[var(--selection-soft)] hover:text-[var(--text)] focus-visible:border-[var(--selection-border)] focus-visible:bg-[var(--selection-soft)] focus-visible:text-[var(--text)] focus-visible:outline-none"
@@ -130,7 +107,7 @@ export function ManualArtistConnections({
             <span className="text-sm font-semibold">Add artist</span>
           </span>
         </button>
-      )}
+      ) : null}
 
       {isAddingOpen && (
         <section className="grid gap-3 rounded-2xl border border-[var(--surface-border-soft)] bg-[var(--surface-soft)] p-4" aria-labelledby="artist-search-heading">
@@ -200,9 +177,9 @@ export function ManualArtistConnections({
         </section>
       )}
 
-      {isLoading ? (
-        <p>Loading known artists...</p>
-      ) : connections.length > 0 ? (
+      {error && <p className="m-0 rounded-xl border border-[var(--event-border-soft)] bg-[var(--event-soft)] p-3 text-sm text-[var(--event)]">{error}</p>}
+
+      {!isAddingOpen && connections.length > 0 && (
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-8">
           {connections.map((connection) => (
             <div className="relative" key={connection.connectedArtistId}>
@@ -227,25 +204,6 @@ export function ManualArtistConnections({
               </Button>
             </div>
           ))}
-        </div>
-      ) : (
-        <div className="grid gap-3 rounded-2xl border border-[var(--surface-border-soft)] bg-[var(--surface-soft)] p-4">
-          <p className="m-0 text-sm text-[var(--text-muted)]">No artists added yet.</p>
-          {!isAddingOpen && (
-            <button
-              type="button"
-              className="grid min-h-28 place-items-center rounded-2xl border border-dashed border-[var(--surface-border)] bg-[var(--surface-soft)] text-[var(--text-muted)] transition-colors hover:border-[var(--selection-border)] hover:bg-[var(--selection-soft)] hover:text-[var(--text)] focus-visible:border-[var(--selection-border)] focus-visible:bg-[var(--selection-soft)] focus-visible:text-[var(--text)] focus-visible:outline-none"
-              onClick={() => setIsAddingOpen(true)}
-              aria-label="Add artist"
-            >
-              <span className="inline-grid place-items-center gap-2">
-                <span className="grid size-12 place-items-center rounded-full border border-[var(--surface-border-soft)] bg-[var(--surface-panel)]">
-                  <Plus className="size-6" aria-hidden="true" />
-                </span>
-                <span className="text-sm font-semibold">Add artist</span>
-              </span>
-            </button>
-          )}
         </div>
       )}
     </section>

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Button } from '@/shared/ui/button'
 import { cn } from '@/shared/lib/cn-utils.ts'
 import { DetailsPanel } from './components/DetailsPanel.tsx'
@@ -9,6 +9,10 @@ import { useGraphSearchDetails } from './hooks/useGraphSearchDetails.ts'
 import { useManualArtistConnections } from './hooks/useManualArtistConnections.ts'
 import { BiographyPanel } from './components/BiographyPanel.tsx'
 import { getMe, type AuthRole } from '../api/auth'
+import {
+  getProfileSetupTargetId,
+  type ArtistProfileReadiness,
+} from './profileReadiness'
 
 type ProfileWorkspaceTab = 'graph' | 'recommendations'
 
@@ -35,7 +39,13 @@ export function ProfilePage({ recommendationTargetControls, showBiography = true
     const stored = localStorage.getItem('artist_name')?.trim() ?? ''
     return stored || null
   })
-  const refreshCurrentUser = async () => {
+
+  const [biographyReadiness, setBiographyReadiness] = useState<Pick<ArtistProfileReadiness, 'isLoading' | 'hasBiography'>>({
+    isLoading: true,
+    hasBiography: null,
+  })
+
+  const refreshCurrentUser = useCallback(async () => {
     try {
       const response = await getMe()
       setCurrentRole(response.role)
@@ -55,11 +65,10 @@ export function ProfilePage({ recommendationTargetControls, showBiography = true
         localStorage.removeItem('artist_name')
         setAssignedArtistName(null)
       }
-
     } catch {
       // Keep the last known state when the session is unavailable.
     }
-  }
+  }, [])
 
   useEffect(() => {
     void refreshCurrentUser()
@@ -125,6 +134,30 @@ export function ProfilePage({ recommendationTargetControls, showBiography = true
     : artistId
   const manualConnections = useManualArtistConnections(manualConnectionsArtistId)
   const isSingleRowWorkspace = !showBiography
+  const profileReadiness = useMemo<ArtistProfileReadiness>(() => ({
+    isLoading: biographyReadiness.isLoading || manualConnections.isLoading,
+    hasBiography: biographyReadiness.hasBiography,
+    manualArtistCount: manualConnections.connections.length,
+    requiredManualArtistCount: 3,
+  }), [
+    biographyReadiness.hasBiography,
+    biographyReadiness.isLoading,
+    manualConnections.connections.length,
+    manualConnections.isLoading,
+  ])
+
+  const handleCompleteProfile = useCallback(() => {
+    const targetId = getProfileSetupTargetId(profileReadiness)
+    const target = document.getElementById(targetId)
+    if (!target) return
+
+    target.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    if ('focus' in target) {
+      window.setTimeout(() => {
+        target.focus({ preventScroll: true })
+      }, 350)
+    }
+  }, [profileReadiness])
 
   return (
     <div className={cn(
@@ -208,6 +241,8 @@ export function ProfilePage({ recommendationTargetControls, showBiography = true
               artistName={recommendationTargetName}
               targetControls={recommendationTargetControls}
               autoLoad={isArtistUser && profileArtistId !== null}
+              profileReadiness={isArtistUser ? profileReadiness : undefined}
+              onCompleteProfile={isArtistUser ? handleCompleteProfile : undefined}
               emptyStateMessage={isArtistUser
                 ? 'Complete your artist profile to unlock recommendations.'
                 : undefined}
@@ -222,6 +257,7 @@ export function ProfilePage({ recommendationTargetControls, showBiography = true
               selectedArtistName={biographySelectedArtistName}
               canEditBiography={canEditBiography}
               hasApprovedArtistProfile={hasAssignedArtist}
+              onBiographyStatusChange={setBiographyReadiness}
               manualConnections={{
                 connections: manualConnections.connections,
                 isLoading: manualConnections.isLoading,

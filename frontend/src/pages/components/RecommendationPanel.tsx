@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { Check, Circle } from 'lucide-react'
 import { Button } from '@/shared/ui/button'
 import { cn } from '@/shared/lib/cn-utils'
 import { api } from '@/api/client'
@@ -18,6 +19,10 @@ import { useRecommendationJobUpdates } from '../hooks/useRecommendationJobUpdate
 import { RecommendationLoading } from './LoadingScreen'
 import { ScenegraphMapPanel } from './GraphPanel'
 import { RecommendationExportMenu } from './ExportRecommendation'
+import {
+  isArtistProfileReady,
+  type ArtistProfileReadiness,
+} from '../profileReadiness'
 
 const PROMOTER_RECOMMENDATIONS_API_PATH = '/recommendations/artists'
 const RECOMMENDATION_LOADING_MESSAGES = [
@@ -73,6 +78,8 @@ interface PromoterRecommendationsPanelProps {
   artistName?: string | null
   targetControls?: RecommendationTargetControls
   autoLoad?: boolean
+  profileReadiness?: ArtistProfileReadiness
+  onCompleteProfile?: () => void
   emptyStateMessage?: string
   onSelectNode: (node: GraphNode | null) => void
 }
@@ -162,6 +169,87 @@ function isProfileSetupRecommendationError(error: string | null): boolean {
   return normalizedError.includes('embedding found for artist') || normalizedError.includes('no text-embedding')
 }
 
+function ProfileSetupStatusRow({
+  label,
+  isComplete,
+  statusText,
+}: {
+  label: string
+  isComplete: boolean
+  statusText: string
+}) {
+  return (
+    <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 rounded-xl border border-[var(--surface-border-soft)] bg-[var(--surface-panel)] px-3 py-2.5">
+      <span className={cn(
+        'inline-flex size-7 items-center justify-center rounded-full border text-sm',
+        isComplete
+          ? 'border-[var(--selection-border)] bg-[var(--selection-soft)] text-[var(--text)]'
+          : 'border-[var(--surface-border)] bg-[var(--surface-soft)] text-[var(--text-muted)]',
+      )} aria-hidden="true">
+        {isComplete ? <Check className="size-4" /> : <Circle className="size-4" />}
+      </span>
+      <span className="font-medium text-[var(--text)]">{label}</span>
+      <span className="text-right text-sm text-[var(--text-muted)]">{statusText}</span>
+    </div>
+  )
+}
+
+function ProfileSetupCard({
+  readiness,
+  message,
+  actionLabel,
+  onAction,
+}: {
+  readiness: ArtistProfileReadiness
+  message: string
+  actionLabel: string
+  onAction: () => void
+}) {
+  const biographyComplete = readiness.hasBiography === true
+  const manualCount = Math.max(0, readiness.manualArtistCount)
+  const requiredManualCount = Math.max(0, readiness.requiredManualArtistCount)
+  const manualComplete = manualCount >= requiredManualCount
+
+  return (
+    <div className="grid w-full max-w-[36rem] gap-4 rounded-2xl border border-[var(--surface-border-soft)] bg-[var(--surface-soft)] p-5 text-left shadow-[0_10px_24px_rgba(0,0,0,0.1)] max-[700px]:max-w-full">
+      <div className="grid gap-2">
+        <span className={labelClass}>Profile setup</span>
+        <h3 className="m-0 text-xl font-semibold text-[var(--text)]">
+          Complete your profile to generate recommendations
+        </h3>
+        <p className="m-0 text-sm leading-6 text-[var(--text-muted)]">
+          {message}
+        </p>
+      </div>
+      <div className="grid gap-2">
+        <ProfileSetupStatusRow
+          label="Biography"
+          isComplete={biographyComplete}
+          statusText={biographyComplete ? 'Added' : 'Missing'}
+        />
+        <ProfileSetupStatusRow
+          label="Artists you know"
+          isComplete={manualComplete}
+          statusText={`${Math.min(manualCount, requiredManualCount)} of ${requiredManualCount} added`}
+        />
+      </div>
+      <Button type="button" className="w-fit" onClick={onAction}>
+        {actionLabel}
+      </Button>
+    </div>
+  )
+}
+
+function ProfileReadinessLoadingState() {
+  return (
+    <div className="grid min-h-[320px] place-items-center rounded-2xl border border-[var(--surface-border-soft)] bg-[var(--surface-soft)] p-6 text-center">
+      <p className="m-0 text-sm font-medium text-[var(--text-muted)]">
+        Checking your artist profile…
+      </p>
+    </div>
+  )
+}
+
 function recommendationScore(recommendation: PromoterRecommendationResponse['recommendations'][number]): number {
   const directScore = recommendation.score
   if (typeof directScore === 'number' && Number.isFinite(directScore)) {
@@ -194,6 +282,8 @@ export function PromoterRecommendationsPanel({
   artistName,
   targetControls,
   autoLoad = false,
+  profileReadiness,
+  onCompleteProfile,
   emptyStateMessage,
   onSelectNode,
 }: PromoterRecommendationsPanelProps) {
@@ -232,6 +322,9 @@ export function PromoterRecommendationsPanel({
   const recommendationHeaderLabel = recommendationTargetLabel
     ? `Promoter Recommendations for ${recommendationTargetLabel}`
     : 'Promoter Recommendations'
+  const shouldGateByProfileReadiness = autoLoad && profileReadiness !== undefined
+  const profileSetupReady = isArtistProfileReady(profileReadiness)
+  const isProfileSetupLoading = Boolean(profileReadiness?.isLoading)
 
   useEffect(() => {
     recommendationRequestIdRef.current += 1
@@ -250,6 +343,14 @@ export function PromoterRecommendationsPanel({
     setRecommendationGraphMode('compact')
     recommendationThresholdInitializedRef.current = false
   }, [recommendationArtistId])
+
+  useEffect(() => {
+    if (!shouldGateByProfileReadiness) return
+    if (profileReadiness === undefined) return
+    if (profileReadiness.isLoading || !profileSetupReady) {
+      autoLoadTriggeredArtistIdRef.current = null
+    }
+  }, [profileReadiness, profileSetupReady, shouldGateByProfileReadiness])
 
   useEffect(() => {
     if (!isRecommendationsLoading) {
@@ -372,11 +473,27 @@ export function PromoterRecommendationsPanel({
     if (!isActive) return
     if (recommendationArtistId === null) return
     if (recommendationsData !== null || isRecommendationsLoading) return
+
+    if (shouldGateByProfileReadiness) {
+      if (isProfileSetupLoading) return
+      if (!profileSetupReady) return
+    }
+
     if (autoLoadTriggeredArtistIdRef.current === recommendationArtistId) return
 
     autoLoadTriggeredArtistIdRef.current = recommendationArtistId
     void handleLoadRecommendations()
-  }, [autoLoad, handleLoadRecommendations, isActive, isRecommendationsLoading, recommendationArtistId, recommendationsData])
+  }, [
+    autoLoad,
+    handleLoadRecommendations,
+    isActive,
+    isProfileSetupLoading,
+    isRecommendationsLoading,
+    profileSetupReady,
+    recommendationArtistId,
+    recommendationsData,
+    shouldGateByProfileReadiness,
+  ])
 
   const isProfileSetupError = isProfileSetupRecommendationError(recommendationsError)
 
@@ -647,36 +764,25 @@ export function PromoterRecommendationsPanel({
         )}
       </div>
       {recommendationsData === null && !isRecommendationsLoading && (
-        isProfileSetupError ? (
-          <div className="grid min-h-0 gap-4 rounded-2xl border border-[var(--surface-border-soft)] bg-[var(--surface-soft)] p-6">
-            <div className="grid gap-2 text-left">
-              <span className={labelClass}>Profile setup needed</span>
-              <h3 className="m-0 text-xl font-semibold text-[var(--text)]">
-                Complete your artist profile to unlock recommendations
-              </h3>
-              <p className="m-0 text-sm leading-6 text-[var(--text-muted)]">
-                Add a full bio so we can understand your sound and scene, then add 3–5 artists you know, collaborate with, or who can recommend you to promoters.
-              </p>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <Button asChild type="button" size="sm">
-                <a href="#artist-biography-panel">Add bio</a>
-              </Button>
-              <Button asChild type="button" size="sm" variant="outline">
-                <a href="#artist-manual-connections">Add artists you know</a>
-              </Button>
-            </div>
-            {!targetControls && (
-              <Button
-                type="button"
-                size="sm"
-                variant="ghost"
-                className="w-fit px-0 text-[var(--text-muted)] hover:bg-transparent hover:text-[var(--text)]"
-                onClick={() => void handleLoadRecommendations()}
-              >
-                Check again
-              </Button>
-            )}
+        isProfileSetupLoading ? (
+          <ProfileReadinessLoadingState />
+        ) : profileReadiness !== undefined && !profileSetupReady ? (
+          <div className="grid min-h-0 place-items-center rounded-2xl border border-[var(--surface-border-soft)] bg-[var(--surface-soft)] p-6">
+            <ProfileSetupCard
+              readiness={profileReadiness}
+              message="Complete these steps and recommendations will start automatically."
+              actionLabel="Complete profile"
+              onAction={() => onCompleteProfile?.()}
+            />
+          </div>
+        ) : profileReadiness !== undefined && profileSetupReady && isProfileSetupError ? (
+          <div className="grid min-h-0 place-items-center rounded-2xl border border-[var(--surface-border-soft)] bg-[var(--surface-soft)] p-6">
+            <ProfileSetupCard
+              readiness={profileReadiness}
+              message="Your profile was updated, but recommendations are not ready yet."
+              actionLabel="Try again"
+              onAction={() => void handleLoadRecommendations()}
+            />
           </div>
         ) : (
           <div className="grid min-h-0 place-items-center gap-3 rounded-2xl border border-[var(--surface-border-soft)] bg-[var(--surface-soft)] p-6 text-center">
