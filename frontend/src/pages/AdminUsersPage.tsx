@@ -271,7 +271,7 @@ export function AdminUsersPage({ compact = false, refreshVersion = 0, onActivity
               </div>
             </div>
 
-            {['approved', 'deactivated', 'rejected'].includes(user.status) && (
+            {['approved', 'deactivated'].includes(user.status) && (
               <div style={{ display: 'flex', gap: 8}}>
                 <button
                   type="button"

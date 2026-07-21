@@ -410,6 +410,7 @@ def list_users(connection: Connection) -> list[dict]:
                 ON artists.id = users.artist_id
             LEFT JOIN artist_claims
                 ON artist_claims.user_id = users.id
+               AND artist_claims.artist_id = users.artist_id
                AND artist_claims.status = 'approved'
             ORDER BY users.created_at DESC
             """
