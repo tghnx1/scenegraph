@@ -1,11 +1,14 @@
+import pytest
 from fastapi.testclient import TestClient
 
+from app.admin import users as admin_users_service
 from app.auth import create_access_token, rate_limit_attempts
 from app.db import get_connection
 from app.main import app
 
 
 ADMIN_USER_ID = 95_001
+ADMIN_USERNAME = f"registration-claim-admin-{ADMIN_USER_ID}"
 ARTIST_ID = 95_002
 EXISTING_ARTIST_NAME = "Registration Claim Artist"
 NEW_ARTIST_NAME = "Registration New Artist"
@@ -21,6 +24,14 @@ def admin_headers() -> dict[str, str]:
 def cleanup(username: str, email: str, *, artist_name: str | None = None) -> None:
     with get_connection() as connection:
         with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                DELETE FROM activity_log
+                WHERE username IN (%s, %s)
+                   OR target IN (%s, %s)
+                """,
+                (username, ADMIN_USERNAME, username, ADMIN_USERNAME),
+            )
             cursor.execute(
                 """
                 DELETE FROM artist_claims
@@ -57,6 +68,14 @@ def cleanup(username: str, email: str, *, artist_name: str | None = None) -> Non
                 "DELETE FROM artists WHERE ra_artist_id IN (%s, %s)",
                 (f"registration-claim-test-{ARTIST_ID}", f"registration-duplicate-name-test-{ARTIST_ID + 1}"),
             )
+            cursor.execute(
+                """
+                DELETE FROM activity_log
+                WHERE username = %s
+                   OR target = %s
+                """,
+                (username, username),
+            )
             connection.commit()
     rate_limit_attempts.pop(f"register:{email}", None)
 
@@ -79,8 +98,8 @@ def seed_admin_and_existing_artist(username: str, email: str) -> None:
                 """,
                 (
                     ADMIN_USER_ID,
-                    f"registration-claim-admin-{ADMIN_USER_ID}",
-                    f"registration-claim-admin-{ADMIN_USER_ID}@example.com",
+                    ADMIN_USERNAME,
+                    f"{ADMIN_USERNAME}@example.com",
                 ),
             )
             connection.commit()
@@ -98,8 +117,8 @@ def seed_admin(username: str, email: str) -> None:
                 """,
                 (
                     ADMIN_USER_ID,
-                    f"registration-claim-admin-{ADMIN_USER_ID}",
-                    f"registration-claim-admin-{ADMIN_USER_ID}@example.com",
+                    ADMIN_USERNAME,
+                    f"{ADMIN_USERNAME}@example.com",
                 ),
             )
             connection.commit()
@@ -448,9 +467,87 @@ def test_artist_registration_requires_exactly_one_artist_target():
     }
 
 
-def test_rejecting_new_artist_registration_removes_unused_artist_record():
+def test_rejecting_existing_ra_artist_registration_deletes_user_and_claim_but_preserves_artist():
+    username = "reject-ra-artist"
+    email = "reject-ra-artist@example.com"
+    instagram_url = "https://www.instagram.com/rejectraartist/"
+    seed_admin_and_existing_artist(username, email)
+    try:
+        register_response = client.post(
+            "/api/register",
+            json={
+                "username": username,
+                "email": email,
+                "instagram_url": instagram_url,
+                "password": "Password123",
+                "password_confirm": "Password123",
+                "artist_id": ARTIST_ID,
+            },
+        )
+        assert register_response.status_code == 200
+        user_id = register_response.json()["user_id"]
+
+        reject_response = client.post(f"/api/admin/users/{user_id}/reject", headers=admin_headers())
+        assert reject_response.status_code == 200
+        assert reject_response.json()["success"] is True
+
+        with get_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT id FROM users WHERE id = %s", (user_id,))
+                user_row = cursor.fetchone()
+                cursor.execute(
+                    "SELECT id, ra_artist_id FROM artists WHERE id = %s",
+                    (ARTIST_ID,),
+                )
+                artist_row = cursor.fetchone()
+                cursor.execute(
+                    "SELECT id FROM artist_claims WHERE user_id = %s OR artist_id = %s",
+                    (user_id, ARTIST_ID),
+                )
+                claim_row = cursor.fetchone()
+                cursor.execute(
+                    """
+                    SELECT id, user_id, username, event_type, target
+                    FROM activity_log
+                    WHERE event_type = 'user registration rejected'
+                      AND username = %s
+                    ORDER BY id DESC
+                    LIMIT 1
+                    """,
+                    (username,),
+                )
+                activity_row = cursor.fetchone()
+
+        assert user_row is None
+        assert artist_row is not None
+        assert artist_row["ra_artist_id"] == f"registration-claim-test-{ARTIST_ID}"
+        assert claim_row is None
+        assert activity_row is not None
+        assert activity_row["user_id"] is None
+        assert activity_row["username"] == username
+        assert activity_row["target"] == username
+
+        rerun_response = client.post(
+            "/api/register",
+            json={
+                "username": username,
+                "email": email,
+                "instagram_url": instagram_url,
+                "password": "Password123",
+                "password_confirm": "Password123",
+                "artist_id": ARTIST_ID,
+            },
+        )
+        assert rerun_response.status_code == 200
+        assert rerun_response.json()["success"] is True
+    finally:
+        cleanup(username, email, artist_name=NEW_ARTIST_NAME)
+
+
+def test_rejecting_new_artist_registration_deletes_user_claim_and_unused_artist_but_allows_reuse():
     username = "reject-new-artist"
     email = "reject-new-artist@example.com"
+    instagram_url = "https://www.instagram.com/registrationrejectnewartist"
     seed_admin(username, email)
     try:
         register_response = client.post(
@@ -458,7 +555,7 @@ def test_rejecting_new_artist_registration_removes_unused_artist_record():
             json={
                 "username": username,
                 "email": email,
-                "instagram_url": "https://www.instagram.com/registrationrejectnewartist",
+                "instagram_url": instagram_url,
                 "password": "Password123",
                 "password_confirm": "Password123",
                 "new_artist_name": NEW_ARTIST_NAME,
@@ -473,22 +570,105 @@ def test_rejecting_new_artist_registration_removes_unused_artist_record():
 
         with get_connection() as connection:
             with connection.cursor() as cursor:
-                cursor.execute("SELECT status FROM users WHERE id = %s", (user_id,))
+                cursor.execute("SELECT id FROM users WHERE id = %s", (user_id,))
                 user_row = cursor.fetchone()
                 cursor.execute("SELECT id FROM artists WHERE name = %s", (NEW_ARTIST_NAME,))
                 artist_row = cursor.fetchone()
                 cursor.execute(
+                    "SELECT id FROM artist_claims WHERE user_id = %s OR artist_id = %s",
+                    (user_id, ARTIST_ID),
+                )
+                claim_row = cursor.fetchone()
+                cursor.execute(
                     """
-                    SELECT status
-                    FROM artist_claims
-                    WHERE user_id = %s
+                    SELECT id, user_id, username, event_type, target
+                    FROM activity_log
+                    WHERE event_type = 'user registration rejected'
+                      AND username = %s
+                    ORDER BY id DESC
+                    LIMIT 1
                     """,
+                    (username,),
+                )
+                activity_row = cursor.fetchone()
+
+        assert user_row is None
+        assert artist_row is None
+        assert claim_row is None
+        assert activity_row is not None
+        assert activity_row["user_id"] is None
+        assert activity_row["username"] == username
+        assert activity_row["target"] == username
+
+        rerun_response = client.post(
+            "/api/register",
+            json={
+                "username": username,
+                "email": email,
+                "instagram_url": instagram_url,
+                "password": "Password123",
+                "password_confirm": "Password123",
+                "new_artist_name": NEW_ARTIST_NAME,
+            },
+        )
+        assert rerun_response.status_code == 200
+        assert rerun_response.json()["success"] is True
+    finally:
+        cleanup(username, email, artist_name=NEW_ARTIST_NAME)
+
+
+def test_rejecting_registration_rolls_back_on_artist_cleanup_failure(monkeypatch: pytest.MonkeyPatch):
+    username = "reject-rollback"
+    email = "reject-rollback@example.com"
+    seed_admin(username, email)
+    try:
+        register_response = client.post(
+            "/api/register",
+            json={
+                "username": username,
+                "email": email,
+                "instagram_url": "https://www.instagram.com/rejectrollback",
+                "password": "Password123",
+                "password_confirm": "Password123",
+                "new_artist_name": NEW_ARTIST_NAME,
+            },
+        )
+        assert register_response.status_code == 200
+        user_id = register_response.json()["user_id"]
+
+        def boom(*args, **kwargs):
+            raise RuntimeError("boom")
+
+        monkeypatch.setattr(admin_users_service, "_delete_safe_user_created_artist", boom)
+
+        with pytest.raises(RuntimeError):
+            client.post(f"/api/admin/users/{user_id}/reject", headers=admin_headers())
+
+        with get_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT id FROM users WHERE id = %s", (user_id,))
+                user_row = cursor.fetchone()
+                cursor.execute("SELECT id FROM artists WHERE name = %s", (NEW_ARTIST_NAME,))
+                artist_row = cursor.fetchone()
+                cursor.execute(
+                    "SELECT id FROM artist_claims WHERE user_id = %s",
                     (user_id,),
                 )
                 claim_row = cursor.fetchone()
+                cursor.execute(
+                    """
+                    SELECT id
+                    FROM activity_log
+                    WHERE event_type = 'user registration rejected'
+                      AND username = %s
+                    """,
+                    (username,),
+                )
+                activity_row = cursor.fetchone()
 
-        assert user_row["status"] == "rejected"
-        assert artist_row is None
-        assert claim_row is None
+        assert user_row is not None
+        assert artist_row is not None
+        assert claim_row is not None
+        assert activity_row is None
     finally:
         cleanup(username, email, artist_name=NEW_ARTIST_NAME)

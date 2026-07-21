@@ -206,11 +206,26 @@ def reject_user(connection: Connection, *, user_id: int, admin: dict) -> dict:
         cursor.execute(
             """
             SELECT
-                users.id,
-                users.username,
-                users.email,
-                users.role,
-                users.status,
+                id,
+                username,
+                email,
+                role,
+                status
+            FROM users
+            WHERE users.id = %s
+              AND users.status = 'pending'
+            FOR UPDATE OF users
+            """,
+            (user_id,),
+        )
+        target_user = cursor.fetchone()
+
+        if target_user is None:
+            raise HTTPException(status_code=400, detail="Only pending registrations can be rejected")
+
+        cursor.execute(
+            """
+            SELECT
                 artist_claims.id AS artist_claim_id,
                 artist_claims.artist_id,
                 artist_claims.instagram_url AS artist_instagram_url,
@@ -221,60 +236,54 @@ def reject_user(connection: Connection, *, user_id: int, admin: dict) -> dict:
                     WHEN artists.ra_artist_id IS NULL THEN 'user_created'
                     ELSE 'resident_advisor'
                 END AS artist_source
-            FROM users
-            LEFT JOIN artist_claims
-                ON artist_claims.user_id = users.id
-               AND artist_claims.status = 'pending'
-            LEFT JOIN artists
+            FROM artist_claims
+            JOIN artists
                 ON artists.id = artist_claims.artist_id
-            WHERE users.id = %s
-            FOR UPDATE OF users
+            WHERE artist_claims.user_id = %s
+              AND artist_claims.status = 'pending'
+            FOR UPDATE OF artist_claims, artists
             """,
             (user_id,),
         )
-        target_user = cursor.fetchone()
+        claim_row = cursor.fetchone()
 
-        if target_user is None:
-            raise HTTPException(status_code=404, detail="User not found")
+        if claim_row is None:
+            raise HTTPException(status_code=400, detail="Pending registration claim not found")
+
+        target_user = {**target_user, **claim_row}
+
+        log_activity(
+            connection,
+            target_user["id"],
+            target_user["username"],
+            "user registration rejected",
+            target_user["username"],
+            commit=False,
+        )
 
         cursor.execute(
             """
-            UPDATE users
-            SET status = 'rejected'
+            DELETE FROM artist_claims
             WHERE id = %s
-            RETURNING id, username, email, role, status
+              AND status = 'pending'
+            """,
+            (target_user["artist_claim_id"],),
+        )
+        cursor.execute(
+            """
+            DELETE FROM users
+            WHERE id = %s
             """,
             (user_id,),
         )
-        updated_user = cursor.fetchone()
-
-        if target_user["artist_claim_id"] is not None:
-            cursor.execute(
-                """
-                UPDATE artist_claims
-                SET status = 'rejected',
-                    decided_at = CURRENT_TIMESTAMP,
-                    decided_by = %s
-                WHERE id = %s
-                """,
-                (admin["id"], target_user["artist_claim_id"]),
-            )
 
         if target_user["artist_id"] is not None and target_user["artist_ra_artist_id"] is None:
             _delete_safe_user_created_artist(connection, int(target_user["artist_id"]))
 
-    if updated_user is None:
-        raise HTTPException(status_code=404, detail="User not found")
-    log_activity(
-        connection,
-        admin["id"],
-        admin["username"],
-        "user registration rejected",
-        updated_user["username"],
-        commit=False,
-    )
     connection.commit()
-    return updated_user
+    deleted_user = dict(target_user)
+    deleted_user["status"] = "deleted"
+    return deleted_user
 
 
 def deactivate_user(connection: Connection, *, user_id: int, admin: dict) -> dict:
