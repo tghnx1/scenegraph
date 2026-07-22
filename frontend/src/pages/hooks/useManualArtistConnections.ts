@@ -52,8 +52,8 @@ export function useManualArtistConnections(artistId: number | null) {
     try {
       const connection = await addKnownArtist(artistId, connectedArtistId)
       setConnections((current) => [
-        connection,
         ...current.filter((item) => item.connectedArtistId !== connection.connectedArtistId),
+        connection,
       ])
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : 'Failed to add artist.')

@@ -1,13 +1,13 @@
-import {useMemo, useState} from 'react'
+import {useMemo, useRef, useState} from 'react'
 import {Link} from 'react-router-dom'
-import { Plus, Search, X } from 'lucide-react'
-import { Button } from '@/shared/ui/button'
-import { cn } from '@/shared/lib/cn-utils'
-import { fetchSearch } from '@/api/search'
-import { useApi } from '@/api/useApi'
+import {Plus, Search, X} from 'lucide-react'
+import {cn} from '@/shared/lib/cn-utils'
+import {Button} from '@/shared/ui/button'
+import {fetchSearch} from '@/api/search'
+import {useApi} from '@/api/useApi'
 import type {ManualArtistConnection} from '../../api/manualArtistConnections'
-import type { SearchResponse, SearchResult } from '../../types/search'
-import { useDebouncedValue } from '../hooks/useDebouncedValue'
+import type {SearchResponse, SearchResult} from '../../types/search'
+import {useDebouncedValue} from '../hooks/useDebouncedValue'
 
 export interface ManualArtistConnectionsProps {
   connections: ManualArtistConnection[]
@@ -48,9 +48,11 @@ export function ManualArtistConnections({
   const helperCopy = 'Add 3–5 artists you know, collaborate with, or who can recommend you to promoters.'
   const [isAddingOpen, setIsAddingOpen] = useState(false)
   const [searchValue, setSearchValue] = useState('')
+  const searchInputRef = useRef<HTMLInputElement | null>(null)
   const debouncedSearchValue = useDebouncedValue(searchValue.trim(), 300)
   const shouldSearch = isAddingOpen && debouncedSearchValue.length >= 2
-  const { data: searchData, isLoading: isSearchLoading, error: searchError } = useApi<SearchResponse>(
+
+  const {data: searchData, isLoading: isSearchLoading, error: searchError} = useApi<SearchResponse>(
     () => (shouldSearch ? fetchSearch(debouncedSearchValue, 8, 'artist') : Promise.resolve(EMPTY_SEARCH_RESPONSE)),
     [debouncedSearchValue, shouldSearch],
   )
@@ -60,9 +62,20 @@ export function ManualArtistConnections({
     [searchData?.results],
   )
 
-  const handleAddArtist = async (artistId: number) => {
-    await onAdd(artistId)
-    setSearchValue('')
+  const focusSearchInput = () => {
+    window.requestAnimationFrame(() => {
+      searchInputRef.current?.focus()
+    })
+  }
+
+  const openSearch = () => {
+    if (!isAddingOpen) {
+      setIsAddingOpen(true)
+      focusSearchInput()
+      return
+    }
+
+    searchInputRef.current?.focus()
   }
 
   const handleCloseSearch = () => {
@@ -70,80 +83,88 @@ export function ManualArtistConnections({
     setSearchValue('')
   }
 
+  const handleAddArtist = async (artistId: number) => {
+    await onAdd(artistId)
+    setSearchValue('')
+    focusSearchInput()
+  }
+
   return (
     <section
       id="artist-manual-connections"
       tabIndex={-1}
-      className="scroll-mt-28 grid gap-4"
+      className="grid gap-4 scroll-mt-28"
       aria-labelledby="manual-artist-connections-heading"
     >
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--surface-border-soft)] pb-2">
-        <div className="grid gap-1">
-          <h3 id="manual-artist-connections-heading">Artists you know</h3>
-          <p className="m-0 text-sm text-[var(--text-muted)]">
-            {helperCopy}
-          </p>
-        </div>
-        {!isAddingOpen && connections.length > 0 && (
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            onClick={() => setIsAddingOpen(true)}
-          >
-            Add artist
-          </Button>
-        )}
+      <div className="grid gap-1 border-b border-[var(--surface-border-soft)] pb-2">
+        <h3 id="manual-artist-connections-heading">Artists you know</h3>
+        <p className="m-0 text-sm text-[var(--text-muted)]">
+          {helperCopy}
+        </p>
       </div>
 
-      {connections.length > 0 && (
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-8">
-          {connections.map((connection) => (
-            <div className="relative" key={connection.connectedArtistId}>
-              <Link
-                to={`/graph?selectedType=artist&selectedId=${connection.connectedArtistId}`}
-                className="grid min-h-full gap-1 rounded-xl border border-[var(--surface-border-soft)] bg-[var(--surface-soft)] p-3 pr-10 text-[var(--text)] no-underline transition-colors hover:border-[var(--selection-border)] hover:bg-[var(--selection-soft)]"
-              >
-                <strong>{connection.connectedArtistName}</strong>
-                <span className="text-sm text-[var(--text-muted)]">Manual connection</span>
-              </Link>
-              <Button
-                type="button"
-                size="icon"
-                variant="ghost"
-                className="absolute right-2 top-2 size-7 rounded-full"
-                onClick={() => void onRemove(connection.connectedArtistId)}
-                disabled={pendingArtistId === connection.connectedArtistId}
-                aria-label={`Remove ${connection.connectedArtistName} from manual connections`}
-                title={pendingArtistId === connection.connectedArtistId ? 'Removing...' : 'Remove connection'}
-              >
-                <X aria-hidden="true" />
-              </Button>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {isLoading && connections.length === 0 && !isAddingOpen ? (
-        <p className="m-0 text-sm text-[var(--text-muted)]">Loading known artists...</p>
-      ) : connections.length === 0 && !isAddingOpen ? (
+      <div
+        data-testid="manual-artist-connections-grid"
+        className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-8"
+      >
         <button
           type="button"
-          className="grid min-h-28 place-items-center rounded-2xl border border-dashed border-[var(--surface-border)] bg-[var(--surface-soft)] text-[var(--text-muted)] transition-colors hover:border-[var(--selection-border)] hover:bg-[var(--selection-soft)] hover:text-[var(--text)] focus-visible:border-[var(--selection-border)] focus-visible:bg-[var(--selection-soft)] focus-visible:text-[var(--text)] focus-visible:outline-none"
-          onClick={() => setIsAddingOpen(true)}
-          aria-label="Add artist"
+          className={cn(
+            'grid min-h-full gap-2 rounded-xl border border-[var(--surface-border-soft)] bg-[var(--surface-soft)] p-3 text-center text-[var(--text-muted)] transition-colors hover:border-[var(--selection-border)] hover:bg-[var(--selection-soft)] hover:text-[var(--text)] focus-visible:border-[var(--selection-border)] focus-visible:bg-[var(--selection-soft)] focus-visible:text-[var(--text)] focus-visible:outline-none',
+            isAddingOpen && 'border-[var(--selection-border)] bg-[var(--selection-soft)] text-[var(--text)]',
+            isLoading && 'pointer-events-none opacity-80',
+          )}
+          onClick={openSearch}
+          aria-label="Add artists"
+          aria-expanded={isAddingOpen}
+          aria-controls="manual-artist-search-panel"
+          disabled={isLoading}
         >
-          <span className="inline-grid place-items-center gap-2">
+          <span className="mx-auto inline-grid place-items-center gap-2">
             <span className="grid size-12 place-items-center rounded-full border border-[var(--surface-border-soft)] bg-[var(--surface-panel)]">
-              <Plus className="size-6" aria-hidden="true" />
+              <Plus className="size-7" aria-hidden="true" />
             </span>
-            <span className="text-sm font-semibold">Add artist</span>
+            <span className="text-sm font-semibold">Add artists</span>
           </span>
         </button>
+
+        {connections.map((connection) => (
+          <div className="relative" key={connection.connectedArtistId}>
+            <Link
+              to={`/graph?selectedType=artist&selectedId=${connection.connectedArtistId}`}
+              className="grid min-h-full gap-1 rounded-xl border border-[var(--surface-border-soft)] bg-[var(--surface-soft)] p-3 pr-10 text-[var(--text)] no-underline transition-colors hover:border-[var(--selection-border)] hover:bg-[var(--selection-soft)]"
+            >
+              <strong>{connection.connectedArtistName}</strong>
+              <span className="text-sm text-[var(--text-muted)]">Manual connection</span>
+            </Link>
+            <Button
+              type="button"
+              size="icon"
+              variant="ghost"
+              className="absolute right-2 top-2 size-7 rounded-full"
+              onClick={() => void onRemove(connection.connectedArtistId)}
+              disabled={pendingArtistId === connection.connectedArtistId}
+              aria-label={`Remove ${connection.connectedArtistName} from manual connections`}
+              title={pendingArtistId === connection.connectedArtistId ? 'Removing...' : 'Remove connection'}
+            >
+              <X aria-hidden="true" />
+            </Button>
+          </div>
+        ))}
+      </div>
+
+      {isLoading ? (
+        <p className="m-0 text-sm text-[var(--text-muted)]">
+          {connections.length === 0 ? 'Loading known artists...' : 'Updating artists...'}
+        </p>
       ) : null}
 
       {isAddingOpen && (
-        <section className="grid gap-3 rounded-2xl border border-[var(--surface-border-soft)] bg-[var(--surface-soft)] p-4" aria-labelledby="artist-search-heading">
+        <section
+          id="manual-artist-search-panel"
+          className="grid gap-3 rounded-2xl border border-[var(--surface-border-soft)] bg-[var(--surface-soft)] p-4"
+          aria-labelledby="artist-search-heading"
+        >
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-2">
               <Search className="size-4 text-[var(--text-muted)]" aria-hidden="true" />
@@ -156,13 +177,14 @@ export function ManualArtistConnections({
               size="sm"
               variant="ghost"
               onClick={handleCloseSearch}
-              >
+            >
               Done
             </Button>
           </div>
           <label className="grid gap-2">
             <span className="sr-only">Search artists</span>
             <input
+              ref={searchInputRef}
               className="w-full rounded-xl border border-[var(--control-border)] bg-[var(--surface-input)] px-3 py-2.5 text-sm text-[var(--text)] outline-none placeholder:text-[var(--text-placeholder)] focus:border-[var(--focus-border)] focus:shadow-[0_0_0_3px_var(--focus-ring)]"
               type="search"
               value={searchValue}
