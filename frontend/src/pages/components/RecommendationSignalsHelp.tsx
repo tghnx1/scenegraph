@@ -3,17 +3,6 @@ import {ChevronDown} from 'lucide-react'
 import {Button} from '@/shared/ui/button'
 import {cn} from '@/shared/lib/cn-utils'
 
-const SIGNAL_ROWS = [
-  {
-    title: 'Biography',
-    text: 'Describe your sound, roles, labels, collectives and residencies.',
-  },
-  {
-    title: 'Artists you know',
-    text: 'Add artists you genuinely know or have worked with. More relevant connections can broaden your promoter network.',
-  },
-] as const
-
 const RECOMMENDATION_SIGNALS = [
   'your biography and its overall meaning',
   'explicitly mentioned styles and genres',
@@ -36,20 +25,8 @@ export function RecommendationSignalsHelp() {
       <div className="grid gap-2">
         <span className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--accent)]">Improve your matches</span>
         <p className="m-0 text-sm leading-6 text-[var(--text-muted)]">
-          More specific profile information gives SceneGraph more signals to find relevant promoters.
+          More specific profile information and relevant real-world connections give SceneGraph more useful recommendation signals.
         </p>
-      </div>
-
-      <div className="grid gap-2">
-        {SIGNAL_ROWS.map((row) => (
-          <div
-            key={row.title}
-            className="grid gap-1 rounded-xl border border-[var(--surface-border-soft)] bg-[var(--surface-panel)] px-3 py-2.5 md:grid-cols-[9rem_minmax(0,1fr)] md:gap-3"
-          >
-            <span className="text-sm font-semibold text-[var(--text)]">{row.title}</span>
-            <p className="m-0 text-sm leading-6 text-[var(--text-muted)]">{row.text}</p>
-          </div>
-        ))}
       </div>
 
       <div className="grid gap-3">

@@ -102,6 +102,8 @@ export function BiographyPanel({
     const draftLength = draftBiography.trim().length
     return draftLength > 0 && draftLength < 160
   }, [draftBiography])
+  const biographyHasContent = biography.trim().length > 0
+  const biographyActionLabel = biographyHasContent ? 'Edit biography' : 'Add biography'
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -165,7 +167,7 @@ export function BiographyPanel({
                 setIsEditing(true)
               }}
             >
-              Edit biography
+              {biographyActionLabel}
             </Button>
           )}
         </header>
@@ -226,23 +228,11 @@ export function BiographyPanel({
                 {biography}
               </p>
             ) : (
-              <div className="grid gap-3 rounded-2xl border border-[var(--surface-border-soft)] bg-[var(--surface-panel)] p-4">
+              <div className="grid gap-2 rounded-2xl border border-[var(--surface-border-soft)] bg-[var(--surface-panel)] p-4">
                 <p className="m-0 text-sm text-[var(--text-muted)]">No biography added yet.</p>
-                {canEditBiography && (
-                  <Button
-                    type="button"
-                    size="sm"
-                    className="w-fit"
-                    onClick={() => {
-                      setDraftBiography(biography)
-                      setError(null)
-                      setSuccess(null)
-                      setIsEditing(true)
-                    }}
-                  >
-                    Add bio
-                  </Button>
-                )}
+                <p className="m-0 text-sm leading-6 text-[var(--text-muted)]">
+                  Describe your sound, styles, roles, labels, collectives and residencies.
+                </p>
               </div>
             )}
           </>

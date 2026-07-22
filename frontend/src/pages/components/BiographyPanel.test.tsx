@@ -16,7 +16,7 @@ vi.mock('./ManualArtistConnections', () => ({
 }))
 
 describe('BiographyPanel', () => {
-  it('shows the artist profile eyebrow and keeps the edit control inside the Biography section', async () => {
+  it('shows the artist profile eyebrow and keeps the add/edit control inside the Biography section', async () => {
     const user = userEvent.setup()
     fetchArtistBiography.mockResolvedValueOnce({
       type: 'artist',
@@ -53,14 +53,20 @@ describe('BiographyPanel', () => {
     expect(await screen.findByText('Artist profile')).toBeInTheDocument()
     expect(screen.getByRole('heading', {name: 'Holywanderer', level: 2})).toBeInTheDocument()
     expect(screen.getByText('Improve your matches')).toBeInTheDocument()
+    expect(screen.queryByText('Describe your sound, roles, labels, collectives and residencies.')).not.toBeInTheDocument()
+    expect(screen.queryByText('Add artists you genuinely know or have worked with. More relevant connections can broaden your promoter network.')).not.toBeInTheDocument()
     expect(screen.getByRole('heading', {name: 'Biography'})).toBeInTheDocument()
     expect(screen.getByText('No biography added yet.')).toBeInTheDocument()
+    expect(screen.getByText('Describe your sound, styles, roles, labels, collectives and residencies.')).toBeInTheDocument()
 
     const biographySection = screen.getByRole('heading', {name: 'Biography'}).closest('section')
     expect(biographySection).not.toBeNull()
-    expect(within(biographySection as HTMLElement).getByRole('button', {name: 'Add bio'})).toBeInTheDocument()
+    expect(within(biographySection as HTMLElement).getByRole('button', {name: 'Add biography'})).toBeInTheDocument()
+    expect(within(biographySection as HTMLElement).queryByRole('button', {name: 'Add bio'})).not.toBeInTheDocument()
 
-    await user.click(screen.getByRole('button', {name: 'Add bio'}))
+    expect(screen.queryByRole('button', {name: 'Edit biography'})).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', {name: 'Add biography'}))
     expect(screen.getByPlaceholderText('Describe your sound and scene. Mention your styles, roles, labels, collectives, residencies, and relevant artistic background.')).toBeInTheDocument()
     expect(screen.getByText('Styles and genres')).toBeInTheDocument()
     expect(screen.getByText('Labels and imprints')).toBeInTheDocument()
@@ -110,6 +116,8 @@ describe('BiographyPanel', () => {
     expect(await screen.findByText('Long bio text.')).toBeInTheDocument()
     expect(screen.getByText('Artist profile')).toBeInTheDocument()
     expect(screen.getByRole('heading', {name: 'Biography'})).toBeInTheDocument()
+    expect(screen.queryByRole('button', {name: 'Add biography'})).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', {name: 'Edit biography'})).not.toBeInTheDocument()
     expect(screen.queryByText('Linked artists')).not.toBeInTheDocument()
     expect(screen.queryByText('No linked artists yet.')).not.toBeInTheDocument()
   })

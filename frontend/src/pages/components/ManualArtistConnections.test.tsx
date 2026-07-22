@@ -108,9 +108,8 @@ describe('ManualArtistConnections', () => {
 
     expect(screen.getByText('Artists you know')).toBeInTheDocument()
     expect(screen.getByText('Add artists you genuinely know, have played with, collaborated with, or who could recommend you.')).toBeInTheDocument()
-    expect(screen.getByText('More relevant connections can broaden your matches.')).toBeInTheDocument()
-    expect(screen.getByText('Add at least 3 relevant artists to unlock recommendations.')).toBeInTheDocument()
-    expect(screen.getByText('0 added')).toBeInTheDocument()
+    expect(screen.queryByText('Relevant connections help SceneGraph discover warm promoter paths.')).not.toBeInTheDocument()
+    expect(screen.getByText('0 / 3 minimum')).toBeInTheDocument()
     expect(screen.getByRole('button', {name: 'Add artists'})).toBeInTheDocument()
     expect(screen.queryByRole('button', {name: 'Add artist'})).not.toBeInTheDocument()
   })
@@ -122,21 +121,31 @@ describe('ManualArtistConnections', () => {
       </MemoryRouter>,
     )
 
-    expect(screen.getByText('Add 2 more to unlock recommendations.')).toBeInTheDocument()
+    expect(screen.getByText('1 / 3 minimum')).toBeInTheDocument()
+    expect(screen.queryByText('Relevant connections help SceneGraph discover warm promoter paths.')).not.toBeInTheDocument()
+
+    rerender(
+      <MemoryRouter>
+        <ManualArtistConnections {...baseProps} connections={makeConnections(2)} onAdd={vi.fn()} onRemove={vi.fn()} />
+      </MemoryRouter>,
+    )
+    expect(screen.getByText('2 / 3 minimum')).toBeInTheDocument()
+    expect(screen.queryByText('Relevant connections help SceneGraph discover warm promoter paths.')).not.toBeInTheDocument()
 
     rerender(
       <MemoryRouter>
         <ManualArtistConnections {...baseProps} connections={makeConnections(3)} onAdd={vi.fn()} onRemove={vi.fn()} />
       </MemoryRouter>,
     )
-    expect(screen.getByText('Recommendations are unlocked. Adding more relevant artists can broaden your network.')).toBeInTheDocument()
+    expect(screen.getByText('3 added')).toBeInTheDocument()
+    expect(screen.getByText('Relevant connections help SceneGraph discover warm promoter paths.')).toBeInTheDocument()
 
     rerender(
       <MemoryRouter>
         <ManualArtistConnections {...baseProps} connections={makeConnections(5)} onAdd={vi.fn()} onRemove={vi.fn()} />
       </MemoryRouter>,
     )
-    expect(screen.getByText('Strong network context: 5 artists added.')).toBeInTheDocument()
+    expect(screen.getByText('5 added')).toBeInTheDocument()
   })
 
   it('renders the Add artists tile first in the grid before the connections', async () => {
@@ -149,7 +158,7 @@ describe('ManualArtistConnections', () => {
     const grid = screen.getByTestId('manual-artist-connections-grid')
     expect(within(grid).getByRole('button', {name: 'Add artists'})).toBeInTheDocument()
     expect(grid.firstElementChild).toHaveAttribute('aria-label', 'Add artists')
-    await screen.findByText('1 added')
+    await screen.findByText('1 / 3 minimum')
     expect(screen.getByText('Neon Duo')).toBeInTheDocument()
     expect(screen.getByText('Manual connection')).toHaveClass('sr-only')
   })

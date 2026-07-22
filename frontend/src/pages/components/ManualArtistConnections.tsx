@@ -38,19 +38,15 @@ function artistResultMeta(result: SearchResult) {
 }
 
 function connectionProgressCopy(connectionCount: number) {
-  if (connectionCount <= 0) {
-    return 'Add at least 3 relevant artists to unlock recommendations.'
-  }
-
   if (connectionCount < 3) {
-    return `Add ${3 - connectionCount} more to unlock recommendations.`
+    return null
   }
 
-  if (connectionCount < 5) {
-    return 'Recommendations are unlocked. Adding more relevant artists can broaden your network.'
-  }
+  return 'Relevant connections help SceneGraph discover warm promoter paths.'
+}
 
-  return `Strong network context: ${connectionCount} artists added.`
+function connectionBadgeLabel(connectionCount: number) {
+  return connectionCount >= 3 ? `${connectionCount} added` : `${connectionCount} / 3 minimum`
 }
 
 export function ManualArtistConnections({
@@ -118,16 +114,15 @@ export function ManualArtistConnections({
           <p className="m-0 text-sm text-[var(--text-muted)]">
             {helperCopy}
           </p>
-          <p className="m-0 text-sm text-[var(--text-muted)]">
-            More relevant connections can broaden your matches.
-          </p>
+          {connections.length >= 3 && connectionProgressCopy(connections.length) && (
+            <p className="m-0 text-sm leading-6 text-[var(--text-muted)]">
+              {connectionProgressCopy(connections.length)}
+            </p>
+          )}
         </div>
         <div className="grid justify-items-end gap-1">
           <span className="rounded-full border border-[var(--surface-border-soft)] bg-[var(--surface-panel)] px-3 py-1 text-xs font-semibold text-[var(--text-muted)]">
-            {connections.length} added
-          </span>
-          <span className="max-w-[16rem] text-right text-xs leading-5 text-[var(--text-muted)]">
-            {connectionProgressCopy(connections.length)}
+            {connectionBadgeLabel(connections.length)}
           </span>
         </div>
       </header>
