@@ -290,6 +290,7 @@ export function PromoterRecommendationsPanel({
   const [recommendationsData, setRecommendationsData] = useState<PromoterRecommendationResponse | null>(null)
   const [activeRecommendationJobId, setActiveRecommendationJobId] = useState<string | null>(null)
   const [isRecommendationsLoading, setIsRecommendationsLoading] = useState(false)
+  const [isRecommendationsRefreshing, setIsRecommendationsRefreshing] = useState(false)
   const [recommendationsError, setRecommendationsError] = useState<string | null>(null)
   const [recommendationLoadingMessageIndex, setRecommendationLoadingMessageIndex] = useState(0)
   const [recommendationGraphMode, setRecommendationGraphMode] = useState<RecommendationGraphMode>('compact')
@@ -307,7 +308,7 @@ export function PromoterRecommendationsPanel({
   const recommendationThresholdInitializedRef = useRef(false)
   const recommendationListRef = useRef<HTMLElement | null>(null)
   const recommendationRequestIdRef = useRef(0)
-  const activeRecommendationJobRef = useRef<{ jobId: string; requestId: number } | null>(null)
+  const activeRecommendationJobRef = useRef<{ jobId: string; requestId: number; isRefresh: boolean } | null>(null)
   const autoLoadTriggeredArtistIdRef = useRef<number | null>(null)
   const recommendationArtistId = targetControls
     ? targetControls.artistId
@@ -322,6 +323,18 @@ export function PromoterRecommendationsPanel({
   const recommendationHeaderLabel = recommendationTargetLabel
     ? `Promoter Recommendations for ${recommendationTargetLabel}`
     : 'Promoter Recommendations'
+  const recommendationReadyMessage = 'Recommendations are ready to generate.'
+  const recommendationPrimaryButtonLabel = targetControls?.getButtonLabel ?? 'Get recommendations'
+  const recommendationActionLabel = recommendationsData
+    ? 'Update recommendations'
+    : recommendationsError
+      ? 'Retry'
+      : recommendationPrimaryButtonLabel
+  const recommendationButtonLabel = isRecommendationsRefreshing
+    ? 'Updating…'
+    : isRecommendationsLoading
+      ? 'Preparing…'
+      : recommendationActionLabel
   const shouldGateByProfileReadiness = autoLoad && profileReadiness !== undefined
   const profileSetupReady = isArtistProfileReady(profileReadiness)
   const isProfileSetupLoading = Boolean(profileReadiness?.isLoading)
@@ -334,6 +347,7 @@ export function PromoterRecommendationsPanel({
     activeRecommendationJobRef.current = null
     setRecommendationsError(null)
     setIsRecommendationsLoading(false)
+    setIsRecommendationsRefreshing(false)
     setExpandedRecommendationId(null)
     setFocusedRecommendationPromoterIds(null)
     setExpandedReasonItems({})
@@ -390,13 +404,18 @@ export function PromoterRecommendationsPanel({
       if (job.status === 'completed') {
         if (!job.result) throw new Error('Recommendation job completed without a result')
         setRecommendationsData(job.result)
+        setRecommendationsError(null)
         setIsRecommendationsLoading(false)
+        setIsRecommendationsRefreshing(false)
         setActiveRecommendationJobId(null)
         activeRecommendationJobRef.current = null
       } else if (job.status === 'failed') {
-        setRecommendationsData(null)
+        if (!activeJob.isRefresh) {
+          setRecommendationsData(null)
+        }
         setRecommendationsError(job.errorMessage ?? 'Recommendation job failed')
         setIsRecommendationsLoading(false)
+        setIsRecommendationsRefreshing(false)
         setActiveRecommendationJobId(null)
         activeRecommendationJobRef.current = null
       }
@@ -405,6 +424,7 @@ export function PromoterRecommendationsPanel({
       if (currentJob === null || currentJob.jobId !== jobId) return
       setRecommendationsError(error instanceof Error ? error.message : 'Failed to read recommendation job')
       setIsRecommendationsLoading(false)
+      setIsRecommendationsRefreshing(false)
       setActiveRecommendationJobId(null)
       activeRecommendationJobRef.current = null
     }
@@ -429,7 +449,7 @@ export function PromoterRecommendationsPanel({
     handleRecommendationSocketConnected,
   )
 
-  const handleLoadRecommendations = useCallback(async () => {
+  const createRecommendationJob = useCallback(async (refreshing: boolean) => {
     if (recommendationArtistId === null) {
       setRecommendationsError(
         targetControls?.emptyMessage
@@ -442,12 +462,18 @@ export function PromoterRecommendationsPanel({
     recommendationThresholdInitializedRef.current = false
     const requestId = recommendationRequestIdRef.current + 1
     recommendationRequestIdRef.current = requestId
-    setIsRecommendationsLoading(true)
     setRecommendationsError(null)
     setExpandedRecommendationId(null)
     setFocusedRecommendationPromoterIds(null)
     setExpandedReasonItems({})
-    setRecommendationGraphMode('compact')
+    onSelectNode(null)
+    if (refreshing) {
+      setIsRecommendationsRefreshing(true)
+    } else {
+      setIsRecommendationsLoading(true)
+      setRecommendationsData(null)
+      setRecommendationGraphMode('compact')
+    }
 
     try {
       const createdJob = await api.post<RecommendationJobCreatedResponse>(
@@ -455,18 +481,29 @@ export function PromoterRecommendationsPanel({
         { limit: 50, debug: false },
       )
       if (recommendationRequestIdRef.current !== requestId) return
-      activeRecommendationJobRef.current = { jobId: createdJob.jobId, requestId }
+      activeRecommendationJobRef.current = { jobId: createdJob.jobId, requestId, isRefresh: refreshing }
       setActiveRecommendationJobId(createdJob.jobId)
       await refreshRecommendationJob(createdJob.jobId)
     } catch (error) {
       if (recommendationRequestIdRef.current !== requestId) return
-      setRecommendationsData(null)
+      if (!refreshing) {
+        setRecommendationsData(null)
+      }
       setRecommendationsError(error instanceof Error ? error.message : 'Failed to load recommendations')
       setIsRecommendationsLoading(false)
+      setIsRecommendationsRefreshing(false)
       setActiveRecommendationJobId(null)
       activeRecommendationJobRef.current = null
     }
   }, [emptyStateMessage, recommendationArtistId, refreshRecommendationJob, targetControls?.emptyMessage])
+
+  const handleLoadRecommendations = useCallback(() => {
+    void createRecommendationJob(false)
+  }, [createRecommendationJob])
+
+  const handleUpdateRecommendations = useCallback(() => {
+    void createRecommendationJob(true)
+  }, [createRecommendationJob])
 
   useEffect(() => {
     if (!autoLoad) return
@@ -496,25 +533,6 @@ export function PromoterRecommendationsPanel({
   ])
 
   const isProfileSetupError = isProfileSetupRecommendationError(recommendationsError)
-
-  const handleResetRecommendations = useCallback(() => {
-    recommendationRequestIdRef.current += 1
-    activeRecommendationJobRef.current = null
-    setActiveRecommendationJobId(null)
-    recommendationThresholdInitializedRef.current = false
-    setRecommendationsData(null)
-    setRecommendationsError(null)
-    setIsRecommendationsLoading(false)
-    setRecommendationStrengthThreshold(DEFAULT_RECOMMENDATION_STRENGTH_THRESHOLD)
-    setExpandedRecommendationId(null)
-    setFocusedRecommendationPromoterIds(null)
-    setExpandedReasonItems({})
-    setPendingFeedbackPromoterId(null)
-    setLocalFeedbackByPromoterId({})
-    setLocalFeedbackIdByPromoterId({})
-    setRecommendationGraphMode('compact')
-    onSelectNode(null)
-  }, [onSelectNode])
 
   const handlePromoterFeedback = useCallback(async (
     promoterId: number,
@@ -742,7 +760,7 @@ export function PromoterRecommendationsPanel({
     >
       <div className={panelHeadingClass}>
         <span className={labelClass}>{recommendationHeaderLabel}</span>
-        {(targetControls || recommendationsData) && (
+        {(targetControls || recommendationArtistId !== null || recommendationsData) && (
           <div className="flex min-w-0 flex-nowrap items-center justify-end gap-2 max-[900px]:w-full max-[900px]:flex-wrap">
             {targetControls?.controls}
             <Button
@@ -751,19 +769,19 @@ export function PromoterRecommendationsPanel({
               className="shrink-0"
               onClick={() => {
                 if (recommendationsData) {
-                  handleResetRecommendations()
+                  handleUpdateRecommendations()
                 } else {
                   void handleLoadRecommendations()
                 }
               }}
-              disabled={isRecommendationsLoading || recommendationArtistId === null}
+              disabled={isRecommendationsLoading || isRecommendationsRefreshing || recommendationArtistId === null}
             >
-              {recommendationsData ? 'Reset' : (targetControls?.getButtonLabel ?? 'Get rec')}
+              {recommendationButtonLabel}
             </Button>
           </div>
         )}
       </div>
-      {recommendationsData === null && !isRecommendationsLoading && (
+      {recommendationsData === null && !isRecommendationsLoading && !isRecommendationsRefreshing && (
         isProfileSetupLoading ? (
           <ProfileReadinessLoadingState />
         ) : profileReadiness !== undefined && !profileSetupReady ? (
@@ -789,19 +807,13 @@ export function PromoterRecommendationsPanel({
             <p className={recommendationsError ? 'm-0 text-[var(--event)]' : cn('m-0', mutedTextClass)}>
               {recommendationsError
                 ?? (targetControls?.emptyMessage
-                  ?? emptyStateMessage
+                  ?? (profileReadiness !== undefined && profileSetupReady
+                    ? recommendationReadyMessage
+                    : emptyStateMessage)
                   ?? (recommendationTargetLabel
-                    ? `Click "Get Rec" to load recommendations for ${recommendationTargetLabel}. Loading time may be quite long. Let the wizard does its magic.`
-                    : 'Click "Get Rec" to load recommendations. Loading time may be quite long. Let the wizard does its magic.'))}
+                    ? `Click "Get recommendations" to load recommendations for ${recommendationTargetLabel}. Loading time may be quite long. Let the wizard does its magic.`
+                    : 'Click "Get recommendations" to load recommendations. Loading time may be quite long. Let the wizard does its magic.'))}
             </p>
-            {!targetControls && (
-              <Button
-                type="button"
-                onClick={() => void handleLoadRecommendations()}
-              >
-                {recommendationsError ? 'Retry' : 'Get Rec'}
-              </Button>
-            )}
           </div>
         )
       )}
@@ -810,6 +822,22 @@ export function PromoterRecommendationsPanel({
       )}
       {recommendationsData !== null && (
         <div className="grid min-h-0 min-w-0 grid-cols-[minmax(220px,0.72fr)_minmax(0,1.28fr)] gap-3 overflow-hidden max-[1180px]:grid-cols-1">
+          {recommendationsError && !isRecommendationsLoading && (
+            <div className="col-span-full flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[color-mix(in_srgb,var(--event)_30%,transparent)] bg-[color-mix(in_srgb,var(--event)_10%,transparent)] p-3 text-sm text-[var(--text)]">
+              <p className="m-0">
+                Couldn’t update recommendations. Your previous results are still shown.
+              </p>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={handleUpdateRecommendations}
+                disabled={isRecommendationsRefreshing || recommendationArtistId === null}
+              >
+                Retry
+              </Button>
+            </div>
+          )}
           <div className="col-span-full grid grid-cols-[auto_minmax(160px,1fr)_auto] items-center gap-3 rounded-2xl border border-[var(--surface-border-soft)] bg-[var(--surface-soft)] p-3 text-sm text-[var(--text-muted)] max-[700px]:grid-cols-1" aria-label="Recommendation strength control">
             <label className="font-semibold text-[var(--text)]" htmlFor="recommendation-strength-threshold">
               Strength: {Math.round(recommendationStrengthThreshold * 100)}%
@@ -1012,7 +1040,7 @@ export function PromoterRecommendationsPanel({
                   size="sm"
                   variant="outline"
                   onClick={handleToggleRecommendationGraphMode}
-                  disabled={isRecommendationsLoading}
+                  disabled={isRecommendationsLoading || isRecommendationsRefreshing}
                 >
                   {recommendationGraphMode === 'compact'
                     ? 'Show analytics graph'

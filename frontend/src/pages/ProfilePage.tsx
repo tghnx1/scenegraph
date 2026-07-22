@@ -243,9 +243,6 @@ export function ProfilePage({ recommendationTargetControls, showBiography = true
               autoLoad={isArtistUser && profileArtistId !== null}
               profileReadiness={isArtistUser ? profileReadiness : undefined}
               onCompleteProfile={isArtistUser ? handleCompleteProfile : undefined}
-              emptyStateMessage={isArtistUser
-                ? 'Complete your artist profile to unlock recommendations.'
-                : undefined}
               onSelectNode={setSelected}
             />
           </article>
