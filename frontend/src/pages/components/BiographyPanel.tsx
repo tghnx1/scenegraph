@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useState, type FormEvent } from 'react'
-import { Link } from 'react-router-dom'
-import { Button } from '@/shared/ui/button'
-import { BIOGRAPHY_MAX_LENGTH, validateBiography } from '@/shared/lib/validation'
-import { fetchArtistBiography, updateArtistBiography } from '../../api/entityDetails'
-import type { ConnectedArtistItem } from '../../types/artist'
-import { ManualArtistConnections, type ManualArtistConnectionsProps } from './ManualArtistConnections'
+import {useCallback, useEffect, useState, type FormEvent} from 'react'
+import {Link} from 'react-router-dom'
+import {Button} from '@/shared/ui/button'
+import {BIOGRAPHY_MAX_LENGTH, validateBiography} from '@/shared/lib/validation'
+import {fetchArtistBiography, updateArtistBiography} from '../../api/entityDetails'
+import type {ConnectedArtistItem} from '../../types/artist'
+import {ManualArtistConnections, type ManualArtistConnectionsProps} from './ManualArtistConnections'
 
 interface BiographyPanelProps {
   artistId: number | null
@@ -124,101 +124,105 @@ export function BiographyPanel({
     <article
       id="artist-biography-panel"
       tabIndex={-1}
-      className="scroll-mt-28 grid gap-4 rounded-3xl border border-[color-mix(in_srgb,var(--text)_10%,transparent)] bg-[color-mix(in_srgb,var(--background)_42%,transparent)] p-5 shadow-[0_10px_24px_rgba(0,0,0,0.12)] backdrop-blur-sm"
+      className="scroll-mt-28 grid gap-5 rounded-3xl border border-[color-mix(in_srgb,var(--text)_10%,transparent)] bg-[color-mix(in_srgb,var(--background)_42%,transparent)] p-5 shadow-[0_10px_24px_rgba(0,0,0,0.12)] backdrop-blur-sm md:gap-6 md:p-6"
     >
-      <div className="flex items-center justify-between gap-3">
-        <div id="artist-biography-heading">
-          <span className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--accent)]">Biography</span>
-          <h2>{artistName}</h2>
-        </div>
-        {canEditBiography && artistId !== null && !isLoading && !isEditing && (
-          <Button
-            type="button"
-            size="sm"
-            onClick={() => {
-              setDraftBiography(biography)
-              setError(null)
-              setSuccess(null)
-              setIsEditing(true)
-            }}
-          >
-            Edit biography
-          </Button>
-        )}
+      <div className="grid gap-1">
+        <span className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--accent)]">Artist profile</span>
+        <h2>{artistName}</h2>
       </div>
 
-      {isLoading ? (
-        <p>Loading biography...</p>
-      ) : isEditing ? (
-        <form className="grid gap-3" onSubmit={handleSubmit}>
-          <textarea
-            className="min-h-64 w-full resize-y rounded-xl border border-[var(--control-border)] bg-[var(--surface-input)] p-3 text-sm text-[var(--text)] outline-none placeholder:text-[var(--text-placeholder)] focus:border-[var(--focus-border)] focus:shadow-[0_0_0_3px_var(--focus-ring)]"
-            value={draftBiography}
-            onChange={(event) => setDraftBiography(event.target.value)}
-            placeholder="Tell promoters and collaborators about your work, sound, and background."
-            rows={10}
-            maxLength={BIOGRAPHY_MAX_LENGTH}
-          />
-          <div className="flex items-center justify-between gap-3 text-sm text-[var(--text-muted)]">
-            <span>{draftBiography.length}/{BIOGRAPHY_MAX_LENGTH}</span>
-            <div className="flex gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  setDraftBiography(biography)
-                  setError(null)
-                  setIsEditing(false)
-                }}
-                disabled={isSaving}
-              >
-                Cancel
-              </Button>
-              <Button type="submit" size="sm" disabled={isSaving || draftBiography === biography}>
-                {isSaving ? 'Saving...' : 'Save biography'}
-              </Button>
-            </div>
-          </div>
-        </form>
-      ) : shouldShowApprovedProfileWorkspace ? (
-        <>
-          {biography ? (
-            <p className="m-0 whitespace-pre-wrap text-sm leading-6 text-[var(--text)]">
-              {biography}
-            </p>
-          ) : (
-            <div className="grid gap-3 rounded-2xl border border-[var(--surface-border-soft)] bg-[var(--surface-soft)] p-4">
-              <p className="m-0 text-sm text-[var(--text-muted)]">No biography added yet.</p>
-              {canEditBiography && (
+      <section className="grid gap-4 rounded-2xl border border-[var(--surface-border-soft)] bg-[var(--surface-soft)] p-4 md:gap-3 md:p-5">
+        <header className="flex flex-wrap items-center justify-between gap-3">
+          <h3 className="m-0">Biography</h3>
+          {canEditBiography && artistId !== null && !isLoading && !isEditing && (
+            <Button
+              type="button"
+              size="sm"
+              onClick={() => {
+                setDraftBiography(biography)
+                setError(null)
+                setSuccess(null)
+                setIsEditing(true)
+              }}
+            >
+              Edit biography
+            </Button>
+          )}
+        </header>
+
+        {isLoading ? (
+          <p className="m-0 text-sm text-[var(--text-muted)]">Loading biography...</p>
+        ) : isEditing ? (
+          <form className="grid gap-3" onSubmit={handleSubmit}>
+            <textarea
+              className="min-h-64 w-full resize-y rounded-xl border border-[var(--control-border)] bg-[var(--surface-input)] p-3 text-sm text-[var(--text)] outline-none placeholder:text-[var(--text-placeholder)] focus:border-[var(--focus-border)] focus:shadow-[0_0_0_3px_var(--focus-ring)]"
+              value={draftBiography}
+              onChange={(event) => setDraftBiography(event.target.value)}
+              placeholder="Tell promoters and collaborators about your work, sound, and background."
+              rows={10}
+              maxLength={BIOGRAPHY_MAX_LENGTH}
+            />
+            <div className="flex items-center justify-between gap-3 text-sm text-[var(--text-muted)]">
+              <span>{draftBiography.length}/{BIOGRAPHY_MAX_LENGTH}</span>
+              <div className="flex gap-2">
                 <Button
                   type="button"
+                  variant="outline"
                   size="sm"
-                  className="w-fit"
                   onClick={() => {
                     setDraftBiography(biography)
                     setError(null)
-                    setSuccess(null)
-                    setIsEditing(true)
+                    setIsEditing(false)
                   }}
+                  disabled={isSaving}
                 >
-                  Add bio
+                  Cancel
                 </Button>
-              )}
+                <Button type="submit" size="sm" disabled={isSaving || draftBiography === biography}>
+                  {isSaving ? 'Saving...' : 'Save biography'}
+                </Button>
+              </div>
             </div>
-          )}
-        </>
-      ) : null}
+          </form>
+        ) : shouldShowApprovedProfileWorkspace ? (
+          <>
+            {biography ? (
+              <p className="m-0 whitespace-pre-wrap text-sm leading-6 text-[var(--text)]">
+                {biography}
+              </p>
+            ) : (
+              <div className="grid gap-3 rounded-2xl border border-[var(--surface-border-soft)] bg-[var(--surface-panel)] p-4">
+                <p className="m-0 text-sm text-[var(--text-muted)]">No biography added yet.</p>
+                {canEditBiography && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    className="w-fit"
+                    onClick={() => {
+                      setDraftBiography(biography)
+                      setError(null)
+                      setSuccess(null)
+                      setIsEditing(true)
+                    }}
+                  >
+                    Add bio
+                  </Button>
+                )}
+              </div>
+            )}
+          </>
+        ) : null}
 
-      {!shouldShowApprovedProfileWorkspace && error && (
-        <p className="m-0 whitespace-pre-line rounded-xl border border-[var(--event-border-soft)] bg-[var(--event-soft)] p-3 text-sm text-[var(--event)]">{error}</p>
-      )}
+        {error && (
+          <p className="m-0 whitespace-pre-line rounded-xl border border-[var(--event-border-soft)] bg-[var(--event-soft)] p-3 text-sm text-[var(--event)]">
+            {error}
+          </p>
+        )}
+        {success && <p className="m-0 rounded-xl border border-[var(--promoter-border)] bg-[var(--promoter-soft)] p-3 text-sm text-[var(--text)]">{success}</p>}
+      </section>
 
-      {shouldShowApprovedProfileWorkspace && error && <p className="m-0 whitespace-pre-line rounded-xl border border-[var(--event-border-soft)] bg-[var(--event-soft)] p-3 text-sm text-[var(--event)]">{error}</p>}
-      {success && <p className="m-0 rounded-xl border border-[var(--promoter-border)] bg-[var(--promoter-soft)] p-3 text-sm text-[var(--text)]">{success}</p>}
-
-      {!isLoading && shouldShowApprovedProfileWorkspace && !error && linkedArtists.length > 0 && (
-        <section className="grid gap-3" aria-labelledby="biography-linked-artists-heading">
+      {!isLoading && shouldShowApprovedProfileWorkspace && linkedArtists.length > 0 && (
+        <section className="grid gap-4 rounded-2xl border border-[var(--surface-border-soft)] bg-[var(--surface-soft)] p-4 md:gap-3 md:p-5" aria-labelledby="biography-linked-artists-heading">
           <div className="flex items-center justify-between gap-3 border-b border-[var(--surface-border-soft)] pb-2">
             <h3 id="biography-linked-artists-heading">Linked artists</h3>
           </div>
@@ -227,10 +231,12 @@ export function BiographyPanel({
               <Link
                 key={artist.id}
                 to={`/graph?selectedType=artist&selectedId=${encodeURIComponent(artist.id)}`}
-                className="grid gap-1 rounded-xl border border-[var(--surface-border-soft)] bg-[var(--surface-soft)] p-3 text-[var(--text)] no-underline transition-colors hover:border-[var(--selection-border)] hover:bg-[var(--selection-soft)]"
+                className="grid gap-1 rounded-xl border border-[var(--surface-border-soft)] bg-[var(--surface-panel)] p-3 text-[var(--text)] no-underline transition-colors hover:border-[var(--selection-border)] hover:bg-[var(--selection-soft)]"
               >
                 <strong>{artist.name}</strong>
-                <span className="text-sm text-[var(--text-muted)]">{artist.shared_events} shared event{artist.shared_events === 1 ? '' : 's'}</span>
+                <span className="text-sm text-[var(--text-muted)]">
+                  {artist.shared_events} shared event{artist.shared_events === 1 ? '' : 's'}
+                </span>
               </Link>
             ))}
           </div>

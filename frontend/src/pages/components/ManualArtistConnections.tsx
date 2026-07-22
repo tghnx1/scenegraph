@@ -93,15 +93,20 @@ export function ManualArtistConnections({
     <section
       id="artist-manual-connections"
       tabIndex={-1}
-      className="grid gap-4 scroll-mt-28"
+      className="grid gap-4 rounded-2xl border border-[var(--surface-border-soft)] bg-[var(--surface-soft)] p-4 scroll-mt-28 md:gap-5 md:p-5"
       aria-labelledby="manual-artist-connections-heading"
     >
-      <div className="grid gap-1 border-b border-[var(--surface-border-soft)] pb-2">
-        <h3 id="manual-artist-connections-heading">Artists you know</h3>
-        <p className="m-0 text-sm text-[var(--text-muted)]">
-          {helperCopy}
-        </p>
-      </div>
+      <header className="flex flex-wrap items-start justify-between gap-3 border-b border-[var(--surface-border-soft)] pb-2">
+        <div className="grid gap-1">
+          <h3 id="manual-artist-connections-heading">Artists you know</h3>
+          <p className="m-0 text-sm text-[var(--text-muted)]">
+            {helperCopy}
+          </p>
+        </div>
+        <span className="rounded-full border border-[var(--surface-border-soft)] bg-[var(--surface-panel)] px-3 py-1 text-xs font-semibold text-[var(--text-muted)]">
+          {connections.length} added
+        </span>
+      </header>
 
       <div
         data-testid="manual-artist-connections-grid"
@@ -110,7 +115,7 @@ export function ManualArtistConnections({
         <button
           type="button"
           className={cn(
-            'grid min-h-full gap-2 rounded-xl border border-[var(--surface-border-soft)] bg-[var(--surface-soft)] p-3 text-center text-[var(--text-muted)] transition-colors hover:border-[var(--selection-border)] hover:bg-[var(--selection-soft)] hover:text-[var(--text)] focus-visible:border-[var(--selection-border)] focus-visible:bg-[var(--selection-soft)] focus-visible:text-[var(--text)] focus-visible:outline-none',
+            'grid h-full min-h-[110px] place-content-center gap-2 rounded-xl border border-dashed border-[var(--surface-border-soft)] bg-[var(--surface-panel)] p-3 text-center text-[var(--text-muted)] transition-colors hover:border-[var(--selection-border)] hover:bg-[var(--selection-soft)] hover:text-[var(--text)] focus-visible:border-[var(--selection-border)] focus-visible:bg-[var(--selection-soft)] focus-visible:text-[var(--text)] focus-visible:outline-none',
             isAddingOpen && 'border-[var(--selection-border)] bg-[var(--selection-soft)] text-[var(--text)]',
             isLoading && 'pointer-events-none opacity-80',
           )}
@@ -121,7 +126,7 @@ export function ManualArtistConnections({
           disabled={isLoading}
         >
           <span className="mx-auto inline-grid place-items-center gap-2">
-            <span className="grid size-12 place-items-center rounded-full border border-[var(--surface-border-soft)] bg-[var(--surface-panel)]">
+            <span className="grid size-12 place-items-center rounded-full border border-[var(--surface-border-soft)] bg-[var(--surface-soft)]">
               <Plus className="size-7" aria-hidden="true" />
             </span>
             <span className="text-sm font-semibold">Add artists</span>
@@ -132,10 +137,10 @@ export function ManualArtistConnections({
           <div className="relative" key={connection.connectedArtistId}>
             <Link
               to={`/graph?selectedType=artist&selectedId=${connection.connectedArtistId}`}
-              className="grid min-h-full gap-1 rounded-xl border border-[var(--surface-border-soft)] bg-[var(--surface-soft)] p-3 pr-10 text-[var(--text)] no-underline transition-colors hover:border-[var(--selection-border)] hover:bg-[var(--selection-soft)]"
+              className="grid h-full min-h-[110px] place-content-center gap-1 rounded-xl border border-[var(--surface-border-soft)] bg-[var(--surface-panel)] p-3 pr-10 text-[var(--text)] no-underline transition-colors hover:border-[var(--selection-border)] hover:bg-[var(--selection-soft)]"
             >
-              <strong>{connection.connectedArtistName}</strong>
-              <span className="text-sm text-[var(--text-muted)]">Manual connection</span>
+              <strong className="text-balance">{connection.connectedArtistName}</strong>
+              <span className="sr-only">Manual connection</span>
             </Link>
             <Button
               type="button"
@@ -162,7 +167,7 @@ export function ManualArtistConnections({
       {isAddingOpen && (
         <section
           id="manual-artist-search-panel"
-          className="grid gap-3 rounded-2xl border border-[var(--surface-border-soft)] bg-[var(--surface-soft)] p-4"
+          className="grid gap-3 rounded-2xl border border-[var(--surface-border-soft)] bg-[var(--surface-panel)] p-4"
           aria-labelledby="artist-search-heading"
         >
           <div className="flex items-center justify-between gap-3">

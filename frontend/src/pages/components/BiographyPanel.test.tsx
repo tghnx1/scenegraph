@@ -1,6 +1,6 @@
-import { render, screen, waitFor } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
-import { BiographyPanel } from './BiographyPanel'
+import {render, screen, waitFor, within} from '@testing-library/react'
+import {describe, expect, it, vi} from 'vitest'
+import {BiographyPanel} from './BiographyPanel'
 
 const fetchArtistBiography = vi.hoisted(() => vi.fn())
 const updateArtistBiography = vi.hoisted(() => vi.fn())
@@ -15,7 +15,7 @@ vi.mock('./ManualArtistConnections', () => ({
 }))
 
 describe('BiographyPanel', () => {
-  it('shows one add-bio action and hides the old setup banner when biography is empty', async () => {
+  it('shows the artist profile eyebrow and keeps the edit control inside the Biography section', async () => {
     fetchArtistBiography.mockResolvedValueOnce({
       type: 'artist',
       id: 61,
@@ -47,8 +47,15 @@ describe('BiographyPanel', () => {
       />,
     )
 
-    expect(await screen.findByText('No biography added yet.')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Add bio' })).toBeInTheDocument()
+    expect(await screen.findByText('Artist profile')).toBeInTheDocument()
+    expect(screen.getByRole('heading', {name: 'Holywanderer', level: 2})).toBeInTheDocument()
+    expect(screen.getByRole('heading', {name: 'Biography'})).toBeInTheDocument()
+    expect(screen.getByText('No biography added yet.')).toBeInTheDocument()
+
+    const biographySection = screen.getByRole('heading', {name: 'Biography'}).closest('section')
+    expect(biographySection).not.toBeNull()
+    expect(within(biographySection as HTMLElement).getByRole('button', {name: 'Add bio'})).toBeInTheDocument()
+
     expect(screen.queryByText('Complete your artist profile')).not.toBeInTheDocument()
     expect(screen.queryByText('Linked artists')).not.toBeInTheDocument()
     expect(screen.queryByText('No linked artists yet.')).not.toBeInTheDocument()
@@ -89,6 +96,8 @@ describe('BiographyPanel', () => {
     )
 
     expect(await screen.findByText('Long bio text.')).toBeInTheDocument()
+    expect(screen.getByText('Artist profile')).toBeInTheDocument()
+    expect(screen.getByRole('heading', {name: 'Biography'})).toBeInTheDocument()
     expect(screen.queryByText('Linked artists')).not.toBeInTheDocument()
     expect(screen.queryByText('No linked artists yet.')).not.toBeInTheDocument()
   })

@@ -98,12 +98,12 @@ describe('ManualArtistConnections', () => {
 
     expect(screen.getByText('Artists you know')).toBeInTheDocument()
     expect(screen.getByText('Add 3–5 artists you know, collaborate with, or who can recommend you to promoters.')).toBeInTheDocument()
+    expect(screen.getByText('0 added')).toBeInTheDocument()
     expect(screen.getByRole('button', {name: 'Add artists'})).toBeInTheDocument()
     expect(screen.queryByRole('button', {name: 'Add artist'})).not.toBeInTheDocument()
-    expect(screen.queryByTestId('empty-add-artist-button')).not.toBeInTheDocument()
   })
 
-  it('renders the Add artists tile first in the grid before the connections', () => {
+  it('renders the Add artists tile first in the grid before the connections', async () => {
     render(
       <MemoryRouter>
         <Harness />
@@ -113,7 +113,9 @@ describe('ManualArtistConnections', () => {
     const grid = screen.getByTestId('manual-artist-connections-grid')
     expect(within(grid).getByRole('button', {name: 'Add artists'})).toBeInTheDocument()
     expect(grid.firstElementChild).toHaveAttribute('aria-label', 'Add artists')
+    await screen.findByText('1 added')
     expect(screen.getByText('Neon Duo')).toBeInTheDocument()
+    expect(screen.getByText('Manual connection')).toHaveClass('sr-only')
   })
 
   it('opens the search panel and focuses the input when clicking Add artists', async () => {
