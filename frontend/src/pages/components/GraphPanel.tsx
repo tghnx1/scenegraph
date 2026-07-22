@@ -14,7 +14,9 @@ import { drawNodeShape } from '../hooks/drawNode.ts'
 import { useGraphHighlights } from '../hooks/useGraphHighlights.ts'
 import { useGraphPhysics } from '../hooks/useGraphPhysics.ts'
 import { GraphFilters } from './GraphDataFilter.tsx'
-import { GRAPH_NODE_TYPES, GraphNodeFilter } from './GraphNodeFilter.tsx'
+import { GraphNodeFilter } from './GraphNodeFilter.tsx'
+import { GRAPH_NODE_TYPES } from './graphNodeTypes.ts'
+import { GraphNodeLegend } from './GraphNodeLegend.tsx'
 
 const MIN_GRAPH_HEIGHT = 320
 const DEFAULT_GRAPH_FILTERS: GraphParams = { limit: 100 }
@@ -68,6 +70,7 @@ interface ScenegraphMapPanelProps {
   providedData?: GraphData
   showFilters?: boolean
   showNodeTypeFilter?: boolean
+  showNodeTypeLegend?: boolean
   highlightLinks?: boolean
   highlightPathToNodeId?: string
   visibleRecommendationPromoterNodeIds?: string[]
@@ -81,6 +84,7 @@ export function ScenegraphMapPanel({
   providedData,
   showFilters = true,
   showNodeTypeFilter = true,
+  showNodeTypeLegend = false,
   highlightLinks = true,
   highlightPathToNodeId,
   visibleRecommendationPromoterNodeIds,
@@ -589,6 +593,7 @@ export function ScenegraphMapPanel({
             disabled={isEgoGraphMode}
           />
         )}
+        {showNodeTypeLegend && !showNodeTypeFilter && <GraphNodeLegend />}
         <div className="absolute inset-0">
         <ForceGraph2D
           ref={graphRef}

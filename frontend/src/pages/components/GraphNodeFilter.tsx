@@ -1,14 +1,8 @@
 import { cn } from '@/shared/lib/cn-utils.ts'
 import type { NodeType } from '../../types/graph.ts'
+import { GRAPH_NODE_TYPE_ITEMS } from './graphNodeTypes.ts'
 
-export const GRAPH_NODE_TYPES: NodeType[] = ['venue', 'artist', 'promoter', 'event']
-
-const NODE_FILTER_ITEMS = [
-  { type: 'venue', label: 'Venue' },
-  { type: 'artist', label: 'Artist' },
-  { type: 'promoter', label: 'Promoter' },
-  { type: 'event', label: 'Event' },
-] satisfies Array<{ type: NodeType; label: string }>
+export { GRAPH_NODE_TYPES } from './graphNodeTypes.ts'
 
 interface GraphNodeFilterProps {
   visibleNodeTypes: Set<NodeType>
@@ -19,7 +13,7 @@ interface GraphNodeFilterProps {
 export function GraphNodeFilter({ visibleNodeTypes, onToggle, disabled = false }: GraphNodeFilterProps) {
   return (
     <div className="absolute right-4 top-4 z-[2] grid grid-cols-2 gap-x-3.5 gap-y-2 rounded-[14px] border border-[var(--control-border)] bg-[var(--surface-overlay)] px-3 py-2.5 text-[0.82rem] text-[var(--text-muted)] backdrop-blur-md" aria-label="Filter graph by entity type">
-      {NODE_FILTER_ITEMS.map((item) => {
+      {GRAPH_NODE_TYPE_ITEMS.map((item) => {
         const isDisabled = disabled || item.type === 'event'
         const isActive = !isDisabled && visibleNodeTypes.has(item.type)
 
@@ -39,11 +33,8 @@ export function GraphNodeFilter({ visibleNodeTypes, onToggle, disabled = false }
           >
             <span
               className={cn(
-                'inline-block size-3 flex-[0_0_12px] bg-[var(--promoter)]',
-                item.type === 'artist' && 'bg-[var(--artist)] [clip-path:polygon(25%_6%,75%_6%,100%_50%,75%_94%,25%_94%,0_50%)]',
-                item.type === 'venue' && 'bg-[var(--venue)] [clip-path:polygon(50%_0,100%_100%,0_100%)]',
-                item.type === 'promoter' && 'bg-[var(--promoter)]',
-                item.type === 'event' && 'rounded-full bg-[var(--event)]',
+                'inline-block size-3 flex-[0_0_12px]',
+                item.shapeClass,
               )}
               aria-hidden="true"
             />

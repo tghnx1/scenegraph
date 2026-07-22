@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { Check, Circle } from 'lucide-react'
+import { Check, ChevronRight, Circle } from 'lucide-react'
 import { Button } from '@/shared/ui/button'
 import { cn } from '@/shared/lib/cn-utils'
 import { api } from '@/api/client'
@@ -79,7 +79,7 @@ interface PromoterRecommendationsPanelProps {
   targetControls?: RecommendationTargetControls
   autoLoad?: boolean
   profileReadiness?: ArtistProfileReadiness
-  onCompleteProfile?: () => void
+  onNavigateToSection?: (section: 'biography' | 'manual_artists') => void
   profileChangedSinceRecommendations?: boolean
   onRecommendationsSynced?: () => void
   emptyStateMessage?: string
@@ -175,13 +175,20 @@ function ProfileSetupStatusRow({
   label,
   isComplete,
   statusText,
+  onClick,
 }: {
   label: string
   isComplete: boolean
   statusText: string
+  onClick: () => void
 }) {
   return (
-    <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 rounded-xl border border-[var(--surface-border-soft)] bg-[var(--surface-panel)] px-3 py-2.5">
+    <button
+      type="button"
+      className="group grid w-full grid-cols-[auto_minmax(0,1fr)_auto_auto] items-center gap-3 rounded-xl border border-[var(--surface-border-soft)] bg-[var(--surface-panel)] px-3 py-2.5 text-left transition-colors hover:border-[var(--selection-border)] hover:bg-[var(--selection-soft)] focus-visible:border-[var(--selection-border)] focus-visible:bg-[var(--selection-soft)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-border)] focus-visible:ring-offset-2 focus-visible:ring-offset-transparent"
+      aria-label={`${label}: ${statusText}`}
+      onClick={onClick}
+    >
       <span className={cn(
         'inline-flex size-7 items-center justify-center rounded-full border text-sm',
         isComplete
@@ -192,25 +199,36 @@ function ProfileSetupStatusRow({
       </span>
       <span className="font-medium text-[var(--text)]">{label}</span>
       <span className="text-right text-sm text-[var(--text-muted)]">{statusText}</span>
-    </div>
+      <ChevronRight className="size-4 text-[var(--text-muted)] transition-transform duration-150 group-hover:translate-x-0.5" aria-hidden="true" />
+    </button>
   )
 }
+
+type ProfileSetupSection = 'biography' | 'manual_artists'
 
 function ProfileSetupCard({
   readiness,
   message,
-  actionLabel,
-  onAction,
+  onNavigateToSection,
+  footerAction,
 }: {
   readiness: ArtistProfileReadiness
   message: string
-  actionLabel: string
-  onAction: () => void
+  onNavigateToSection: (section: ProfileSetupSection) => void
+  footerAction?: {
+    label: string
+    onClick: () => void
+  }
 }) {
   const biographyComplete = readiness.hasBiography === true
   const manualCount = Math.max(0, readiness.manualArtistCount)
   const requiredManualCount = Math.max(0, readiness.requiredManualArtistCount)
   const manualComplete = manualCount >= requiredManualCount
+  const biographyStatusText = readiness.hasBiography === true
+    ? 'Added'
+    : readiness.hasBiography === false
+      ? 'Missing'
+      : 'Unknown'
 
   return (
     <div className="grid w-full max-w-[36rem] gap-4 rounded-2xl border border-[var(--surface-border-soft)] bg-[var(--surface-soft)] p-5 text-left shadow-[0_10px_24px_rgba(0,0,0,0.1)] max-[700px]:max-w-full">
@@ -227,17 +245,23 @@ function ProfileSetupCard({
         <ProfileSetupStatusRow
           label="Biography"
           isComplete={biographyComplete}
-          statusText={biographyComplete ? 'Added' : 'Missing'}
+          statusText={biographyStatusText}
+          onClick={() => onNavigateToSection('biography')}
         />
         <ProfileSetupStatusRow
           label="Artists you know"
           isComplete={manualComplete}
           statusText={`${Math.min(manualCount, requiredManualCount)} of ${requiredManualCount} added`}
+          onClick={() => onNavigateToSection('manual_artists')}
         />
       </div>
-      <Button type="button" className="w-fit" onClick={onAction}>
-        {actionLabel}
-      </Button>
+      {footerAction ? (
+        <div className="pt-1">
+          <Button type="button" className="w-fit" onClick={footerAction.onClick}>
+            {footerAction.label}
+          </Button>
+        </div>
+      ) : null}
     </div>
   )
 }
@@ -250,6 +274,10 @@ function ProfileReadinessLoadingState() {
       </p>
     </div>
   )
+}
+
+function formatMatchCount(count: number): string {
+  return `${count} match${count === 1 ? '' : 'es'}`
 }
 
 function recommendationScore(recommendation: PromoterRecommendationResponse['recommendations'][number]): number {
@@ -285,7 +313,7 @@ export function PromoterRecommendationsPanel({
   targetControls,
   autoLoad = false,
   profileReadiness,
-  onCompleteProfile,
+  onNavigateToSection,
   profileChangedSinceRecommendations = false,
   onRecommendationsSynced,
   emptyStateMessage,
@@ -794,8 +822,7 @@ export function PromoterRecommendationsPanel({
             <ProfileSetupCard
               readiness={profileReadiness}
               message="Complete these steps and recommendations will start automatically."
-              actionLabel="Complete profile"
-              onAction={() => onCompleteProfile?.()}
+              onNavigateToSection={onNavigateToSection ?? (() => {})}
             />
           </div>
         ) : profileReadiness !== undefined && profileSetupReady && isProfileSetupError ? (
@@ -803,8 +830,11 @@ export function PromoterRecommendationsPanel({
             <ProfileSetupCard
               readiness={profileReadiness}
               message="Your profile was updated, but recommendations are not ready yet."
-              actionLabel="Try again"
-              onAction={() => void handleLoadRecommendations()}
+              onNavigateToSection={onNavigateToSection ?? (() => {})}
+              footerAction={{
+                label: 'Try again',
+                onClick: () => void handleLoadRecommendations(),
+              }}
             />
           </div>
         ) : (
@@ -873,16 +903,34 @@ export function PromoterRecommendationsPanel({
               value={recommendationStrengthThreshold}
               onChange={(event) => handleRecommendationStrengthChange(Number(event.target.value))}
             />
-            <p className="m-0">{filteredRecommendations.length} / {sortedRecommendations.length} promoters shown</p>
           </div>
           <section
             ref={recommendationListRef}
-            className="grid min-h-0 min-w-0 content-start gap-2 overflow-y-auto overflow-x-hidden pr-1"
+            className="grid min-h-0 min-w-0 content-start gap-3 overflow-y-auto overflow-x-hidden pr-1"
             aria-label="Recommended promoters"
           >
+            <header className="grid gap-2 rounded-2xl border border-[var(--surface-border-soft)] bg-[var(--surface-soft)] px-4 py-3">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="flex min-w-0 items-center gap-2">
+                  <span
+                    aria-hidden="true"
+                    className="inline-flex size-5 shrink-0 rounded-[0.2rem] bg-[var(--promoter)] shadow-[0_0_0_1px_color-mix(in_srgb,var(--text)_10%,transparent)]"
+                  />
+                  <h3 className="m-0 text-sm font-semibold uppercase tracking-[0.14em] text-[var(--text)]">
+                    Recommended promoters
+                  </h3>
+                </div>
+                <p className="m-0 shrink-0 text-sm font-medium text-[var(--text-muted)]">
+                  {formatMatchCount(filteredRecommendations.length)}
+                </p>
+              </div>
+              <p className="m-0 text-sm leading-6 text-[var(--text-muted)]">
+                Promoters matched to your profile, network and scene activity.
+              </p>
+            </header>
             {filteredRecommendations.length === 0 && (
               <p className="m-0 rounded-2xl border border-[var(--surface-border-soft)] bg-[var(--surface-soft)] p-4 text-sm text-[var(--text-muted)]">
-                No promoters at this threshold. Lower the slider to include more matches.
+                No promoters match the current strength threshold. Lower the strength to include more recommendations.
               </p>
             )}
             {filteredRecommendations.map((recommendation) => (
@@ -906,7 +954,9 @@ export function PromoterRecommendationsPanel({
                     recommendation.promoterSizeSegment === 'small' && 'border-[var(--promoter-border)] bg-[var(--promoter-soft)]',
                     recommendation.promoterSizeSegment === 'medium' && 'border-[var(--info-border)] bg-[var(--info-soft)]',
                     recommendation.promoterSizeSegment === 'large' && 'border-[var(--selection-border)] bg-[var(--selection-soft)]',
-                  )}>
+                  )}
+                  title={`Promoter size: ${PROMOTER_SIZE_LABELS[recommendation.promoterSizeSegment]}`}
+                  aria-label={`Promoter size: ${PROMOTER_SIZE_LABELS[recommendation.promoterSizeSegment]}`}>
                     {PROMOTER_SIZE_LABELS[recommendation.promoterSizeSegment]}
                   </span>
                 </button>
@@ -1075,6 +1125,7 @@ export function PromoterRecommendationsPanel({
                 providedData={currentRecommendationGraph}
                 showFilters={false}
                 showNodeTypeFilter={false}
+                showNodeTypeLegend
                 highlightPathToNodeId={`artist-${recommendationsData.entityId}`}
                 visibleRecommendationPromoterNodeIds={filteredRecommendationPromoterNodeIds}
                 focusedRecommendationPromoterNodeIds={focusedRecommendationPromoterIds?.map((promoterId) => `promoter-${promoterId}`) ?? null}

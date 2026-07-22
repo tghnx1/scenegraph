@@ -9,6 +9,7 @@ const api = vi.hoisted(() => ({
   patch: vi.fn(),
   delete: vi.fn(),
 }))
+const scenegraphMapPanelMock = vi.hoisted(() => vi.fn(() => <div data-testid="graph-panel" />))
 
 vi.mock('@/api/client', () => ({ api }))
 vi.mock('../hooks/useRecommendationJobUpdates', () => ({ useRecommendationJobUpdates: vi.fn() }))
@@ -17,7 +18,7 @@ vi.mock('./LoadingScreen', () => ({
     <div data-testid="recommendation-loading">{activity}</div>
   ),
 }))
-vi.mock('./GraphPanel', () => ({ ScenegraphMapPanel: () => <div data-testid="graph-panel" /> }))
+vi.mock('./GraphPanel', () => ({ ScenegraphMapPanel: scenegraphMapPanelMock }))
 vi.mock('./ExportRecommendation', () => ({ RecommendationExportMenu: () => <div data-testid="export-menu" /> }))
 
 const baseResult = (name: string, promoterId: number): PromoterRecommendationResponse => ({
@@ -44,6 +45,47 @@ const baseResult = (name: string, promoterId: number): PromoterRecommendationRes
 
 const completedResult = baseResult('First Promoter', 10)
 const refreshedResult = baseResult('Updated Promoter', 11)
+const multiRecommendationResult: PromoterRecommendationResponse = {
+  entityId: 61,
+  entityType: 'artist',
+  recommendations: [
+    {
+      id: 10,
+      type: 'promoter',
+      name: 'North Collective',
+      score: 0.92,
+      baseScore: 0.84,
+      feedbackBoost: 0,
+      feedbackState: null,
+      reasons: ['shared extracted genres: dark disco'],
+      promoterSizeSegment: 'large',
+    },
+    {
+      id: 11,
+      type: 'promoter',
+      name: 'East Sessions',
+      score: 0.41,
+      baseScore: 0.36,
+      feedbackBoost: 0,
+      feedbackState: null,
+      reasons: ['shared extracted genres: dark disco'],
+      promoterSizeSegment: 'small',
+    },
+  ],
+  graph: {
+    nodes: [],
+    links: [],
+  },
+}
+const emptyRecommendationResult: PromoterRecommendationResponse = {
+  entityId: 61,
+  entityType: 'artist',
+  recommendations: [],
+  graph: {
+    nodes: [],
+    links: [],
+  },
+}
 
 const baseProps = (overrides: Partial<PromoterRecommendationsPanelProps> = {}): PromoterRecommendationsPanelProps => ({
   isActive: true,
@@ -57,6 +99,7 @@ const baseProps = (overrides: Partial<PromoterRecommendationsPanelProps> = {}): 
     requiredManualArtistCount: 3,
   },
   onSelectNode: vi.fn(),
+  onNavigateToSection: vi.fn(),
   ...overrides,
 })
 
@@ -108,6 +151,7 @@ describe('PromoterRecommendationsPanel', () => {
   })
 
   it('shows a compact setup card when the profile is incomplete', () => {
+    const onNavigateToSection = vi.fn()
     render(
       <PromoterRecommendationsPanel
         {...baseProps({
@@ -117,7 +161,7 @@ describe('PromoterRecommendationsPanel', () => {
             manualArtistCount: 0,
             requiredManualArtistCount: 3,
           },
-          onCompleteProfile: vi.fn(),
+          onNavigateToSection,
         })}
       />,
     )
@@ -129,10 +173,17 @@ describe('PromoterRecommendationsPanel', () => {
     expect(screen.getByText('Missing')).toBeInTheDocument()
     expect(screen.getByText('Artists you know')).toBeInTheDocument()
     expect(screen.getByText('0 of 3 added')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Complete profile' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Biography: Missing' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Artists you know: 0 of 3 added' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Complete profile' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /Add bio/i })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /Add artists you know/i })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /Check again/i })).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Biography: Missing' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Artists you know: 0 of 3 added' }))
+    expect(onNavigateToSection).toHaveBeenNthCalledWith(1, 'biography')
+    expect(onNavigateToSection).toHaveBeenNthCalledWith(2, 'manual_artists')
   })
 
   it('shows the ready-state prompt for artist profiles and uses the full button label', () => {
@@ -154,6 +205,94 @@ describe('PromoterRecommendationsPanel', () => {
     expect(screen.getByRole('button', { name: 'Get recommendations' })).toBeInTheDocument()
     expect(screen.queryByText('Complete your artist profile to unlock recommendations.')).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Reset' })).not.toBeInTheDocument()
+  })
+
+  it('passes the static legend only to the recommendation graph', async () => {
+    api.post.mockResolvedValueOnce({ jobId: 'job-1', status: 'queued' })
+    api.get.mockResolvedValueOnce(makeJobResponse('job-1', completedResult))
+
+    render(
+      <PromoterRecommendationsPanel
+        {...baseProps({
+          autoLoad: false,
+        })}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Get recommendations' }))
+
+    await waitFor(() => expect(scenegraphMapPanelMock).toHaveBeenCalled())
+    const lastCallArgs = scenegraphMapPanelMock.mock.calls[scenegraphMapPanelMock.mock.calls.length - 1]?.[0]
+
+    expect(lastCallArgs).toEqual(expect.objectContaining({
+      showFilters: false,
+      showNodeTypeFilter: false,
+      showNodeTypeLegend: true,
+    }))
+  })
+
+  it('renders a recommended promoters list header with a visible match count', async () => {
+    api.post.mockResolvedValueOnce({ jobId: 'job-1', status: 'queued' })
+    api.get.mockResolvedValueOnce(makeJobResponse('job-1', multiRecommendationResult))
+
+    render(
+      <PromoterRecommendationsPanel
+        {...baseProps({
+          autoLoad: false,
+        })}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Get recommendations' }))
+
+    expect(await screen.findByRole('heading', { name: 'Recommended promoters', level: 3 })).toBeInTheDocument()
+    expect(screen.getByText('Promoters matched to your profile, network and scene activity.')).toBeInTheDocument()
+    expect(screen.getByText('2 matches')).toBeInTheDocument()
+
+    const header = screen.getByRole('heading', { name: 'Recommended promoters', level: 3 }).closest('header')
+    expect(header?.querySelector('[aria-hidden="true"]')).toHaveClass('bg-[var(--promoter)]')
+    expect(screen.getByLabelText('Promoter size: Large')).toBeInTheDocument()
+    expect(screen.queryAllByText(/^Promoter$/i)).toHaveLength(0)
+  })
+
+  it('updates the visible match count when the strength filter hides promoters', async () => {
+    api.post.mockResolvedValueOnce({ jobId: 'job-1', status: 'queued' })
+    api.get.mockResolvedValueOnce(makeJobResponse('job-1', multiRecommendationResult))
+
+    render(
+      <PromoterRecommendationsPanel
+        {...baseProps({
+          autoLoad: false,
+        })}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Get recommendations' }))
+
+    expect(await screen.findByText('2 matches')).toBeInTheDocument()
+
+    fireEvent.change(screen.getByRole('slider'), { target: { value: '0.92' } })
+
+    expect(await screen.findByText('1 match')).toBeInTheDocument()
+  })
+
+  it('keeps the promoters header visible when no recommendations match', async () => {
+    api.post.mockResolvedValueOnce({ jobId: 'job-1', status: 'queued' })
+    api.get.mockResolvedValueOnce(makeJobResponse('job-1', emptyRecommendationResult))
+
+    render(
+      <PromoterRecommendationsPanel
+        {...baseProps({
+          autoLoad: false,
+        })}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Get recommendations' }))
+
+    expect(await screen.findByRole('heading', { name: 'Recommended promoters', level: 3 })).toBeInTheDocument()
+    expect(screen.getByText('0 matches')).toBeInTheDocument()
+    expect(screen.getByText('No promoters match the current strength threshold. Lower the strength to include more recommendations.')).toBeInTheDocument()
   })
 
   it('autostarts recommendations once when the profile becomes ready', async () => {
@@ -211,6 +350,30 @@ describe('PromoterRecommendationsPanel', () => {
 
     expect(await screen.findByText('Your profile was updated, but recommendations are not ready yet.')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Try again' })).toBeInTheDocument()
+  })
+
+  it('navigates to a profile section from the setup card when biography is already present', () => {
+    const onNavigateToSection = vi.fn()
+
+    render(
+      <PromoterRecommendationsPanel
+        {...baseProps({
+          profileReadiness: {
+            isLoading: false,
+            hasBiography: true,
+            manualArtistCount: 1,
+            requiredManualArtistCount: 3,
+          },
+          onNavigateToSection,
+        })}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Biography: Added' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Artists you know: 1 of 3 added' }))
+
+    expect(onNavigateToSection).toHaveBeenNthCalledWith(1, 'biography')
+    expect(onNavigateToSection).toHaveBeenNthCalledWith(2, 'manual_artists')
   })
 
   it('keeps the current recommendations visible while updating them', async () => {
