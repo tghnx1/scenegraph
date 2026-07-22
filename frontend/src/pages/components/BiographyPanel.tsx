@@ -148,7 +148,9 @@ export function BiographyPanel({
     >
       <div className="grid gap-1">
         <span className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--accent)]">Artist profile</span>
-        <h2>{artistName}</h2>
+        <h2 id="artist-biography-heading" tabIndex={-1} className="scroll-mt-28 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-border)] focus-visible:ring-offset-2 focus-visible:ring-offset-transparent">
+          {artistName}
+        </h2>
       </div>
 
       <RecommendationSignalsHelp />
