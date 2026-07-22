@@ -44,6 +44,7 @@ export function ProfilePage({ recommendationTargetControls, showBiography = true
     isLoading: true,
     hasBiography: null,
   })
+  const [hasProfileChangesSinceRecommendations, setHasProfileChangesSinceRecommendations] = useState(false)
 
   const refreshCurrentUser = useCallback(async () => {
     try {
@@ -132,7 +133,19 @@ export function ProfilePage({ recommendationTargetControls, showBiography = true
   const manualConnectionsArtistId = isArtistUser
     ? profileArtistId
     : artistId
-  const manualConnections = useManualArtistConnections(manualConnectionsArtistId)
+  const markProfileChanged = useCallback(() => {
+    setHasProfileChangesSinceRecommendations(true)
+  }, [])
+
+  const markRecommendationsSynced = useCallback(() => {
+    setHasProfileChangesSinceRecommendations(false)
+  }, [])
+
+  useEffect(() => {
+    setHasProfileChangesSinceRecommendations(false)
+  }, [profileArtistId])
+
+  const manualConnections = useManualArtistConnections(manualConnectionsArtistId, markProfileChanged)
   const isSingleRowWorkspace = !showBiography
   const profileReadiness = useMemo<ArtistProfileReadiness>(() => ({
     isLoading: biographyReadiness.isLoading || manualConnections.isLoading,
@@ -242,9 +255,11 @@ export function ProfilePage({ recommendationTargetControls, showBiography = true
               targetControls={recommendationTargetControls}
               autoLoad={isArtistUser && profileArtistId !== null}
               profileReadiness={isArtistUser ? profileReadiness : undefined}
-              onCompleteProfile={isArtistUser ? handleCompleteProfile : undefined}
-              onSelectNode={setSelected}
-            />
+            onCompleteProfile={isArtistUser ? handleCompleteProfile : undefined}
+            profileChangedSinceRecommendations={hasProfileChangesSinceRecommendations}
+            onRecommendationsSynced={markRecommendationsSynced}
+            onSelectNode={setSelected}
+          />
           </article>
         </section>
         {showBiography && (
@@ -255,6 +270,7 @@ export function ProfilePage({ recommendationTargetControls, showBiography = true
               canEditBiography={canEditBiography}
               hasApprovedArtistProfile={hasAssignedArtist}
               onBiographyStatusChange={setBiographyReadiness}
+              onProfileChanged={markProfileChanged}
               manualConnections={{
                 connections: manualConnections.connections,
                 isLoading: manualConnections.isLoading,

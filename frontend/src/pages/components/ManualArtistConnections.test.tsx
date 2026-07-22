@@ -44,6 +44,16 @@ const searchResponse: SearchResponse = {
   ],
 }
 
+function makeConnections(count: number): ManualArtistConnection[] {
+  return Array.from({length: count}, (_, index) => ({
+    sourceArtistId: 61,
+    connectedArtistId: 200 + index,
+    connectedArtistName: `Artist ${index + 1}`,
+    createdAt: '2026-07-21T10:00:00.000Z',
+    updatedAt: '2026-07-21T10:00:00.000Z',
+  }))
+}
+
 function Harness() {
   const [connections, setConnections] = useState<ManualArtistConnection[]>(initialConnections)
 
@@ -97,10 +107,36 @@ describe('ManualArtistConnections', () => {
     )
 
     expect(screen.getByText('Artists you know')).toBeInTheDocument()
-    expect(screen.getByText('Add 3–5 artists you know, collaborate with, or who can recommend you to promoters.')).toBeInTheDocument()
+    expect(screen.getByText('Add artists you genuinely know, have played with, collaborated with, or who could recommend you.')).toBeInTheDocument()
+    expect(screen.getByText('More relevant connections can broaden your matches.')).toBeInTheDocument()
+    expect(screen.getByText('Add at least 3 relevant artists to unlock recommendations.')).toBeInTheDocument()
     expect(screen.getByText('0 added')).toBeInTheDocument()
     expect(screen.getByRole('button', {name: 'Add artists'})).toBeInTheDocument()
     expect(screen.queryByRole('button', {name: 'Add artist'})).not.toBeInTheDocument()
+  })
+
+  it('shows progress text for different connection counts', () => {
+    const {rerender} = render(
+      <MemoryRouter>
+        <ManualArtistConnections {...baseProps} connections={makeConnections(1)} onAdd={vi.fn()} onRemove={vi.fn()} />
+      </MemoryRouter>,
+    )
+
+    expect(screen.getByText('Add 2 more to unlock recommendations.')).toBeInTheDocument()
+
+    rerender(
+      <MemoryRouter>
+        <ManualArtistConnections {...baseProps} connections={makeConnections(3)} onAdd={vi.fn()} onRemove={vi.fn()} />
+      </MemoryRouter>,
+    )
+    expect(screen.getByText('Recommendations are unlocked. Adding more relevant artists can broaden your network.')).toBeInTheDocument()
+
+    rerender(
+      <MemoryRouter>
+        <ManualArtistConnections {...baseProps} connections={makeConnections(5)} onAdd={vi.fn()} onRemove={vi.fn()} />
+      </MemoryRouter>,
+    )
+    expect(screen.getByText('Strong network context: 5 artists added.')).toBeInTheDocument()
   })
 
   it('renders the Add artists tile first in the grid before the connections', async () => {

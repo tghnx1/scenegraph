@@ -252,6 +252,44 @@ describe('PromoterRecommendationsPanel', () => {
     expect(screen.queryByText('Couldn’t update recommendations. Your previous results are still shown.')).not.toBeInTheDocument()
   })
 
+  it('shows a reminder when the profile changed after recommendations were generated', async () => {
+    const initialJob = createDeferred<RecommendationJobResponse>()
+    const refreshJob = createDeferred<RecommendationJobResponse>()
+    const onRecommendationsSynced = vi.fn()
+
+    api.post
+      .mockResolvedValueOnce({ jobId: 'job-1', status: 'queued' })
+      .mockResolvedValueOnce({ jobId: 'job-2', status: 'queued' })
+    api.get
+      .mockReturnValueOnce(initialJob.promise)
+      .mockReturnValueOnce(refreshJob.promise)
+
+    render(
+      <PromoterRecommendationsPanel
+        {...baseProps({
+          autoLoad: false,
+          profileChangedSinceRecommendations: true,
+          onRecommendationsSynced,
+        })}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Get recommendations' }))
+    initialJob.resolve(makeJobResponse('job-1', completedResult))
+
+    expect(await screen.findByText('Your profile changed. Update recommendations to use the latest information.')).toBeInTheDocument()
+    expect(onRecommendationsSynced).toHaveBeenCalledTimes(1)
+
+    const updateButtons = screen.getAllByRole('button', { name: 'Update recommendations' })
+    fireEvent.click(updateButtons[0] ?? updateButtons[updateButtons.length - 1])
+
+    expect(screen.getByText('First Promoter')).toBeInTheDocument()
+    refreshJob.resolve(makeJobResponse('job-2', refreshedResult))
+
+    expect(await screen.findByText('Updated Promoter')).toBeInTheDocument()
+    expect(onRecommendationsSynced).toHaveBeenCalledTimes(2)
+  })
+
   it('shows a non-blocking error when an update fails and keeps the previous recommendations visible', async () => {
     const initialJob = createDeferred<RecommendationJobResponse>()
 

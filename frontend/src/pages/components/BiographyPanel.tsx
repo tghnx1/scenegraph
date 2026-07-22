@@ -1,10 +1,11 @@
-import {useCallback, useEffect, useState, type FormEvent} from 'react'
+import {useCallback, useEffect, useMemo, useState, type FormEvent} from 'react'
 import {Link} from 'react-router-dom'
 import {Button} from '@/shared/ui/button'
 import {BIOGRAPHY_MAX_LENGTH, validateBiography} from '@/shared/lib/validation'
 import {fetchArtistBiography, updateArtistBiography} from '../../api/entityDetails'
 import type {ConnectedArtistItem} from '../../types/artist'
 import {ManualArtistConnections, type ManualArtistConnectionsProps} from './ManualArtistConnections'
+import {RecommendationSignalsHelp} from './RecommendationSignalsHelp'
 
 interface BiographyPanelProps {
   artistId: number | null
@@ -13,7 +14,17 @@ interface BiographyPanelProps {
   canEditBiography: boolean
   hasApprovedArtistProfile: boolean
   onBiographyStatusChange?: (status: { isLoading: boolean; hasBiography: boolean | null }) => void
+  onProfileChanged?: () => void
 }
+
+const BIOGRAPHY_HELPER_CHIPS = [
+  'Styles and genres',
+  'DJ, producer or live-act roles',
+  'Labels and imprints',
+  'Collectives or crews',
+  'Named residencies',
+  'A clear description of your sound',
+] as const
 
 export function BiographyPanel({
   artistId,
@@ -22,6 +33,7 @@ export function BiographyPanel({
   canEditBiography,
   hasApprovedArtistProfile,
   onBiographyStatusChange,
+  onProfileChanged,
 }: BiographyPanelProps) {
   const [artistName, setArtistName] = useState('Artist profile')
   const [biography, setBiography] = useState('')
@@ -84,7 +96,12 @@ export function BiographyPanel({
       })
 
     return () => { isCurrent = false }
-  }, [artistId, hasApprovedArtistProfile, reportBiographyStatus, selectedArtistName])
+  }, [artistId, hasApprovedArtistProfile, onProfileChanged, reportBiographyStatus, selectedArtistName])
+
+  const showShortBiographyHint = useMemo(() => {
+    const draftLength = draftBiography.trim().length
+    return draftLength > 0 && draftLength < 160
+  }, [draftBiography])
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -106,6 +123,7 @@ export function BiographyPanel({
       setDraftBiography(response.biography)
       setIsEditing(false)
       setSuccess('Biography saved.')
+      onProfileChanged?.()
       reportBiographyStatus({
         isLoading: false,
         hasBiography: response.biography.trim().length > 0,
@@ -130,6 +148,8 @@ export function BiographyPanel({
         <span className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--accent)]">Artist profile</span>
         <h2>{artistName}</h2>
       </div>
+
+      <RecommendationSignalsHelp />
 
       <section className="grid gap-4 rounded-2xl border border-[var(--surface-border-soft)] bg-[var(--surface-soft)] p-4 md:gap-3 md:p-5">
         <header className="flex flex-wrap items-center justify-between gap-3">
@@ -158,10 +178,25 @@ export function BiographyPanel({
               className="min-h-64 w-full resize-y rounded-xl border border-[var(--control-border)] bg-[var(--surface-input)] p-3 text-sm text-[var(--text)] outline-none placeholder:text-[var(--text-placeholder)] focus:border-[var(--focus-border)] focus:shadow-[0_0_0_3px_var(--focus-ring)]"
               value={draftBiography}
               onChange={(event) => setDraftBiography(event.target.value)}
-              placeholder="Tell promoters and collaborators about your work, sound, and background."
+              placeholder="Describe your sound and scene. Mention your styles, roles, labels, collectives, residencies, and relevant artistic background."
               rows={10}
               maxLength={BIOGRAPHY_MAX_LENGTH}
             />
+            <div className="flex flex-wrap gap-2">
+              {BIOGRAPHY_HELPER_CHIPS.map((chip) => (
+                <span
+                  key={chip}
+                  className="rounded-full border border-[var(--surface-border-soft)] bg-[var(--surface-panel)] px-3 py-1 text-xs font-medium text-[var(--text-muted)]"
+                >
+                  {chip}
+                </span>
+              ))}
+            </div>
+            {showShortBiographyHint && (
+              <p className="m-0 rounded-xl border border-[var(--info-border)] bg-[var(--info-soft)] p-3 text-sm text-[var(--text)]">
+                Your bio is quite short. A few specific sentences will give recommendations more useful context.
+              </p>
+            )}
             <div className="flex items-center justify-between gap-3 text-sm text-[var(--text-muted)]">
               <span>{draftBiography.length}/{BIOGRAPHY_MAX_LENGTH}</span>
               <div className="flex gap-2">

@@ -6,7 +6,7 @@ import {
   type ManualArtistConnection,
 } from '../../api/manualArtistConnections'
 
-export function useManualArtistConnections(artistId: number | null) {
+export function useManualArtistConnections(artistId: number | null, onChangeSuccess?: () => void) {
   const [connections, setConnections] = useState<ManualArtistConnection[]>([])
   const [isLoading, setIsLoading] = useState(artistId !== null)
   const [pendingArtistId, setPendingArtistId] = useState<number | null>(null)
@@ -55,12 +55,13 @@ export function useManualArtistConnections(artistId: number | null) {
         ...current.filter((item) => item.connectedArtistId !== connection.connectedArtistId),
         connection,
       ])
+      onChangeSuccess?.()
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : 'Failed to add artist.')
     } finally {
       setPendingArtistId(null)
     }
-  }, [artistId])
+  }, [artistId, onChangeSuccess])
 
   const remove = useCallback(async (connectedArtistId: number) => {
     if (artistId === null) return
@@ -70,12 +71,13 @@ export function useManualArtistConnections(artistId: number | null) {
     try {
       await removeKnownArtist(artistId, connectedArtistId)
       setConnections((current) => current.filter((item) => item.connectedArtistId !== connectedArtistId))
+      onChangeSuccess?.()
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : 'Failed to remove artist.')
     } finally {
       setPendingArtistId(null)
     }
-  }, [artistId])
+  }, [artistId, onChangeSuccess])
 
   const toggle = useCallback((connectedArtistId: number) => {
     return connectedArtistIds.has(connectedArtistId)

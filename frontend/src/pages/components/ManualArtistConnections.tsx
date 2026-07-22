@@ -37,6 +37,22 @@ function artistResultMeta(result: SearchResult) {
   return details.join(' • ')
 }
 
+function connectionProgressCopy(connectionCount: number) {
+  if (connectionCount <= 0) {
+    return 'Add at least 3 relevant artists to unlock recommendations.'
+  }
+
+  if (connectionCount < 3) {
+    return `Add ${3 - connectionCount} more to unlock recommendations.`
+  }
+
+  if (connectionCount < 5) {
+    return 'Recommendations are unlocked. Adding more relevant artists can broaden your network.'
+  }
+
+  return `Strong network context: ${connectionCount} artists added.`
+}
+
 export function ManualArtistConnections({
   connections,
   isLoading,
@@ -45,7 +61,7 @@ export function ManualArtistConnections({
   onAdd,
   onRemove,
 }: ManualArtistConnectionsProps) {
-  const helperCopy = 'Add 3–5 artists you know, collaborate with, or who can recommend you to promoters.'
+  const helperCopy = 'Add artists you genuinely know, have played with, collaborated with, or who could recommend you.'
   const [isAddingOpen, setIsAddingOpen] = useState(false)
   const [searchValue, setSearchValue] = useState('')
   const searchInputRef = useRef<HTMLInputElement | null>(null)
@@ -102,10 +118,18 @@ export function ManualArtistConnections({
           <p className="m-0 text-sm text-[var(--text-muted)]">
             {helperCopy}
           </p>
+          <p className="m-0 text-sm text-[var(--text-muted)]">
+            More relevant connections can broaden your matches.
+          </p>
         </div>
-        <span className="rounded-full border border-[var(--surface-border-soft)] bg-[var(--surface-panel)] px-3 py-1 text-xs font-semibold text-[var(--text-muted)]">
-          {connections.length} added
-        </span>
+        <div className="grid justify-items-end gap-1">
+          <span className="rounded-full border border-[var(--surface-border-soft)] bg-[var(--surface-panel)] px-3 py-1 text-xs font-semibold text-[var(--text-muted)]">
+            {connections.length} added
+          </span>
+          <span className="max-w-[16rem] text-right text-xs leading-5 text-[var(--text-muted)]">
+            {connectionProgressCopy(connections.length)}
+          </span>
+        </div>
       </header>
 
       <div

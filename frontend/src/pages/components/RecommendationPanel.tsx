@@ -80,6 +80,8 @@ interface PromoterRecommendationsPanelProps {
   autoLoad?: boolean
   profileReadiness?: ArtistProfileReadiness
   onCompleteProfile?: () => void
+  profileChangedSinceRecommendations?: boolean
+  onRecommendationsSynced?: () => void
   emptyStateMessage?: string
   onSelectNode: (node: GraphNode | null) => void
 }
@@ -284,6 +286,8 @@ export function PromoterRecommendationsPanel({
   autoLoad = false,
   profileReadiness,
   onCompleteProfile,
+  profileChangedSinceRecommendations = false,
+  onRecommendationsSynced,
   emptyStateMessage,
   onSelectNode,
 }: PromoterRecommendationsPanelProps) {
@@ -409,6 +413,7 @@ export function PromoterRecommendationsPanel({
         setIsRecommendationsRefreshing(false)
         setActiveRecommendationJobId(null)
         activeRecommendationJobRef.current = null
+        onRecommendationsSynced?.()
       } else if (job.status === 'failed') {
         if (!activeJob.isRefresh) {
           setRecommendationsData(null)
@@ -428,7 +433,7 @@ export function PromoterRecommendationsPanel({
       setActiveRecommendationJobId(null)
       activeRecommendationJobRef.current = null
     }
-  }, [])
+  }, [onRecommendationsSynced])
 
   // Ignore status signals for stale jobs created by earlier UI requests.
   const handleRecommendationJobUpdate = useCallback((message: { jobId: string }) => {
@@ -835,6 +840,22 @@ export function PromoterRecommendationsPanel({
                 disabled={isRecommendationsRefreshing || recommendationArtistId === null}
               >
                 Retry
+              </Button>
+            </div>
+          )}
+          {profileChangedSinceRecommendations && (
+            <div className="col-span-full flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[var(--info-border)] bg-[var(--info-soft)] p-3 text-sm text-[var(--text)]">
+              <p className="m-0">
+                Your profile changed. Update recommendations to use the latest information.
+              </p>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={handleUpdateRecommendations}
+                disabled={isRecommendationsLoading || isRecommendationsRefreshing || recommendationArtistId === null}
+              >
+                Update recommendations
               </Button>
             </div>
           )}
