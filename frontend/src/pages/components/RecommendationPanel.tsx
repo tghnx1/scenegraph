@@ -3,6 +3,8 @@ import { Check, ChevronRight, Circle } from 'lucide-react'
 import { Button } from '@/shared/ui/button'
 import { cn } from '@/shared/lib/cn-utils'
 import { api } from '@/api/client'
+import { fetchEntityDetail } from '@/api/entityDetails'
+import { useApi } from '@/api/useApi'
 import {
   deletePromoterFeedback,
   getPromoterFeedback,
@@ -10,6 +12,7 @@ import {
   type PromoterFeedbackValue,
 } from '@/api/recommendationFeedback'
 import { graphEntityId, type GraphNode } from '../../types/graph'
+import type { EntityDetail } from '../../types/entityDetail'
 import type {
   PromoterRecommendationResponse,
   RecommendationJobCreatedResponse,
@@ -19,6 +22,7 @@ import { useRecommendationJobUpdates } from '../hooks/useRecommendationJobUpdate
 import { RecommendationLoading } from './LoadingScreen'
 import { ScenegraphMapPanel } from './GraphPanel'
 import { RecommendationExportMenu } from './ExportRecommendation'
+import { RecommendationDetailsInspector } from './RecommendationDetailsInspector'
 import {
   isArtistProfileReady,
   type ArtistProfileReadiness,
@@ -30,8 +34,8 @@ const RECOMMENDATION_LOADING_MESSAGES = [
   'Comparing related events',
   'Building promoter graph',
 ]
-const DEFAULT_RECOMMENDATION_STRENGTH_THRESHOLD = 0.25
-const DEFAULT_VISIBLE_PROMOTERS_ON_LOAD = 3
+const INITIAL_VISIBLE_PROMOTERS = 20
+const PROMOTER_PAGE_SIZE = 20
 
 type RecommendationGraphMode = 'compact' | 'full'
 
@@ -83,11 +87,6 @@ interface PromoterRecommendationsPanelProps {
   profileChangedSinceRecommendations?: boolean
   onRecommendationsSynced?: () => void
   emptyStateMessage?: string
-  onSelectNode: (node: GraphNode | null) => void
-}
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.min(Math.max(value, min), max)
 }
 
 function uniqueNonEmpty(values: string[]): string[] {
@@ -294,18 +293,6 @@ function recommendationScore(recommendation: PromoterRecommendationResponse['rec
   return 0
 }
 
-function initialStrengthThreshold(recommendations: PromoterRecommendationResponse['recommendations']): number {
-  if (recommendations.length === 0) return DEFAULT_RECOMMENDATION_STRENGTH_THRESHOLD
-
-  const sortedScores = recommendations
-    .map((recommendation) => recommendationScore(recommendation))
-    .sort((left, right) => right - left)
-
-  const targetIndex = Math.min(DEFAULT_VISIBLE_PROMOTERS_ON_LOAD - 1, sortedScores.length - 1)
-  const threshold = sortedScores[targetIndex] ?? DEFAULT_RECOMMENDATION_STRENGTH_THRESHOLD
-  return Math.max(0, Math.min(1, threshold))
-}
-
 export function PromoterRecommendationsPanel({
   isActive,
   artistId,
@@ -317,7 +304,6 @@ export function PromoterRecommendationsPanel({
   profileChangedSinceRecommendations = false,
   onRecommendationsSynced,
   emptyStateMessage,
-  onSelectNode,
 }: PromoterRecommendationsPanelProps) {
   const [recommendationsData, setRecommendationsData] = useState<PromoterRecommendationResponse | null>(null)
   const [activeRecommendationJobId, setActiveRecommendationJobId] = useState<string | null>(null)
@@ -325,10 +311,8 @@ export function PromoterRecommendationsPanel({
   const [isRecommendationsRefreshing, setIsRecommendationsRefreshing] = useState(false)
   const [recommendationsError, setRecommendationsError] = useState<string | null>(null)
   const [recommendationLoadingMessageIndex, setRecommendationLoadingMessageIndex] = useState(0)
-  const [recommendationGraphMode, setRecommendationGraphMode] = useState<RecommendationGraphMode>('compact')
-  const [recommendationStrengthThreshold, setRecommendationStrengthThreshold] = useState(
-    DEFAULT_RECOMMENDATION_STRENGTH_THRESHOLD,
-  )
+  const [recommendationGraphMode, setRecommendationGraphMode] = useState<RecommendationGraphMode>('full')
+  const [visiblePromoterCount, setVisiblePromoterCount] = useState(INITIAL_VISIBLE_PROMOTERS)
   const [expandedRecommendationId, setExpandedRecommendationId] = useState<number | null>(null)
   const [focusedRecommendationPromoterIds, setFocusedRecommendationPromoterIds] = useState<number[] | null>(null)
   const [expandedReasonItems, setExpandedReasonItems] = useState<Record<string, boolean>>({})
@@ -337,8 +321,9 @@ export function PromoterRecommendationsPanel({
     Record<number, PromoterFeedbackValue | null>
   >({})
   const [localFeedbackIdByPromoterId, setLocalFeedbackIdByPromoterId] = useState<Record<number, number>>({})
-  const recommendationThresholdInitializedRef = useRef(false)
+  const [selectedRecommendationNode, setSelectedRecommendationNode] = useState<GraphNode | null>(null)
   const recommendationListRef = useRef<HTMLElement | null>(null)
+  const lastRecommendationFocusRef = useRef<HTMLElement | null>(null)
   const recommendationRequestIdRef = useRef(0)
   const activeRecommendationJobRef = useRef<{ jobId: string; requestId: number; isRefresh: boolean } | null>(null)
   const autoLoadTriggeredArtistIdRef = useRef<number | null>(null)
@@ -357,16 +342,6 @@ export function PromoterRecommendationsPanel({
     : 'Promoter Recommendations'
   const recommendationReadyMessage = 'Recommendations are ready to generate.'
   const recommendationPrimaryButtonLabel = targetControls?.getButtonLabel ?? 'Get recommendations'
-  const recommendationActionLabel = recommendationsData
-    ? 'Update recommendations'
-    : recommendationsError
-      ? 'Retry'
-      : recommendationPrimaryButtonLabel
-  const recommendationButtonLabel = isRecommendationsRefreshing
-    ? 'Updating…'
-    : isRecommendationsLoading
-      ? 'Preparing…'
-      : recommendationActionLabel
   const shouldGateByProfileReadiness = autoLoad && profileReadiness !== undefined
   const profileSetupReady = isArtistProfileReady(profileReadiness)
   const isProfileSetupLoading = Boolean(profileReadiness?.isLoading)
@@ -386,8 +361,9 @@ export function PromoterRecommendationsPanel({
     setPendingFeedbackPromoterId(null)
     setLocalFeedbackByPromoterId({})
     setLocalFeedbackIdByPromoterId({})
-    setRecommendationGraphMode('compact')
-    recommendationThresholdInitializedRef.current = false
+    setRecommendationGraphMode('full')
+    setVisiblePromoterCount(INITIAL_VISIBLE_PROMOTERS)
+    setSelectedRecommendationNode(null)
   }, [recommendationArtistId])
 
   useEffect(() => {
@@ -414,14 +390,59 @@ export function PromoterRecommendationsPanel({
   }, [isRecommendationsLoading])
 
   useEffect(() => {
-    if (!recommendationsData) {
-      recommendationThresholdInitializedRef.current = false
-      return
-    }
-    if (recommendationThresholdInitializedRef.current) return
-    setRecommendationStrengthThreshold(initialStrengthThreshold(recommendationsData.recommendations))
-    recommendationThresholdInitializedRef.current = true
+    setVisiblePromoterCount((current) => {
+      const nextVisibleCount = recommendationsData
+        ? Math.min(INITIAL_VISIBLE_PROMOTERS, recommendationsData.recommendations.length)
+        : INITIAL_VISIBLE_PROMOTERS
+
+      return current === nextVisibleCount ? current : nextVisibleCount
+    })
   }, [recommendationsData])
+
+  useEffect(() => {
+    if (selectedRecommendationNode === null) return
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        setSelectedRecommendationNode(null)
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [selectedRecommendationNode])
+
+  useEffect(() => {
+    if (selectedRecommendationNode !== null) return
+
+    window.setTimeout(() => {
+      const element = lastRecommendationFocusRef.current
+      if (element instanceof HTMLElement && document.contains(element)) {
+        element.focus({ preventScroll: true })
+      }
+      lastRecommendationFocusRef.current = null
+    }, 0)
+  }, [selectedRecommendationNode])
+
+  const selectedRecommendationDetailPath = useMemo(() => (
+    selectedRecommendationNode
+      ? `${selectedRecommendationNode.type}-${selectedRecommendationNode.entityId}`
+      : null
+  ), [selectedRecommendationNode])
+
+  const {
+    data: selectedRecommendationEntityDetail,
+    isLoading: isSelectedRecommendationEntityDetailLoading,
+    error: selectedRecommendationEntityDetailError,
+  } = useApi<EntityDetail | null>(
+    () => (
+      selectedRecommendationNode
+        ? fetchEntityDetail(selectedRecommendationNode.type, String(selectedRecommendationNode.entityId))
+        : Promise.resolve(null)
+    ),
+    [selectedRecommendationDetailPath],
+  )
 
   // Read durable job state once after a WebSocket signal or reconnect.
   const refreshRecommendationJob = useCallback(async (jobId: string) => {
@@ -492,20 +513,19 @@ export function PromoterRecommendationsPanel({
       return
     }
 
-    recommendationThresholdInitializedRef.current = false
     const requestId = recommendationRequestIdRef.current + 1
     recommendationRequestIdRef.current = requestId
     setRecommendationsError(null)
     setExpandedRecommendationId(null)
     setFocusedRecommendationPromoterIds(null)
     setExpandedReasonItems({})
-    onSelectNode(null)
+    setSelectedRecommendationNode(null)
     if (refreshing) {
       setIsRecommendationsRefreshing(true)
     } else {
       setIsRecommendationsLoading(true)
       setRecommendationsData(null)
-      setRecommendationGraphMode('compact')
+      setRecommendationGraphMode('full')
     }
 
     try {
@@ -624,16 +644,28 @@ export function PromoterRecommendationsPanel({
     }
   }, [emptyStateMessage, localFeedbackByPromoterId, localFeedbackIdByPromoterId, recommendationArtistId, recommendationsData, targetControls?.emptyMessage])
 
+  const handleSelectRecommendationNode = useCallback((node: GraphNode | null) => {
+    if (node) {
+      const activeElement = document.activeElement
+      lastRecommendationFocusRef.current = activeElement instanceof HTMLElement ? activeElement : null
+    }
+    setSelectedRecommendationNode(node)
+  }, [])
+
   const handleSelectRecommendation = useCallback((recommendationId: number) => {
     const recommendationNode = recommendationsData?.graph.nodes.find((node) => (
       node.type === 'promoter' && node.entityId === recommendationId
-    ))
-
-    if (recommendationNode) {
-      onSelectNode(recommendationNode)
-      setFocusedRecommendationPromoterIds([recommendationId])
+    )) ?? {
+      id: `promoter-${recommendationId}`,
+      entityId: recommendationId,
+      type: 'promoter',
+      name: recommendationsData?.recommendations.find((recommendation) => recommendation.id === recommendationId)?.name ?? `Promoter ${recommendationId}`,
+      genres: [],
     }
-  }, [onSelectNode, recommendationsData])
+
+    handleSelectRecommendationNode(recommendationNode)
+    setFocusedRecommendationPromoterIds([recommendationId])
+  }, [handleSelectRecommendationNode, recommendationsData])
 
   const handleToggleRecommendation = useCallback((recommendationId: number) => {
     const isCollapsingCurrent = expandedRecommendationId === recommendationId
@@ -641,13 +673,13 @@ export function PromoterRecommendationsPanel({
     if (isCollapsingCurrent) {
       setExpandedRecommendationId(null)
       setFocusedRecommendationPromoterIds(null)
-      onSelectNode(null)
+      handleSelectRecommendationNode(null)
       return
     }
 
     setExpandedRecommendationId(recommendationId)
     handleSelectRecommendation(recommendationId)
-  }, [expandedRecommendationId, handleSelectRecommendation, onSelectNode])
+  }, [expandedRecommendationId, handleSelectRecommendation, handleSelectRecommendationNode])
 
   const handleToggleReasonItems = useCallback((key: string) => {
     setExpandedReasonItems((current) => ({ ...current, [key]: !current[key] }))
@@ -657,15 +689,8 @@ export function PromoterRecommendationsPanel({
     setRecommendationGraphMode((current) => (current === 'compact' ? 'full' : 'compact'))
   }, [])
 
-  const handleRecommendationStrengthChange = useCallback((nextThreshold: number) => {
-    setRecommendationStrengthThreshold(nextThreshold)
-    setExpandedRecommendationId(null)
-    setFocusedRecommendationPromoterIds(null)
-    onSelectNode(null)
-  }, [onSelectNode])
-
   const handleRecommendationGraphNodeClick = useCallback((node: GraphNode, promoterNodeIds: string[] | null) => {
-    onSelectNode(node)
+    handleSelectRecommendationNode(node)
 
     if (!promoterNodeIds || promoterNodeIds.length === 0) {
       setExpandedRecommendationId(null)
@@ -685,19 +710,38 @@ export function PromoterRecommendationsPanel({
 
     setExpandedRecommendationId(null)
     setFocusedRecommendationPromoterIds(promoterIds)
-  }, [onSelectNode])
+  }, [handleSelectRecommendationNode])
 
   const handleRecommendationGraphPaneClick = useCallback(() => {
     setExpandedRecommendationId(null)
     setFocusedRecommendationPromoterIds(null)
-    onSelectNode(null)
-  }, [onSelectNode])
+    handleSelectRecommendationNode(null)
+  }, [handleSelectRecommendationNode])
 
   const effectiveFeedbackForPromoter = useCallback((promoterId: number) => (
     Object.prototype.hasOwnProperty.call(localFeedbackByPromoterId, promoterId)
       ? localFeedbackByPromoterId[promoterId]
       : recommendationsData?.recommendations.find((item) => item.id === promoterId)?.feedbackState ?? null
   ), [localFeedbackByPromoterId, recommendationsData])
+  const sortedRecommendations = useMemo(() => {
+    if (!recommendationsData) return []
+
+    return [...recommendationsData.recommendations].sort((left, right) => {
+      const scoreDelta = recommendationScore(right) - recommendationScore(left)
+      if (Math.abs(scoreDelta) > 1e-9) return scoreDelta
+      return left.name.localeCompare(right.name)
+    })
+  }, [recommendationsData])
+
+  const displayedRecommendations = useMemo(
+    () => sortedRecommendations.slice(0, visiblePromoterCount),
+    [sortedRecommendations, visiblePromoterCount],
+  )
+  const displayedRecommendationPromoterNodeIds = useMemo(
+    () => displayedRecommendations.map((recommendation) => `promoter-${recommendation.id}`),
+    [displayedRecommendations],
+  )
+  const hasMoreRecommendations = visiblePromoterCount < sortedRecommendations.length
 
   useEffect(() => {
     if (expandedRecommendationId === null) return
@@ -716,52 +760,6 @@ export function PromoterRecommendationsPanel({
     return () => window.cancelAnimationFrame(animationFrame)
   }, [expandedRecommendationId])
 
-  const sortedRecommendations = useMemo(() => {
-    if (!recommendationsData) return []
-
-    return [...recommendationsData.recommendations].sort((left, right) => {
-      const scoreDelta = recommendationScore(right) - recommendationScore(left)
-      if (Math.abs(scoreDelta) > 1e-9) return scoreDelta
-      return left.name.localeCompare(right.name)
-    })
-  }, [recommendationsData])
-
-  const recommendationScoreBounds = useMemo(() => {
-    if (sortedRecommendations.length === 0) {
-      return { min: 0, max: 1 }
-    }
-
-    const scores = sortedRecommendations.map((recommendation) => recommendationScore(recommendation))
-    return {
-      min: Math.min(...scores),
-      max: Math.max(...scores),
-    }
-  }, [sortedRecommendations])
-
-  useEffect(() => {
-    setRecommendationStrengthThreshold((current) => {
-      const bounded = clamp(current, recommendationScoreBounds.min, recommendationScoreBounds.max)
-      return Math.abs(current - bounded) < 1e-9 ? current : bounded
-    })
-  }, [recommendationScoreBounds.max, recommendationScoreBounds.min])
-
-  const recommendationStrengthStep = useMemo(() => {
-    const range = recommendationScoreBounds.max - recommendationScoreBounds.min
-    if (range <= 0) return 0.001
-    return Math.max(range / 500, 0.0005)
-  }, [recommendationScoreBounds.max, recommendationScoreBounds.min])
-
-  const filteredRecommendations = useMemo(
-    () => sortedRecommendations.filter((recommendation) => (
-      recommendationScore(recommendation) >= recommendationStrengthThreshold
-    )),
-    [recommendationStrengthThreshold, sortedRecommendations],
-  )
-  const filteredRecommendationPromoterNodeIds = useMemo(
-    () => filteredRecommendations.map((recommendation) => `promoter-${recommendation.id}`),
-    [filteredRecommendations],
-  )
-
   const currentRecommendationGraph = useMemo(
     () => {
       if (!recommendationsData) return null
@@ -774,14 +772,18 @@ export function PromoterRecommendationsPanel({
 
   useEffect(() => {
     if (expandedRecommendationId === null) return
-    const isStillVisible = filteredRecommendations.some((recommendation) => (
+    const isStillVisible = sortedRecommendations.some((recommendation) => (
       recommendation.id === expandedRecommendationId
     ))
     if (!isStillVisible) {
       setExpandedRecommendationId(null)
       setFocusedRecommendationPromoterIds(null)
     }
-  }, [expandedRecommendationId, filteredRecommendations])
+  }, [expandedRecommendationId, sortedRecommendations])
+
+  const handleShowMorePromoters = useCallback(() => {
+    setVisiblePromoterCount((current) => Math.min(current + PROMOTER_PAGE_SIZE, sortedRecommendations.length))
+  }, [sortedRecommendations.length])
 
   return (
     <section
@@ -793,27 +795,13 @@ export function PromoterRecommendationsPanel({
     >
       <div className={panelHeadingClass}>
         <span className={labelClass}>{recommendationHeaderLabel}</span>
-        {(targetControls || recommendationArtistId !== null || recommendationsData) && (
+        {targetControls?.controls && (
           <div className="flex min-w-0 flex-nowrap items-center justify-end gap-2 max-[900px]:w-full max-[900px]:flex-wrap">
-            {targetControls?.controls}
-            <Button
-              type="button"
-              size="sm"
-              className="shrink-0"
-              onClick={() => {
-                if (recommendationsData) {
-                  handleUpdateRecommendations()
-                } else {
-                  void handleLoadRecommendations()
-                }
-              }}
-              disabled={isRecommendationsLoading || isRecommendationsRefreshing || recommendationArtistId === null}
-            >
-              {recommendationButtonLabel}
-            </Button>
+            {targetControls.controls}
           </div>
         )}
       </div>
+
       {recommendationsData === null && !isRecommendationsLoading && !isRecommendationsRefreshing && (
         isProfileSetupLoading ? (
           <ProfileReadinessLoadingState />
@@ -846,17 +834,34 @@ export function PromoterRecommendationsPanel({
                     ? recommendationReadyMessage
                     : emptyStateMessage)
                   ?? (recommendationTargetLabel
-                    ? `Click "Get recommendations" to load recommendations for ${recommendationTargetLabel}. Loading time may be quite long. Let the wizard does its magic.`
-                    : 'Click "Get recommendations" to load recommendations. Loading time may be quite long. Let the wizard does its magic.'))}
+                    ? `Click "${recommendationPrimaryButtonLabel}" to load recommendations for ${recommendationTargetLabel}. Loading time may be quite long. Let the wizard does its magic.`
+                    : `Click "${recommendationPrimaryButtonLabel}" to load recommendations. Loading time may be quite long. Let the wizard does its magic.`))}
             </p>
+            <div className="flex flex-wrap items-center justify-center gap-2">
+              <Button
+                type="button"
+                size="sm"
+                onClick={() => void handleLoadRecommendations()}
+                disabled={isRecommendationsLoading || isRecommendationsRefreshing || recommendationArtistId === null}
+              >
+                {recommendationsError ? 'Retry' : recommendationPrimaryButtonLabel}
+              </Button>
+            </div>
           </div>
         )
       )}
+
       {isRecommendationsLoading && (
         <RecommendationLoading activity={RECOMMENDATION_LOADING_MESSAGES[recommendationLoadingMessageIndex]} />
       )}
+
       {recommendationsData !== null && (
-        <div className="grid min-h-0 min-w-0 grid-cols-[minmax(220px,0.72fr)_minmax(0,1.28fr)] gap-3 overflow-hidden max-[1180px]:grid-cols-1">
+        <div className={cn(
+          'grid min-h-0 min-w-0 gap-3 overflow-hidden',
+          selectedRecommendationNode
+            ? 'min-[1400px]:grid-cols-[minmax(240px,0.76fr)_minmax(0,1.24fr)_minmax(320px,0.9fr)] max-[1399px]:grid-cols-[minmax(240px,0.84fr)_minmax(0,1.16fr)] max-[980px]:grid-cols-1'
+            : 'grid-cols-[minmax(240px,0.84fr)_minmax(0,1.16fr)] max-[980px]:grid-cols-1',
+        )}>
           {recommendationsError && !isRecommendationsLoading && (
             <div className="col-span-full flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[color-mix(in_srgb,var(--event)_30%,transparent)] bg-[color-mix(in_srgb,var(--event)_10%,transparent)] p-3 text-sm text-[var(--text)]">
               <p className="m-0">
@@ -873,6 +878,7 @@ export function PromoterRecommendationsPanel({
               </Button>
             </div>
           )}
+
           {profileChangedSinceRecommendations && (
             <div className="col-span-full flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[var(--info-border)] bg-[var(--info-soft)] p-3 text-sm text-[var(--text)]">
               <p className="m-0">
@@ -889,21 +895,7 @@ export function PromoterRecommendationsPanel({
               </Button>
             </div>
           )}
-          <div className="col-span-full grid grid-cols-[auto_minmax(160px,1fr)_auto] items-center gap-3 rounded-2xl border border-[var(--surface-border-soft)] bg-[var(--surface-soft)] p-3 text-sm text-[var(--text-muted)] max-[700px]:grid-cols-1" aria-label="Recommendation strength control">
-            <label className="font-semibold text-[var(--text)]" htmlFor="recommendation-strength-threshold">
-              Strength: {Math.round(recommendationStrengthThreshold * 100)}%
-            </label>
-            <input
-              className="h-2 w-full accent-[var(--selection)]"
-              id="recommendation-strength-threshold"
-              type="range"
-              min={recommendationScoreBounds.min}
-              max={recommendationScoreBounds.max}
-              step={recommendationStrengthStep}
-              value={recommendationStrengthThreshold}
-              onChange={(event) => handleRecommendationStrengthChange(Number(event.target.value))}
-            />
-          </div>
+
           <section
             ref={recommendationListRef}
             className="grid min-h-0 min-w-0 content-start gap-3 overflow-y-auto overflow-x-hidden pr-1"
@@ -921,19 +913,21 @@ export function PromoterRecommendationsPanel({
                   </h3>
                 </div>
                 <p className="m-0 shrink-0 text-sm font-medium text-[var(--text-muted)]">
-                  {formatMatchCount(filteredRecommendations.length)}
+                  {formatMatchCount(sortedRecommendations.length)}
                 </p>
               </div>
               <p className="m-0 text-sm leading-6 text-[var(--text-muted)]">
                 Promoters matched to your profile, network and scene activity.
               </p>
             </header>
-            {filteredRecommendations.length === 0 && (
+
+            {sortedRecommendations.length === 0 && (
               <p className="m-0 rounded-2xl border border-[var(--surface-border-soft)] bg-[var(--surface-soft)] p-4 text-sm text-[var(--text-muted)]">
-                No promoters match the current strength threshold. Lower the strength to include more recommendations.
+                No promoters matched this recommendation run.
               </p>
             )}
-            {filteredRecommendations.map((recommendation) => (
+
+            {displayedRecommendations.map((recommendation) => (
               <article
                 className="min-w-0 rounded-2xl border border-[color-mix(in_srgb,var(--text)_10%,transparent)] bg-[color-mix(in_srgb,var(--background)_38%,transparent)] p-2 backdrop-blur-sm"
                 key={recommendation.id}
@@ -949,14 +943,16 @@ export function PromoterRecommendationsPanel({
                   onClick={() => handleToggleRecommendation(recommendation.id)}
                 >
                   <span className="min-w-0 flex-1 overflow-hidden text-sm font-semibold leading-snug [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]">{recommendation.name}</span>
-                  <span className={cn(
-                    'shrink-0 rounded-full border px-2 py-0.5 text-[0.68rem] font-semibold',
-                    recommendation.promoterSizeSegment === 'small' && 'border-[var(--promoter-border)] bg-[var(--promoter-soft)]',
-                    recommendation.promoterSizeSegment === 'medium' && 'border-[var(--info-border)] bg-[var(--info-soft)]',
-                    recommendation.promoterSizeSegment === 'large' && 'border-[var(--selection-border)] bg-[var(--selection-soft)]',
-                  )}
-                  title={`Promoter size: ${PROMOTER_SIZE_LABELS[recommendation.promoterSizeSegment]}`}
-                  aria-label={`Promoter size: ${PROMOTER_SIZE_LABELS[recommendation.promoterSizeSegment]}`}>
+                  <span
+                    className={cn(
+                      'shrink-0 rounded-full border px-2 py-0.5 text-[0.68rem] font-semibold',
+                      recommendation.promoterSizeSegment === 'small' && 'border-[var(--promoter-border)] bg-[var(--promoter-soft)]',
+                      recommendation.promoterSizeSegment === 'medium' && 'border-[var(--info-border)] bg-[var(--info-soft)]',
+                      recommendation.promoterSizeSegment === 'large' && 'border-[var(--selection-border)] bg-[var(--selection-soft)]',
+                    )}
+                    title={`Promoter size: ${PROMOTER_SIZE_LABELS[recommendation.promoterSizeSegment]}`}
+                    aria-label={`Promoter size: ${PROMOTER_SIZE_LABELS[recommendation.promoterSizeSegment]}`}
+                  >
                     {PROMOTER_SIZE_LABELS[recommendation.promoterSizeSegment]}
                   </span>
                 </button>
@@ -1093,7 +1089,16 @@ export function PromoterRecommendationsPanel({
                 )}
               </article>
             ))}
+
+            {hasMoreRecommendations && (
+              <div className="flex justify-center pt-1">
+                <Button type="button" variant="outline" onClick={handleShowMorePromoters}>
+                  Show more promoters
+                </Button>
+              </div>
+            )}
           </section>
+
           <section className="grid min-h-[420px] min-w-0 overflow-hidden grid-rows-[auto_minmax(0,1fr)] gap-3" aria-label="Recommendation evidence graph">
             <div className={panelHeadingClass}>
               <span className={labelClass}>
@@ -1102,8 +1107,6 @@ export function PromoterRecommendationsPanel({
               <div className="flex flex-wrap items-center justify-end gap-2">
                 <RecommendationExportMenu
                   recommendationsData={recommendationsData}
-                  filteredRecommendations={filteredRecommendations}
-                  recommendationStrengthThreshold={recommendationStrengthThreshold}
                   recommendationGraphMode={recommendationGraphMode}
                 />
                 <Button
@@ -1127,13 +1130,25 @@ export function PromoterRecommendationsPanel({
                 showNodeTypeFilter={false}
                 showNodeTypeLegend
                 highlightPathToNodeId={`artist-${recommendationsData.entityId}`}
-                visibleRecommendationPromoterNodeIds={filteredRecommendationPromoterNodeIds}
+                visibleRecommendationPromoterNodeIds={displayedRecommendationPromoterNodeIds}
                 focusedRecommendationPromoterNodeIds={focusedRecommendationPromoterIds?.map((promoterId) => `promoter-${promoterId}`) ?? null}
                 onRecommendationGraphNodeClick={handleRecommendationGraphNodeClick}
                 onRecommendationGraphPaneClick={handleRecommendationGraphPaneClick}
               />
             )}
           </section>
+
+          {selectedRecommendationNode && (
+            <RecommendationDetailsInspector
+              className="max-[1399px]:col-span-full"
+              selectedNode={selectedRecommendationNode}
+              selectedEntityDetail={selectedRecommendationEntityDetail}
+              isLoading={isSelectedRecommendationEntityDetailLoading}
+              error={selectedRecommendationEntityDetailError}
+              onSelectNode={handleSelectRecommendationNode}
+              onClose={() => handleSelectRecommendationNode(null)}
+            />
+          )}
         </div>
       )}
     </section>

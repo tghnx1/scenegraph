@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Button } from '@/shared/ui/button'
 import { cn } from '@/shared/lib/cn-utils.ts'
 import { DetailsPanel } from './components/DetailsPanel.tsx'
@@ -8,11 +8,7 @@ import { SearchInputField } from './components/SearchInputField.tsx'
 import { useGraphSearchDetails } from './hooks/useGraphSearchDetails.ts'
 import { useManualArtistConnections } from './hooks/useManualArtistConnections.ts'
 import { BiographyPanel } from './components/BiographyPanel.tsx'
-import { fetchEntityDetail } from '../api/entityDetails'
 import { getMe, type AuthRole } from '../api/auth'
-import { useApi } from '../api/useApi'
-import type { EntityDetail } from '../types/entityDetail'
-import type { GraphNode } from '../types/graph'
 import {
   type ArtistProfileReadiness,
 } from './profileReadiness'
@@ -25,7 +21,7 @@ interface ProfilePageProps {
 }
 
 export function ProfilePage({ recommendationTargetControls, showBiography = true }: ProfilePageProps = {}) {
-  const { detailsPanelProps, searchFormProps, selectedNode, setSelected } = useGraphSearchDetails()
+  const { detailsPanelProps, searchFormProps, selectedNode } = useGraphSearchDetails()
   const [activeWorkspaceTab, setActiveWorkspaceTab] = useState<ProfileWorkspaceTab>('recommendations')
   const [currentRole, setCurrentRole] = useState<AuthRole | null>(() => {
     const storedRole = localStorage.getItem('role')
@@ -48,8 +44,6 @@ export function ProfilePage({ recommendationTargetControls, showBiography = true
     hasBiography: null,
   })
   const [hasProfileChangesSinceRecommendations, setHasProfileChangesSinceRecommendations] = useState(false)
-  const [selectedRecommendationNode, setSelectedRecommendationNode] = useState<GraphNode | null>(null)
-  const lastRecommendationFocusRef = useRef<HTMLElement | null>(null)
 
   const refreshCurrentUser = useCallback(async () => {
     try {
@@ -186,54 +180,6 @@ export function ProfilePage({ recommendationTargetControls, showBiography = true
     }, 350)
   }, [])
 
-  const handleSelectRecommendationNode = useCallback((node: GraphNode | null) => {
-    if (activeWorkspaceTab === 'recommendations') {
-      if (node) {
-        const activeElement = document.activeElement
-        lastRecommendationFocusRef.current = activeElement instanceof HTMLElement ? activeElement : null
-      }
-      setSelectedRecommendationNode(node)
-      return
-    }
-
-    setSelected(node)
-  }, [activeWorkspaceTab, setSelected])
-
-  const closeRecommendationDetails = useCallback(() => {
-    setSelectedRecommendationNode(null)
-    window.setTimeout(() => {
-      const element = lastRecommendationFocusRef.current
-      if (element instanceof HTMLElement && document.contains(element)) {
-        element.focus({ preventScroll: true })
-      }
-      lastRecommendationFocusRef.current = null
-    }, 0)
-  }, [])
-
-  const recommendationDrawerNode = selectedRecommendationNode
-  const { data: recommendationDrawerEntityDetail } = useApi<EntityDetail | null>(
-    () => (
-      recommendationDrawerNode
-        ? fetchEntityDetail(recommendationDrawerNode.type, String(recommendationDrawerNode.entityId ?? recommendationDrawerNode.id))
-        : Promise.resolve(null)
-    ),
-    [recommendationDrawerNode]
-  )
-
-  useEffect(() => {
-    if (selectedRecommendationNode === null) return
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        event.preventDefault()
-        closeRecommendationDetails()
-      }
-    }
-
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [closeRecommendationDetails, selectedRecommendationNode])
-
   return (
     <div className={cn(
       'mx-auto w-full max-w-[1480px] p-4',
@@ -325,56 +271,9 @@ export function ProfilePage({ recommendationTargetControls, showBiography = true
               onNavigateToSection={isArtistUser ? navigateToProfileSection : undefined}
               profileChangedSinceRecommendations={hasProfileChangesSinceRecommendations}
               onRecommendationsSynced={markRecommendationsSynced}
-              onSelectNode={handleSelectRecommendationNode}
             />
           </article>
         </section>
-        {activeWorkspaceTab === 'recommendations' && recommendationDrawerNode && (
-          <div className="fixed inset-0 z-40 flex items-stretch justify-end bg-[color-mix(in_srgb,var(--background)_68%,transparent)] backdrop-blur-[2px] max-[900px]:items-end max-[900px]:justify-stretch">
-            <button
-              type="button"
-              className="absolute inset-0 cursor-default bg-transparent"
-              aria-label="Close recommendation details"
-              onClick={closeRecommendationDetails}
-            />
-            <aside
-              role="dialog"
-              aria-modal="true"
-              aria-labelledby="recommendation-details-heading"
-              className="relative z-10 flex h-full w-full max-w-[440px] flex-col border-l border-[color-mix(in_srgb,var(--text)_10%,transparent)] bg-[color-mix(in_srgb,var(--background)_42%,transparent)] shadow-[0_10px_24px_rgba(0,0,0,0.18)] max-[900px]:h-[85dvh] max-[900px]:max-w-none max-[900px]:rounded-t-3xl max-[900px]:border-l-0 max-[900px]:border-t"
-            >
-              <header className="flex items-center justify-between gap-3 border-b border-[color-mix(in_srgb,var(--text)_10%,transparent)] px-5 py-4">
-                <div className="grid gap-1">
-                  <span className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--accent)]">Recommendation details</span>
-                  <h2 id="recommendation-details-heading" className="m-0 text-lg font-semibold text-[var(--text)]">
-                    {recommendationDrawerNode.name}
-                  </h2>
-                </div>
-                <Button type="button" variant="outline" size="sm" onClick={closeRecommendationDetails}>
-                  Close
-                </Button>
-              </header>
-              <div className="min-h-0 flex-1 overflow-y-auto p-4">
-                <DetailsPanel
-                  searchQuery=""
-                  searchResults={[]}
-                  isSearchLoading={Boolean(selectedRecommendationNode && !recommendationDrawerEntityDetail)}
-                  searchError={null}
-                  selectedNode={recommendationDrawerNode}
-                  selectedEntityDetail={recommendationDrawerEntityDetail}
-                  manualArtistConnections={manualConnectionsArtistId !== null ? {
-                    sourceArtistId: manualConnectionsArtistId,
-                    connectedArtistIds: manualConnections.connectedArtistIds,
-                    isLoading: manualConnections.isLoading,
-                    pendingArtistId: manualConnections.pendingArtistId,
-                    error: manualConnections.error,
-                    onToggle: manualConnections.toggle,
-                  } : undefined}
-                />
-              </div>
-            </aside>
-          </div>
-        )}
         {showBiography && (
           <div className="col-span-full">
             <BiographyPanel

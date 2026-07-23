@@ -1,14 +1,12 @@
-import {useCallback, useMemo} from 'react'
-import {csvCell, downloadTextFile, htmlEscape, printHtmlDocument} from '@/shared/lib/export'
-import {ExportMenu} from '@/shared/ui/export-menu'
+import { useCallback, useMemo } from 'react'
+import { csvCell, downloadTextFile, htmlEscape, printHtmlDocument } from '@/shared/lib/export'
+import { ExportMenu } from '@/shared/ui/export-menu'
 import type { PromoterRecommendation, PromoterRecommendationResponse } from '../../types/recommendation'
 
 type RecommendationGraphMode = 'compact' | 'full'
 
 interface RecommendationExportMenuProps {
   recommendationsData: PromoterRecommendationResponse | null
-  filteredRecommendations: PromoterRecommendation[]
-  recommendationStrengthThreshold: number
   recommendationGraphMode: RecommendationGraphMode
 }
 
@@ -46,8 +44,6 @@ function sourceArtistName(recommendationsData: PromoterRecommendationResponse): 
 
 export function RecommendationExportMenu({
   recommendationsData,
-  filteredRecommendations,
-  recommendationStrengthThreshold,
   recommendationGraphMode,
 }: RecommendationExportMenuProps) {
   const exportRecommendations = useMemo(() => {
@@ -67,19 +63,13 @@ export function RecommendationExportMenu({
       `promoter-recommendations-artist-${recommendationsData.entityId}.json`,
       JSON.stringify({
         exportedAt: new Date().toISOString(),
-        threshold: recommendationStrengthThreshold,
         graphMode: recommendationGraphMode,
-        visibleRecommendationIds: filteredRecommendations.map((recommendation) => recommendation.id),
+        exportedRecommendationIds: exportRecommendations.map((recommendation) => recommendation.id),
         data: recommendationsData,
       }, null, 2),
       'application/json;charset=utf-8',
     )
-  }, [
-    filteredRecommendations,
-    recommendationGraphMode,
-    recommendationStrengthThreshold,
-    recommendationsData,
-  ])
+  }, [exportRecommendations, recommendationGraphMode, recommendationsData])
 
   const handleExportCsv = useCallback(() => {
     if (!recommendationsData) return

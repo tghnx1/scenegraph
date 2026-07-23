@@ -1,9 +1,11 @@
 import { Link } from 'react-router-dom'
+import type { ReactNode } from 'react'
 import { Button } from '@/shared/ui/button'
 import { cn } from '@/shared/lib/cn-utils'
 import type { ArtistDetail } from '../../types/artist'
 import type { EntityDetail } from '../../types/entityDetail'
 import type { EventDetail } from '../../types/event'
+import type { GraphNode, NodeType } from '../../types/graph'
 import type { PromoterDetail } from '../../types/promoter'
 import type { SearchResult } from '../../types/search'
 import type { VenueDetail } from '../../types/venue'
@@ -13,6 +15,9 @@ type RenderDetailsProps = {
   result: SearchResult | EntityDetail
   variant?: 'card' | 'inline'
   manualArtistConnections?: ManualArtistConnectionControl
+  linkMode?: 'graph' | 'inspector'
+  hideIdentifiers?: boolean
+  onSelectRelatedEntity?: (node: GraphNode) => void
 }
 
 type DisplayResult = SearchResult | EntityDetail
@@ -25,7 +30,6 @@ const resultMetaClass = 'mt-1 text-sm text-[var(--text-muted)]'
 const resultSectionClass = 'mt-5 grid gap-2.5'
 const resultDescriptionClass = 'm-0 text-sm leading-6 text-[var(--text-muted)]'
 const resultListClass = 'grid gap-2.5'
-const resultTileClass = 'grid gap-1 rounded-xl border border-[var(--surface-border-soft)] bg-[var(--surface-soft)] p-3 text-[var(--text)] no-underline transition-colors hover:border-[var(--selection-border)] hover:bg-[var(--selection-soft)]'
 const resultPillClass = 'inline-flex items-center gap-2 rounded-full border border-[var(--control-border)] bg-[var(--control-bg)] px-3 py-1.5 text-sm font-semibold text-[var(--text)] no-underline transition-colors hover:border-[var(--selection-border)] hover:bg-[var(--selection-soft)]'
 const resultSubheadingClass = 'm-0 text-xs font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]'
 const resultEmptyClass = 'text-sm text-[var(--text-muted)]'
@@ -51,6 +55,74 @@ function isEventDetail(result: DisplayResult): result is EventDetail {
 function dateOnly(date: string | null) {
   if (!date) return 'Date unavailable'
   return date.split(/[T ]/)[0]
+}
+
+function formatDisplayDate(date: string | null) {
+  if (!date) return 'Date unavailable'
+
+  const parsedDate = new Date(date)
+  if (Number.isNaN(parsedDate.getTime())) {
+    return dateOnly(date)
+  }
+
+  return parsedDate.toLocaleDateString(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  })
+}
+
+function createRelatedNode(type: NodeType, id: string, name: string): GraphNode | null {
+  const entityId = Number(id)
+  if (!Number.isInteger(entityId)) return null
+
+  return {
+    id: `${type}-${entityId}`,
+    entityId,
+    type,
+    name,
+    genres: [],
+  }
+}
+
+function RelatedEntityPill({
+  type,
+  id,
+  name,
+  children,
+  linkMode = 'graph',
+  onSelectRelatedEntity,
+}: {
+  type: NodeType
+  id: string | number
+  name: string
+  children: ReactNode
+  linkMode?: 'graph' | 'inspector'
+  onSelectRelatedEntity?: (node: GraphNode) => void
+}) {
+  const entityId = String(id)
+  if (linkMode === 'graph') {
+    return (
+      <Link to={`/graph?selectedType=${encodeURIComponent(type)}&selectedId=${encodeURIComponent(entityId)}`} className={resultPillClass}>
+        {children}
+      </Link>
+    )
+  }
+
+  const nextNode = createRelatedNode(type, entityId, name)
+  if (!nextNode || !onSelectRelatedEntity) {
+    return <span className={resultPillClass}>{children}</span>
+  }
+
+  return (
+    <button
+      type="button"
+      className={cn(resultPillClass, 'cursor-pointer text-left')}
+      onClick={() => onSelectRelatedEntity(nextNode)}
+    >
+      {children}
+    </button>
+  )
 }
 
 export function ManualArtistConnectionButton({
@@ -84,7 +156,14 @@ export function ManualArtistConnectionButton({
   )
 }
 
-export function RenderDetails({ result, variant = 'card', manualArtistConnections }: RenderDetailsProps) {
+export function RenderDetails({
+  result,
+  variant = 'card',
+  manualArtistConnections,
+  linkMode = 'graph',
+  hideIdentifiers = false,
+  onSelectRelatedEntity,
+}: RenderDetailsProps) {
   const articleClassName = variant === 'inline' ? inlineResultCardClass : resultCardClass
 
   if (isArtistDetail(result)) {
@@ -117,13 +196,16 @@ export function RenderDetails({ result, variant = 'card', manualArtistConnection
               <div className={pillsClass}>
                 {linkedArtists.length > 0 ? (
                   linkedArtists.map((artist) => (
-                    <Link
+                    <RelatedEntityPill
                       key={artist.id}
-                      to={`/graph?selectedType=artist&selectedId=${encodeURIComponent(artist.id)}`}
-                      className={resultPillClass}
+                      type="artist"
+                      id={artist.id}
+                      name={artist.name}
+                      linkMode={linkMode}
+                      onSelectRelatedEntity={onSelectRelatedEntity}
                     >
                       {artist.name} <span>{artist.shared_events} shared</span>
-                    </Link>
+                    </RelatedEntityPill>
                   ))
                 ) : (
                   <span className={resultEmptyClass}>No linked artists yet</span>
@@ -136,13 +218,16 @@ export function RenderDetails({ result, variant = 'card', manualArtistConnection
               <div className={pillsClass}>
                 {linkedEvents.length > 0 ? (
                   linkedEvents.map((event) => (
-                    <Link
+                    <RelatedEntityPill
                       key={event.id}
-                      to={`/graph?selectedType=event&selectedId=${encodeURIComponent(event.id)}`}
-                      className={resultPillClass}
+                      type="event"
+                      id={event.id}
+                      name={event.title}
+                      linkMode={linkMode}
+                      onSelectRelatedEntity={onSelectRelatedEntity}
                     >
-                      {event.title} <span>{dateOnly(event.event_date)}</span>
-                    </Link>
+                      {event.title} <span>{linkMode === 'graph' ? dateOnly(event.event_date) : formatDisplayDate(event.event_date)}</span>
+                    </RelatedEntityPill>
                   ))
                 ) : (
                   <span className={resultEmptyClass}>No linked events yet</span>
@@ -162,7 +247,7 @@ export function RenderDetails({ result, variant = 'card', manualArtistConnection
           <div>
             <span className={resultTypeClass}>Promoter</span>
             <h2>{result.name}</h2>
-            <p className={resultMetaClass}>ID {result.id}</p>
+            {!hideIdentifiers && <p className={resultMetaClass}>ID {result.id}</p>}
           </div>
         </div>
 
@@ -170,15 +255,18 @@ export function RenderDetails({ result, variant = 'card', manualArtistConnection
           <h3>Events</h3>
           <div className={resultListClass}>
             {result.events.map((event) => (
-              <Link
+              <RelatedEntityPill
                 key={event.id}
-                to={`/graph?selectedType=event&selectedId=${encodeURIComponent(event.id)}`}
-                className={resultTileClass}
+                type="event"
+                id={event.id}
+                name={event.title}
+                linkMode={linkMode}
+                onSelectRelatedEntity={onSelectRelatedEntity}
               >
                 <strong>{event.title}</strong>
-                <span>{[event.date, event.venue_name].filter(Boolean).join(' - ')}</span>
+                <span>{event.date || 'Date unavailable'} {event.venue_name ? `• ${event.venue_name}` : ''}</span>
                 <span>{event.artists.join(', ') || 'No artists listed'}</span>
-              </Link>
+              </RelatedEntityPill>
             ))}
           </div>
         </section>
@@ -193,7 +281,12 @@ export function RenderDetails({ result, variant = 'card', manualArtistConnection
           <div>
             <span className={resultTypeClass}>Venue</span>
             <h2>{result.name}</h2>
-            <p className={resultMetaClass}>{[result.address, result.district].filter(Boolean).join(' - ') || `ID ${result.id}`}</p>
+            {!hideIdentifiers && (
+              <p className={resultMetaClass}>{[result.address, result.district].filter(Boolean).join(' - ') || `ID ${result.id}`}</p>
+            )}
+            {hideIdentifiers && [result.address, result.district].filter(Boolean).length > 0 && (
+              <p className={resultMetaClass}>{[result.address, result.district].filter(Boolean).join(' - ')}</p>
+            )}
           </div>
         </div>
 
@@ -201,15 +294,18 @@ export function RenderDetails({ result, variant = 'card', manualArtistConnection
           <h3>Events</h3>
           <div className={resultListClass}>
             {result.events.map((event) => (
-              <Link
+              <RelatedEntityPill
                 key={event.id}
-                to={`/graph?selectedType=event&selectedId=${encodeURIComponent(event.id)}`}
-                className={resultTileClass}
+                type="event"
+                id={event.id}
+                name={event.title}
+                linkMode={linkMode}
+                onSelectRelatedEntity={onSelectRelatedEntity}
               >
                 <strong>{event.title}</strong>
                 <span>{event.date || 'Date unavailable'}</span>
                 <span>{event.artists.join(', ') || 'No artists listed'}</span>
-              </Link>
+              </RelatedEntityPill>
             ))}
           </div>
         </section>
@@ -224,7 +320,7 @@ export function RenderDetails({ result, variant = 'card', manualArtistConnection
           <div>
             <span className={resultTypeClass}>Event</span>
             <h2>{result.title}</h2>
-            <p className={resultMetaClass}>{dateOnly(result.date)}</p>
+            <p className={resultMetaClass}>{linkMode === 'graph' ? dateOnly(result.date) : formatDisplayDate(result.date)}</p>
           </div>
         </div>
 
@@ -234,18 +330,31 @@ export function RenderDetails({ result, variant = 'card', manualArtistConnection
             {result.venue && (
               <div>
                 <p className={resultSubheadingClass}>Venue</p>
-                <Link to={`/graph?selectedType=venue&selectedId=${encodeURIComponent(result.venue.id)}`} className={resultPillClass}>
+                <RelatedEntityPill
+                  type="venue"
+                  id={result.venue.id}
+                  name={result.venue.name}
+                  linkMode={linkMode}
+                  onSelectRelatedEntity={onSelectRelatedEntity}
+                >
                   {result.venue.name}
-                </Link>
+                </RelatedEntityPill>
               </div>
             )}
             <div>
               <p className={resultSubheadingClass}>Artists</p>
               <div className={pillsClass}>
                 {result.artists.map((artist) => (
-                  <Link key={artist.id} to={`/graph?selectedType=artist&selectedId=${encodeURIComponent(artist.id)}`} className={resultPillClass}>
+                  <RelatedEntityPill
+                    key={artist.id}
+                    type="artist"
+                    id={artist.id}
+                    name={artist.name}
+                    linkMode={linkMode}
+                    onSelectRelatedEntity={onSelectRelatedEntity}
+                  >
                     {artist.name}
-                  </Link>
+                  </RelatedEntityPill>
                 ))}
               </div>
             </div>
@@ -253,9 +362,16 @@ export function RenderDetails({ result, variant = 'card', manualArtistConnection
               <p className={resultSubheadingClass}>Promoters</p>
               <div className={pillsClass}>
                 {result.promoters.map((promoter) => (
-                  <Link key={promoter.id} to={`/graph?selectedType=promoter&selectedId=${encodeURIComponent(promoter.id)}`} className={resultPillClass}>
+                  <RelatedEntityPill
+                    key={promoter.id}
+                    type="promoter"
+                    id={promoter.id}
+                    name={promoter.name}
+                    linkMode={linkMode}
+                    onSelectRelatedEntity={onSelectRelatedEntity}
+                  >
                     {promoter.name}
-                  </Link>
+                  </RelatedEntityPill>
                 ))}
               </div>
             </div>
@@ -272,7 +388,7 @@ export function RenderDetails({ result, variant = 'card', manualArtistConnection
           <div>
             <span className={resultTypeClass}>Artist</span>
             <h2>{result.name}</h2>
-            <p className={resultMetaClass}>{result.id}</p>
+            {!hideIdentifiers && <p className={resultMetaClass}>{result.id}</p>}
           </div>
           <ManualArtistConnectionButton artistId={result.id} control={manualArtistConnections} />
         </div>
@@ -287,7 +403,7 @@ export function RenderDetails({ result, variant = 'card', manualArtistConnection
           <div>
             <span className={resultTypeClass}>Venue</span>
             <h2>{result.name}</h2>
-            <p className={resultMetaClass}>{result.id}</p>
+            {!hideIdentifiers && <p className={resultMetaClass}>{result.id}</p>}
           </div>
         </div>
       </article>
@@ -301,7 +417,7 @@ export function RenderDetails({ result, variant = 'card', manualArtistConnection
           <div>
             <span className={resultTypeClass}>Promoter</span>
             <h2>{result.name}</h2>
-            <p className={resultMetaClass}>{result.id}</p>
+            {!hideIdentifiers && <p className={resultMetaClass}>{result.id}</p>}
           </div>
         </div>
       </article>
@@ -314,7 +430,7 @@ export function RenderDetails({ result, variant = 'card', manualArtistConnection
         <div>
           <span className={resultTypeClass}>Event</span>
           <h2>{result.name}</h2>
-          <p className={resultMetaClass}>{result.id}</p>
+          {!hideIdentifiers && <p className={resultMetaClass}>{result.id}</p>}
         </div>
       </div>
     </article>
