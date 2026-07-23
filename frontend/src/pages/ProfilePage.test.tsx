@@ -141,35 +141,4 @@ describe('ProfilePage', () => {
     expect(screen.getByLabelText('Search Database')).toHaveValue('strobe')
   })
 
-  it('opens a contextual recommendation drawer without restoring the global sidebar', async () => {
-    const user = userEvent.setup()
-    const recommendationNode = {
-      id: 'promoter-99',
-      type: 'promoter',
-      entityId: 99,
-      name: 'Suggested Promoter',
-      genres: [],
-    }
-
-    recommendationPanelMock.mockImplementation(({ onSelectNode }: { onSelectNode: (node: unknown) => void }) => (
-      <div>
-        <button type="button" onClick={() => onSelectNode(recommendationNode)}>Select recommendation</button>
-      </div>
-    ))
-
-    render(
-      <MemoryRouter initialEntries={['/profile']}>
-        <ProfilePage showBiography={false} />
-      </MemoryRouter>,
-    )
-
-    await user.click(screen.getByRole('tab', { name: 'Recommendations' }))
-    await user.click(screen.getByRole('button', { name: 'Select recommendation' }))
-
-    expect(screen.getByRole('dialog', { name: 'Suggested Promoter' })).toBeInTheDocument()
-    expect(screen.queryByLabelText('Search Database')).not.toBeInTheDocument()
-
-    await user.click(screen.getByRole('button', { name: 'Close' }))
-    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Suggested Promoter' })).not.toBeInTheDocument())
-  })
 })

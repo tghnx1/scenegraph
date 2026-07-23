@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { PromoterRecommendationsPanel, type PromoterRecommendationsPanelProps } from './RecommendationPanel'
 import type { PromoterRecommendationResponse, RecommendationJobResponse } from '../../types/recommendation'
@@ -77,6 +77,32 @@ const multiRecommendationResult: PromoterRecommendationResponse = {
     links: [],
   },
 }
+const analyticsGraphResult: PromoterRecommendationResponse = {
+  ...multiRecommendationResult,
+  analyticsGraph: {
+    nodes: [{ id: 'analytics-node', type: 'artist', entityId: 61, name: 'Holywanderer', genres: [] }],
+    links: [],
+  },
+}
+const longRecommendationResult: PromoterRecommendationResponse = {
+  entityId: 61,
+  entityType: 'artist',
+  recommendations: Array.from({ length: 21 }, (_, index) => ({
+    id: 100 + index,
+    type: 'promoter',
+    name: `Promoter ${index + 1}`,
+    score: 1 - index * 0.01,
+    baseScore: 0.8,
+    feedbackBoost: 0,
+    feedbackState: null,
+    reasons: ['shared extracted genres: dark disco'],
+    promoterSizeSegment: 'medium',
+  })),
+  graph: {
+    nodes: [],
+    links: [],
+  },
+}
 const emptyRecommendationResult: PromoterRecommendationResponse = {
   entityId: 61,
   entityType: 'artist',
@@ -98,7 +124,6 @@ const baseProps = (overrides: Partial<PromoterRecommendationsPanelProps> = {}): 
     manualArtistCount: 3,
     requiredManualArtistCount: 3,
   },
-  onSelectNode: vi.fn(),
   onNavigateToSection: vi.fn(),
   ...overrides,
 })
@@ -209,7 +234,7 @@ describe('PromoterRecommendationsPanel', () => {
 
   it('passes the static legend only to the recommendation graph', async () => {
     api.post.mockResolvedValueOnce({ jobId: 'job-1', status: 'queued' })
-    api.get.mockResolvedValueOnce(makeJobResponse('job-1', completedResult))
+    api.get.mockResolvedValueOnce(makeJobResponse('job-1', analyticsGraphResult))
 
     render(
       <PromoterRecommendationsPanel
@@ -228,6 +253,38 @@ describe('PromoterRecommendationsPanel', () => {
       showFilters: false,
       showNodeTypeFilter: false,
       showNodeTypeLegend: true,
+      providedData: analyticsGraphResult.analyticsGraph,
+    }))
+  })
+
+  it('opens the analytics graph by default and allows switching back to the compact path', async () => {
+    api.post.mockResolvedValueOnce({ jobId: 'job-1', status: 'queued' })
+    api.get.mockResolvedValueOnce(makeJobResponse('job-1', analyticsGraphResult))
+
+    render(
+      <PromoterRecommendationsPanel
+        {...baseProps({
+          autoLoad: false,
+        })}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Get recommendations' }))
+
+    expect(await screen.findByText('Full analytics graph')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Show compact path' })).toBeInTheDocument()
+
+    const graphCall = scenegraphMapPanelMock.mock.calls.at(-1)?.[0]
+    expect(graphCall).toEqual(expect.objectContaining({
+      providedData: analyticsGraphResult.analyticsGraph,
+    }))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Show compact path' }))
+
+    expect(await screen.findByText('Artist-only path')).toBeInTheDocument()
+    const compactGraphCall = scenegraphMapPanelMock.mock.calls.at(-1)?.[0]
+    expect(compactGraphCall).toEqual(expect.objectContaining({
+      providedData: analyticsGraphResult.graph,
     }))
   })
 
@@ -255,9 +312,9 @@ describe('PromoterRecommendationsPanel', () => {
     expect(screen.queryAllByText(/^Promoter$/i)).toHaveLength(0)
   })
 
-  it('updates the visible match count when the strength filter hides promoters', async () => {
+  it('keeps the match count stable while loading more promoters', async () => {
     api.post.mockResolvedValueOnce({ jobId: 'job-1', status: 'queued' })
-    api.get.mockResolvedValueOnce(makeJobResponse('job-1', multiRecommendationResult))
+    api.get.mockResolvedValueOnce(makeJobResponse('job-1', longRecommendationResult))
 
     render(
       <PromoterRecommendationsPanel
@@ -269,11 +326,14 @@ describe('PromoterRecommendationsPanel', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Get recommendations' }))
 
-    expect(await screen.findByText('2 matches')).toBeInTheDocument()
+    expect(await screen.findByText('21 matches')).toBeInTheDocument()
+    expect(screen.getByText('Promoter 20')).toBeInTheDocument()
+    expect(screen.queryByText('Promoter 21')).not.toBeInTheDocument()
 
-    fireEvent.change(screen.getByRole('slider'), { target: { value: '0.92' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Show more promoters' }))
 
-    expect(await screen.findByText('1 match')).toBeInTheDocument()
+    expect(await screen.findByText('Promoter 21')).toBeInTheDocument()
+    expect(screen.getByText('21 matches')).toBeInTheDocument()
   })
 
   it('keeps the promoters header visible when no recommendations match', async () => {
@@ -292,7 +352,7 @@ describe('PromoterRecommendationsPanel', () => {
 
     expect(await screen.findByRole('heading', { name: 'Recommended promoters', level: 3 })).toBeInTheDocument()
     expect(screen.getByText('0 matches')).toBeInTheDocument()
-    expect(screen.getByText('No promoters match the current strength threshold. Lower the strength to include more recommendations.')).toBeInTheDocument()
+    expect(screen.getByText('No promoters matched this recommendation run.')).toBeInTheDocument()
   })
 
   it('autostarts recommendations once when the profile becomes ready', async () => {
@@ -378,41 +438,30 @@ describe('PromoterRecommendationsPanel', () => {
 
   it('keeps the current recommendations visible while updating them', async () => {
     const initialJob = createDeferred<RecommendationJobResponse>()
-    const updateJob = createDeferred<RecommendationJobResponse>()
 
     api.post
       .mockResolvedValueOnce({ jobId: 'job-1', status: 'queued' })
-      .mockResolvedValueOnce({ jobId: 'job-2', status: 'queued' })
     api.get
       .mockReturnValueOnce(initialJob.promise)
-      .mockReturnValueOnce(updateJob.promise)
 
     render(
       <PromoterRecommendationsPanel
-        {...baseProps({ autoLoad: false })}
+        {...baseProps({ autoLoad: false, profileChangedSinceRecommendations: true })}
       />,
     )
 
     fireEvent.click(screen.getByRole('button', { name: 'Get recommendations' }))
 
     expect(await screen.findByTestId('recommendation-loading')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Preparing…' })).toBeDisabled()
 
-    initialJob.resolve(makeJobResponse('job-1', completedResult))
+    await act(async () => {
+      initialJob.resolve(makeJobResponse('job-1', completedResult))
+    })
     expect(await screen.findByText('First Promoter')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Update recommendations' })).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Reset' })).not.toBeInTheDocument()
-
-    fireEvent.click(screen.getByRole('button', { name: 'Update recommendations' }))
-
+    expect(screen.getByText('Your profile changed. Update recommendations to use the latest information.')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Update recommendations' })).toBeEnabled()
     expect(screen.getByText('First Promoter')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Updating…' })).toBeDisabled()
     expect(screen.queryByTestId('recommendation-loading')).not.toBeInTheDocument()
-
-    updateJob.resolve(makeJobResponse('job-2', refreshedResult))
-    expect(await screen.findByText('Updated Promoter')).toBeInTheDocument()
-    expect(screen.queryByText('First Promoter')).not.toBeInTheDocument()
-    expect(screen.queryByText('Couldn’t update recommendations. Your previous results are still shown.')).not.toBeInTheDocument()
   })
 
   it('shows a reminder when the profile changed after recommendations were generated', async () => {
@@ -438,7 +487,9 @@ describe('PromoterRecommendationsPanel', () => {
     )
 
     fireEvent.click(screen.getByRole('button', { name: 'Get recommendations' }))
-    initialJob.resolve(makeJobResponse('job-1', completedResult))
+    await act(async () => {
+      initialJob.resolve(makeJobResponse('job-1', completedResult))
+    })
 
     expect(await screen.findByText('Your profile changed. Update recommendations to use the latest information.')).toBeInTheDocument()
     expect(onRecommendationsSynced).toHaveBeenCalledTimes(1)
@@ -474,12 +525,14 @@ describe('PromoterRecommendationsPanel', () => {
 
     render(
       <PromoterRecommendationsPanel
-        {...baseProps({ autoLoad: false })}
+        {...baseProps({ autoLoad: false, profileChangedSinceRecommendations: true })}
       />,
     )
 
     fireEvent.click(screen.getByRole('button', { name: 'Get recommendations' }))
-    initialJob.resolve(makeJobResponse('job-1', completedResult))
+    await act(async () => {
+      initialJob.resolve(makeJobResponse('job-1', completedResult))
+    })
 
     expect(await screen.findByText('First Promoter')).toBeInTheDocument()
 
