@@ -316,6 +316,7 @@ export function PromoterRecommendationsPanel({
   const [expandedRecommendationId, setExpandedRecommendationId] = useState<number | null>(null)
   const [focusedRecommendationPromoterIds, setFocusedRecommendationPromoterIds] = useState<number[] | null>(null)
   const [expandedReasonItems, setExpandedReasonItems] = useState<Record<string, boolean>>({})
+  const [expandedGenreSourceGroups, setExpandedGenreSourceGroups] = useState<Record<string, boolean>>({})
   const [pendingFeedbackPromoterId, setPendingFeedbackPromoterId] = useState<number | null>(null)
   const [localFeedbackByPromoterId, setLocalFeedbackByPromoterId] = useState<
     Record<number, PromoterFeedbackValue | null>
@@ -358,6 +359,7 @@ export function PromoterRecommendationsPanel({
     setExpandedRecommendationId(null)
     setFocusedRecommendationPromoterIds(null)
     setExpandedReasonItems({})
+    setExpandedGenreSourceGroups({})
     setPendingFeedbackPromoterId(null)
     setLocalFeedbackByPromoterId({})
     setLocalFeedbackIdByPromoterId({})
@@ -397,6 +399,7 @@ export function PromoterRecommendationsPanel({
 
       return current === nextVisibleCount ? current : nextVisibleCount
     })
+    setExpandedGenreSourceGroups({})
   }, [recommendationsData])
 
   useEffect(() => {
@@ -685,6 +688,10 @@ export function PromoterRecommendationsPanel({
     setExpandedReasonItems((current) => ({ ...current, [key]: !current[key] }))
   }, [])
 
+  const handleToggleGenreSourceGroup = useCallback((key: string) => {
+    setExpandedGenreSourceGroups((current) => ({ ...current, [key]: !current[key] }))
+  }, [])
+
   const handleToggleRecommendationGraphMode = useCallback(() => {
     setRecommendationGraphMode((current) => (current === 'compact' ? 'full' : 'compact'))
   }, [])
@@ -754,7 +761,11 @@ export function PromoterRecommendationsPanel({
       const listRect = list.getBoundingClientRect()
       const headerRect = header.getBoundingClientRect()
       const nextScrollTop = Math.max(list.scrollTop + (headerRect.top - listRect.top) - 12, 0)
-      list.scrollTo({ top: nextScrollTop, behavior: 'smooth' })
+      if (typeof list.scrollTo === 'function') {
+        list.scrollTo({ top: nextScrollTop, behavior: 'smooth' })
+      } else {
+        list.scrollTop = nextScrollTop
+      }
     })
 
     return () => window.cancelAnimationFrame(animationFrame)
@@ -1064,10 +1075,22 @@ export function PromoterRecommendationsPanel({
                           Genre sources
                         </span>
                         {sharedGenreSourceGroups(recommendation).map(({ genre, sources }) => (
-                          <div className="grid min-w-0 gap-1" key={`${recommendation.id}-${genre}`}>
-                            <span className="text-sm font-semibold text-[var(--text)]">{genre}</span>
+                          <div className="grid min-w-0 gap-1.5" key={`${recommendation.id}-${genre}`}>
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <span className="text-sm font-semibold text-[var(--text)]">{genre}</span>
+                              {sources.length > 3 && (
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => handleToggleGenreSourceGroup(`${recommendation.id}-${genre}`)}
+                                >
+                                  {expandedGenreSourceGroups[`${recommendation.id}-${genre}`] ? 'Hide' : 'Show all'}
+                                </Button>
+                              )}
+                            </div>
                             <ul className="m-0 flex flex-wrap gap-1.5 p-0">
-                              {sources.map((source) => (
+                              {(expandedGenreSourceGroups[`${recommendation.id}-${genre}`] ? sources : sources.slice(0, 3)).map((source) => (
                                 <li
                                   className="list-none rounded-full border border-[var(--control-border)] bg-[var(--control-bg)] px-2 py-0.5 text-xs text-[var(--text-muted)]"
                                   key={`${recommendation.id}-${genre}-${source.eventId}-${source.sourceType}`}

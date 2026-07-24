@@ -1,4 +1,5 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { PromoterRecommendationsPanel, type PromoterRecommendationsPanelProps } from './RecommendationPanel'
 import type { PromoterRecommendationResponse, RecommendationJobResponse } from '../../types/recommendation'
@@ -70,6 +71,62 @@ const multiRecommendationResult: PromoterRecommendationResponse = {
       feedbackState: null,
       reasons: ['shared extracted genres: dark disco'],
       promoterSizeSegment: 'small',
+    },
+  ],
+  graph: {
+    nodes: [],
+    links: [],
+  },
+}
+const genreSourceRecommendationResult: PromoterRecommendationResponse = {
+  entityId: 61,
+  entityType: 'artist',
+  recommendations: [
+    {
+      id: 20,
+      type: 'promoter',
+      name: 'Genre Sources Collective',
+      score: 0.74,
+      baseScore: 0.62,
+      feedbackBoost: 0,
+      feedbackState: null,
+      reasons: ['shared extracted genres: dark disco'],
+      promoterSizeSegment: 'small',
+      reasonDetails: {
+        sharedExtractedGenres: ['dark disco'],
+        sharedExtractedGenreSources: {
+          'dark disco': [
+            {
+              eventId: 1,
+              raEventId: '1001',
+              title: 'Event 1',
+              eventDate: '2026-06-01',
+              sourceType: 'event_genres',
+            },
+            {
+              eventId: 2,
+              raEventId: '1002',
+              title: 'Event 2',
+              eventDate: '2026-06-02',
+              sourceType: 'event_extracted_tags',
+            },
+            {
+              eventId: 3,
+              raEventId: '1003',
+              title: 'Event 3',
+              eventDate: '2026-06-03',
+              sourceType: 'event_genres',
+            },
+            {
+              eventId: 4,
+              raEventId: '1004',
+              title: 'Event 4',
+              eventDate: '2026-06-04',
+              sourceType: 'event_extracted_tags',
+            },
+          ],
+        },
+      },
     },
   ],
   graph: {
@@ -310,6 +367,41 @@ describe('PromoterRecommendationsPanel', () => {
     expect(header?.querySelector('[aria-hidden="true"]')).toHaveClass('bg-[var(--promoter)]')
     expect(screen.getByLabelText('Promoter size: Large')).toBeInTheDocument()
     expect(screen.queryAllByText(/^Promoter$/i)).toHaveLength(0)
+  })
+
+  it('shows only three genre source events per genre until expanded', async () => {
+    const user = userEvent.setup()
+    api.post.mockResolvedValueOnce({ jobId: 'job-1', status: 'queued' })
+    api.get.mockResolvedValueOnce(makeJobResponse('job-1', genreSourceRecommendationResult))
+
+    render(
+      <PromoterRecommendationsPanel
+        {...baseProps({
+          autoLoad: false,
+        })}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Get recommendations' }))
+    await user.click(await screen.findByRole('button', { name: /Genre Sources Collective/i }))
+
+    expect(screen.getByText('Genre sources')).toBeInTheDocument()
+    expect(screen.getAllByText('dark disco')).toHaveLength(2)
+    expect(screen.getByText('Event 1')).toBeInTheDocument()
+    expect(screen.getByText('Event 2')).toBeInTheDocument()
+    expect(screen.getByText('Event 3')).toBeInTheDocument()
+    expect(screen.queryByText('Event 4')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Show all' })).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Show all' }))
+
+    expect(screen.getByRole('button', { name: 'Hide' })).toBeInTheDocument()
+    expect(screen.getByText('Event 4')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Hide' }))
+
+    expect(screen.getByRole('button', { name: 'Show all' })).toBeInTheDocument()
+    expect(screen.queryByText('Event 4')).not.toBeInTheDocument()
   })
 
   it('keeps the match count stable while loading more promoters', async () => {
