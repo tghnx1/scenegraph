@@ -56,6 +56,7 @@ describe('RenderDetails', () => {
     )
 
     expect(screen.getByRole('button', {name: 'Show all'})).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /Event 1/i })).toHaveClass('w-full')
     expect(screen.getByText('Event 1')).toBeInTheDocument()
     expect(screen.getByText('Event 2')).toBeInTheDocument()
     expect(screen.getByText('Event 3')).toBeInTheDocument()

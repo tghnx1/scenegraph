@@ -91,6 +91,7 @@ function RelatedEntityPill({
   name,
   children,
   linkMode = 'graph',
+  presentation = 'chip',
   onSelectRelatedEntity,
 }: {
   type: NodeType
@@ -98,29 +99,37 @@ function RelatedEntityPill({
   name: string
   children: ReactNode
   linkMode?: 'graph' | 'inspector'
+  presentation?: 'chip' | 'card'
   onSelectRelatedEntity?: (node: GraphNode) => void
 }) {
   const entityId = String(id)
+  const pillClassName = presentation === 'card'
+    ? cn(
+        'grid w-full min-w-0 gap-1 rounded-[18px] border border-[var(--control-border)] bg-[var(--control-bg)] px-3 py-2 text-left no-underline transition-colors hover:border-[var(--selection-border)] hover:bg-[var(--selection-soft)]',
+        linkMode === 'inspector' && 'cursor-pointer',
+      )
+    : resultPillClass
+
   if (linkMode === 'graph') {
     return (
-      <Link to={`/graph?selectedType=${encodeURIComponent(type)}&selectedId=${encodeURIComponent(entityId)}`} className={resultPillClass}>
-        {children}
+      <Link to={`/graph?selectedType=${encodeURIComponent(type)}&selectedId=${encodeURIComponent(entityId)}`} className={pillClassName}>
+        {presentation === 'card' ? <div className="grid min-w-0 gap-1">{children}</div> : children}
       </Link>
     )
   }
 
   const nextNode = createRelatedNode(type, entityId, name)
   if (!nextNode || !onSelectRelatedEntity) {
-    return <span className={resultPillClass}>{children}</span>
+    return <span className={pillClassName}>{children}</span>
   }
 
   return (
     <button
       type="button"
-      className={cn(resultPillClass, 'cursor-pointer text-left')}
+      className={cn(pillClassName, 'cursor-pointer')}
       onClick={() => onSelectRelatedEntity(nextNode)}
     >
-      {children}
+      {presentation === 'card' ? <div className="grid min-w-0 gap-1">{children}</div> : children}
     </button>
   )
 }
@@ -224,6 +233,7 @@ export function RenderDetails({
                       type="event"
                       id={event.id}
                       name={event.title}
+                      presentation="card"
                       linkMode={linkMode}
                       onSelectRelatedEntity={onSelectRelatedEntity}
                     >
@@ -276,11 +286,12 @@ export function RenderDetails({
                 type="event"
                 id={event.id}
                 name={event.title}
+                presentation="card"
                 linkMode={linkMode}
                 onSelectRelatedEntity={onSelectRelatedEntity}
-                >
-                  <strong>{event.title}</strong>
-                  <span>{event.date || 'Date unavailable'} {event.venue_name ? `• ${event.venue_name}` : ''}</span>
+              >
+                <strong>{event.title}</strong>
+                <span>{event.date || 'Date unavailable'} {event.venue_name ? `• ${event.venue_name}` : ''}</span>
                   <span>{event.artists.join(', ') || 'No artists listed'}</span>
                 </RelatedEntityPill>
               ))}
