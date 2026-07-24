@@ -20,7 +20,7 @@ interface RecommendationDetailsInspectorProps {
 }
 
 export function RecommendationDetailsInspector({
-  selectedNode,
+  selectedNode: _selectedNode,
   selectedEntityDetail,
   isLoading,
   error,
