@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import { Button } from '@/shared/ui/button'
 import { cn } from '@/shared/lib/cn-utils'
 import type { ArtistDetail } from '../../types/artist'
@@ -165,6 +165,7 @@ export function RenderDetails({
   onSelectRelatedEntity,
 }: RenderDetailsProps) {
   const articleClassName = variant === 'inline' ? inlineResultCardClass : resultCardClass
+  const [showAllPromoterEvents, setShowAllPromoterEvents] = useState(false)
 
   if (isArtistDetail(result)) {
     const linkedArtists = result.connected_artists
@@ -241,6 +242,9 @@ export function RenderDetails({
   }
 
   if (isPromoterDetail(result)) {
+    const visibleEvents = showAllPromoterEvents ? result.events : result.events.slice(0, 3)
+    const hasMoreEvents = result.events.length > visibleEvents.length
+
     return (
       <article className={articleClassName}>
         <div className={resultHeaderClass}>
@@ -252,9 +256,21 @@ export function RenderDetails({
         </div>
 
         <section className={resultSectionClass}>
-          <h3>Events</h3>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h3 className="m-0">Events</h3>
+            {result.events.length > 3 && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setShowAllPromoterEvents((current) => !current)}
+              >
+                {showAllPromoterEvents ? 'Hide' : 'Show all'}
+              </Button>
+            )}
+          </div>
           <div className={resultListClass}>
-            {result.events.map((event) => (
+            {visibleEvents.map((event) => (
               <RelatedEntityPill
                 key={event.id}
                 type="event"
@@ -262,12 +278,15 @@ export function RenderDetails({
                 name={event.title}
                 linkMode={linkMode}
                 onSelectRelatedEntity={onSelectRelatedEntity}
-              >
-                <strong>{event.title}</strong>
-                <span>{event.date || 'Date unavailable'} {event.venue_name ? `• ${event.venue_name}` : ''}</span>
-                <span>{event.artists.join(', ') || 'No artists listed'}</span>
-              </RelatedEntityPill>
-            ))}
+                >
+                  <strong>{event.title}</strong>
+                  <span>{event.date || 'Date unavailable'} {event.venue_name ? `• ${event.venue_name}` : ''}</span>
+                  <span>{event.artists.join(', ') || 'No artists listed'}</span>
+                </RelatedEntityPill>
+              ))}
+            {hasMoreEvents && !showAllPromoterEvents && (
+              <p className={resultEmptyClass}>Showing 3 of {result.events.length} events.</p>
+            )}
           </div>
         </section>
       </article>
