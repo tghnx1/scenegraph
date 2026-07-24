@@ -311,7 +311,7 @@ export function PromoterRecommendationsPanel({
   const [isRecommendationsRefreshing, setIsRecommendationsRefreshing] = useState(false)
   const [recommendationsError, setRecommendationsError] = useState<string | null>(null)
   const [recommendationLoadingMessageIndex, setRecommendationLoadingMessageIndex] = useState(0)
-  const [recommendationGraphMode, setRecommendationGraphMode] = useState<RecommendationGraphMode>('full')
+  const [recommendationGraphMode, setRecommendationGraphMode] = useState<RecommendationGraphMode>('compact')
   const [visiblePromoterCount, setVisiblePromoterCount] = useState(INITIAL_VISIBLE_PROMOTERS)
   const [expandedRecommendationId, setExpandedRecommendationId] = useState<number | null>(null)
   const [focusedRecommendationPromoterIds, setFocusedRecommendationPromoterIds] = useState<number[] | null>(null)
@@ -525,7 +525,7 @@ export function PromoterRecommendationsPanel({
     } else {
       setIsRecommendationsLoading(true)
       setRecommendationsData(null)
-      setRecommendationGraphMode('full')
+      setRecommendationGraphMode('compact')
     }
 
     try {

@@ -253,11 +253,11 @@ describe('PromoterRecommendationsPanel', () => {
       showFilters: false,
       showNodeTypeFilter: false,
       showNodeTypeLegend: true,
-      providedData: analyticsGraphResult.analyticsGraph,
+      providedData: analyticsGraphResult.graph,
     }))
   })
 
-  it('opens the analytics graph by default and allows switching back to the compact path', async () => {
+  it('opens the compact graph by default and allows switching to the analytics graph', async () => {
     api.post.mockResolvedValueOnce({ jobId: 'job-1', status: 'queued' })
     api.get.mockResolvedValueOnce(makeJobResponse('job-1', analyticsGraphResult))
 
@@ -271,20 +271,20 @@ describe('PromoterRecommendationsPanel', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Get recommendations' }))
 
-    expect(await screen.findByText('Full analytics graph')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Show compact path' })).toBeInTheDocument()
+    expect(await screen.findByText('Artist-only path')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Show analytics graph' })).toBeInTheDocument()
 
     const graphCall = scenegraphMapPanelMock.mock.calls.at(-1)?.[0]
     expect(graphCall).toEqual(expect.objectContaining({
-      providedData: analyticsGraphResult.analyticsGraph,
+      providedData: analyticsGraphResult.graph,
     }))
 
-    fireEvent.click(screen.getByRole('button', { name: 'Show compact path' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Show analytics graph' }))
 
-    expect(await screen.findByText('Artist-only path')).toBeInTheDocument()
+    expect(await screen.findByText('Full analytics graph')).toBeInTheDocument()
     const compactGraphCall = scenegraphMapPanelMock.mock.calls.at(-1)?.[0]
     expect(compactGraphCall).toEqual(expect.objectContaining({
-      providedData: analyticsGraphResult.graph,
+      providedData: analyticsGraphResult.analyticsGraph,
     }))
   })
 
