@@ -40,6 +40,11 @@ const PROMOTER_PAGE_SIZE = 20
 type RecommendationGraphMode = 'compact' | 'full'
 
 const PROMOTER_SIZE_LABELS: Record<'small' | 'medium' | 'large', string> = {
+  small: 'small',
+  medium: 'medium',
+  large: 'large',
+}
+const PROMOTER_SIZE_ACCESSIBLE_LABELS: Record<'small' | 'medium' | 'large', string> = {
   small: 'Small',
   medium: 'Medium',
   large: 'Large',
@@ -956,15 +961,15 @@ export function PromoterRecommendationsPanel({
                   <span className="min-w-0 flex-1 overflow-hidden text-sm font-semibold leading-snug [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]">{recommendation.name}</span>
                   <span
                     className={cn(
-                      'shrink-0 rounded-full border px-2 py-0.5 text-[0.68rem] font-semibold',
+                      'shrink-0 rounded-full border px-2 py-0.5 text-[0.68rem] font-semibold whitespace-nowrap',
                       recommendation.promoterSizeSegment === 'small' && 'border-[var(--promoter-border)] bg-[var(--promoter-soft)]',
                       recommendation.promoterSizeSegment === 'medium' && 'border-[var(--info-border)] bg-[var(--info-soft)]',
                       recommendation.promoterSizeSegment === 'large' && 'border-[var(--selection-border)] bg-[var(--selection-soft)]',
                     )}
-                    title={`Promoter size: ${PROMOTER_SIZE_LABELS[recommendation.promoterSizeSegment]}`}
-                    aria-label={`Promoter size: ${PROMOTER_SIZE_LABELS[recommendation.promoterSizeSegment]}`}
+                    title={`Promoter size: ${PROMOTER_SIZE_ACCESSIBLE_LABELS[recommendation.promoterSizeSegment]}`}
+                    aria-label={`Promoter size: ${PROMOTER_SIZE_ACCESSIBLE_LABELS[recommendation.promoterSizeSegment]}`}
                   >
-                    {PROMOTER_SIZE_LABELS[recommendation.promoterSizeSegment]}
+                    Promoter size: {PROMOTER_SIZE_LABELS[recommendation.promoterSizeSegment]}
                   </span>
                 </button>
                 <div className="flex flex-wrap gap-2 px-3 pb-2" aria-label={`Feedback for ${recommendation.name}`}>

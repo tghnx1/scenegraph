@@ -365,6 +365,7 @@ describe('PromoterRecommendationsPanel', () => {
 
     const header = screen.getByRole('heading', { name: 'Recommended promoters', level: 3 }).closest('header')
     expect(header?.querySelector('[aria-hidden="true"]')).toHaveClass('bg-[var(--promoter)]')
+    expect(screen.getByText('Promoter size: large')).toBeInTheDocument()
     expect(screen.getByLabelText('Promoter size: Large')).toBeInTheDocument()
     expect(screen.queryAllByText(/^Promoter$/i)).toHaveLength(0)
   })
