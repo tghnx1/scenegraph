@@ -1,37 +1,62 @@
 import { describe, expect, it } from 'vitest'
-import { getDisconnectedNodeIds, getDisconnectedNodeTargetRadius } from './useGraphPhysics'
+import {
+  getIsolatedNodeIds,
+  getIsolatedNodeTargetPosition,
+  getIsolatedNodeTargetRadius,
+} from './useGraphPhysics'
 
-describe('getDisconnectedNodeIds', () => {
-  it('returns only nodes that are not connected to the center component', () => {
-    const disconnected = getDisconnectedNodeIds(
+describe('getIsolatedNodeIds', () => {
+  it('returns only nodes that have no links at all', () => {
+    const isolated = getIsolatedNodeIds(
       [{ id: 'center' }, { id: 'connected-a' }, { id: 'connected-b' }, { id: 'isolated' }],
       [
         { source: 'center', target: 'connected-a' },
         { source: 'connected-a', target: 'connected-b' },
       ],
-      'center',
     )
 
-    expect(disconnected).toEqual(new Set(['isolated']))
+    expect(isolated).toEqual(new Set(['isolated']))
   })
 
-  it('returns an empty set when the center node is missing', () => {
-    const disconnected = getDisconnectedNodeIds(
+  it('returns every node when there are no links', () => {
+    const isolated = getIsolatedNodeIds(
       [{ id: 'a' }, { id: 'b' }],
-      [{ source: 'a', target: 'b' }],
-      'center',
+      [],
     )
 
-    expect(disconnected).toEqual(new Set())
+    expect(isolated).toEqual(new Set(['a', 'b']))
+  })
+
+  it('returns an empty set when every node participates in at least one link', () => {
+    const isolated = getIsolatedNodeIds(
+      [{ id: 'a' }, { id: 'b' }],
+      [{ source: 'a', target: 'b' }],
+    )
+
+    expect(isolated).toEqual(new Set())
   })
 })
 
-describe('getDisconnectedNodeTargetRadius', () => {
-  it('returns the target radius for disconnected nodes', () => {
-    expect(getDisconnectedNodeTargetRadius('isolated', new Set(['isolated']))).toBe(95)
+describe('getIsolatedNodeTargetRadius', () => {
+  it('returns the target radius for isolated nodes', () => {
+    expect(getIsolatedNodeTargetRadius('isolated', new Set(['isolated']))).toBe(30)
   })
 
   it('returns zero for connected nodes', () => {
-    expect(getDisconnectedNodeTargetRadius('connected', new Set(['isolated']))).toBe(0)
+    expect(getIsolatedNodeTargetRadius('connected', new Set(['isolated']))).toBe(0)
+  })
+})
+
+describe('getIsolatedNodeTargetPosition', () => {
+  it('assigns different isolated nodes to different target positions', () => {
+    const isolatedIds = new Set(['alpha', 'beta'])
+
+    expect(getIsolatedNodeTargetPosition('alpha', isolatedIds)).not.toEqual(
+      getIsolatedNodeTargetPosition('beta', isolatedIds),
+    )
+  })
+
+  it('returns null for connected nodes', () => {
+    expect(getIsolatedNodeTargetPosition('connected', new Set(['isolated']))).toBeNull()
   })
 })
