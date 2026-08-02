@@ -1,6 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { changeUserRole, approveUser, rejectUser, getPendingUsers, getUsers,
   deactivateUser, activateUser, type PendingUser, type UserItem } from '../api/auth'
+
+const AUTO_APPROVE_PENDING_USERS_STORAGE_KEY = 'scenegraph.admin.autoApprovePendingUsers'
 
 interface AdminUsersPageProps {
   compact?: boolean
@@ -12,6 +14,11 @@ export function AdminUsersPage({ compact = false, refreshVersion = 0, onActivity
   const [users, setUsers] = useState<PendingUser[]>([])
   const [message, setMessage] = useState('')
   const [allUsers, setAllUsers] = useState<UserItem[]>([])
+  const [autoApprovePendingUsers, setAutoApprovePendingUsers] = useState(() => {
+    if (typeof window === 'undefined') return false
+    return window.localStorage.getItem(AUTO_APPROVE_PENDING_USERS_STORAGE_KEY) === 'true'
+  })
+  const autoApprovedPendingUserIdsRef = useRef<Set<number>>(new Set())
 
   const toRaUrl = (value: string) =>
     value.startsWith('http')
@@ -50,6 +57,44 @@ export function AdminUsersPage({ compact = false, refreshVersion = 0, onActivity
     loadUsers()
     loadAllUsers()
   }, [refreshVersion])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    window.localStorage.setItem(AUTO_APPROVE_PENDING_USERS_STORAGE_KEY, String(autoApprovePendingUsers))
+  }, [autoApprovePendingUsers])
+
+  useEffect(() => {
+    if (!autoApprovePendingUsers) {
+      autoApprovedPendingUserIdsRef.current.clear()
+      return
+    }
+
+    let cancelled = false
+
+    const approveQueuedPendingUsers = async () => {
+      for (const user of users) {
+        if (cancelled) return
+        if (autoApprovedPendingUserIdsRef.current.has(user.id)) continue
+        autoApprovedPendingUserIdsRef.current.add(user.id)
+
+        try {
+          await approveUser(user.id)
+          await loadUsers()
+          await loadAllUsers()
+          await onActivityChanged?.()
+        } catch (error) {
+          setMessage(error instanceof Error ? error.message : 'Failed to auto-approve user')
+          return
+        }
+      }
+    }
+
+    void approveQueuedPendingUsers()
+
+    return () => {
+      cancelled = true
+    }
+  }, [autoApprovePendingUsers, onActivityChanged, users])
 
 
 
@@ -141,6 +186,24 @@ export function AdminUsersPage({ compact = false, refreshVersion = 0, onActivity
         className="dashboard-scroll-list"
         style={{ maxHeight: 130, overflowY: 'auto', display: 'grid', gap: 12, paddingRight: 16, paddingTop: 4 }}
       >
+        <label
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            padding: '8px 12px',
+            borderRadius: 10,
+            border: '1px solid color-mix(in srgb, var(--text) 18%, transparent)',
+            background: 'color-mix(in srgb, var(--background) 88%, var(--text) 6%)',
+          }}
+        >
+          <input
+            type="checkbox"
+            checked={autoApprovePendingUsers}
+            onChange={(event) => setAutoApprovePendingUsers(event.target.checked)}
+          />
+          <span>Auto-approve new registrations</span>
+        </label>
         {users.map((user) => (
               <div
                 key={`user-${user.id}`}
