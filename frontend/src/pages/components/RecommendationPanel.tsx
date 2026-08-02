@@ -11,7 +11,7 @@ import {
   setPromoterFeedback,
   type PromoterFeedbackValue,
 } from '@/api/recommendationFeedback'
-import { graphEntityId, type GraphData, type GraphEdge, type GraphNode } from '../../types/graph'
+import { graphEntityId, type GraphNode } from '../../types/graph'
 import type { EntityDetail } from '../../types/entityDetail'
 import type {
   PromoterRecommendationResponse,
@@ -306,90 +306,6 @@ function mergeRecommendationItems(
   ]
 }
 
-function mergeStringArrayRecord(
-  current: Record<string, string[]> | undefined,
-  next: Record<string, string[]> | undefined,
-): Record<string, string[]> {
-  const merged = new Map<string, Set<string>>()
-  for (const [key, values] of Object.entries(current ?? {})) {
-    merged.set(key, new Set(values))
-  }
-  for (const [key, values] of Object.entries(next ?? {})) {
-    const bucket = merged.get(key) ?? new Set<string>()
-    values.forEach((value) => bucket.add(value))
-    merged.set(key, bucket)
-  }
-  return Object.fromEntries(Array.from(merged.entries()).map(([key, values]) => [key, [...values]]))
-}
-
-function mergeGraphData(current: GraphData, next: GraphData): GraphData {
-  const nodesById = new Map(current.nodes.map((node) => [node.id, node]))
-  for (const node of next.nodes) {
-    nodesById.set(node.id, node)
-  }
-
-  const linksByKey = new Map<string, GraphEdge>()
-  const collectLink = (link: GraphEdge) => {
-    const key = `${link.source}|${link.target}|${link.relationship}`
-    linksByKey.set(key, link)
-  }
-  current.links.forEach(collectLink)
-  next.links.forEach(collectLink)
-
-  return {
-    ...current,
-    ...next,
-    centerNodeId: next.centerNodeId ?? current.centerNodeId,
-    graphMode: next.graphMode ?? current.graphMode,
-    nodes: [...nodesById.values()],
-    links: [...linksByKey.values()],
-    preferredPathNodeIds: mergeStringArrayRecord(current.preferredPathNodeIds, next.preferredPathNodeIds),
-    preferredPathLinkKeys: mergeStringArrayRecord(current.preferredPathLinkKeys, next.preferredPathLinkKeys),
-    preferredPathPromoterIdsByNodeId: mergeStringArrayRecord(
-      current.preferredPathPromoterIdsByNodeId,
-      next.preferredPathPromoterIdsByNodeId,
-    ),
-    preferredPathPromoterIdsByLinkKey: mergeStringArrayRecord(
-      current.preferredPathPromoterIdsByLinkKey,
-      next.preferredPathPromoterIdsByLinkKey,
-    ),
-    fallbackPathNodeIds: mergeStringArrayRecord(current.fallbackPathNodeIds, next.fallbackPathNodeIds),
-    fallbackPathLinkKeys: mergeStringArrayRecord(current.fallbackPathLinkKeys, next.fallbackPathLinkKeys),
-    fallbackPathPromoterIdsByNodeId: mergeStringArrayRecord(
-      current.fallbackPathPromoterIdsByNodeId,
-      next.fallbackPathPromoterIdsByNodeId,
-    ),
-    fallbackPathPromoterIdsByLinkKey: mergeStringArrayRecord(
-      current.fallbackPathPromoterIdsByLinkKey,
-      next.fallbackPathPromoterIdsByLinkKey,
-    ),
-  }
-}
-
-function ensureRecommendationPromotersInGraph(
-  graph: GraphData,
-  recommendations: PromoterRecommendationResponse['recommendations'],
-): GraphData {
-  const nodesById = new Map(graph.nodes.map((node) => [node.id, node]))
-
-  for (const recommendation of recommendations) {
-    const nodeId = `promoter-${recommendation.id}`
-    if (nodesById.has(nodeId)) continue
-    nodesById.set(nodeId, {
-      id: nodeId,
-      entityId: recommendation.id,
-      type: 'promoter',
-      name: recommendation.name,
-      genres: [],
-    })
-  }
-
-  return {
-    ...graph,
-    nodes: [...nodesById.values()],
-  }
-}
-
 function mergeRecommendationPages(
   current: PromoterRecommendationResponse,
   next: PromoterRecommendationResponse,
@@ -417,16 +333,8 @@ function mergeRecommendationPages(
     smallRecommendations: mergedSmallRecommendations,
     warmRecommendations: mergedWarmRecommendations,
     discoveryRecommendations: mergedDiscoveryRecommendations,
-    graph: ensureRecommendationPromotersInGraph(
-      mergeGraphData(current.graph, next.graph),
-      nextLoadedRecommendations,
-    ),
-    analyticsGraph: current.analyticsGraph && next.analyticsGraph
-      ? ensureRecommendationPromotersInGraph(
-        mergeGraphData(current.analyticsGraph, next.analyticsGraph),
-        nextLoadedRecommendations,
-      )
-      : (next.analyticsGraph ?? current.analyticsGraph),
+    graph: next.graph,
+    analyticsGraph: next.analyticsGraph ?? current.analyticsGraph,
     debug: next.debug ?? current.debug,
   }
 }

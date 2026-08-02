@@ -11,6 +11,7 @@ from app.recommendations.job_events import recommendation_job_socket_hub
 from app.recommendations.jobs import create_recommendation_job, get_recommendation_job
 from app.recommendations.scoring import promoter_recommendation_api_limit_max_from_config
 from app.schemas import (
+    GraphResponse,
     PromoterRecommendationResponse,
     RecommendationJobCreatedResponse,
     RecommendationJobParams,
@@ -31,6 +32,7 @@ def _page_promoter_recommendation_response(
     """Return a page view over the stored recommendation payload."""
     total_recommendations = len(response.recommendations)
     page_offset = max(recommendations_offset, 0)
+    page_end = total_recommendations
 
     if recommendations_limit is None:
         page_limit = total_recommendations
@@ -43,9 +45,83 @@ def _page_promoter_recommendation_response(
         page_recommendations = list(response.recommendations[page_offset:page_end])
 
     page_recommendation_ids = {recommendation.id for recommendation in page_recommendations}
+    cumulative_recommendation_ids = {recommendation.id for recommendation in response.recommendations[:page_end]}
 
     def _filter_page(items: list) -> list:
         return [item for item in items if item.id in page_recommendation_ids]
+
+    def _filter_graph(graph: GraphResponse) -> GraphResponse:
+        if not cumulative_recommendation_ids:
+            return graph.model_copy(update={"nodes": [], "links": []})
+
+        selected_promoter_node_ids = {f"promoter-{recommendation_id}" for recommendation_id in cumulative_recommendation_ids}
+        graph_node_ids = {
+            node_id
+            for promoter_id in selected_promoter_node_ids
+            for node_id in (
+                graph.preferredPathNodeIds.get(promoter_id, [])
+                + graph.fallbackPathNodeIds.get(promoter_id, [])
+            )
+        }
+        graph_link_keys = {
+            link_key
+            for promoter_id in selected_promoter_node_ids
+            for link_key in (
+                graph.preferredPathLinkKeys.get(promoter_id, [])
+                + graph.fallbackPathLinkKeys.get(promoter_id, [])
+            )
+        }
+
+        return graph.model_copy(
+            update={
+                "nodes": [node for node in graph.nodes if node.id in graph_node_ids],
+                "links": [
+                    link
+                    for link in graph.links
+                    if f"{min(link.source, link.target)}|{max(link.source, link.target)}" in graph_link_keys
+                ],
+                "preferredPathNodeIds": {
+                    promoter_id: node_ids
+                    for promoter_id, node_ids in graph.preferredPathNodeIds.items()
+                    if promoter_id in selected_promoter_node_ids
+                },
+                "preferredPathLinkKeys": {
+                    promoter_id: link_keys
+                    for promoter_id, link_keys in graph.preferredPathLinkKeys.items()
+                    if promoter_id in selected_promoter_node_ids
+                },
+                "preferredPathPromoterIdsByNodeId": {
+                    node_id: promoter_ids
+                    for node_id, promoter_ids in graph.preferredPathPromoterIdsByNodeId.items()
+                    if selected_promoter_node_ids.intersection(promoter_ids)
+                },
+                "preferredPathPromoterIdsByLinkKey": {
+                    link_key: promoter_ids
+                    for link_key, promoter_ids in graph.preferredPathPromoterIdsByLinkKey.items()
+                    if selected_promoter_node_ids.intersection(promoter_ids)
+                },
+                "fallbackPathNodeIds": {
+                    promoter_id: node_ids
+                    for promoter_id, node_ids in graph.fallbackPathNodeIds.items()
+                    if promoter_id in selected_promoter_node_ids
+                },
+                "fallbackPathLinkKeys": {
+                    promoter_id: link_keys
+                    for promoter_id, link_keys in graph.fallbackPathLinkKeys.items()
+                    if promoter_id in selected_promoter_node_ids
+                },
+                "fallbackPathPromoterIdsByNodeId": {
+                    node_id: promoter_ids
+                    for node_id, promoter_ids in graph.fallbackPathPromoterIdsByNodeId.items()
+                    if selected_promoter_node_ids.intersection(promoter_ids)
+                },
+                "fallbackPathPromoterIdsByLinkKey": {
+                    link_key: promoter_ids
+                    for link_key, promoter_ids in graph.fallbackPathPromoterIdsByLinkKey.items()
+                    if selected_promoter_node_ids.intersection(promoter_ids)
+                },
+            },
+        )
 
     return response.model_copy(
         update={
@@ -59,6 +135,8 @@ def _page_promoter_recommendation_response(
             "smallRecommendations": _filter_page(response.smallRecommendations),
             "warmRecommendations": _filter_page(response.warmRecommendations),
             "discoveryRecommendations": _filter_page(response.discoveryRecommendations),
+            "graph": _filter_graph(response.graph),
+            "analyticsGraph": _filter_graph(response.analyticsGraph) if response.analyticsGraph is not None else None,
         },
     )
 

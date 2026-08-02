@@ -177,6 +177,7 @@ const pagedRecommendationResults = {
     discoveryRecommendations: [],
     graph: {
       nodes: [
+        { id: 'artist-61', entityId: 61, type: 'artist', name: 'Holywanderer', genres: [] },
         { id: 'promoter-100', entityId: 100, type: 'promoter', name: 'Promoter 1', genres: [] },
       ],
       links: [
@@ -222,8 +223,15 @@ const pagedRecommendationResults = {
     warmRecommendations: [],
     discoveryRecommendations: [],
     graph: {
-      nodes: [],
-      links: [],
+      nodes: [
+        { id: 'artist-61', entityId: 61, type: 'artist', name: 'Holywanderer', genres: [] },
+        { id: 'promoter-100', entityId: 100, type: 'promoter', name: 'Promoter 1', genres: [] },
+        { id: 'promoter-120', entityId: 120, type: 'promoter', name: 'Promoter 21', genres: [] },
+      ],
+      links: [
+        { source: 'artist-61', target: 'promoter-100', relationship: 'recommendation', weight: 1 },
+        { source: 'artist-61', target: 'promoter-120', relationship: 'recommendation', weight: 1 },
+      ],
     },
   } satisfies PromoterRecommendationResponse,
 }
