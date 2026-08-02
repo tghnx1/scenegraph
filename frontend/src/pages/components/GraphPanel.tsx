@@ -74,6 +74,7 @@ interface ScenegraphMapPanelProps {
   showNodeTypeLegend?: boolean
   highlightLinks?: boolean
   highlightPathToNodeId?: string
+  selectedNodeId?: string | null
   visibleRecommendationPromoterNodeIds?: string[]
   focusedRecommendationPromoterNodeIds?: string[] | null
   onRecommendationGraphNodeClick?: (node: GraphNode, promoterNodeIds: string[] | null) => void
@@ -88,6 +89,7 @@ export function ScenegraphMapPanel({
   showNodeTypeLegend = false,
   highlightLinks = true,
   highlightPathToNodeId,
+  selectedNodeId,
   visibleRecommendationPromoterNodeIds,
   focusedRecommendationPromoterNodeIds,
   onRecommendationGraphNodeClick,
@@ -581,6 +583,8 @@ export function ScenegraphMapPanel({
       : false
   )
 
+  const selectedGraphNodeId = selectedNodeId ?? selectedNode?.id ?? null
+
   return (
     <section
       className={cn(
@@ -639,19 +643,20 @@ export function ScenegraphMapPanel({
             const isHighlightedNode = isPathFocusActive
               ? (node.id === recommendationSourceNodeId || highlightedPathNodeIds.has(node.id))
               : true
+            const isSelectedNode = selectedGraphNodeId === node.id || node.id === recommendationSourceNodeId
             drawNodeShape(
               ctx,
               node.x,
               node.y,
               5,
               node.type,
-              selectedNode?.id === node.id || node.id === recommendationSourceNodeId,
+              isSelectedNode,
               isHighlightedNode ? 1 : 0.16,
             )
           }}
           nodeColor={() => 'transparent'}
           nodeRelSize={3}
-          nodeVal={(n: any) => (selectedNode?.id === n.id ? 3 : 1)}
+          nodeVal={(n: any) => (selectedGraphNodeId === n.id ? 3 : 1)}
           nodeLabel={(n: any) => n.name ?? n.label ?? n.id}
           linkWidth={(l: any) => {
             const source = typeof l.source === 'object' ? l.source.id : l.source

@@ -1293,6 +1293,7 @@ export function PromoterRecommendationsPanel({
                 showNodeTypeFilter={false}
                 showNodeTypeLegend
                 highlightPathToNodeId={`artist-${recommendationsData.entityId}`}
+                selectedNodeId={selectedRecommendationNode?.id ?? null}
                 visibleRecommendationPromoterNodeIds={displayedRecommendationPromoterNodeIds}
                 focusedRecommendationPromoterNodeIds={focusedRecommendationPromoterIds?.map((promoterId) => `promoter-${promoterId}`) ?? null}
                 onRecommendationGraphNodeClick={handleRecommendationGraphNodeClick}
