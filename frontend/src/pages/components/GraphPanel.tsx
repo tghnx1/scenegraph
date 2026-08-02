@@ -412,26 +412,7 @@ export function ScenegraphMapPanel({
 
     return nextHighlightedLinkKeys
   }, [highlightedPathNodeIds, isPathFocusActive, pathLinks, recommendationPathGraphData.links, recommendationPathGraphData.nodes])
-  const nodeDegreeById = useMemo(() => {
-    const counts = new Map<string, number>()
-
-    recommendationPathGraphData.links.forEach((link) => {
-      const source = getLinkNodeId(link.source as LinkEndpoint)
-      const target = getLinkNodeId(link.target as LinkEndpoint)
-      counts.set(source, (counts.get(source) ?? 0) + 1)
-      counts.set(target, (counts.get(target) ?? 0) + 1)
-    })
-
-    return counts
-  }, [recommendationPathGraphData.links])
-  const lowDegreeNodeIds = useMemo(() => {
-    return new Set(
-      Array.from(nodeDegreeById.entries())
-        .filter(([, degree]) => degree <= 1)
-        .map(([nodeId]) => nodeId),
-    )
-  }, [nodeDegreeById])
-  useGraphPhysics(graphRef, recommendationPathGraphData, lowDegreeNodeIds)
+  useGraphPhysics(graphRef, recommendationPathGraphData)
 
   useEffect(() => {
     if (providedData || !selectedType || !selectedId || graphSize.width === 0 || graphSize.height === 0) return

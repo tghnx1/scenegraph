@@ -1,16 +1,37 @@
 import { describe, expect, it } from 'vitest'
-import { getLeafRadialTargetRadius } from './useGraphPhysics'
+import { getDisconnectedNodeIds, getDisconnectedNodeTargetRadius } from './useGraphPhysics'
 
-describe('getLeafRadialTargetRadius', () => {
-  it('returns the target radius for low-degree nodes', () => {
-    expect(getLeafRadialTargetRadius('node-a', new Set(['node-a']))).toBe(100)
+describe('getDisconnectedNodeIds', () => {
+  it('returns only nodes that are not connected to the center component', () => {
+    const disconnected = getDisconnectedNodeIds(
+      [{ id: 'center' }, { id: 'connected-a' }, { id: 'connected-b' }, { id: 'isolated' }],
+      [
+        { source: 'center', target: 'connected-a' },
+        { source: 'connected-a', target: 'connected-b' },
+      ],
+      'center',
+    )
+
+    expect(disconnected).toEqual(new Set(['isolated']))
+  })
+
+  it('returns an empty set when the center node is missing', () => {
+    const disconnected = getDisconnectedNodeIds(
+      [{ id: 'a' }, { id: 'b' }],
+      [{ source: 'a', target: 'b' }],
+      'center',
+    )
+
+    expect(disconnected).toEqual(new Set())
+  })
+})
+
+describe('getDisconnectedNodeTargetRadius', () => {
+  it('returns the target radius for disconnected nodes', () => {
+    expect(getDisconnectedNodeTargetRadius('isolated', new Set(['isolated']))).toBe(95)
   })
 
   it('returns zero for connected nodes', () => {
-    expect(getLeafRadialTargetRadius('node-b', new Set(['node-a']))).toBe(0)
-  })
-
-  it('returns zero when no node id is provided', () => {
-    expect(getLeafRadialTargetRadius(null, new Set(['node-a']))).toBe(0)
+    expect(getDisconnectedNodeTargetRadius('connected', new Set(['isolated']))).toBe(0)
   })
 })
