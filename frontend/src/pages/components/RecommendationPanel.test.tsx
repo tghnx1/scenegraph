@@ -176,8 +176,12 @@ const pagedRecommendationResults = {
     warmRecommendations: [],
     discoveryRecommendations: [],
     graph: {
-      nodes: [],
-      links: [],
+      nodes: [
+        { id: 'promoter-100', entityId: 100, type: 'promoter', name: 'Promoter 1', genres: [] },
+      ],
+      links: [
+        { source: 'artist-61', target: 'promoter-100', relationship: 'recommendation', weight: 1 },
+      ],
     },
   } satisfies PromoterRecommendationResponse,
   secondPage: {
@@ -218,8 +222,12 @@ const pagedRecommendationResults = {
     warmRecommendations: [],
     discoveryRecommendations: [],
     graph: {
-      nodes: [],
-      links: [],
+      nodes: [
+        { id: 'promoter-120', entityId: 120, type: 'promoter', name: 'Promoter 21', genres: [] },
+      ],
+      links: [
+        { source: 'artist-61', target: 'promoter-120', relationship: 'recommendation', weight: 1 },
+      ],
     },
   } satisfies PromoterRecommendationResponse,
 }
@@ -493,6 +501,20 @@ describe('PromoterRecommendationsPanel', () => {
 
     expect(await screen.findByText('Promoter 21')).toBeInTheDocument()
     expect(screen.getByText('21 matches')).toBeInTheDocument()
+
+    const lastGraphCall = scenegraphMapPanelMock.mock.calls.at(-1)?.[0]
+    expect(lastGraphCall).toEqual(expect.objectContaining({
+      providedData: expect.objectContaining({
+        nodes: expect.arrayContaining([
+          expect.objectContaining({ id: 'promoter-100' }),
+          expect.objectContaining({ id: 'promoter-120' }),
+        ]),
+        links: expect.arrayContaining([
+          expect.objectContaining({ source: 'artist-61', target: 'promoter-100', relationship: 'recommendation' }),
+          expect.objectContaining({ source: 'artist-61', target: 'promoter-120', relationship: 'recommendation' }),
+        ]),
+      }),
+    }))
   })
 
   it('keeps the promoters header visible when no recommendations match', async () => {
