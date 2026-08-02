@@ -1,16 +1,16 @@
 import { describe, expect, it } from 'vitest'
-import { getNodeCenteringStrength } from './useGraphPhysics'
+import { getLeafRadialTargetRadius } from './useGraphPhysics'
 
-describe('getNodeCenteringStrength', () => {
-  it('uses stronger centering for low-degree nodes', () => {
-    expect(getNodeCenteringStrength('node-a', new Set(['node-a']))).toBe(0.12)
+describe('getLeafRadialTargetRadius', () => {
+  it('returns the target radius for low-degree nodes', () => {
+    expect(getLeafRadialTargetRadius('node-a', new Set(['node-a']))).toBe(150)
   })
 
-  it('keeps normal centering for connected nodes', () => {
-    expect(getNodeCenteringStrength('node-b', new Set(['node-a']))).toBe(0.04)
+  it('returns zero for connected nodes', () => {
+    expect(getLeafRadialTargetRadius('node-b', new Set(['node-a']))).toBe(0)
   })
 
-  it('keeps normal centering when no node id is provided', () => {
-    expect(getNodeCenteringStrength(null, new Set(['node-a']))).toBe(0.04)
+  it('returns zero when no node id is provided', () => {
+    expect(getLeafRadialTargetRadius(null, new Set(['node-a']))).toBe(0)
   })
 })
