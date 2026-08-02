@@ -8,10 +8,6 @@ function getNodeColor(type: string, isSelected: boolean) {
   return getCssVar(`--${type}`)
 }
 
-export function getNodeDisplaySize(baseSize: number, degree: number) {
-  return degree <= 1 ? baseSize / 2 : baseSize
-}
-
 // Draw one graph node with optional opacity for focus/dim rendering.
 export const drawNodeShape = (
   ctx: CanvasRenderingContext2D,
