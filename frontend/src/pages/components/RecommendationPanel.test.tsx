@@ -222,12 +222,8 @@ const pagedRecommendationResults = {
     warmRecommendations: [],
     discoveryRecommendations: [],
     graph: {
-      nodes: [
-        { id: 'promoter-120', entityId: 120, type: 'promoter', name: 'Promoter 21', genres: [] },
-      ],
-      links: [
-        { source: 'artist-61', target: 'promoter-120', relationship: 'recommendation', weight: 1 },
-      ],
+      nodes: [],
+      links: [],
     },
   } satisfies PromoterRecommendationResponse,
 }
@@ -508,10 +504,6 @@ describe('PromoterRecommendationsPanel', () => {
         nodes: expect.arrayContaining([
           expect.objectContaining({ id: 'promoter-100' }),
           expect.objectContaining({ id: 'promoter-120' }),
-        ]),
-        links: expect.arrayContaining([
-          expect.objectContaining({ source: 'artist-61', target: 'promoter-100', relationship: 'recommendation' }),
-          expect.objectContaining({ source: 'artist-61', target: 'promoter-120', relationship: 'recommendation' }),
         ]),
       }),
     }))

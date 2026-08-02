@@ -366,6 +366,30 @@ function mergeGraphData(current: GraphData, next: GraphData): GraphData {
   }
 }
 
+function ensureRecommendationPromotersInGraph(
+  graph: GraphData,
+  recommendations: PromoterRecommendationResponse['recommendations'],
+): GraphData {
+  const nodesById = new Map(graph.nodes.map((node) => [node.id, node]))
+
+  for (const recommendation of recommendations) {
+    const nodeId = `promoter-${recommendation.id}`
+    if (nodesById.has(nodeId)) continue
+    nodesById.set(nodeId, {
+      id: nodeId,
+      entityId: recommendation.id,
+      type: 'promoter',
+      name: recommendation.name,
+      genres: [],
+    })
+  }
+
+  return {
+    ...graph,
+    nodes: [...nodesById.values()],
+  }
+}
+
 function mergeRecommendationPages(
   current: PromoterRecommendationResponse,
   next: PromoterRecommendationResponse,
@@ -393,9 +417,15 @@ function mergeRecommendationPages(
     smallRecommendations: mergedSmallRecommendations,
     warmRecommendations: mergedWarmRecommendations,
     discoveryRecommendations: mergedDiscoveryRecommendations,
-    graph: mergeGraphData(current.graph, next.graph),
+    graph: ensureRecommendationPromotersInGraph(
+      mergeGraphData(current.graph, next.graph),
+      nextLoadedRecommendations,
+    ),
     analyticsGraph: current.analyticsGraph && next.analyticsGraph
-      ? mergeGraphData(current.analyticsGraph, next.analyticsGraph)
+      ? ensureRecommendationPromotersInGraph(
+        mergeGraphData(current.analyticsGraph, next.analyticsGraph),
+        nextLoadedRecommendations,
+      )
       : (next.analyticsGraph ?? current.analyticsGraph),
     debug: next.debug ?? current.debug,
   }

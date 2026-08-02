@@ -27,6 +27,7 @@ const EGO_GRAPH_CENTER_RETRY_MS = 80
 const EGO_GRAPH_CENTER_DURATION_MS = 520
 const EGO_GRAPH_ZOOM = 1.35
 type LinkEndpoint = string | { id: string }
+const FALLBACK_RECOMMENDATION_LINK_RELATIONSHIP = 'fallback_recommendation'
 
 // Guard URL param values before using entity-specific fetch logic.
 function isSearchEntityType(value: string | null): value is SearchEntityType {
@@ -211,9 +212,25 @@ export function ScenegraphMapPanel({
 
     const nodeTypeById = new Map<string, NodeType>()
     graphData.nodes.forEach((node) => nodeTypeById.set(node.id, node.type))
+    const existingLinkKeys = new Set(
+      graphData.links.map((link) => getUndirectedLinkKey(
+        getLinkNodeId(link.source as LinkEndpoint),
+        getLinkNodeId(link.target as LinkEndpoint),
+      )),
+    )
 
     const includedNodeIds = new Set<string>([sourceId])
     const includedLinkKeys = new Set<string>()
+    const promotersWithBackendPaths = new Set<string>()
+    const synthesizedLinks: Array<{
+      source: string
+      target: string
+      relationship: string
+      weight: number
+      evidenceType: string
+      style: 'solid' | 'dashed'
+      strength: number
+    }> = []
 
     const collectBackendPath = (
       promoterNodeId: string,
@@ -230,11 +247,13 @@ export function ScenegraphMapPanel({
 
     targetPromoterIds.forEach((targetPromoterId) => {
       if (!graphData.nodes.some((node) => node.id === targetPromoterId)) return
-      collectBackendPath(
+      if (collectBackendPath(
         targetPromoterId,
         graphData.fallbackPathNodeIds,
         graphData.fallbackPathLinkKeys,
-      )
+      )) {
+        promotersWithBackendPaths.add(targetPromoterId)
+      }
     })
 
     const pathEventIds = new Set(
@@ -254,12 +273,28 @@ export function ScenegraphMapPanel({
       includedLinkKeys.add(getUndirectedLinkKey(source, target))
     })
 
+    targetPromoterIds.forEach((targetPromoterId) => {
+      if (!graphData.nodes.some((node) => node.id === targetPromoterId)) return
+      if (promotersWithBackendPaths.has(targetPromoterId)) return
+      includedNodeIds.add(targetPromoterId)
+      if (existingLinkKeys.has(getUndirectedLinkKey(sourceId, targetPromoterId))) return
+      synthesizedLinks.push({
+        source: sourceId,
+        target: targetPromoterId,
+        relationship: FALLBACK_RECOMMENDATION_LINK_RELATIONSHIP,
+        weight: 1,
+        evidenceType: FALLBACK_RECOMMENDATION_LINK_RELATIONSHIP,
+        style: 'dashed',
+        strength: 0.12,
+      })
+    })
+
     const nodes = graphData.nodes.filter((node) => includedNodeIds.has(node.id))
     const links = graphData.links.filter((link) => {
       const source = getLinkNodeId(link.source as LinkEndpoint)
       const target = getLinkNodeId(link.target as LinkEndpoint)
       return includedLinkKeys.has(getUndirectedLinkKey(source, target))
-    })
+    }).concat(synthesizedLinks)
 
     return {
       centerNodeId: graphData.centerNodeId,
