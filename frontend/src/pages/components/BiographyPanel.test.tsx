@@ -52,7 +52,6 @@ describe('BiographyPanel', () => {
 
     expect(await screen.findByText('Artist profile')).toBeInTheDocument()
     expect(screen.getByRole('heading', {name: 'Holywanderer', level: 2})).toBeInTheDocument()
-    expect(screen.getByText('Improve your matches')).toBeInTheDocument()
     expect(screen.queryByText('Describe your sound, roles, labels, collectives and residencies.')).not.toBeInTheDocument()
     expect(screen.queryByText('Add artists you genuinely know or have worked with. More relevant connections can broaden your promoter network.')).not.toBeInTheDocument()
     expect(screen.getByRole('heading', {name: 'Biography'})).toBeInTheDocument()

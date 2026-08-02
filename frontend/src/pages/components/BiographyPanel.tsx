@@ -5,7 +5,6 @@ import {BIOGRAPHY_MAX_LENGTH, validateBiography} from '@/shared/lib/validation'
 import {fetchArtistBiography, updateArtistBiography} from '../../api/entityDetails'
 import type {ConnectedArtistItem} from '../../types/artist'
 import {ManualArtistConnections, type ManualArtistConnectionsProps} from './ManualArtistConnections'
-import {RecommendationSignalsHelp} from './RecommendationSignalsHelp'
 
 interface BiographyPanelProps {
   artistId: number | null
@@ -153,8 +152,6 @@ export function BiographyPanel({
         </h2>
       </div>
 
-      <RecommendationSignalsHelp />
-
       <section className="grid gap-4 rounded-2xl border border-[var(--surface-border-soft)] bg-[var(--surface-soft)] p-4 md:gap-3 md:p-5">
         <header className="flex flex-wrap items-center justify-between gap-3">
           <h3 className="m-0">Biography</h3>
@@ -273,6 +270,7 @@ export function BiographyPanel({
       {!isLoading && shouldShowApprovedProfileWorkspace && canEditBiography && (
         <ManualArtistConnections {...manualConnections} onAdd={manualConnections.onAdd} />
       )}
+
     </article>
   )
 }

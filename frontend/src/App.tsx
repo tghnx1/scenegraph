@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Routes, Route, Navigate, NavLink, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { GraphPage } from './pages/GraphPage'
 import { DashboardPage } from './pages/DashboardPage'
@@ -36,6 +36,7 @@ function EntityRedirect({ type }: { type: 'artist' | 'promoter' | 'event' | 'ven
 
 export default function App() {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const [authRole, setAuthRole] = useState<AuthRole | null>(() => {
     const storedToken = localStorage.getItem('token')
     const storedRole = localStorage.getItem('role')
@@ -54,6 +55,19 @@ export default function App() {
 
   const location = useLocation()
   const isLoginPage = location.pathname === '/login'
+  const isWorkspacePage =
+    location.pathname === '/profile'
+    || (location.pathname === '/graph' && authRole === 'artist')
+  const profileWorkspace = useMemo(() => {
+    const value = searchParams.get('workspace')
+    return value === 'graph' ? 'graph' : 'recommendations'
+  }, [searchParams])
+
+  const openProfileWorkspace = (workspace: 'recommendations' | 'graph') => {
+    const nextParams = new URLSearchParams(searchParams)
+    nextParams.set('workspace', workspace)
+    navigate(`${location.pathname}?${nextParams.toString()}`)
+  }
   
   const handleAuthClick = async () => {
     if (isAuthenticated) {
@@ -99,9 +113,32 @@ export default function App() {
   return (
     <div className="flex h-dvh min-h-screen flex-col bg-[var(--background)] text-[var(--text)] [background:radial-gradient(1000px_520px_at_12%_-10%,color-mix(in_srgb,var(--link-highlight)_18%,transparent),transparent_60%),radial-gradient(900px_460px_at_95%_0%,color-mix(in_srgb,var(--accent-warm)_15%,transparent),transparent_55%),var(--background)]">
       <nav className="flex flex-wrap items-center gap-2 border-b border-[color-mix(in_srgb,var(--text)_18%,transparent)] bg-[color-mix(in_srgb,var(--background)_55%,transparent)] px-3 py-3 backdrop-blur-md sm:gap-3 sm:px-5">
-        <NavLink to="/graph" className={navLinkClass}>
-          Graph
-        </NavLink>
+        {isWorkspacePage ? (
+          <div className="inline-flex w-fit gap-1 rounded-xl bg-[var(--surface-input)] p-1">
+            <Button
+              type="button"
+              size="sm"
+              variant={profileWorkspace === 'recommendations' ? 'default' : 'ghost'}
+              className={cn('rounded-lg', profileWorkspace === 'recommendations' && 'border-[var(--selection-border)] bg-[var(--selection-soft)]')}
+              onClick={() => openProfileWorkspace('recommendations')}
+            >
+              Recommendations
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant={profileWorkspace === 'graph' ? 'default' : 'ghost'}
+              className={cn('rounded-lg', profileWorkspace === 'graph' && 'border-[var(--selection-border)] bg-[var(--selection-soft)]')}
+              onClick={() => openProfileWorkspace('graph')}
+            >
+              Graph
+            </Button>
+          </div>
+        ) : (
+          <NavLink to="/graph" className={navLinkClass}>
+            Graph
+          </NavLink>
+        )}
         {canOpenDashboard && (
           <NavLink to="/dashboard" className={navLinkClass}>
             Dashboard

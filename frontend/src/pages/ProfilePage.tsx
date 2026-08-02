@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Button } from '@/shared/ui/button'
+import { useSearchParams } from 'react-router-dom'
 import { cn } from '@/shared/lib/cn-utils.ts'
 import { DetailsPanel } from './components/DetailsPanel.tsx'
 import { ScenegraphMapPanel } from './components/GraphPanel.tsx'
 import { PromoterRecommendationsPanel, type RecommendationTargetControls } from './components/RecommendationPanel.tsx'
+import { RecommendationSignalsHelp } from './components/RecommendationSignalsHelp.tsx'
 import { SearchInputField } from './components/SearchInputField.tsx'
 import { useGraphSearchDetails } from './hooks/useGraphSearchDetails.ts'
 import { useManualArtistConnections } from './hooks/useManualArtistConnections.ts'
@@ -14,7 +15,6 @@ import {
 } from './profileReadiness'
 
 type ProfileWorkspaceTab = 'graph' | 'recommendations'
-
 interface ProfilePageProps {
   recommendationTargetControls?: RecommendationTargetControls
   showBiography?: boolean
@@ -22,7 +22,10 @@ interface ProfilePageProps {
 
 export function ProfilePage({ recommendationTargetControls, showBiography = true }: ProfilePageProps = {}) {
   const { detailsPanelProps, searchFormProps, selectedNode } = useGraphSearchDetails()
-  const [activeWorkspaceTab, setActiveWorkspaceTab] = useState<ProfileWorkspaceTab>('recommendations')
+  const [workspaceSearchParams] = useSearchParams()
+  const activeWorkspaceTab: ProfileWorkspaceTab = workspaceSearchParams.get('workspace') === 'graph'
+    ? 'graph'
+    : 'recommendations'
   const [currentRole, setCurrentRole] = useState<AuthRole | null>(() => {
     const storedRole = localStorage.getItem('role')
     return storedRole === 'artist' || storedRole === 'agent' || storedRole === 'admin'
@@ -87,9 +90,8 @@ export function ProfilePage({ recommendationTargetControls, showBiography = true
     }
   }, [])
 
-  const searchParams = new URLSearchParams(window.location.search)
-  const selectedType = searchParams.get('selectedType')
-  const selectedId = Number(searchParams.get('selectedId'))
+  const selectedType = workspaceSearchParams.get('selectedType')
+  const selectedId = Number(workspaceSearchParams.get('selectedId'))
 
   const hasSelectedArtist =
     selectedType === 'artist' &&
@@ -224,54 +226,23 @@ export function ProfilePage({ recommendationTargetControls, showBiography = true
 
         <section className={cn('relative z-0 grid min-h-0 min-w-0', !isGraphWorkspace && 'col-span-full')} aria-label={isGraphWorkspace ? 'Profile graph workspace' : 'Promoter recommendations workspace'}>
           <article className="relative grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-3 overflow-hidden rounded-3xl border border-[color-mix(in_srgb,var(--text)_10%,transparent)] bg-[color-mix(in_srgb,var(--background)_42%,transparent)] p-5 shadow-[0_10px_24px_rgba(0,0,0,0.12)] backdrop-blur-sm">
-            <div className="inline-flex w-fit gap-1 rounded-xl bg-[var(--surface-input)] p-1" role="tablist" aria-label="Profile graph views">
-              <Button
-                type="button"
-                id="profile-workspace-tab-recommendations"
-                variant={activeWorkspaceTab === 'recommendations' ? 'default' : 'ghost'}
-                size="sm"
-                className={cn('rounded-lg', activeWorkspaceTab === 'recommendations' && 'border-[var(--selection-border)] bg-[var(--selection-soft)]')}
-                role="tab"
-                aria-selected={activeWorkspaceTab === 'recommendations'}
-                aria-controls="profile-workspace-panel-recommendations"
-                onClick={() => setActiveWorkspaceTab('recommendations')}
-              >
-                Recommendations
-              </Button>
-              <Button
-                type="button"
-                id="profile-workspace-tab-graph"
-                variant={activeWorkspaceTab === 'graph' ? 'default' : 'ghost'}
-                size="sm"
-                className={cn('rounded-lg', activeWorkspaceTab === 'graph' && 'border-[var(--selection-border)] bg-[var(--selection-soft)]')}
-                role="tab"
-                aria-selected={activeWorkspaceTab === 'graph'}
-                aria-controls="profile-workspace-panel-graph"
-                onClick={() => setActiveWorkspaceTab('graph')}
-              >
-                Graph
-              </Button>
-            </div>
-            <section
-              id="profile-workspace-panel-graph"
-              className="min-h-0 min-w-0"
-              role="tabpanel"
-              aria-labelledby="profile-workspace-tab-graph"
-              hidden={activeWorkspaceTab !== 'graph'}
-            >
-              <ScenegraphMapPanel />
-            </section>
-            <PromoterRecommendationsPanel
-              isActive={activeWorkspaceTab === 'recommendations'}
-              artistId={profileArtistId}
-              artistName={recommendationTargetName}
-              targetControls={recommendationTargetControls}
-              autoLoad={isArtistUser && profileArtistId !== null}
-              profileReadiness={isArtistUser ? profileReadiness : undefined}
-              onNavigateToSection={isArtistUser ? navigateToProfileSection : undefined}
-              profileChangedSinceRecommendations={hasProfileChangesSinceRecommendations}
-              onRecommendationsSynced={markRecommendationsSynced}
-            />
+            {activeWorkspaceTab === 'graph' ? (
+              <section className="min-h-0 min-w-0">
+                <ScenegraphMapPanel />
+              </section>
+            ) : (
+              <PromoterRecommendationsPanel
+                isActive={activeWorkspaceTab === 'recommendations'}
+                artistId={profileArtistId}
+                artistName={recommendationTargetName}
+                targetControls={recommendationTargetControls}
+                autoLoad={isArtistUser && profileArtistId !== null}
+                profileReadiness={isArtistUser ? profileReadiness : undefined}
+                onNavigateToSection={isArtistUser ? navigateToProfileSection : undefined}
+                profileChangedSinceRecommendations={hasProfileChangesSinceRecommendations}
+                onRecommendationsSynced={markRecommendationsSynced}
+              />
+            )}
           </article>
         </section>
         {showBiography && (
@@ -294,6 +265,9 @@ export function ProfilePage({ recommendationTargetControls, showBiography = true
             />
           </div>
         )}
+        <div className="col-span-full">
+          <RecommendationSignalsHelp />
+        </div>
       </section>
     </div>
   )

@@ -86,59 +86,30 @@ describe('ProfilePage', () => {
     })
   })
 
-  it('keeps the Graph sidebar and hides it on Recommendations', async () => {
-    const user = userEvent.setup()
-
+  it('shows the graph workspace when the workspace query selects graph', () => {
     render(
-      <MemoryRouter initialEntries={['/profile?q=holy&selectedType=artist&selectedId=61']}>
+      <MemoryRouter initialEntries={['/profile?workspace=graph&q=holy&selectedType=artist&selectedId=61']}>
         <ProfilePage showBiography={false} />
       </MemoryRouter>,
     )
 
-    expect(await screen.findByTestId('recommendations-panel')).toBeInTheDocument()
-    expect(screen.queryByLabelText('Search Database')).not.toBeInTheDocument()
-
-    await user.click(screen.getByRole('tab', { name: 'Graph' }))
-
+    expect(screen.queryByTestId('recommendations-panel')).not.toBeInTheDocument()
     expect(screen.getByLabelText('Search Database')).toHaveValue('holy')
-    expect(screen.getByTestId('details-panel')).toHaveTextContent('Selected Artist')
-    expect(screen.getByTestId('recommendations-panel')).toBeInTheDocument()
-
-    await user.click(screen.getByRole('tab', { name: 'Recommendations' }))
-
-    expect(screen.queryByLabelText('Search Database')).not.toBeInTheDocument()
-    expect(screen.queryByTestId('details-panel')).not.toBeInTheDocument()
-    expect(screen.getByLabelText('Promoter recommendations workspace')).toHaveClass('col-span-full')
-    expect(screen.getByTestId('recommendations-panel')).toBeInTheDocument()
-
-    await user.click(screen.getByRole('tab', { name: 'Graph' }))
-
-    expect(screen.getByLabelText('Search Database')).toHaveValue('holy')
-    expect(screen.getByTestId('details-panel')).toHaveTextContent('Selected Artist')
+    expect(screen.getByTestId('details-panel')).toHaveTextContent('empty')
   })
 
-  it('preserves the search query when switching tabs', async () => {
-    const user = userEvent.setup()
-
+  it('shows the recommendations workspace by default and keeps the search state out of the graph panel', async () => {
     render(
       <MemoryRouter initialEntries={['/profile?q=holy']}>
         <ProfilePage showBiography={false} />
       </MemoryRouter>,
     )
 
-    await user.click(screen.getByRole('tab', { name: 'Graph' }))
-
-    const input = screen.getByLabelText('Search Database')
-    expect(input).toHaveValue('holy')
-
-    await user.clear(input)
-    await user.type(input, 'strobe')
-    expect(input).toHaveValue('strobe')
-
-    await user.click(screen.getByRole('tab', { name: 'Recommendations' }))
-    await user.click(screen.getByRole('tab', { name: 'Graph' }))
-
-    expect(screen.getByLabelText('Search Database')).toHaveValue('strobe')
+    expect(await screen.findByTestId('recommendations-panel')).toBeInTheDocument()
+    expect(screen.queryByLabelText('Search Database')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('details-panel')).not.toBeInTheDocument()
+    expect(screen.getByLabelText('Promoter recommendations workspace')).toHaveClass('col-span-full')
+    expect(screen.getByText('Improve your matches')).toBeInTheDocument()
   })
 
 })
