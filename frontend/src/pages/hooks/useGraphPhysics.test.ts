@@ -3,7 +3,7 @@ import { getLeafRadialTargetRadius } from './useGraphPhysics'
 
 describe('getLeafRadialTargetRadius', () => {
   it('returns the target radius for low-degree nodes', () => {
-    expect(getLeafRadialTargetRadius('node-a', new Set(['node-a']))).toBe(150)
+    expect(getLeafRadialTargetRadius('node-a', new Set(['node-a']))).toBe(100)
   })
 
   it('returns zero for connected nodes', () => {

@@ -2,8 +2,8 @@ import { useEffect, type RefObject } from 'react'
 import type { GraphNode } from '../../types/graph'
 import { forceCollide } from 'd3-force'
 
-const LEAF_RADIAL_TARGET_RADIUS = 150
-const LEAF_RADIAL_STRENGTH = 0.25
+const LEAF_RADIAL_TARGET_RADIUS = 100
+const LEAF_RADIAL_STRENGTH = 0.2
 
 export function getLeafRadialTargetRadius(nodeId: string | null, lowDegreeNodeIds: ReadonlySet<string>) {
   return nodeId && lowDegreeNodeIds.has(nodeId) ? LEAF_RADIAL_TARGET_RADIUS : 0
@@ -22,11 +22,11 @@ function createLeafRadialForce(lowDegreeNodeIds: ReadonlySet<string> = new Set()
       const x = node.x ?? 0
       const y = node.y ?? 0
       const distance = Math.hypot(x, y) || 1
-      const delta = (targetRadius - distance) * LEAF_RADIAL_STRENGTH * alpha
+      const delta = (distance - targetRadius) * LEAF_RADIAL_STRENGTH * alpha
       const scale = delta / distance
 
-      node.vx = (node.vx ?? 0) + x * scale
-      node.vy = (node.vy ?? 0) + y * scale
+      node.vx = (node.vx ?? 0) - x * scale
+      node.vy = (node.vy ?? 0) - y * scale
     }
   }
   force.initialize = (nextNodes: typeof nodes) => {
