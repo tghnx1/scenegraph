@@ -11,6 +11,7 @@ from app.recommendations.job_events import recommendation_job_socket_hub
 from app.recommendations.jobs import create_recommendation_job, get_recommendation_job
 from app.recommendations.scoring import promoter_recommendation_api_limit_max_from_config
 from app.schemas import (
+    GraphLink,
     GraphResponse,
     PromoterRecommendationResponse,
     RecommendationJobCreatedResponse,
@@ -55,14 +56,19 @@ def _page_promoter_recommendation_response(
             return graph.model_copy(update={"nodes": [], "links": []})
 
         selected_promoter_node_ids = {f"promoter-{recommendation_id}" for recommendation_id in cumulative_recommendation_ids}
-        graph_node_ids = {
+        source_artist_node_id = f"artist-{response.entityId}"
+        graph_node_ids = set(selected_promoter_node_ids)
+        graph_node_ids.update(
             node_id
             for promoter_id in selected_promoter_node_ids
             for node_id in (
                 graph.preferredPathNodeIds.get(promoter_id, [])
                 + graph.fallbackPathNodeIds.get(promoter_id, [])
             )
-        }
+        )
+        if any(node.id == source_artist_node_id for node in graph.nodes):
+            graph_node_ids.add(source_artist_node_id)
+
         graph_link_keys = {
             link_key
             for promoter_id in selected_promoter_node_ids
@@ -71,15 +77,37 @@ def _page_promoter_recommendation_response(
                 + graph.fallbackPathLinkKeys.get(promoter_id, [])
             )
         }
+        filtered_links = [
+            link
+            for link in graph.links
+            if f"{min(link.source, link.target)}|{max(link.source, link.target)}" in graph_link_keys
+        ]
+        linked_promoter_node_ids = {
+            node_id
+            for link in filtered_links
+            for node_id in (link.source, link.target)
+            if node_id in selected_promoter_node_ids
+        }
+        synthesized_links = [
+            GraphLink(
+                source=source_artist_node_id,
+                target=promoter_node_id,
+                relationship="fallback_recommendation",
+                weight=1,
+                evidenceType="fallback_recommendation",
+                style="dashed",
+                strength=0.12,
+            )
+            for promoter_node_id in sorted(selected_promoter_node_ids)
+            if promoter_node_id not in linked_promoter_node_ids
+            and source_artist_node_id in graph_node_ids
+            and promoter_node_id in graph_node_ids
+        ]
 
         return graph.model_copy(
             update={
                 "nodes": [node for node in graph.nodes if node.id in graph_node_ids],
-                "links": [
-                    link
-                    for link in graph.links
-                    if f"{min(link.source, link.target)}|{max(link.source, link.target)}" in graph_link_keys
-                ],
+                "links": filtered_links + synthesized_links,
                 "preferredPathNodeIds": {
                     promoter_id: node_ids
                     for promoter_id, node_ids in graph.preferredPathNodeIds.items()

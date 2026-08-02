@@ -242,37 +242,29 @@ def test_recommendation_job_result_can_be_paged():
             graphMode="compact",
             preferredPathNodeIds={
                 "promoter-1": [f"artist-{TEMP_ARTIST_ID}", "promoter-1"],
-                "promoter-2": [f"artist-{TEMP_ARTIST_ID}", "promoter-2"],
             },
             preferredPathLinkKeys={
                 "promoter-1": [f"artist-{TEMP_ARTIST_ID}|promoter-1"],
-                "promoter-2": [f"artist-{TEMP_ARTIST_ID}|promoter-2"],
             },
             preferredPathPromoterIdsByNodeId={
-                f"artist-{TEMP_ARTIST_ID}": ["promoter-1", "promoter-2"],
+                f"artist-{TEMP_ARTIST_ID}": ["promoter-1"],
                 "promoter-1": ["promoter-1"],
-                "promoter-2": ["promoter-2"],
             },
             preferredPathPromoterIdsByLinkKey={
                 f"artist-{TEMP_ARTIST_ID}|promoter-1": ["promoter-1"],
-                f"artist-{TEMP_ARTIST_ID}|promoter-2": ["promoter-2"],
             },
             fallbackPathNodeIds={
                 "promoter-1": [f"artist-{TEMP_ARTIST_ID}", "promoter-1"],
-                "promoter-2": [f"artist-{TEMP_ARTIST_ID}", "promoter-2"],
             },
             fallbackPathLinkKeys={
                 "promoter-1": [f"artist-{TEMP_ARTIST_ID}|promoter-1"],
-                "promoter-2": [f"artist-{TEMP_ARTIST_ID}|promoter-2"],
             },
             fallbackPathPromoterIdsByNodeId={
-                f"artist-{TEMP_ARTIST_ID}": ["promoter-1", "promoter-2"],
+                f"artist-{TEMP_ARTIST_ID}": ["promoter-1"],
                 "promoter-1": ["promoter-1"],
-                "promoter-2": ["promoter-2"],
             },
             fallbackPathPromoterIdsByLinkKey={
                 f"artist-{TEMP_ARTIST_ID}|promoter-1": ["promoter-1"],
-                f"artist-{TEMP_ARTIST_ID}|promoter-2": ["promoter-2"],
             },
         ),
         analyticsGraph=GraphResponse(
@@ -288,37 +280,29 @@ def test_recommendation_job_result_can_be_paged():
             graphMode="full",
             preferredPathNodeIds={
                 "promoter-1": [f"artist-{TEMP_ARTIST_ID}", "promoter-1"],
-                "promoter-2": [f"artist-{TEMP_ARTIST_ID}", "promoter-2"],
             },
             preferredPathLinkKeys={
                 "promoter-1": [f"artist-{TEMP_ARTIST_ID}|promoter-1"],
-                "promoter-2": [f"artist-{TEMP_ARTIST_ID}|promoter-2"],
             },
             preferredPathPromoterIdsByNodeId={
-                f"artist-{TEMP_ARTIST_ID}": ["promoter-1", "promoter-2"],
+                f"artist-{TEMP_ARTIST_ID}": ["promoter-1"],
                 "promoter-1": ["promoter-1"],
-                "promoter-2": ["promoter-2"],
             },
             preferredPathPromoterIdsByLinkKey={
                 f"artist-{TEMP_ARTIST_ID}|promoter-1": ["promoter-1"],
-                f"artist-{TEMP_ARTIST_ID}|promoter-2": ["promoter-2"],
             },
             fallbackPathNodeIds={
                 "promoter-1": [f"artist-{TEMP_ARTIST_ID}", "promoter-1"],
-                "promoter-2": [f"artist-{TEMP_ARTIST_ID}", "promoter-2"],
             },
             fallbackPathLinkKeys={
                 "promoter-1": [f"artist-{TEMP_ARTIST_ID}|promoter-1"],
-                "promoter-2": [f"artist-{TEMP_ARTIST_ID}|promoter-2"],
             },
             fallbackPathPromoterIdsByNodeId={
-                f"artist-{TEMP_ARTIST_ID}": ["promoter-1", "promoter-2"],
+                f"artist-{TEMP_ARTIST_ID}": ["promoter-1"],
                 "promoter-1": ["promoter-1"],
-                "promoter-2": ["promoter-2"],
             },
             fallbackPathPromoterIdsByLinkKey={
                 f"artist-{TEMP_ARTIST_ID}|promoter-1": ["promoter-1"],
-                f"artist-{TEMP_ARTIST_ID}|promoter-2": ["promoter-2"],
             },
         ),
     ).model_dump(mode="json", exclude_none=True)
@@ -358,9 +342,9 @@ def test_recommendation_job_result_can_be_paged():
         "promoter-2",
     }
     assert {
-        (link["source"], link["target"])
+        (link["source"], link["target"], link["relationship"])
         for link in payload["result"]["graph"]["links"]
     } == {
-        (f"artist-{TEMP_ARTIST_ID}", "promoter-1"),
-        (f"artist-{TEMP_ARTIST_ID}", "promoter-2"),
+        (f"artist-{TEMP_ARTIST_ID}", "promoter-1", "recommendation"),
+        (f"artist-{TEMP_ARTIST_ID}", "promoter-2", "fallback_recommendation"),
     }
