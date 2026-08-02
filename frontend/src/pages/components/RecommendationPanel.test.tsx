@@ -446,6 +446,30 @@ describe('PromoterRecommendationsPanel', () => {
     expect(screen.queryAllByText(/^Promoter$/i)).toHaveLength(0)
   })
 
+  it('highlights the matching graph node when a promoter is selected from the list', async () => {
+    const user = userEvent.setup()
+    api.post.mockResolvedValueOnce({ jobId: 'job-1', status: 'queued' })
+    api.get.mockResolvedValueOnce(makeJobResponse('job-1', multiRecommendationResult))
+
+    render(
+      <PromoterRecommendationsPanel
+        {...baseProps({
+          autoLoad: false,
+        })}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Get recommendations' }))
+    await screen.findByRole('heading', { name: 'Recommended promoters', level: 3 })
+
+    await user.click(screen.getByRole('button', { name: /North Collective/ }))
+
+    const lastGraphCall = scenegraphMapPanelMock.mock.calls.at(-1)?.[0]
+    expect(lastGraphCall).toEqual(expect.objectContaining({
+      selectedNodeId: 'promoter-10',
+    }))
+  })
+
   it('shows only three genre source events per genre until expanded', async () => {
     const user = userEvent.setup()
     api.post.mockResolvedValueOnce({ jobId: 'job-1', status: 'queued' })
