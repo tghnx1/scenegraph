@@ -10,7 +10,7 @@ import { useGraphStore } from '../../shared/store/graphStore.ts'
 import { getCssVar, hexToRgba } from '../../shared/styles/colors.ts'
 import { graphEntityId, type GraphData, type GraphNode, type NodeType } from '../../types/graph.ts'
 import type { SearchEntityType } from '../../types/search.ts'
-import { drawNodeShape } from '../hooks/drawNode.ts'
+import { drawNodeShape, getNodeDisplaySize } from '../hooks/drawNode.ts'
 import { useGraphHighlights } from '../hooks/useGraphHighlights.ts'
 import { useGraphPhysics } from '../hooks/useGraphPhysics.ts'
 import { GraphFilters } from './GraphDataFilter.tsx'
@@ -412,6 +412,18 @@ export function ScenegraphMapPanel({
 
     return nextHighlightedLinkKeys
   }, [highlightedPathNodeIds, isPathFocusActive, pathLinks, recommendationPathGraphData.links, recommendationPathGraphData.nodes])
+  const nodeDegreeById = useMemo(() => {
+    const counts = new Map<string, number>()
+
+    recommendationPathGraphData.links.forEach((link) => {
+      const source = getLinkNodeId(link.source as LinkEndpoint)
+      const target = getLinkNodeId(link.target as LinkEndpoint)
+      counts.set(source, (counts.get(source) ?? 0) + 1)
+      counts.set(target, (counts.get(target) ?? 0) + 1)
+    })
+
+    return counts
+  }, [recommendationPathGraphData.links])
   useGraphPhysics(graphRef, recommendationPathGraphData)
 
   useEffect(() => {
@@ -644,11 +656,12 @@ export function ScenegraphMapPanel({
               ? (node.id === recommendationSourceNodeId || highlightedPathNodeIds.has(node.id))
               : true
             const isSelectedNode = selectedGraphNodeId === node.id || node.id === recommendationSourceNodeId
+            const nodeSize = getNodeDisplaySize(5, nodeDegreeById.get(node.id) ?? 0)
             drawNodeShape(
               ctx,
               node.x,
               node.y,
-              5,
+              nodeSize,
               node.type,
               isSelectedNode,
               isHighlightedNode ? 1 : 0.16,
