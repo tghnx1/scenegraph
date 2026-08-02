@@ -141,25 +141,89 @@ const analyticsGraphResult: PromoterRecommendationResponse = {
     links: [],
   },
 }
-const longRecommendationResult: PromoterRecommendationResponse = {
-  entityId: 61,
-  entityType: 'artist',
-  recommendations: Array.from({ length: 21 }, (_, index) => ({
-    id: 100 + index,
-    type: 'promoter',
-    name: `Promoter ${index + 1}`,
-    score: 1 - index * 0.01,
-    baseScore: 0.8,
-    feedbackBoost: 0,
-    feedbackState: null,
-    reasons: ['shared extracted genres: dark disco'],
-    promoterSizeSegment: 'medium',
-  })),
-  graph: {
-    nodes: [],
-    links: [],
-  },
+const pagedRecommendationResults = {
+  firstPage: {
+    entityId: 61,
+    entityType: 'artist',
+    recommendations: Array.from({ length: 20 }, (_, index) => ({
+      id: 100 + index,
+      type: 'promoter',
+      name: `Promoter ${index + 1}`,
+      score: 1 - index * 0.01,
+      baseScore: 0.8,
+      feedbackBoost: 0,
+      feedbackState: null,
+      reasons: ['shared extracted genres: dark disco'],
+      promoterSizeSegment: 'medium',
+    })),
+    recommendationsTotal: 21,
+    recommendationsOffset: 0,
+    recommendationsLimit: 20,
+    recommendationsHasMore: true,
+    largeRecommendations: [],
+    mediumRecommendations: Array.from({ length: 20 }, (_, index) => ({
+      id: 100 + index,
+      type: 'promoter',
+      name: `Promoter ${index + 1}`,
+      score: 1 - index * 0.01,
+      baseScore: 0.8,
+      feedbackBoost: 0,
+      feedbackState: null,
+      reasons: ['shared extracted genres: dark disco'],
+      promoterSizeSegment: 'medium',
+    })),
+    smallRecommendations: [],
+    warmRecommendations: [],
+    discoveryRecommendations: [],
+    graph: {
+      nodes: [],
+      links: [],
+    },
+  } satisfies PromoterRecommendationResponse,
+  secondPage: {
+    entityId: 61,
+    entityType: 'artist',
+    recommendations: [
+      {
+        id: 120,
+        type: 'promoter',
+        name: 'Promoter 21',
+        score: 0.79,
+        baseScore: 0.8,
+        feedbackBoost: 0,
+        feedbackState: null,
+        reasons: ['shared extracted genres: dark disco'],
+        promoterSizeSegment: 'medium',
+      },
+    ],
+    recommendationsTotal: 21,
+    recommendationsOffset: 20,
+    recommendationsLimit: 20,
+    recommendationsHasMore: false,
+    largeRecommendations: [],
+    mediumRecommendations: [
+      {
+        id: 120,
+        type: 'promoter',
+        name: 'Promoter 21',
+        score: 0.79,
+        baseScore: 0.8,
+        feedbackBoost: 0,
+        feedbackState: null,
+        reasons: ['shared extracted genres: dark disco'],
+        promoterSizeSegment: 'medium',
+      },
+    ],
+    smallRecommendations: [],
+    warmRecommendations: [],
+    discoveryRecommendations: [],
+    graph: {
+      nodes: [],
+      links: [],
+    },
+  } satisfies PromoterRecommendationResponse,
 }
+
 const emptyRecommendationResult: PromoterRecommendationResponse = {
   entityId: 61,
   entityType: 'artist',
@@ -200,7 +264,7 @@ function makeJobResponse(jobId: string, result: PromoterRecommendationResponse):
     jobId,
     jobType: 'artist_promoters',
     artistId: 61,
-    params: { limit: 50, debug: false },
+    params: { limit: 200, debug: false },
     status: 'completed',
     result,
     createdAt: '2026-07-21T10:00:00.000Z',
@@ -405,9 +469,11 @@ describe('PromoterRecommendationsPanel', () => {
     expect(screen.queryByText('Event 4')).not.toBeInTheDocument()
   })
 
-  it('keeps the match count stable while loading more promoters', async () => {
+  it('loads the next promoter page and updates the visible match count', async () => {
     api.post.mockResolvedValueOnce({ jobId: 'job-1', status: 'queued' })
-    api.get.mockResolvedValueOnce(makeJobResponse('job-1', longRecommendationResult))
+    api.get
+      .mockResolvedValueOnce(makeJobResponse('job-1', pagedRecommendationResults.firstPage))
+      .mockResolvedValueOnce(makeJobResponse('job-1', pagedRecommendationResults.secondPage))
 
     render(
       <PromoterRecommendationsPanel
@@ -419,7 +485,7 @@ describe('PromoterRecommendationsPanel', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Get recommendations' }))
 
-    expect(await screen.findByText('21 matches')).toBeInTheDocument()
+    expect(await screen.findByText('20 of 21 matches')).toBeInTheDocument()
     expect(screen.getByText('Promoter 20')).toBeInTheDocument()
     expect(screen.queryByText('Promoter 21')).not.toBeInTheDocument()
 
@@ -609,7 +675,7 @@ describe('PromoterRecommendationsPanel', () => {
         jobId: 'job-2',
         jobType: 'artist_promoters',
         artistId: 61,
-        params: { limit: 50, debug: false },
+        params: { limit: 200, debug: false },
         status: 'failed',
         errorMessage: 'Recommendation job failed',
         createdAt: '2026-07-21T10:00:00.000Z',

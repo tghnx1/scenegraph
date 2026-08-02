@@ -7,6 +7,7 @@ from psycopg.types.json import Jsonb
 from app.auth import create_access_token
 from app.db import get_connection
 from app.main import app
+from app.schemas import GraphResponse, PromoterRecommendationItem, PromoterRecommendationResponse
 
 
 TEMP_USER_ID = 99_001
@@ -125,3 +126,139 @@ def test_recommendation_job_creation_keeps_job_rows_distinct():
     assert row is not None
     assert row["job_count"] == 2
     assert first["jobId"] != second["jobId"]
+
+
+def test_recommendation_job_result_can_be_paged():
+    created = client.post(
+        f"/api/recommendations/artists/{TEMP_ARTIST_ID}/promoters/jobs",
+        headers=_headers(),
+        json=TEMP_JOB_PARAMS,
+    )
+    assert created.status_code == 202
+    job_id = created.json()["jobId"]
+
+    full_result = PromoterRecommendationResponse(
+        entityId=TEMP_ARTIST_ID,
+        model="test-model",
+        dimensions=1536,
+        recommendations=[
+            PromoterRecommendationItem(
+                id=1,
+                name="Alpha Promoter",
+                score=0.95,
+                semanticScore=0.92,
+                strengthScore=0.85,
+                activityScore=0.71,
+                recencyScore=0.62,
+                reasons=["shared extracted genres: dark disco"],
+                matchedArtistCount=3,
+                eventCount=9,
+                promoterSizeSegment="small",
+            ),
+            PromoterRecommendationItem(
+                id=2,
+                name="Beta Promoter",
+                score=0.90,
+                semanticScore=0.88,
+                strengthScore=0.79,
+                activityScore=0.68,
+                recencyScore=0.58,
+                reasons=["shared extracted genres: dark disco"],
+                matchedArtistCount=4,
+                eventCount=11,
+                promoterSizeSegment="medium",
+            ),
+            PromoterRecommendationItem(
+                id=3,
+                name="Gamma Promoter",
+                score=0.80,
+                semanticScore=0.77,
+                strengthScore=0.70,
+                activityScore=0.66,
+                recencyScore=0.52,
+                reasons=["shared extracted genres: dark disco"],
+                matchedArtistCount=5,
+                eventCount=13,
+                promoterSizeSegment="large",
+            ),
+        ],
+        largeRecommendations=[
+            PromoterRecommendationItem(
+                id=3,
+                name="Gamma Promoter",
+                score=0.80,
+                semanticScore=0.77,
+                strengthScore=0.70,
+                activityScore=0.66,
+                recencyScore=0.52,
+                reasons=["shared extracted genres: dark disco"],
+                matchedArtistCount=5,
+                eventCount=13,
+                promoterSizeSegment="large",
+            ),
+        ],
+        mediumRecommendations=[
+            PromoterRecommendationItem(
+                id=2,
+                name="Beta Promoter",
+                score=0.90,
+                semanticScore=0.88,
+                strengthScore=0.79,
+                activityScore=0.68,
+                recencyScore=0.58,
+                reasons=["shared extracted genres: dark disco"],
+                matchedArtistCount=4,
+                eventCount=11,
+                promoterSizeSegment="medium",
+            ),
+        ],
+        smallRecommendations=[
+            PromoterRecommendationItem(
+                id=1,
+                name="Alpha Promoter",
+                score=0.95,
+                semanticScore=0.92,
+                strengthScore=0.85,
+                activityScore=0.71,
+                recencyScore=0.62,
+                reasons=["shared extracted genres: dark disco"],
+                matchedArtistCount=3,
+                eventCount=9,
+                promoterSizeSegment="small",
+            ),
+        ],
+        warmRecommendations=[],
+        discoveryRecommendations=[],
+        graph=GraphResponse(nodes=[], links=[], graphMode="compact"),
+        analyticsGraph=GraphResponse(nodes=[], links=[], graphMode="full"),
+    ).model_dump(mode="json", exclude_none=True)
+
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE recommendation_jobs
+                SET status = 'completed',
+                    result_json = %s,
+                    started_at = COALESCE(started_at, created_at),
+                    finished_at = COALESCE(finished_at, created_at),
+                    updated_at = NOW()
+                WHERE id = %s
+                """,
+                (Jsonb(full_result), job_id),
+            )
+
+    paged = client.get(
+        f"/api/recommendations/jobs/{job_id}?recommendations_offset=1&recommendations_limit=1",
+        headers=_headers(),
+    )
+    assert paged.status_code == 200
+    payload = paged.json()
+    assert payload["status"] == "completed"
+    assert payload["result"]["recommendationsTotal"] == 3
+    assert payload["result"]["recommendationsOffset"] == 1
+    assert payload["result"]["recommendationsLimit"] == 1
+    assert payload["result"]["recommendationsHasMore"] is True
+    assert [item["id"] for item in payload["result"]["recommendations"]] == [2]
+    assert [item["id"] for item in payload["result"]["mediumRecommendations"]] == [2]
+    assert payload["result"]["largeRecommendations"] == []

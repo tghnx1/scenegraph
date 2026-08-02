@@ -48,8 +48,18 @@ export interface PromoterRecommendationResponse {
   entityId: number
   entityType: 'artist'
   recommendations: PromoterRecommendation[]
+  recommendationsTotal?: number | null
+  recommendationsOffset?: number
+  recommendationsLimit?: number | null
+  recommendationsHasMore?: boolean
+  largeRecommendations: PromoterRecommendation[]
+  mediumRecommendations: PromoterRecommendation[]
+  smallRecommendations: PromoterRecommendation[]
+  warmRecommendations: PromoterRecommendation[]
+  discoveryRecommendations: PromoterRecommendation[]
   graph: GraphData
   analyticsGraph?: GraphData | null
+  debug?: Record<string, unknown> | null
 }
 
 export type RecommendationJobStatus = 'queued' | 'running' | 'completed' | 'failed'

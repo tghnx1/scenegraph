@@ -218,6 +218,10 @@ class PromoterRecommendationResponse(BaseModel):
     model: str
     dimensions: int
     recommendations: list[PromoterRecommendationItem]
+    recommendationsTotal: int | None = None
+    recommendationsOffset: int = 0
+    recommendationsLimit: int | None = None
+    recommendationsHasMore: bool = False
     largeRecommendations: list[PromoterRecommendationItem] = Field(default_factory=list)
     mediumRecommendations: list[PromoterRecommendationItem] = Field(default_factory=list)
     smallRecommendations: list[PromoterRecommendationItem] = Field(default_factory=list)

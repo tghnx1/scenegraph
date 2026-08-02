@@ -18,8 +18,8 @@ def test_loads_canonical_config() -> None:
     config = load_recommendation_config()
 
     assert config.promoter_recommendations["PROMOTER_REC_SEMANTIC_WEIGHT"] == 0.25
-    assert config.promoter_recommendations["PROMOTER_REC_API_LIMIT_MAX"] == 50
-    assert config.promoter_feedback["PROMOTER_FEEDBACK_EXACT_POSITIVE_BOOST"] == 0.10
+    assert config.promoter_recommendations["PROMOTER_REC_API_LIMIT_MAX"] == 200
+    assert config.promoter_feedback["PROMOTER_FEEDBACK_EXACT_POSITIVE_BOOST"] == 0.6
     assert config.promoter_feedback["PROMOTER_PROFILE_EVENT_LIMIT"] == 20
     assert dict(config.metadata) == {}
 

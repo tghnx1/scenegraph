@@ -34,8 +34,9 @@ const RECOMMENDATION_LOADING_MESSAGES = [
   'Comparing related events',
   'Building promoter graph',
 ]
-const INITIAL_VISIBLE_PROMOTERS = 20
-const PROMOTER_PAGE_SIZE = 20
+const PROMOTER_RECOMMENDATION_INITIAL_PAGE_SIZE = 20
+const PROMOTER_RECOMMENDATION_PAGE_SIZE = 20
+const PROMOTER_RECOMMENDATION_JOB_LIMIT = 200
 
 type RecommendationGraphMode = 'compact' | 'full'
 
@@ -284,6 +285,60 @@ function formatMatchCount(count: number): string {
   return `${count} match${count === 1 ? '' : 'es'}`
 }
 
+function formatRecommendationMatchCount(visibleCount: number, totalCount: number | null, hasMore: boolean): string {
+  if (hasMore && totalCount !== null && totalCount > visibleCount) {
+    return `${visibleCount} of ${totalCount} matches`
+  }
+
+  return formatMatchCount(visibleCount)
+}
+
+function mergeRecommendationItems(
+  currentItems: PromoterRecommendationResponse['recommendations'] | undefined,
+  nextItems: PromoterRecommendationResponse['recommendations'] | undefined,
+): PromoterRecommendationResponse['recommendations'] {
+  const currentItemsList = currentItems ?? []
+  const nextItemsList = nextItems ?? []
+  const seen = new Set(currentItemsList.map((item) => item.id))
+  return [
+    ...currentItemsList,
+    ...nextItemsList.filter((item) => !seen.has(item.id)),
+  ]
+}
+
+function mergeRecommendationPages(
+  current: PromoterRecommendationResponse,
+  next: PromoterRecommendationResponse,
+): PromoterRecommendationResponse {
+  const nextLoadedRecommendations = mergeRecommendationItems(current.recommendations, next.recommendations)
+  const nextLoadedRecommendationIds = new Set(nextLoadedRecommendations.map((recommendation) => recommendation.id))
+  const filterPage = (items: PromoterRecommendationResponse['recommendations'] | undefined) => (
+    (items ?? []).filter((item) => nextLoadedRecommendationIds.has(item.id))
+  )
+  const mergedLargeRecommendations = filterPage(mergeRecommendationItems(current.largeRecommendations, next.largeRecommendations))
+  const mergedMediumRecommendations = filterPage(mergeRecommendationItems(current.mediumRecommendations, next.mediumRecommendations))
+  const mergedSmallRecommendations = filterPage(mergeRecommendationItems(current.smallRecommendations, next.smallRecommendations))
+  const mergedWarmRecommendations = filterPage(mergeRecommendationItems(current.warmRecommendations, next.warmRecommendations))
+  const mergedDiscoveryRecommendations = filterPage(mergeRecommendationItems(current.discoveryRecommendations, next.discoveryRecommendations))
+
+  return {
+    ...current,
+    recommendations: nextLoadedRecommendations,
+    recommendationsTotal: next.recommendationsTotal ?? current.recommendationsTotal ?? nextLoadedRecommendations.length,
+    recommendationsOffset: 0,
+    recommendationsLimit: next.recommendationsLimit ?? current.recommendationsLimit ?? nextLoadedRecommendations.length,
+    recommendationsHasMore: next.recommendationsHasMore ?? current.recommendationsHasMore ?? false,
+    largeRecommendations: mergedLargeRecommendations,
+    mediumRecommendations: mergedMediumRecommendations,
+    smallRecommendations: mergedSmallRecommendations,
+    warmRecommendations: mergedWarmRecommendations,
+    discoveryRecommendations: mergedDiscoveryRecommendations,
+    graph: next.graph ?? current.graph,
+    analyticsGraph: next.analyticsGraph ?? current.analyticsGraph,
+    debug: next.debug ?? current.debug,
+  }
+}
+
 function recommendationScore(recommendation: PromoterRecommendationResponse['recommendations'][number]): number {
   const directScore = recommendation.score
   if (typeof directScore === 'number' && Number.isFinite(directScore)) {
@@ -314,10 +369,10 @@ export function PromoterRecommendationsPanel({
   const [activeRecommendationJobId, setActiveRecommendationJobId] = useState<string | null>(null)
   const [isRecommendationsLoading, setIsRecommendationsLoading] = useState(false)
   const [isRecommendationsRefreshing, setIsRecommendationsRefreshing] = useState(false)
+  const [isLoadingMorePromoters, setIsLoadingMorePromoters] = useState(false)
   const [recommendationsError, setRecommendationsError] = useState<string | null>(null)
   const [recommendationLoadingMessageIndex, setRecommendationLoadingMessageIndex] = useState(0)
   const [recommendationGraphMode, setRecommendationGraphMode] = useState<RecommendationGraphMode>('compact')
-  const [visiblePromoterCount, setVisiblePromoterCount] = useState(INITIAL_VISIBLE_PROMOTERS)
   const [expandedRecommendationId, setExpandedRecommendationId] = useState<number | null>(null)
   const [focusedRecommendationPromoterIds, setFocusedRecommendationPromoterIds] = useState<number[] | null>(null)
   const [expandedReasonItems, setExpandedReasonItems] = useState<Record<string, boolean>>({})
@@ -327,6 +382,7 @@ export function PromoterRecommendationsPanel({
     Record<number, PromoterFeedbackValue | null>
   >({})
   const [localFeedbackIdByPromoterId, setLocalFeedbackIdByPromoterId] = useState<Record<number, number>>({})
+  const [loadedRecommendationJobId, setLoadedRecommendationJobId] = useState<string | null>(null)
   const [selectedRecommendationNode, setSelectedRecommendationNode] = useState<GraphNode | null>(null)
   const recommendationListRef = useRef<HTMLElement | null>(null)
   const lastRecommendationFocusRef = useRef<HTMLElement | null>(null)
@@ -361,6 +417,7 @@ export function PromoterRecommendationsPanel({
     setRecommendationsError(null)
     setIsRecommendationsLoading(false)
     setIsRecommendationsRefreshing(false)
+    setIsLoadingMorePromoters(false)
     setExpandedRecommendationId(null)
     setFocusedRecommendationPromoterIds(null)
     setExpandedReasonItems({})
@@ -368,8 +425,8 @@ export function PromoterRecommendationsPanel({
     setPendingFeedbackPromoterId(null)
     setLocalFeedbackByPromoterId({})
     setLocalFeedbackIdByPromoterId({})
+    setLoadedRecommendationJobId(null)
     setRecommendationGraphMode('full')
-    setVisiblePromoterCount(INITIAL_VISIBLE_PROMOTERS)
     setSelectedRecommendationNode(null)
   }, [recommendationArtistId])
 
@@ -395,17 +452,6 @@ export function PromoterRecommendationsPanel({
 
     return () => window.clearInterval(messageInterval)
   }, [isRecommendationsLoading])
-
-  useEffect(() => {
-    setVisiblePromoterCount((current) => {
-      const nextVisibleCount = recommendationsData
-        ? Math.min(INITIAL_VISIBLE_PROMOTERS, recommendationsData.recommendations.length)
-        : INITIAL_VISIBLE_PROMOTERS
-
-      return current === nextVisibleCount ? current : nextVisibleCount
-    })
-    setExpandedGenreSourceGroups({})
-  }, [recommendationsData])
 
   useEffect(() => {
     if (selectedRecommendationNode === null) return
@@ -458,13 +504,16 @@ export function PromoterRecommendationsPanel({
     if (activeJob === null || activeJob.jobId !== jobId) return
 
     try {
-      const job = await api.get<RecommendationJobResponse>(`/recommendations/jobs/${jobId}`)
+      const job = await api.get<RecommendationJobResponse>(
+        `/recommendations/jobs/${jobId}?recommendations_offset=0&recommendations_limit=${PROMOTER_RECOMMENDATION_INITIAL_PAGE_SIZE}`,
+      )
       const currentJob = activeRecommendationJobRef.current
       if (currentJob === null || currentJob.jobId !== jobId || currentJob.requestId !== activeJob.requestId) return
 
       if (job.status === 'completed') {
         if (!job.result) throw new Error('Recommendation job completed without a result')
         setRecommendationsData(job.result)
+        setLoadedRecommendationJobId(jobId)
         setRecommendationsError(null)
         setIsRecommendationsLoading(false)
         setIsRecommendationsRefreshing(false)
@@ -533,13 +582,15 @@ export function PromoterRecommendationsPanel({
     } else {
       setIsRecommendationsLoading(true)
       setRecommendationsData(null)
+      setLoadedRecommendationJobId(null)
+      setIsLoadingMorePromoters(false)
       setRecommendationGraphMode('compact')
     }
 
     try {
       const createdJob = await api.post<RecommendationJobCreatedResponse>(
         `${PROMOTER_RECOMMENDATIONS_API_PATH}/${recommendationArtistId}/promoters/jobs`,
-        { limit: 50, debug: false },
+        { limit: PROMOTER_RECOMMENDATION_JOB_LIMIT, debug: false },
       )
       if (recommendationRequestIdRef.current !== requestId) return
       activeRecommendationJobRef.current = { jobId: createdJob.jobId, requestId, isRefresh: refreshing }
@@ -745,15 +796,18 @@ export function PromoterRecommendationsPanel({
     })
   }, [recommendationsData])
 
-  const displayedRecommendations = useMemo(
-    () => sortedRecommendations.slice(0, visiblePromoterCount),
-    [sortedRecommendations, visiblePromoterCount],
-  )
+  const displayedRecommendations = sortedRecommendations
   const displayedRecommendationPromoterNodeIds = useMemo(
     () => displayedRecommendations.map((recommendation) => `promoter-${recommendation.id}`),
     [displayedRecommendations],
   )
-  const hasMoreRecommendations = visiblePromoterCount < sortedRecommendations.length
+  const totalRecommendationCount = recommendationsData?.recommendationsTotal ?? displayedRecommendations.length
+  const hasMoreRecommendations = Boolean(
+    recommendationsData?.recommendationsHasMore
+    && loadedRecommendationJobId
+    && !isRecommendationsLoading
+    && !isRecommendationsRefreshing
+  )
 
   useEffect(() => {
     if (expandedRecommendationId === null) return
@@ -797,9 +851,47 @@ export function PromoterRecommendationsPanel({
     }
   }, [expandedRecommendationId, sortedRecommendations])
 
-  const handleShowMorePromoters = useCallback(() => {
-    setVisiblePromoterCount((current) => Math.min(current + PROMOTER_PAGE_SIZE, sortedRecommendations.length))
-  }, [sortedRecommendations.length])
+  const handleShowMorePromoters = useCallback(async () => {
+    if (!recommendationsData?.recommendationsHasMore) return
+    if (!loadedRecommendationJobId) return
+    if (isLoadingMorePromoters || isRecommendationsLoading || isRecommendationsRefreshing) return
+
+    const requestId = recommendationRequestIdRef.current + 1
+    recommendationRequestIdRef.current = requestId
+    setIsLoadingMorePromoters(true)
+    setRecommendationsError(null)
+
+    try {
+      const job = await api.get<RecommendationJobResponse>(
+        `/recommendations/jobs/${loadedRecommendationJobId}?recommendations_offset=${sortedRecommendations.length}&recommendations_limit=${PROMOTER_RECOMMENDATION_PAGE_SIZE}`,
+      )
+      if (recommendationRequestIdRef.current !== requestId) return
+      if (job.status !== 'completed' || !job.result) {
+        throw new Error('Recommendation job did not return more results')
+      }
+      const nextResult = job.result
+
+      setRecommendationsData((current) => {
+        if (current) return mergeRecommendationPages(current, nextResult)
+        return nextResult
+      })
+      setRecommendationsError(null)
+    } catch (error) {
+      if (recommendationRequestIdRef.current !== requestId) return
+      setRecommendationsError(error instanceof Error ? error.message : 'Failed to load more promoters')
+    } finally {
+      if (recommendationRequestIdRef.current === requestId) {
+        setIsLoadingMorePromoters(false)
+      }
+    }
+  }, [
+    isLoadingMorePromoters,
+    isRecommendationsLoading,
+    isRecommendationsRefreshing,
+    loadedRecommendationJobId,
+    recommendationsData?.recommendationsHasMore,
+    sortedRecommendations.length,
+  ])
 
   return (
     <section
@@ -929,7 +1021,11 @@ export function PromoterRecommendationsPanel({
                   </h3>
                 </div>
                 <p className="m-0 shrink-0 text-sm font-medium text-[var(--text-muted)]">
-                  {formatMatchCount(sortedRecommendations.length)}
+                  {formatRecommendationMatchCount(
+                    displayedRecommendations.length,
+                    totalRecommendationCount,
+                    Boolean(recommendationsData?.recommendationsHasMore),
+                  )}
                 </p>
               </div>
               <p className="m-0 text-sm leading-6 text-[var(--text-muted)]">
@@ -1120,8 +1216,13 @@ export function PromoterRecommendationsPanel({
 
             {hasMoreRecommendations && (
               <div className="flex justify-center pt-1">
-                <Button type="button" variant="outline" onClick={handleShowMorePromoters}>
-                  Show more promoters
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => void handleShowMorePromoters()}
+                  disabled={isLoadingMorePromoters}
+                >
+                  {isLoadingMorePromoters ? 'Loading more promoters…' : 'Show more promoters'}
                 </Button>
               </div>
             )}

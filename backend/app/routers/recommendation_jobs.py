@@ -21,8 +21,55 @@ from app.schemas import (
 router = APIRouter()
 PROMOTER_REC_API_LIMIT_MAX = promoter_recommendation_api_limit_max_from_config()
 
+# Slice the stored recommendation payload for client-side pagination.
+def _page_promoter_recommendation_response(
+    response: PromoterRecommendationResponse,
+    *,
+    recommendations_offset: int = 0,
+    recommendations_limit: int | None = None,
+) -> PromoterRecommendationResponse:
+    """Return a page view over the stored recommendation payload."""
+    total_recommendations = len(response.recommendations)
+    page_offset = max(recommendations_offset, 0)
+
+    if recommendations_limit is None:
+        page_limit = total_recommendations
+        page_recommendations = list(response.recommendations)
+        page_offset = 0
+    else:
+        page_limit = recommendations_limit
+        page_offset = min(page_offset, total_recommendations)
+        page_end = min(page_offset + page_limit, total_recommendations)
+        page_recommendations = list(response.recommendations[page_offset:page_end])
+
+    page_recommendation_ids = {recommendation.id for recommendation in page_recommendations}
+
+    def _filter_page(items: list) -> list:
+        return [item for item in items if item.id in page_recommendation_ids]
+
+    return response.model_copy(
+        update={
+            "recommendations": page_recommendations,
+            "recommendationsTotal": total_recommendations,
+            "recommendationsOffset": page_offset,
+            "recommendationsLimit": page_limit,
+            "recommendationsHasMore": page_offset + len(page_recommendations) < total_recommendations,
+            "largeRecommendations": _filter_page(response.largeRecommendations),
+            "mediumRecommendations": _filter_page(response.mediumRecommendations),
+            "smallRecommendations": _filter_page(response.smallRecommendations),
+            "warmRecommendations": _filter_page(response.warmRecommendations),
+            "discoveryRecommendations": _filter_page(response.discoveryRecommendations),
+        },
+    )
+
+
 # Convert a database job row into the public API contract.
-def _job_response(row: dict[str, object]) -> RecommendationJobResponse:
+def _job_response(
+    row: dict[str, object],
+    *,
+    recommendations_offset: int = 0,
+    recommendations_limit: int | None = None,
+) -> RecommendationJobResponse:
     """Convert a database job row into the public user-scoped API contract."""
     result_json = row["result_json"]
     return RecommendationJobResponse(
@@ -32,7 +79,11 @@ def _job_response(row: dict[str, object]) -> RecommendationJobResponse:
         params=RecommendationJobParams.model_validate(row["params_json"]),
         status=str(row["status"]),
         result=(
-            PromoterRecommendationResponse.model_validate(result_json)
+            _page_promoter_recommendation_response(
+                PromoterRecommendationResponse.model_validate(result_json),
+                recommendations_offset=recommendations_offset,
+                recommendations_limit=recommendations_limit,
+            )
             if result_json is not None
             else None
         ),
@@ -86,6 +137,8 @@ def create_artist_promoter_job(
 )
 def read_recommendation_job(
     job_id: UUID,
+    recommendations_offset: Annotated[int, Query(ge=0)] = 0,
+    recommendations_limit: Annotated[int | None, Query(ge=1, le=PROMOTER_REC_API_LIMIT_MAX)] = None,
     current_user: dict = Depends(get_current_user),
 ) -> RecommendationJobResponse:
     """Return current job state and the result only to the owning user."""
@@ -97,7 +150,11 @@ def read_recommendation_job(
         )
     if row is None:
         raise HTTPException(status_code=404, detail="Recommendation job not found")
-    return _job_response(row)
+    return _job_response(
+        row,
+        recommendations_offset=recommendations_offset,
+        recommendations_limit=recommendations_limit,
+    )
 
 
 # Hold the browser's user-scoped recommendation status channel open.
