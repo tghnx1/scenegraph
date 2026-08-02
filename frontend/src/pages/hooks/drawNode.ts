@@ -9,7 +9,7 @@ function getNodeColor(type: string, isSelected: boolean) {
 }
 
 export function getNodeDisplaySize(baseSize: number, degree: number) {
-  return degree <= 0 ? baseSize / 2 : baseSize
+  return degree <= 1 ? baseSize / 2 : baseSize
 }
 
 // Draw one graph node with optional opacity for focus/dim rendering.
