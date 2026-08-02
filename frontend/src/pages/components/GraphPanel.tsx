@@ -588,11 +588,7 @@ export function ScenegraphMapPanel({
   return (
     <section
       className={cn(
-        'grid h-full min-h-0 min-w-0 gap-3',
-        title && showFilters && 'grid-rows-[auto_auto_minmax(0,1fr)]',
-        title && !showFilters && 'grid-rows-[auto_minmax(0,1fr)]',
-        !title && showFilters && 'grid-rows-[auto_minmax(0,1fr)]',
-        !title && !showFilters && 'grid-rows-[minmax(0,1fr)]',
+        'flex h-full min-h-0 min-w-0 flex-col gap-3',
       )}
       aria-label="Scenegraph database"
     >
@@ -602,7 +598,7 @@ export function ScenegraphMapPanel({
         </div>
       )}
       {showFilters && (
-        <article className="min-w-0 rounded-[18px] border border-[color-mix(in_srgb,var(--text)_10%,transparent)] bg-[color-mix(in_srgb,var(--background)_38%,transparent)] p-4 backdrop-blur-sm">
+        <article className="min-w-0 shrink-0 rounded-[18px] border border-[color-mix(in_srgb,var(--text)_10%,transparent)] bg-[color-mix(in_srgb,var(--background)_38%,transparent)] p-4 backdrop-blur-sm">
           <GraphFilters
             filters={graphFilters}
             genres={genres ?? []}
@@ -614,7 +610,7 @@ export function ScenegraphMapPanel({
           />
         </article>
       )}
-      <div ref={containerRef} className="relative z-[1] h-full min-h-[320px] w-full overflow-hidden rounded-3xl border border-[color-mix(in_srgb,var(--text)_9%,transparent)] bg-transparent [contain:layout_size_paint]">
+      <div ref={containerRef} className="relative z-[1] min-h-[320px] flex-1 w-full overflow-hidden rounded-3xl border border-[color-mix(in_srgb,var(--text)_9%,transparent)] bg-transparent [contain:layout_size_paint]">
         {isLoading && !data && <div className="absolute left-4 top-4 z-[2] rounded-xl border border-[var(--control-border)] bg-[var(--surface-overlay)] px-3 py-2.5 text-sm text-[var(--text-muted)]">Loading graph...</div>}
         {error && (
           <div className="absolute left-4 top-4 z-[2] rounded-xl border border-[var(--control-border)] bg-[var(--surface-overlay)] px-3 py-2.5 text-sm text-[var(--event)]">
