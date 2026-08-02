@@ -405,6 +405,7 @@ def list_users(connection: Connection) -> list[dict]:
                 users.role,
                 users.status,
                 users.created_at,
+                users.artist_id,
                 artists.name AS artist_name,
                 artists.content_url AS artist_content_url,
                 artists.ra_artist_id AS artist_ra_artist_id,
@@ -425,6 +426,67 @@ def list_users(connection: Connection) -> list[dict]:
             """
         )
         return cursor.fetchall()
+
+
+def unbind_user_artist(connection: Connection, *, user_id: int, admin: dict) -> dict:
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT
+                id,
+                username,
+                email,
+                role,
+                status,
+                artist_id
+            FROM users
+            WHERE id = %s
+            FOR UPDATE OF users
+            """,
+            (user_id,),
+        )
+        target_user = cursor.fetchone()
+        if target_user is None:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        if target_user["artist_id"] is None:
+            raise HTTPException(status_code=400, detail="User has no artist profile to unbind")
+
+        if target_user["status"] not in {"approved", "deactivated"}:
+            raise HTTPException(status_code=400, detail="Only approved or deactivated users can be unbound")
+
+        cursor.execute(
+            """
+            DELETE FROM artist_claims
+            WHERE user_id = %s
+              AND artist_id = %s
+            """,
+            (user_id, target_user["artist_id"]),
+        )
+
+        cursor.execute(
+            """
+            UPDATE users
+            SET artist_id = NULL
+            WHERE id = %s
+            RETURNING id, username, email, role, status, artist_id
+            """,
+            (user_id,),
+        )
+        updated_user = cursor.fetchone()
+
+    log_activity(
+        connection,
+        admin["id"],
+        admin["username"],
+        "artist unbound from account",
+        target_user["username"],
+        commit=False,
+    )
+    connection.commit()
+    if updated_user is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    return updated_user
 
 
 def export_activity_rows(connection: Connection) -> list[dict]:

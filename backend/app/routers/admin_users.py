@@ -46,6 +46,13 @@ async def activate_user(user_id: int, admin: dict = Depends(require_admin)) -> d
     return {"success": True, "message": "User activated", "user": updated_user}
 
 
+@router.post("/users/{user_id}/unbind-artist")
+async def unbind_artist(user_id: int, admin: dict = Depends(require_admin)) -> dict:
+    with get_connection() as connection:
+        updated_user = admin_users_service.unbind_user_artist(connection, user_id=user_id, admin=admin)
+    return {"success": True, "message": "Artist unbound", "user": updated_user}
+
+
 @router.get("/activity")
 async def list_activity(admin: dict = Depends(require_admin)) -> dict:
     with get_connection() as connection:

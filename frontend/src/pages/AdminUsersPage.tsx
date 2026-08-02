@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { changeUserRole, approveUser, rejectUser, getPendingUsers, getUsers,
-  deactivateUser, activateUser, type PendingUser, type UserItem } from '../api/auth'
+  deactivateUser, activateUser, unbindArtist, type PendingUser, type UserItem } from '../api/auth'
 
 const AUTO_APPROVE_PENDING_USERS_STORAGE_KEY = 'scenegraph.admin.autoApprovePendingUsers'
 
@@ -151,6 +151,20 @@ export function AdminUsersPage({ compact = false, refreshVersion = 0, onActivity
       await onActivityChanged?.()
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Failed to activate user')
+    }
+  }
+
+  const handleUnbindArtist = async (user: UserItem) => {
+    if (!confirm(`Unbind the artist profile from ${user.username}?`)) return
+
+    try {
+      await unbindArtist(user.id)
+      setMessage('')
+      await loadUsers()
+      await loadAllUsers()
+      await onActivityChanged?.()
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Failed to unbind artist')
     }
   }
 
@@ -365,6 +379,21 @@ export function AdminUsersPage({ compact = false, refreshVersion = 0, onActivity
                     {user.role === 'artist' ? 'Change to agent' : 'Change to artist'}
                   </button>
                 )}
+              </div>
+            )}
+            {['approved', 'deactivated'].includes(user.status) && user.artist_id != null && (
+              <div style={{ display: 'flex', gap: 8}}>
+                <button
+                  type="button"
+                  style={{
+                    ...adminButtonStyle,
+                    width: 140,
+                    alignSelf: 'start',
+                  }}
+                  onClick={() => handleUnbindArtist(user)}
+                >
+                  Unbind artist
+                </button>
               </div>
             )}
           </div>

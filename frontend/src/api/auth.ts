@@ -120,6 +120,7 @@ export interface UserItem {
   role: AuthRole
   status: string
   created_at: string
+  artist_id?: number | null
   artist_name?: string | null
   artist_source?: string | null
   artist_instagram_url?: string | null
@@ -138,6 +139,11 @@ export const activateUser = (
   userId: number,
 ): Promise<{ success: boolean; message: string }> =>
   api.post(`/admin/users/${userId}/activate`, undefined)
+
+export const unbindArtist = (
+  userId: number,
+): Promise<{ success: boolean; message: string }> =>
+  api.post(`/admin/users/${userId}/unbind-artist`, undefined)
 
 export const changeUserRole = (
   userId: number,

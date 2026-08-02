@@ -3,14 +3,15 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { AdminUsersPage } from './AdminUsersPage'
 
 const api = vi.hoisted(() => ({
-  changeUserRole: vi.fn(),
-  approveUser: vi.fn(),
-  rejectUser: vi.fn(),
-  getPendingUsers: vi.fn(),
-  getUsers: vi.fn(),
-  deactivateUser: vi.fn(),
-  activateUser: vi.fn(),
-}))
+    changeUserRole: vi.fn(),
+    approveUser: vi.fn(),
+    rejectUser: vi.fn(),
+    getPendingUsers: vi.fn(),
+    getUsers: vi.fn(),
+    deactivateUser: vi.fn(),
+    activateUser: vi.fn(),
+    unbindArtist: vi.fn(),
+  }))
 
 vi.mock('../api/auth', () => api)
 
@@ -72,5 +73,40 @@ describe('AdminUsersPage', () => {
 
     await waitFor(() => expect(api.approveUser).toHaveBeenCalledWith(101))
     await waitFor(() => expect(screen.queryByText('friend-user')).not.toBeInTheDocument())
+  })
+
+  it('renders an unbind artist action for linked users and calls the unbind endpoint', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    api.getPendingUsers.mockResolvedValue({ users: [] })
+    api.getUsers.mockResolvedValue({
+      users: [
+        {
+          id: 202,
+          username: 'linked-user',
+          email: 'linked@example.com',
+          role: 'artist',
+          status: 'approved',
+          created_at: '2026-08-02T10:00:00.000Z',
+          artist_id: 44,
+          artist_name: 'Linked Artist',
+          artist_source: 'resident_advisor',
+          artist_instagram_url: 'https://www.instagram.com/linkedartist/',
+          artist_content_url: '/events/44',
+        },
+      ],
+    })
+    api.unbindArtist.mockResolvedValue({ success: true, message: 'Artist unbound' })
+
+    render(<AdminUsersPage />)
+
+    const unbindButton = await screen.findByRole('button', { name: 'Unbind artist' })
+    expect(unbindButton).toBeInTheDocument()
+
+    await waitFor(() => expect(screen.getByText('linked-user')).toBeInTheDocument())
+    await screen.findByText('Artist: Linked Artist')
+
+    unbindButton.click()
+
+    await waitFor(() => expect(api.unbindArtist).toHaveBeenCalledWith(202))
   })
 })
