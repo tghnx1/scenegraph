@@ -25,6 +25,7 @@ REQUIRED_TABLES: tuple[str, ...] = (
     "recommendation_feedback",
     "artist_manual_connections",
     "recommendation_jobs",
+    "app_settings",
 )
 
 OPTIONAL_TABLES: tuple[str, ...] = ()

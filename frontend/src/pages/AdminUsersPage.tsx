@@ -1,8 +1,18 @@
-import { useEffect, useRef, useState } from 'react'
-import { changeUserRole, approveUser, rejectUser, getPendingUsers, getUsers,
-  deactivateUser, activateUser, unbindArtist, type PendingUser, type UserItem } from '../api/auth'
-
-const AUTO_APPROVE_PENDING_USERS_STORAGE_KEY = 'scenegraph.admin.autoApprovePendingUsers'
+import { useEffect, useRef, useState, type ChangeEvent } from 'react'
+import {
+  changeUserRole,
+  approveUser,
+  rejectUser,
+  getPendingUsers,
+  getUsers,
+  getRegistrationSettings,
+  updateRegistrationSettings,
+  deactivateUser,
+  activateUser,
+  unbindArtist,
+  type PendingUser,
+  type UserItem,
+} from '../api/auth'
 
 interface AdminUsersPageProps {
   compact?: boolean
@@ -14,10 +24,7 @@ export function AdminUsersPage({ compact = false, refreshVersion = 0, onActivity
   const [users, setUsers] = useState<PendingUser[]>([])
   const [message, setMessage] = useState('')
   const [allUsers, setAllUsers] = useState<UserItem[]>([])
-  const [autoApprovePendingUsers, setAutoApprovePendingUsers] = useState(() => {
-    if (typeof window === 'undefined') return false
-    return window.localStorage.getItem(AUTO_APPROVE_PENDING_USERS_STORAGE_KEY) === 'true'
-  })
+  const [autoApprovePendingUsers, setAutoApprovePendingUsers] = useState(false)
   const autoApprovedPendingUserIdsRef = useRef<Set<number>>(new Set())
 
   const toRaUrl = (value: string) =>
@@ -53,15 +60,21 @@ export function AdminUsersPage({ compact = false, refreshVersion = 0, onActivity
     }
   }
 
+  const loadRegistrationSettings = async () => {
+    try {
+      const response = await getRegistrationSettings()
+      setAutoApprovePendingUsers(response.auto_approve_pending_users)
+    } catch (error) {
+      console.error(error)
+      setMessage('Could not load registration settings')
+    }
+  }
+
   useEffect(() => {
     loadUsers()
     loadAllUsers()
+    loadRegistrationSettings()
   }, [refreshVersion])
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return
-    window.localStorage.setItem(AUTO_APPROVE_PENDING_USERS_STORAGE_KEY, String(autoApprovePendingUsers))
-  }, [autoApprovePendingUsers])
 
   useEffect(() => {
     if (!autoApprovePendingUsers) {
@@ -96,6 +109,18 @@ export function AdminUsersPage({ compact = false, refreshVersion = 0, onActivity
     }
   }, [autoApprovePendingUsers, onActivityChanged, users])
 
+  const handleToggleAutoApprove = async (event: ChangeEvent<HTMLInputElement>) => {
+    const enabled = event.target.checked
+    setAutoApprovePendingUsers(enabled)
+
+    try {
+      await updateRegistrationSettings(enabled)
+      setMessage('')
+    } catch (error) {
+      setAutoApprovePendingUsers(!enabled)
+      setMessage(error instanceof Error ? error.message : 'Failed to update registration settings')
+    }
+  }
 
 
   const handleApprove = async (user: PendingUser) => {
@@ -214,7 +239,7 @@ export function AdminUsersPage({ compact = false, refreshVersion = 0, onActivity
           <input
             type="checkbox"
             checked={autoApprovePendingUsers}
-            onChange={(event) => setAutoApprovePendingUsers(event.target.checked)}
+            onChange={handleToggleAutoApprove}
           />
           <span>Auto-approve new registrations</span>
         </label>
@@ -349,7 +374,7 @@ export function AdminUsersPage({ compact = false, refreshVersion = 0, onActivity
             </div>
 
             {['approved', 'deactivated'].includes(user.status) && (
-              <div style={{ display: 'flex', gap: 8}}>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8}}>
                 <button
                   type="button"
                   style={{
@@ -379,21 +404,19 @@ export function AdminUsersPage({ compact = false, refreshVersion = 0, onActivity
                     {user.role === 'artist' ? 'Change to agent' : 'Change to artist'}
                   </button>
                 )}
-              </div>
-            )}
-            {['approved', 'deactivated'].includes(user.status) && user.artist_id != null && (
-              <div style={{ display: 'flex', gap: 8}}>
-                <button
-                  type="button"
-                  style={{
-                    ...adminButtonStyle,
-                    width: 140,
-                    alignSelf: 'start',
-                  }}
-                  onClick={() => handleUnbindArtist(user)}
-                >
-                  Unbind artist
-                </button>
+                {user.artist_id != null && (
+                  <button
+                    type="button"
+                    style={{
+                      ...adminButtonStyle,
+                      width: 140,
+                      alignSelf: 'start',
+                    }}
+                    onClick={() => handleUnbindArtist(user)}
+                  >
+                    Unbind artist
+                  </button>
+                )}
               </div>
             )}
           </div>

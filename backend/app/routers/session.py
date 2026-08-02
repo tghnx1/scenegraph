@@ -13,6 +13,7 @@ from app.auth import (
     validate_password,
     validate_registration_input,
 )
+from app.admin.settings import AUTO_APPROVE_PENDING_USERS_SETTING, get_boolean_setting
 from app.db import get_connection
 from app.schemas import (
     ChangePasswordRequest,
@@ -102,6 +103,10 @@ async def register(register_data: RegisterRequest) -> RegisterResponse:
     with get_connection() as connection:
         try:
             with connection.cursor() as cursor:
+                auto_approve_pending_users = get_boolean_setting(
+                    connection,
+                    AUTO_APPROVE_PENDING_USERS_SETTING,
+                )
                 cursor.execute(
                     """
                     SELECT pg_advisory_xact_lock(hashtext(LOWER(BTRIM(%s))))
@@ -199,19 +204,21 @@ async def register(register_data: RegisterRequest) -> RegisterResponse:
                     )
                     selected_artist = cursor.fetchone()
 
+                created_user_status = "approved" if auto_approve_pending_users else "pending"
                 hashed_password = pwd_context.hash(register_data.password)
                 cursor.execute(
                     """
-                    INSERT INTO users (username, email, password_hash, role, status)
-                    VALUES (%s, %s, %s, %s, %s)
-                    RETURNING id
+                    INSERT INTO users (username, email, password_hash, role, status, artist_id)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                    RETURNING id, status, artist_id
                     """,
                     (
                         register_data.username,
                         register_data.email,
                         hashed_password,
                         "artist",
-                        "pending",
+                        created_user_status,
+                        selected_artist["id"] if auto_approve_pending_users and selected_artist is not None else None,
                     ),
                 )
                 created_user = cursor.fetchone()
@@ -219,14 +226,15 @@ async def register(register_data: RegisterRequest) -> RegisterResponse:
                 if selected_artist is not None:
                     cursor.execute(
                         """
-                        INSERT INTO artist_claims (user_id, artist_id, instagram_url, reason)
-                        VALUES (%s, %s, %s, %s)
+                        INSERT INTO artist_claims (user_id, artist_id, instagram_url, reason, status)
+                        VALUES (%s, %s, %s, %s, %s)
                         """,
                         (
                             created_user["id"],
                             selected_artist["id"],
                             normalized_instagram_url,
                             "Requested during registration",
+                            created_user_status,
                         ),
                     )
 
@@ -256,6 +264,7 @@ async def register(register_data: RegisterRequest) -> RegisterResponse:
         success=True,
         message="Registration successful",
         user_id=created_user["id"],
+        status=created_user["status"],
     )
 
 

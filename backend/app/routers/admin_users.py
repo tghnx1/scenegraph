@@ -3,12 +3,57 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends
 from fastapi.responses import PlainTextResponse
 
+from app.admin.settings import (
+    AUTO_APPROVE_PENDING_USERS_SETTING,
+    get_boolean_setting,
+    set_boolean_setting,
+)
 from app.admin import users as admin_users_service
 from app.auth import require_admin
 from app.db import get_connection
-from app.schemas import ChangeRoleRequest
+from app.auth import log_activity
+from app.schemas import ChangeRoleRequest, RegistrationSettingsResponse, UpdateRegistrationSettingsRequest
 
 router = APIRouter()
+
+
+@router.get("/settings/registration", response_model=RegistrationSettingsResponse)
+async def get_registration_settings(admin: dict = Depends(require_admin)) -> dict:
+    with get_connection() as connection:
+        auto_approve_pending_users = get_boolean_setting(
+            connection,
+            AUTO_APPROVE_PENDING_USERS_SETTING,
+        )
+    return {
+        "success": True,
+        "auto_approve_pending_users": auto_approve_pending_users,
+    }
+
+
+@router.put("/settings/registration", response_model=RegistrationSettingsResponse)
+async def update_registration_settings(
+    settings_data: UpdateRegistrationSettingsRequest,
+    admin: dict = Depends(require_admin),
+) -> dict:
+    with get_connection() as connection:
+        set_boolean_setting(
+            connection,
+            AUTO_APPROVE_PENDING_USERS_SETTING,
+            settings_data.auto_approve_pending_users,
+        )
+        log_activity(
+            connection,
+            admin["id"],
+            admin["username"],
+            "registration auto-approve changed",
+            "enabled" if settings_data.auto_approve_pending_users else "disabled",
+            commit=False,
+        )
+        connection.commit()
+    return {
+        "success": True,
+        "auto_approve_pending_users": settings_data.auto_approve_pending_users,
+    }
 
 
 @router.get("/users/pending")

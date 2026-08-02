@@ -86,6 +86,7 @@ class RegisterResponse(BaseModel):
     success: bool
     message: str
     user_id: int | None = None
+    status: Literal["pending", "approved"] | None = None
 
 
 class ChangePasswordRequest(BaseModel):
@@ -98,6 +99,15 @@ class ChangePasswordRequest(BaseModel):
 class ChangePasswordResponse(BaseModel):
     success: bool
     message: str
+
+
+class RegistrationSettingsResponse(BaseModel):
+    success: bool
+    auto_approve_pending_users: bool
+
+
+class UpdateRegistrationSettingsRequest(BaseModel):
+    auto_approve_pending_users: bool
 
 class ChangeRoleRequest(BaseModel):
     role: Literal["artist", "agent"]

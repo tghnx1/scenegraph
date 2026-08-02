@@ -145,7 +145,11 @@ export function LoginPage({ onLogin }: LoginPageProps) {
           return
         }
 
-        setError('Registration submitted. Your account will be available after manual review.')
+        setError(
+          response.status === 'approved'
+            ? 'Registration approved. You can log in now.'
+            : 'Registration submitted. Your account will be available after manual review.'
+        )
         setIsRegistering(false)
         setPassword('')
         setPasswordConfirm('')

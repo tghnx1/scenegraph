@@ -1,47 +1,30 @@
 import { render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { AdminUsersPage } from './AdminUsersPage'
 
 const api = vi.hoisted(() => ({
-    changeUserRole: vi.fn(),
-    approveUser: vi.fn(),
-    rejectUser: vi.fn(),
-    getPendingUsers: vi.fn(),
-    getUsers: vi.fn(),
-    deactivateUser: vi.fn(),
-    activateUser: vi.fn(),
-    unbindArtist: vi.fn(),
-  }))
+  changeUserRole: vi.fn(),
+  approveUser: vi.fn(),
+  rejectUser: vi.fn(),
+  getPendingUsers: vi.fn(),
+  getUsers: vi.fn(),
+  getRegistrationSettings: vi.fn(),
+  updateRegistrationSettings: vi.fn(),
+  deactivateUser: vi.fn(),
+  activateUser: vi.fn(),
+  unbindArtist: vi.fn(),
+}))
 
 vi.mock('../api/auth', () => api)
-
-function installLocalStorageMock() {
-  const store = new Map<string, string>()
-  Object.defineProperty(window, 'localStorage', {
-    configurable: true,
-    value: {
-      getItem: (key: string) => store.get(key) ?? null,
-      setItem: (key: string, value: string) => {
-        store.set(key, value)
-      },
-      removeItem: (key: string) => {
-        store.delete(key)
-      },
-      clear: () => {
-        store.clear()
-      },
-    },
-  })
-}
 
 describe('AdminUsersPage', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    installLocalStorageMock()
   })
 
   it('renders the auto-approve toggle and approves pending users automatically when enabled', async () => {
-    window.localStorage.setItem('scenegraph.admin.autoApprovePendingUsers', 'true')
+    api.getRegistrationSettings.mockResolvedValue({ success: true, auto_approve_pending_users: true })
 
     api.getPendingUsers
       .mockResolvedValueOnce({
@@ -69,7 +52,7 @@ describe('AdminUsersPage', () => {
 
     render(<AdminUsersPage />)
 
-    expect(screen.getByRole('checkbox', { name: 'Auto-approve new registrations' })).toBeChecked()
+    await waitFor(() => expect(screen.getByRole('checkbox', { name: 'Auto-approve new registrations' })).toBeChecked())
 
     await waitFor(() => expect(api.approveUser).toHaveBeenCalledWith(101))
     await waitFor(() => expect(screen.queryByText('friend-user')).not.toBeInTheDocument())
@@ -77,6 +60,7 @@ describe('AdminUsersPage', () => {
 
   it('renders an unbind artist action for linked users and calls the unbind endpoint', async () => {
     vi.spyOn(window, 'confirm').mockReturnValue(true)
+    api.getRegistrationSettings.mockResolvedValue({ success: true, auto_approve_pending_users: false })
     api.getPendingUsers.mockResolvedValue({ users: [] })
     api.getUsers.mockResolvedValue({
       users: [
@@ -99,13 +83,11 @@ describe('AdminUsersPage', () => {
 
     render(<AdminUsersPage />)
 
-    const unbindButton = await screen.findByRole('button', { name: 'Unbind artist' })
-    expect(unbindButton).toBeInTheDocument()
-
     await waitFor(() => expect(screen.getByText('linked-user')).toBeInTheDocument())
+    const unbindButton = screen.getByRole('button', { name: 'Unbind artist' })
     await screen.findByText('Artist: Linked Artist')
 
-    unbindButton.click()
+    await userEvent.click(unbindButton)
 
     await waitFor(() => expect(api.unbindArtist).toHaveBeenCalledWith(202))
   })

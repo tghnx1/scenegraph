@@ -63,6 +63,7 @@ export interface RegisterResponse {
   success: boolean
   message: string
   user_id?: number
+  status?: 'pending' | 'approved'
 }
 
 export const register = (data: {
@@ -74,6 +75,19 @@ export const register = (data: {
   artist_id?: number | null
   new_artist_name?: string | null
 }): Promise<RegisterResponse> => api.post<RegisterResponse>('/register', data)
+
+export interface RegistrationSettingsResponse {
+  success: boolean
+  auto_approve_pending_users: boolean
+}
+
+export const getRegistrationSettings = (): Promise<RegistrationSettingsResponse> =>
+  api.get('/admin/settings/registration')
+
+export const updateRegistrationSettings = (
+  auto_approve_pending_users: boolean,
+): Promise<RegistrationSettingsResponse> =>
+  api.put('/admin/settings/registration', { auto_approve_pending_users })
 
 export interface ActivityLogItem {
   id: number
