@@ -481,7 +481,7 @@ describe('PromoterRecommendationsPanel', () => {
     expect(screen.queryByText('Event 4')).not.toBeInTheDocument()
   })
 
-  it('loads the next promoter page and updates the visible match count', async () => {
+  it('automatically loads the next promoter page when the list is scrolled near the bottom', async () => {
     api.post.mockResolvedValueOnce({ jobId: 'job-1', status: 'queued' })
     api.get
       .mockResolvedValueOnce(makeJobResponse('job-1', pagedRecommendationResults.firstPage))
@@ -500,8 +500,14 @@ describe('PromoterRecommendationsPanel', () => {
     expect(await screen.findByText('20 of 21 matches')).toBeInTheDocument()
     expect(screen.getByText('Promoter 20')).toBeInTheDocument()
     expect(screen.queryByText('Promoter 21')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Show more promoters' })).not.toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Show more promoters' }))
+    const recommendationList = screen.getByRole('region', { name: 'Recommended promoters' })
+    Object.defineProperty(recommendationList, 'clientHeight', { configurable: true, value: 300 })
+    Object.defineProperty(recommendationList, 'scrollHeight', { configurable: true, value: 520 })
+    Object.defineProperty(recommendationList, 'scrollTop', { configurable: true, value: 260, writable: true })
+
+    fireEvent.scroll(recommendationList)
 
     expect(await screen.findByText('Promoter 21')).toBeInTheDocument()
     expect(screen.getByText('21 matches')).toBeInTheDocument()

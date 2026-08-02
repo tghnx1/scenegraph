@@ -37,6 +37,7 @@ const RECOMMENDATION_LOADING_MESSAGES = [
 const PROMOTER_RECOMMENDATION_INITIAL_PAGE_SIZE = 20
 const PROMOTER_RECOMMENDATION_PAGE_SIZE = 20
 const PROMOTER_RECOMMENDATION_JOB_LIMIT = 200
+const PROMOTER_RECOMMENDATION_AUTOPAGE_THRESHOLD_PX = 240
 
 type RecommendationGraphMode = 'compact' | 'full'
 
@@ -893,6 +894,45 @@ export function PromoterRecommendationsPanel({
     sortedRecommendations.length,
   ])
 
+  const maybeLoadMorePromoters = useCallback(() => {
+    if (!hasMoreRecommendations) return
+    if (isLoadingMorePromoters || isRecommendationsLoading || isRecommendationsRefreshing) return
+
+    const list = recommendationListRef.current
+    if (!list) return
+
+    const nearBottom = list.scrollHeight > 0
+      && list.clientHeight > 0
+      && list.scrollHeight - list.scrollTop - list.clientHeight <= PROMOTER_RECOMMENDATION_AUTOPAGE_THRESHOLD_PX
+
+    if (!nearBottom) return
+    void handleShowMorePromoters()
+  }, [
+    handleShowMorePromoters,
+    hasMoreRecommendations,
+    isLoadingMorePromoters,
+    isRecommendationsLoading,
+    isRecommendationsRefreshing,
+  ])
+
+  useEffect(() => {
+    if (!hasMoreRecommendations) return
+
+    const list = recommendationListRef.current
+    if (!list) return
+    if (list.scrollHeight === 0 || list.clientHeight === 0) return
+
+    const animationFrame = window.requestAnimationFrame(() => {
+      maybeLoadMorePromoters()
+    })
+
+    return () => window.cancelAnimationFrame(animationFrame)
+  }, [
+    displayedRecommendations.length,
+    hasMoreRecommendations,
+    maybeLoadMorePromoters,
+  ])
+
   return (
     <section
       id="profile-workspace-panel-recommendations"
@@ -1008,6 +1048,7 @@ export function PromoterRecommendationsPanel({
             ref={recommendationListRef}
             className="grid min-h-0 min-w-0 content-start gap-3 overflow-y-auto overflow-x-hidden pr-1"
             aria-label="Recommended promoters"
+            onScroll={maybeLoadMorePromoters}
           >
             <header className="grid gap-2 rounded-2xl border border-[var(--surface-border-soft)] bg-[var(--surface-soft)] px-4 py-3">
               <div className="flex flex-wrap items-start justify-between gap-3">
@@ -1214,17 +1255,10 @@ export function PromoterRecommendationsPanel({
               </article>
             ))}
 
-            {hasMoreRecommendations && (
-              <div className="flex justify-center pt-1">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => void handleShowMorePromoters()}
-                  disabled={isLoadingMorePromoters}
-                >
-                  {isLoadingMorePromoters ? 'Loading more promoters…' : 'Show more promoters'}
-                </Button>
-              </div>
+            {hasMoreRecommendations && isLoadingMorePromoters && (
+              <p className="m-0 py-2 text-center text-sm text-[var(--text-muted)]">
+                Loading more promoters…
+              </p>
             )}
           </section>
 
