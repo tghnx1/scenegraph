@@ -245,10 +245,17 @@ export function BiographyPanel({
         {success && <p className="m-0 rounded-xl border border-[var(--promoter-border)] bg-[var(--promoter-soft)] p-3 text-sm text-[var(--text)]">{success}</p>}
       </section>
 
+      {!isLoading && shouldShowApprovedProfileWorkspace && canEditBiography && (
+        <ManualArtistConnections {...manualConnections} onAdd={manualConnections.onAdd} />
+      )}
+
       {!isLoading && shouldShowApprovedProfileWorkspace && linkedArtists.length > 0 && (
         <section className="grid gap-4 rounded-2xl border border-[var(--surface-border-soft)] bg-[var(--surface-soft)] p-4 md:gap-3 md:p-5" aria-labelledby="biography-linked-artists-heading">
-          <div className="flex items-center justify-between gap-3 border-b border-[var(--surface-border-soft)] pb-2">
-            <h3 id="biography-linked-artists-heading">Linked artists</h3>
+          <div className="grid gap-1 border-b border-[var(--surface-border-soft)] pb-2">
+            <h3 id="biography-linked-artists-heading">Artists you played with</h3>
+            <p className="m-0 text-sm text-[var(--text-muted)]">
+              These artists are used as evidence in your recommendations.
+            </p>
           </div>
           <div className="grid grid-cols-[repeat(auto-fit,minmax(150px,1fr))] gap-2">
             {linkedArtists.map((artist) => (
@@ -265,10 +272,6 @@ export function BiographyPanel({
             ))}
           </div>
         </section>
-      )}
-
-      {!isLoading && shouldShowApprovedProfileWorkspace && canEditBiography && (
-        <ManualArtistConnections {...manualConnections} onAdd={manualConnections.onAdd} />
       )}
 
     </article>

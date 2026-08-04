@@ -1262,7 +1262,7 @@ export function PromoterRecommendationsPanel({
             )}
           </section>
 
-          <section className="grid min-h-[420px] min-w-0 overflow-hidden grid-rows-[auto_minmax(0,1fr)] gap-3" aria-label="Recommendation evidence graph">
+          <section className="grid min-h-[420px] min-w-0 overflow-hidden grid-rows-[auto_minmax(0,1fr)] gap-3 max-[980px]:hidden" aria-label="Recommendation evidence graph">
             <div className={panelHeadingClass}>
               <span className={labelClass}>
                 {recommendationGraphMode === 'compact' ? 'Artist-only path' : 'Full analytics graph'}
@@ -1304,7 +1304,7 @@ export function PromoterRecommendationsPanel({
 
           {selectedRecommendationNode && (
             <RecommendationDetailsInspector
-              className="max-[1399px]:col-span-full"
+              className="max-[1399px]:col-span-full max-[980px]:hidden"
               selectedNode={selectedRecommendationNode}
               selectedEntityDetail={selectedRecommendationEntityDetail}
               isLoading={isSelectedRecommendationEntityDetailLoading}
