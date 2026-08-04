@@ -4,6 +4,7 @@ from psycopg import Connection
 
 
 AUTO_APPROVE_PENDING_USERS_SETTING = "auto_approve_pending_users"
+SHOW_GRAPH_TAB_SETTING = "show_graph_tab"
 
 
 def get_boolean_setting(connection: Connection, setting_key: str, *, default: bool = False) -> bool:

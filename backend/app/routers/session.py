@@ -14,6 +14,7 @@ from app.auth import (
     validate_registration_input,
 )
 from app.admin.settings import AUTO_APPROVE_PENDING_USERS_SETTING, get_boolean_setting
+from app.admin.settings import SHOW_GRAPH_TAB_SETTING
 from app.db import get_connection
 from app.schemas import (
     ChangePasswordRequest,
@@ -22,9 +23,24 @@ from app.schemas import (
     LoginResponse,
     RegisterRequest,
     RegisterResponse,
+    UiSettingsResponse,
 )
 
 router = APIRouter()
+
+
+@router.get("/settings/ui", response_model=UiSettingsResponse)
+async def get_ui_settings() -> dict:
+    with get_connection() as connection:
+        show_graph_tab = get_boolean_setting(
+            connection,
+            SHOW_GRAPH_TAB_SETTING,
+            default=True,
+        )
+    return {
+        "success": True,
+        "show_graph_tab": show_graph_tab,
+    }
 
 
 @router.post("/login", response_model=LoginResponse, response_model_exclude_none=True)

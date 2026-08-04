@@ -109,6 +109,15 @@ class RegistrationSettingsResponse(BaseModel):
 class UpdateRegistrationSettingsRequest(BaseModel):
     auto_approve_pending_users: bool
 
+
+class UiSettingsResponse(BaseModel):
+    success: bool
+    show_graph_tab: bool
+
+
+class UpdateUiSettingsRequest(BaseModel):
+    show_graph_tab: bool
+
 class ChangeRoleRequest(BaseModel):
     role: Literal["artist", "agent"]
 

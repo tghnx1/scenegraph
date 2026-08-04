@@ -7,12 +7,19 @@ from app.admin.settings import (
     AUTO_APPROVE_PENDING_USERS_SETTING,
     get_boolean_setting,
     set_boolean_setting,
+    SHOW_GRAPH_TAB_SETTING,
 )
 from app.admin import users as admin_users_service
 from app.auth import require_admin
 from app.db import get_connection
 from app.auth import log_activity
-from app.schemas import ChangeRoleRequest, RegistrationSettingsResponse, UpdateRegistrationSettingsRequest
+from app.schemas import (
+    ChangeRoleRequest,
+    RegistrationSettingsResponse,
+    UiSettingsResponse,
+    UpdateRegistrationSettingsRequest,
+    UpdateUiSettingsRequest,
+)
 
 router = APIRouter()
 
@@ -53,6 +60,46 @@ async def update_registration_settings(
     return {
         "success": True,
         "auto_approve_pending_users": settings_data.auto_approve_pending_users,
+    }
+
+
+@router.get("/settings/ui", response_model=UiSettingsResponse)
+async def get_ui_settings(admin: dict = Depends(require_admin)) -> dict:
+    with get_connection() as connection:
+        show_graph_tab = get_boolean_setting(
+            connection,
+            SHOW_GRAPH_TAB_SETTING,
+            default=True,
+        )
+    return {
+        "success": True,
+        "show_graph_tab": show_graph_tab,
+    }
+
+
+@router.put("/settings/ui", response_model=UiSettingsResponse)
+async def update_ui_settings(
+    settings_data: UpdateUiSettingsRequest,
+    admin: dict = Depends(require_admin),
+) -> dict:
+    with get_connection() as connection:
+        set_boolean_setting(
+            connection,
+            SHOW_GRAPH_TAB_SETTING,
+            settings_data.show_graph_tab,
+        )
+        log_activity(
+            connection,
+            admin["id"],
+            admin["username"],
+            "graph tab visibility changed",
+            "enabled" if settings_data.show_graph_tab else "disabled",
+            commit=False,
+        )
+        connection.commit()
+    return {
+        "success": True,
+        "show_graph_tab": settings_data.show_graph_tab,
     }
 
 
