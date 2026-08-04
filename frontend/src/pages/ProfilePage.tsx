@@ -19,9 +19,10 @@ type ProfileWorkspaceTab = 'graph' | 'recommendations'
 interface ProfilePageProps {
   recommendationTargetControls?: RecommendationTargetControls
   showBiography?: boolean
+  showGraphTab?: boolean
 }
 
-export function ProfilePage({ recommendationTargetControls, showBiography = true }: ProfilePageProps = {}) {
+export function ProfilePage({ recommendationTargetControls, showBiography = true, showGraphTab = true }: ProfilePageProps = {}) {
   const { detailsPanelProps, searchFormProps, selectedNode } = useGraphSearchDetails()
   const [workspaceSearchParams] = useSearchParams()
   const activeWorkspaceTab: ProfileWorkspaceTab = workspaceSearchParams.get('workspace') === 'graph'
@@ -149,7 +150,7 @@ export function ProfilePage({ recommendationTargetControls, showBiography = true
 
   const manualConnections = useManualArtistConnections(manualConnectionsArtistId, markProfileChanged)
   const isSingleRowWorkspace = !showBiography
-  const isGraphWorkspace = activeWorkspaceTab === 'graph'
+  const isGraphWorkspace = activeWorkspaceTab === 'graph' && showGraphTab
   const recommendationsWorkspaceRef = useRef<HTMLElement | null>(null)
   const previousProfileSetupReadyRef = useRef(false)
   const profileReadiness = useMemo<ArtistProfileReadiness>(() => ({
@@ -245,7 +246,7 @@ export function ProfilePage({ recommendationTargetControls, showBiography = true
             ref={recommendationsWorkspaceRef}
             className="relative grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-3 overflow-hidden rounded-3xl border border-[color-mix(in_srgb,var(--text)_10%,transparent)] bg-[color-mix(in_srgb,var(--background)_42%,transparent)] p-5 shadow-[0_10px_24px_rgba(0,0,0,0.12)] backdrop-blur-sm"
           >
-            {activeWorkspaceTab === 'graph' ? (
+            {showGraphTab && activeWorkspaceTab === 'graph' ? (
               <section className="min-h-0 min-w-0">
                 <ScenegraphMapPanel />
               </section>

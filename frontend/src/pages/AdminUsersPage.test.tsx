@@ -10,7 +10,9 @@ const api = vi.hoisted(() => ({
   getPendingUsers: vi.fn(),
   getUsers: vi.fn(),
   getRegistrationSettings: vi.fn(),
+  getUiSettings: vi.fn(),
   updateRegistrationSettings: vi.fn(),
+  updateUiSettings: vi.fn(),
   deactivateUser: vi.fn(),
   activateUser: vi.fn(),
   unbindArtist: vi.fn(),
@@ -25,6 +27,7 @@ describe('AdminUsersPage', () => {
 
   it('renders the auto-approve toggle and approves pending users automatically when enabled', async () => {
     api.getRegistrationSettings.mockResolvedValue({ success: true, auto_approve_pending_users: true })
+    api.getUiSettings.mockResolvedValue({ success: true, show_graph_tab: true })
 
     api.getPendingUsers
       .mockResolvedValueOnce({
@@ -61,6 +64,7 @@ describe('AdminUsersPage', () => {
   it('renders an unbind artist action for linked users and calls the unbind endpoint', async () => {
     vi.spyOn(window, 'confirm').mockReturnValue(true)
     api.getRegistrationSettings.mockResolvedValue({ success: true, auto_approve_pending_users: false })
+    api.getUiSettings.mockResolvedValue({ success: true, show_graph_tab: true })
     api.getPendingUsers.mockResolvedValue({ users: [] })
     api.getUsers.mockResolvedValue({
       users: [
@@ -90,5 +94,21 @@ describe('AdminUsersPage', () => {
     await userEvent.click(unbindButton)
 
     await waitFor(() => expect(api.unbindArtist).toHaveBeenCalledWith(202))
+  })
+
+  it('renders the graph tab visibility toggle and saves changes', async () => {
+    api.getRegistrationSettings.mockResolvedValue({ success: true, auto_approve_pending_users: false })
+    api.getUiSettings.mockResolvedValue({ success: true, show_graph_tab: false })
+    api.getPendingUsers.mockResolvedValue({ users: [] })
+    api.getUsers.mockResolvedValue({ users: [] })
+    api.updateUiSettings.mockResolvedValue({ success: true, show_graph_tab: true })
+
+    render(<AdminUsersPage />)
+
+    await waitFor(() => expect(screen.getByRole('checkbox', { name: 'Show Graph tab' })).not.toBeChecked())
+
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Show Graph tab' }))
+
+    await waitFor(() => expect(api.updateUiSettings).toHaveBeenCalledWith(true))
   })
 })

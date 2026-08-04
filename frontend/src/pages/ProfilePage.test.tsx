@@ -169,4 +169,30 @@ describe('ProfilePage', () => {
     await waitFor(() => expect(scrollIntoView).toHaveBeenCalled())
   })
 
+  it('hides the graph workspace toggle when graph visibility is disabled', async () => {
+    biographyReadinessValue = {
+      isLoading: false,
+      hasBiography: true,
+    }
+    manualConnectionsValue = {
+      connections: [{ id: 1 }, { id: 2 }, { id: 3 }],
+      connectedArtistIds: new Set<number>([1, 2, 3]),
+      isLoading: false,
+      pendingArtistId: null,
+      error: null,
+      add: vi.fn(),
+      remove: vi.fn(),
+      toggle: vi.fn(),
+    }
+
+    render(
+      <MemoryRouter initialEntries={['/profile?workspace=graph']}>
+        <ProfilePage showBiography showGraphTab={false} />
+      </MemoryRouter>,
+    )
+
+    expect(await screen.findByTestId('recommendations-panel')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Graph' })).not.toBeInTheDocument()
+  })
+
 })

@@ -6,7 +6,9 @@ import {
   getPendingUsers,
   getUsers,
   getRegistrationSettings,
+  getUiSettings,
   updateRegistrationSettings,
+  updateUiSettings,
   deactivateUser,
   activateUser,
   unbindArtist,
@@ -25,6 +27,7 @@ export function AdminUsersPage({ compact = false, refreshVersion = 0, onActivity
   const [message, setMessage] = useState('')
   const [allUsers, setAllUsers] = useState<UserItem[]>([])
   const [autoApprovePendingUsers, setAutoApprovePendingUsers] = useState(false)
+  const [showGraphTab, setShowGraphTab] = useState(true)
   const autoApprovedPendingUserIdsRef = useRef<Set<number>>(new Set())
 
   const toRaUrl = (value: string) =>
@@ -70,10 +73,21 @@ export function AdminUsersPage({ compact = false, refreshVersion = 0, onActivity
     }
   }
 
+  const loadUiSettings = async () => {
+    try {
+      const response = await getUiSettings()
+      setShowGraphTab(response.show_graph_tab)
+    } catch (error) {
+      console.error(error)
+      setMessage('Could not load UI settings')
+    }
+  }
+
   useEffect(() => {
     loadUsers()
     loadAllUsers()
     loadRegistrationSettings()
+    loadUiSettings()
   }, [refreshVersion])
 
   useEffect(() => {
@@ -119,6 +133,19 @@ export function AdminUsersPage({ compact = false, refreshVersion = 0, onActivity
     } catch (error) {
       setAutoApprovePendingUsers(!enabled)
       setMessage(error instanceof Error ? error.message : 'Failed to update registration settings')
+    }
+  }
+
+  const handleToggleGraphTab = async (event: ChangeEvent<HTMLInputElement>) => {
+    const enabled = event.target.checked
+    setShowGraphTab(enabled)
+
+    try {
+      await updateUiSettings(enabled)
+      setMessage('')
+    } catch (error) {
+      setShowGraphTab(!enabled)
+      setMessage(error instanceof Error ? error.message : 'Failed to update UI settings')
     }
   }
 
@@ -235,13 +262,31 @@ export function AdminUsersPage({ compact = false, refreshVersion = 0, onActivity
             border: '1px solid color-mix(in srgb, var(--text) 18%, transparent)',
             background: 'color-mix(in srgb, var(--background) 88%, var(--text) 6%)',
           }}
+          >
+            <input
+              type="checkbox"
+              checked={autoApprovePendingUsers}
+              onChange={handleToggleAutoApprove}
+            />
+          <span>Auto-approve new registrations</span>
+        </label>
+        <label
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            padding: '8px 12px',
+            borderRadius: 10,
+            border: '1px solid color-mix(in srgb, var(--text) 18%, transparent)',
+            background: 'color-mix(in srgb, var(--background) 88%, var(--text) 6%)',
+          }}
         >
           <input
             type="checkbox"
-            checked={autoApprovePendingUsers}
-            onChange={handleToggleAutoApprove}
+            checked={showGraphTab}
+            onChange={handleToggleGraphTab}
           />
-          <span>Auto-approve new registrations</span>
+          <span>Show Graph tab</span>
         </label>
         {users.map((user) => (
               <div

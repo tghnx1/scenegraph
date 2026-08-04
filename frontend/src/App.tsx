@@ -1,11 +1,11 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Routes, Route, Navigate, NavLink, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { GraphPage } from './pages/GraphPage'
 import { DashboardPage } from './pages/DashboardPage'
 import { ProfilePage } from './pages/ProfilePage'
 import { AgencyPage } from './pages/AgencyPage'
 import { LoginPage } from './pages/LoginPage'
-import { logout, type AuthRole } from './api/auth'
+import { getUiSettings, logout, type AuthRole } from './api/auth'
 import { ChangePasswordPage } from './pages/ChangePasswordPage'
 import { AboutPage } from './pages/AboutPage'
 import { applyTheme, getStoredTheme, type ThemeName } from './shared/styles/colors'
@@ -45,10 +45,11 @@ export default function App() {
       : null
   })
   const [themeName, setThemeName] = useState<ThemeName>(() => getStoredTheme())
+  const [showGraphTab, setShowGraphTab] = useState(true)
   const isAuthenticated = Boolean(authRole)
   const canOpenDashboard = authRole === 'admin'
   const graphPage = authRole === 'artist'
-    ? <ProfilePage />
+    ? <ProfilePage showGraphTab={showGraphTab} />
     : authRole === 'agent' || authRole === 'admin'
       ? <AgencyPage />
       : <GraphPage />
@@ -58,12 +59,42 @@ export default function App() {
   const isWorkspacePage =
     location.pathname === '/profile'
     || (location.pathname === '/graph' && authRole === 'artist')
+  const defaultLandingPath = isAuthenticated
+    ? (authRole === 'admin' ? '/dashboard' : '/profile')
+    : '/login'
   const profileWorkspace = useMemo(() => {
     const value = searchParams.get('workspace')
+    if (!showGraphTab && value === 'graph') {
+      return 'recommendations'
+    }
     return value === 'graph' ? 'graph' : 'recommendations'
-  }, [searchParams])
+  }, [searchParams, showGraphTab])
+
+  useEffect(() => {
+    let cancelled = false
+
+    const loadUiSettings = async () => {
+      try {
+        const response = await getUiSettings()
+        if (!cancelled) {
+          setShowGraphTab(response.show_graph_tab)
+        }
+      } catch {
+        if (!cancelled) {
+          setShowGraphTab(true)
+        }
+      }
+    }
+
+    void loadUiSettings()
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   const openProfileWorkspace = (workspace: 'recommendations' | 'graph') => {
+    if (workspace === 'graph' && !showGraphTab) return
     const nextParams = new URLSearchParams(searchParams)
     nextParams.set('workspace', workspace)
     navigate(`${location.pathname}?${nextParams.toString()}`)
@@ -121,23 +152,27 @@ export default function App() {
               variant={profileWorkspace === 'recommendations' ? 'default' : 'ghost'}
               className={cn('rounded-lg', profileWorkspace === 'recommendations' && 'border-[var(--selection-border)] bg-[var(--selection-soft)]')}
               onClick={() => openProfileWorkspace('recommendations')}
-            >
+              >
               Recommendations
             </Button>
-            <Button
-              type="button"
-              size="sm"
-              variant={profileWorkspace === 'graph' ? 'default' : 'ghost'}
-              className={cn('rounded-lg', profileWorkspace === 'graph' && 'border-[var(--selection-border)] bg-[var(--selection-soft)]')}
-              onClick={() => openProfileWorkspace('graph')}
-            >
-              Graph
-            </Button>
+            {showGraphTab && (
+              <Button
+                type="button"
+                size="sm"
+                variant={profileWorkspace === 'graph' ? 'default' : 'ghost'}
+                className={cn('rounded-lg', profileWorkspace === 'graph' && 'border-[var(--selection-border)] bg-[var(--selection-soft)]')}
+                onClick={() => openProfileWorkspace('graph')}
+              >
+                Graph
+              </Button>
+            )}
           </div>
         ) : (
-          <NavLink to="/graph" className={navLinkClass}>
-            Graph
-          </NavLink>
+          showGraphTab ? (
+            <NavLink to="/graph" className={navLinkClass}>
+              Graph
+            </NavLink>
+          ) : null
         )}
         {canOpenDashboard && (
           <NavLink to="/dashboard" className={navLinkClass}>
@@ -166,9 +201,9 @@ export default function App() {
 
       <main className="flex-1 overflow-y-auto overflow-x-hidden">
         <Routes>
-          <Route path="/" element={<Navigate to="/graph" />} />
+          <Route path="/" element={<Navigate to={showGraphTab ? '/graph' : defaultLandingPath} replace />} />
           <Route path="/graph" element={graphPage} />
-          <Route path="/login" element={isAuthenticated ? <Navigate to="/graph" replace /> : <LoginPage onLogin={handleLogin} />} />
+          <Route path="/login" element={isAuthenticated ? <Navigate to={defaultLandingPath} replace /> : <LoginPage onLogin={handleLogin} />} />
           <Route 
             path="/change-password" 
             element={

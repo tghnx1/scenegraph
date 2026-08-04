@@ -89,6 +89,19 @@ export const updateRegistrationSettings = (
 ): Promise<RegistrationSettingsResponse> =>
   api.put('/admin/settings/registration', { auto_approve_pending_users })
 
+export interface UiSettingsResponse {
+  success: boolean
+  show_graph_tab: boolean
+}
+
+export const getUiSettings = (): Promise<UiSettingsResponse> =>
+  api.get('/settings/ui')
+
+export const updateUiSettings = (
+  show_graph_tab: boolean,
+): Promise<UiSettingsResponse> =>
+  api.put('/admin/settings/ui', { show_graph_tab })
+
 export interface ActivityLogItem {
   id: number
   username: string | null
