@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { cn } from '@/shared/lib/cn-utils.ts'
 import { DetailsPanel } from './components/DetailsPanel.tsx'
@@ -11,6 +11,7 @@ import { useManualArtistConnections } from './hooks/useManualArtistConnections.t
 import { BiographyPanel } from './components/BiographyPanel.tsx'
 import { getMe, type AuthRole } from '../api/auth'
 import {
+  isArtistProfileReady,
   type ArtistProfileReadiness,
 } from './profileReadiness'
 
@@ -149,6 +150,8 @@ export function ProfilePage({ recommendationTargetControls, showBiography = true
   const manualConnections = useManualArtistConnections(manualConnectionsArtistId, markProfileChanged)
   const isSingleRowWorkspace = !showBiography
   const isGraphWorkspace = activeWorkspaceTab === 'graph'
+  const recommendationsWorkspaceRef = useRef<HTMLElement | null>(null)
+  const previousProfileSetupReadyRef = useRef(false)
   const profileReadiness = useMemo<ArtistProfileReadiness>(() => ({
     isLoading: biographyReadiness.isLoading || manualConnections.isLoading,
     hasBiography: biographyReadiness.hasBiography,
@@ -160,6 +163,19 @@ export function ProfilePage({ recommendationTargetControls, showBiography = true
     manualConnections.connections.length,
     manualConnections.isLoading,
   ])
+  const profileSetupReady = isArtistProfileReady(profileReadiness)
+
+  useEffect(() => {
+    if (!isArtistUser) return
+    if (activeWorkspaceTab !== 'recommendations') return
+
+    const wasReady = previousProfileSetupReadyRef.current
+    previousProfileSetupReadyRef.current = profileSetupReady
+
+    if (wasReady || !profileSetupReady) return
+
+    recommendationsWorkspaceRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }, [activeWorkspaceTab, isArtistUser, profileSetupReady])
 
   const navigateToProfileSection = useCallback((section: 'biography' | 'manual_artists') => {
     const targetId = section === 'biography'
@@ -225,7 +241,10 @@ export function ProfilePage({ recommendationTargetControls, showBiography = true
         )}
 
         <section className={cn('relative z-0 grid min-h-0 min-w-0', !isGraphWorkspace && 'col-span-full')} aria-label={isGraphWorkspace ? 'Profile graph workspace' : 'Promoter recommendations workspace'}>
-          <article className="relative grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-3 overflow-hidden rounded-3xl border border-[color-mix(in_srgb,var(--text)_10%,transparent)] bg-[color-mix(in_srgb,var(--background)_42%,transparent)] p-5 shadow-[0_10px_24px_rgba(0,0,0,0.12)] backdrop-blur-sm">
+          <article
+            ref={recommendationsWorkspaceRef}
+            className="relative grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-3 overflow-hidden rounded-3xl border border-[color-mix(in_srgb,var(--text)_10%,transparent)] bg-[color-mix(in_srgb,var(--background)_42%,transparent)] p-5 shadow-[0_10px_24px_rgba(0,0,0,0.12)] backdrop-blur-sm"
+          >
             {activeWorkspaceTab === 'graph' ? (
               <section className="min-h-0 min-w-0">
                 <ScenegraphMapPanel />

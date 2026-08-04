@@ -1,9 +1,24 @@
-import type { FormEvent } from 'react'
+import { useEffect, type FormEvent } from 'react'
 import { MemoryRouter } from 'react-router-dom'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ProfilePage } from './ProfilePage'
+
+let biographyReadinessValue: { isLoading: boolean; hasBiography: boolean | null } = {
+  isLoading: false,
+  hasBiography: false,
+}
+let manualConnectionsValue = {
+  connections: [] as Array<{ id: number }>,
+  connectedArtistIds: new Set<number>(),
+  isLoading: false,
+  pendingArtistId: null as number | null,
+  error: null as string | null,
+  add: vi.fn(),
+  remove: vi.fn(),
+  toggle: vi.fn(),
+}
 
 const graphPanelMock = vi.hoisted(() => vi.fn(() => <div data-testid="graph-panel" />))
 const recommendationPanelMock = vi.hoisted(() => vi.fn(() => <div data-testid="recommendations-panel" />))
@@ -12,17 +27,14 @@ const detailsPanelMock = vi.hoisted(() => vi.fn(({ selectedNode, selectedEntityD
     <span>{selectedEntityDetail?.name ?? selectedNode?.name ?? 'empty'}</span>
   </div>
 )))
-const biographyPanelMock = vi.hoisted(() => vi.fn(() => <div data-testid="biography-panel" />))
-const manualConnectionsMock = vi.hoisted(() => vi.fn(() => ({
-  connections: [],
-  connectedArtistIds: new Set<number>(),
-  isLoading: false,
-  pendingArtistId: null,
-  error: null,
-  add: vi.fn(),
-  remove: vi.fn(),
-  toggle: vi.fn(),
-})))
+const biographyPanelMock = vi.hoisted(() => vi.fn(({ onBiographyStatusChange }: { onBiographyStatusChange?: (status: { isLoading: boolean; hasBiography: boolean | null }) => void }) => {
+  useEffect(() => {
+    onBiographyStatusChange?.(biographyReadinessValue)
+  }, [onBiographyStatusChange])
+
+  return <div data-testid="biography-panel" />
+}))
+const manualConnectionsMock = vi.hoisted(() => vi.fn(() => manualConnectionsValue))
 
 vi.mock('./hooks/useManualArtistConnections.ts', () => ({
   useManualArtistConnections: manualConnectionsMock,
@@ -76,6 +88,20 @@ vi.mock('../api/search', () => ({
 describe('ProfilePage', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    biographyReadinessValue = {
+      isLoading: false,
+      hasBiography: false,
+    }
+    manualConnectionsValue = {
+      connections: [],
+      connectedArtistIds: new Set<number>(),
+      isLoading: false,
+      pendingArtistId: null,
+      error: null,
+      add: vi.fn(),
+      remove: vi.fn(),
+      toggle: vi.fn(),
+    }
     vi.stubGlobal('localStorage', {
       getItem: vi.fn(() => null),
       setItem: vi.fn(),
@@ -110,6 +136,37 @@ describe('ProfilePage', () => {
     expect(screen.queryByTestId('details-panel')).not.toBeInTheDocument()
     expect(screen.getByLabelText('Promoter recommendations workspace')).toHaveClass('col-span-full')
     expect(screen.getByText('Improve your matches')).toBeInTheDocument()
+  })
+
+  it('scrolls to recommendations when the profile becomes ready', async () => {
+    const scrollIntoView = vi.fn()
+    HTMLElement.prototype.scrollIntoView = scrollIntoView
+    vi.spyOn(window, 'requestAnimationFrame').mockImplementation((callback) => {
+      callback(0)
+      return 0
+    })
+    biographyReadinessValue = {
+      isLoading: false,
+      hasBiography: true,
+    }
+    manualConnectionsValue = {
+      connections: [{ id: 1 }, { id: 2 }, { id: 3 }],
+      connectedArtistIds: new Set<number>([1, 2, 3]),
+      isLoading: false,
+      pendingArtistId: null,
+      error: null,
+      add: vi.fn(),
+      remove: vi.fn(),
+      toggle: vi.fn(),
+    }
+
+    render(
+      <MemoryRouter initialEntries={['/profile?workspace=recommendations']}>
+        <ProfilePage showBiography />
+      </MemoryRouter>,
+    )
+
+    await waitFor(() => expect(scrollIntoView).toHaveBeenCalled())
   })
 
 })
