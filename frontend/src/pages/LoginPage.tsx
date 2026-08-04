@@ -62,6 +62,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
   const navigate = useNavigate()
   const [username, setUsername] = useState(localStorage.getItem('last_username') ?? '')   // for keeping the username in the login mask
   const [password, setPassword] = useState('')
+  const [feedbackTone, setFeedbackTone] = useState<'error' | 'success'>('error')
   const [error, setError] = useState(() => {
     const message = sessionStorage.getItem('auth_message') ?? ''
     sessionStorage.removeItem('auth_message')
@@ -96,6 +97,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
   useEffect(() => {
     const showLoginForm = () => {
       setError('')
+      setFeedbackTone('error')
       setIsRegistering(false)
     }
     window.addEventListener('show-login-form', showLoginForm)
@@ -107,6 +109,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     setError('')
+    setFeedbackTone('error')
     const cleanUsername = username.trim()
     const cleanEmail = email.trim()
 
@@ -150,6 +153,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
             ? 'Registration approved. You can log in now.'
             : 'Registration submitted. Your account will be available after manual review.'
         )
+        setFeedbackTone('success')
         setIsRegistering(false)
         setPassword('')
         setPasswordConfirm('')
@@ -474,7 +478,17 @@ export function LoginPage({ onLogin }: LoginPageProps) {
               />
             </label>
           )}
-          {error && <p style={{ margin: 0, color: 'var(--danger, #d94848)', fontSize: 14 }}>{error}</p>}
+          {error && (
+            <p
+              style={{
+                margin: 0,
+                color: feedbackTone === 'success' ? 'var(--success, #5abf71)' : 'var(--danger, #d94848)',
+                fontSize: 14,
+              }}
+            >
+              {error}
+            </p>
+          )}
           <button type="submit" style={loginButtonStyle} disabled={isSubmitting}>
             {isSubmitting
               ? isRegistering
