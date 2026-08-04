@@ -20,4 +20,5 @@ export interface ArtistDetail {
   event_count: number
   events: ArtistEventItem[]
   connected_artists: ConnectedArtistItem[]
+  extracted_tags: Record<string, string[]>
 }

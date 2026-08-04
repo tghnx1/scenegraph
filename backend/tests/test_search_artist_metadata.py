@@ -75,6 +75,14 @@ def test_artist_search_includes_claim_disambiguation_metadata():
         assert "biography" in artist["biography_preview"].lower()
         assert artist["latest_event_title"] == "Search Metadata Latest Event"
         assert artist["latest_event_date"] == "2026-07-05"
+
+        artist_detail = client.get(f"/api/artist/{ARTIST_ID}")
+        assert artist_detail.status_code == 200
+        detail = artist_detail.json()
+        assert detail["extracted_tags"]["style"] == ["Techno", "House"]
+        assert detail["genres"] == []
+        assert detail["event_count"] == 1
+        assert detail["events"][0]["title"] == "Search Metadata Latest Event"
     finally:
         cleanup()
 

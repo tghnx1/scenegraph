@@ -3,7 +3,7 @@ import {Link} from 'react-router-dom'
 import {Button} from '@/shared/ui/button'
 import {BIOGRAPHY_MAX_LENGTH, validateBiography} from '@/shared/lib/validation'
 import {fetchArtistBiography, updateArtistBiography} from '../../api/entityDetails'
-import type {ConnectedArtistItem} from '../../types/artist'
+import type {ArtistDetail, ConnectedArtistItem} from '../../types/artist'
 import {ManualArtistConnections, type ManualArtistConnectionsProps} from './ManualArtistConnections'
 
 interface BiographyPanelProps {
@@ -25,6 +25,16 @@ const BIOGRAPHY_HELPER_CHIPS = [
   'A clear description of your sound',
 ] as const
 
+const RECOMMENDATION_TAG_LABELS: Record<string, string> = {
+  style: 'Styles',
+  genre: 'Genres',
+  label: 'Labels',
+  collective: 'Collectives',
+  role: 'Roles',
+  residency: 'Residencies',
+  alias: 'Aliases',
+}
+
 export function BiographyPanel({
   artistId,
   selectedArtistName,
@@ -35,6 +45,7 @@ export function BiographyPanel({
   onProfileChanged,
 }: BiographyPanelProps) {
   const [artistName, setArtistName] = useState('Artist profile')
+  const [artistDetail, setArtistDetail] = useState<ArtistDetail | null>(null)
   const [biography, setBiography] = useState('')
   const [draftBiography, setDraftBiography] = useState('')
   const [linkedArtists, setLinkedArtists] = useState<ConnectedArtistItem[]>([])
@@ -56,6 +67,7 @@ export function BiographyPanel({
     if (artistId === null || !hasApprovedArtistProfile) {
       setIsLoading(false)
       setArtistName(selectedArtistName ?? 'Artist profile')
+      setArtistDetail(null)
       setBiography('')
       setDraftBiography('')
       setLinkedArtists([])
@@ -74,6 +86,7 @@ export function BiographyPanel({
         if (!isCurrent) return
         const nextBiography = artist.bio ?? ''
         setArtistName(artist.name)
+        setArtistDetail(artist)
         setBiography(nextBiography)
         setDraftBiography(nextBiography)
         setLinkedArtists(artist.connected_artists)
@@ -103,7 +116,17 @@ export function BiographyPanel({
   }, [draftBiography])
   const biographyHasContent = biography.trim().length > 0
   const biographyActionLabel = biographyHasContent ? 'Edit biography' : 'Add biography'
-
+  const artistRecommendationSignals = useMemo(() => {
+    const extractedTags = artistDetail?.extracted_tags ?? {}
+    return Object.entries(extractedTags)
+      .map(([tagType, values]) => ({
+        tagType,
+        label: RECOMMENDATION_TAG_LABELS[tagType] ?? `${tagType.slice(0, 1).toUpperCase()}${tagType.slice(1)}`,
+        values: [...new Set(values.map((value) => value.trim()).filter(Boolean))],
+      }))
+      .filter((entry) => entry.values.length > 0)
+      .sort((left, right) => left.label.localeCompare(right.label))
+  }, [artistDetail])
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     if (artistId === null) return
@@ -143,7 +166,7 @@ export function BiographyPanel({
     <article
       id="artist-biography-panel"
       tabIndex={-1}
-      className="scroll-mt-28 grid gap-5 rounded-3xl border border-[color-mix(in_srgb,var(--text)_10%,transparent)] bg-[color-mix(in_srgb,var(--background)_42%,transparent)] p-5 shadow-[0_10px_24px_rgba(0,0,0,0.12)] backdrop-blur-sm md:gap-6 md:p-6"
+      className="scroll-mt-28 grid gap-4 rounded-3xl border border-[color-mix(in_srgb,var(--text)_10%,transparent)] bg-[color-mix(in_srgb,var(--background)_42%,transparent)] p-4 shadow-[0_10px_24px_rgba(0,0,0,0.12)] backdrop-blur-sm md:gap-6 md:p-6"
     >
       <div className="grid gap-1">
         <span className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--accent)]">Artist profile</span>
@@ -151,6 +174,10 @@ export function BiographyPanel({
           {artistName}
         </h2>
       </div>
+
+      {!isLoading && shouldShowApprovedProfileWorkspace && canEditBiography && (
+        <ManualArtistConnections {...manualConnections} onAdd={manualConnections.onAdd} />
+      )}
 
       <section className="grid gap-4 rounded-2xl border border-[var(--surface-border-soft)] bg-[var(--surface-soft)] p-4 md:gap-3 md:p-5">
         <header className="flex flex-wrap items-center justify-between gap-3">
@@ -222,18 +249,97 @@ export function BiographyPanel({
           </form>
         ) : shouldShowApprovedProfileWorkspace ? (
           <>
-            {biography ? (
-              <p className="m-0 whitespace-pre-wrap text-sm leading-6 text-[var(--text)]">
-                {biography}
-              </p>
-            ) : (
-              <div className="grid gap-2 rounded-2xl border border-[var(--surface-border-soft)] bg-[var(--surface-panel)] p-4">
-                <p className="m-0 text-sm text-[var(--text-muted)]">No biography added yet.</p>
-                <p className="m-0 text-sm leading-6 text-[var(--text-muted)]">
-                  Describe your sound, styles, roles, labels, collectives and residencies.
+            <div className="grid gap-2">
+              {biography ? (
+                <p className="m-0 whitespace-pre-wrap text-sm leading-6 text-[var(--text)]">
+                  {biography}
                 </p>
+              ) : (
+                <div className="grid gap-2 rounded-2xl border border-[var(--surface-border-soft)] bg-[var(--surface-panel)] p-4">
+                  <p className="m-0 text-sm text-[var(--text-muted)]">No biography added yet.</p>
+                  <p className="m-0 text-sm leading-6 text-[var(--text-muted)]">
+                    Describe your sound, styles, roles, labels, collectives and residencies.
+                  </p>
+                </div>
+              )}
+            </div>
+
+            <div className="border-t border-[var(--surface-border-soft)] pt-4 md:pt-5" />
+
+            <p className="m-0 text-sm text-[var(--text-muted)]">
+              Extracted tags and linked events that feed into your recommendations:
+            </p>
+
+            {artistRecommendationSignals.length > 0 ? (
+              <div className="grid gap-3">
+                {artistRecommendationSignals.map((group) => (
+                  <div key={group.tagType} className="grid gap-2">
+                    <span className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--accent)]">
+                      {group.label}
+                    </span>
+                    <div className="flex flex-wrap gap-2">
+                      {group.values.map((value) => (
+                        <span
+                          key={`${group.tagType}-${value}`}
+                          className="rounded-full border border-[var(--surface-border-soft)] bg-[var(--surface-panel)] px-3 py-1 text-sm text-[var(--text)]"
+                        >
+                          {value}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                ))}
               </div>
+            ) : (
+              <p className="m-0 text-sm text-[var(--text-muted)]">No extracted tags yet.</p>
             )}
+
+            <div className="grid gap-2">
+              <span className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--accent)]">Events</span>
+              {artistDetail?.events?.length ? (
+                <div className="grid gap-2">
+                  {artistDetail.events.map((event) => (
+                    <div
+                      key={event.id}
+                      className="rounded-xl border border-[var(--surface-border-soft)] bg-[var(--surface-panel)] px-3 py-2 text-sm text-[var(--text)]"
+                    >
+                      <div className="font-semibold">{event.title}</div>
+                      <div className="text-[var(--text-muted)]">
+                        {[event.event_date, event.venue_name].filter(Boolean).join(' · ') || 'Event'}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="m-0 text-sm text-[var(--text-muted)]">No linked events yet.</p>
+              )}
+            </div>
+
+            <div className="grid gap-3">
+              <span className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--accent)]">Artists you played with</span>
+              {linkedArtists.length > 0 ? (
+                <div className="flex flex-wrap gap-2">
+                  {linkedArtists.map((artist) => (
+                    <div
+                      key={artist.id}
+                      className="grid gap-1 rounded-full border border-[var(--surface-border-soft)] bg-[var(--surface-panel)] px-4 py-2 text-sm font-medium text-[var(--text)]"
+                    >
+                      <Link
+                        to={`/graph?selectedType=artist&selectedId=${encodeURIComponent(artist.id)}`}
+                        className="no-underline transition-colors hover:text-[var(--selection-border)]"
+                      >
+                        {artist.name}
+                      </Link>
+                      <span className="text-xs font-normal text-[var(--text-muted)]">
+                        {artist.shared_events} shared event{artist.shared_events === 1 ? '' : 's'}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="m-0 text-sm text-[var(--text-muted)]">No linked artists yet.</p>
+              )}
+            </div>
           </>
         ) : null}
 
@@ -244,36 +350,6 @@ export function BiographyPanel({
         )}
         {success && <p className="m-0 rounded-xl border border-[var(--promoter-border)] bg-[var(--promoter-soft)] p-3 text-sm text-[var(--text)]">{success}</p>}
       </section>
-
-      {!isLoading && shouldShowApprovedProfileWorkspace && canEditBiography && (
-        <ManualArtistConnections {...manualConnections} onAdd={manualConnections.onAdd} />
-      )}
-
-      {!isLoading && shouldShowApprovedProfileWorkspace && linkedArtists.length > 0 && (
-        <section className="grid gap-4 rounded-2xl border border-[var(--surface-border-soft)] bg-[var(--surface-soft)] p-4 md:gap-3 md:p-5" aria-labelledby="biography-linked-artists-heading">
-          <div className="grid gap-1 border-b border-[var(--surface-border-soft)] pb-2">
-            <h3 id="biography-linked-artists-heading">Artists you played with</h3>
-            <p className="m-0 text-sm text-[var(--text-muted)]">
-              These artists are used as evidence in your recommendations.
-            </p>
-          </div>
-          <div className="grid grid-cols-[repeat(auto-fit,minmax(150px,1fr))] gap-2">
-            {linkedArtists.map((artist) => (
-              <Link
-                key={artist.id}
-                to={`/graph?selectedType=artist&selectedId=${encodeURIComponent(artist.id)}`}
-                className="grid gap-1 rounded-xl border border-[var(--surface-border-soft)] bg-[var(--surface-panel)] p-3 text-[var(--text)] no-underline transition-colors hover:border-[var(--selection-border)] hover:bg-[var(--selection-soft)]"
-              >
-                <strong>{artist.name}</strong>
-                <span className="text-sm text-[var(--text-muted)]">
-                  {artist.shared_events} shared event{artist.shared_events === 1 ? '' : 's'}
-                </span>
-              </Link>
-            ))}
-          </div>
-        </section>
-      )}
-
     </article>
   )
 }

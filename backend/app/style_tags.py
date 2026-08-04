@@ -220,6 +220,8 @@ PARENT_STYLE_TAGS: dict[str, tuple[str, ...]] = {
     "funky house": ("funk", "house"),
     "future garage": ("garage",),
     "future house": ("house",),
+    "uk bass": ("bass",),
+    "uk garage": ("garage",),
     "ghetto house": ("house",),
     "hard rock": ("rock",),
     "hard house": ("house",),
@@ -265,11 +267,12 @@ PARENT_STYLE_TAGS: dict[str, tuple[str, ...]] = {
 
 
 def suppress_parent_style_tags(tags: Iterable[str]) -> list[str]:
-    tag_set = set(tags)
+    ordered_tags = [tag for tag in tags if tag]
+    tag_set = set(ordered_tags)
     for specific_tag, parent_tags in PARENT_STYLE_TAGS.items():
         if specific_tag in tag_set:
             tag_set.difference_update(parent_tags)
-    return sorted(tag_set)
+    return [tag for tag in ordered_tags if tag in tag_set]
 
 
 def canonicalize_style_tags(value: Any) -> list[str]:

@@ -1,14 +1,9 @@
-import { useEffect, type FormEvent } from 'react'
+import type { FormEvent } from 'react'
 import { MemoryRouter } from 'react-router-dom'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ProfilePage } from './ProfilePage'
-
-let biographyReadinessValue: { isLoading: boolean; hasBiography: boolean | null } = {
-  isLoading: false,
-  hasBiography: false,
-}
 let manualConnectionsValue = {
   connections: [] as Array<{ id: number }>,
   connectedArtistIds: new Set<number>(),
@@ -27,13 +22,6 @@ const detailsPanelMock = vi.hoisted(() => vi.fn(({ selectedNode, selectedEntityD
     <span>{selectedEntityDetail?.name ?? selectedNode?.name ?? 'empty'}</span>
   </div>
 )))
-const biographyPanelMock = vi.hoisted(() => vi.fn(({ onBiographyStatusChange }: { onBiographyStatusChange?: (status: { isLoading: boolean; hasBiography: boolean | null }) => void }) => {
-  useEffect(() => {
-    onBiographyStatusChange?.(biographyReadinessValue)
-  }, [onBiographyStatusChange])
-
-  return <div data-testid="biography-panel" />
-}))
 const manualConnectionsMock = vi.hoisted(() => vi.fn(() => manualConnectionsValue))
 
 vi.mock('./hooks/useManualArtistConnections.ts', () => ({
@@ -64,7 +52,6 @@ vi.mock('./components/GraphPanel.tsx', () => ({ ScenegraphMapPanel: graphPanelMo
 vi.mock('./components/RecommendationPanel.tsx', () => ({
   PromoterRecommendationsPanel: recommendationPanelMock,
 }))
-vi.mock('./components/BiographyPanel.tsx', () => ({ BiographyPanel: biographyPanelMock }))
 vi.mock('../api/auth', () => ({
   getMe: vi.fn(async () => ({
     role: 'artist',
@@ -88,10 +75,6 @@ vi.mock('../api/search', () => ({
 describe('ProfilePage', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    biographyReadinessValue = {
-      isLoading: false,
-      hasBiography: false,
-    }
     manualConnectionsValue = {
       connections: [],
       connectedArtistIds: new Set<number>(),
@@ -115,7 +98,7 @@ describe('ProfilePage', () => {
   it('shows the graph workspace when the workspace query selects graph', () => {
     render(
       <MemoryRouter initialEntries={['/profile?workspace=graph&q=holy&selectedType=artist&selectedId=61']}>
-        <ProfilePage showBiography={false} />
+        <ProfilePage />
       </MemoryRouter>,
     )
 
@@ -127,7 +110,7 @@ describe('ProfilePage', () => {
   it('shows the recommendations workspace by default and keeps the search state out of the graph panel', async () => {
     render(
       <MemoryRouter initialEntries={['/profile?q=holy']}>
-        <ProfilePage showBiography={false} />
+        <ProfilePage />
       </MemoryRouter>,
     )
 
@@ -137,42 +120,7 @@ describe('ProfilePage', () => {
     expect(screen.getByLabelText('Promoter recommendations workspace')).toHaveClass('col-span-full')
   })
 
-  it('scrolls to recommendations when the profile becomes ready', async () => {
-    const scrollIntoView = vi.fn()
-    HTMLElement.prototype.scrollIntoView = scrollIntoView
-    vi.spyOn(window, 'requestAnimationFrame').mockImplementation((callback) => {
-      callback(0)
-      return 0
-    })
-    biographyReadinessValue = {
-      isLoading: false,
-      hasBiography: true,
-    }
-    manualConnectionsValue = {
-      connections: [{ id: 1 }, { id: 2 }, { id: 3 }],
-      connectedArtistIds: new Set<number>([1, 2, 3]),
-      isLoading: false,
-      pendingArtistId: null,
-      error: null,
-      add: vi.fn(),
-      remove: vi.fn(),
-      toggle: vi.fn(),
-    }
-
-    render(
-      <MemoryRouter initialEntries={['/profile?workspace=recommendations']}>
-        <ProfilePage showBiography />
-      </MemoryRouter>,
-    )
-
-    await waitFor(() => expect(scrollIntoView).toHaveBeenCalled())
-  })
-
   it('hides the graph workspace toggle when graph visibility is disabled', async () => {
-    biographyReadinessValue = {
-      isLoading: false,
-      hasBiography: true,
-    }
     manualConnectionsValue = {
       connections: [{ id: 1 }, { id: 2 }, { id: 3 }],
       connectedArtistIds: new Set<number>([1, 2, 3]),
@@ -186,7 +134,7 @@ describe('ProfilePage', () => {
 
     render(
       <MemoryRouter initialEntries={['/profile?workspace=graph']}>
-        <ProfilePage showBiography showGraphTab={false} />
+        <ProfilePage showGraphTab={false} />
       </MemoryRouter>,
     )
 

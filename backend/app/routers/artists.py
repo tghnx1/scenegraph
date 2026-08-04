@@ -2,8 +2,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from typing import List, Optional
 from app.db import get_connection
-from app.style_tags import canonicalize_style_tags, extract_style_tags
 from app.auth import get_current_user_id
+from app.style_tags import canonicalize_style_tags, suppress_parent_style_tags
 from app.text_profiles import normalize_biography_text
 from app.recommendations.jobs import create_artist_bio_refresh_job
 
@@ -32,6 +32,7 @@ class ArtistResponse(BaseModel):
     event_count: int
     events: List[EventSummary]
     connected_artists: List[ConnectedArtist]
+    extracted_tags: dict[str, list[str]]
 
 
 class ArtistBiographyUpdate(BaseModel):
@@ -52,17 +53,6 @@ SELECT
     a.biography
 FROM artists a
 WHERE a.id = %s;
-"""
-
-ARTIST_STYLE_TAGS_SQL = """
-SELECT
-    extracted_genre,
-    MAX(confidence) AS confidence
-FROM artist_extracted_genres
-WHERE artist_id = %s
-  AND confidence >= 0.6
-GROUP BY extracted_genre
-ORDER BY confidence DESC, extracted_genre ASC;
 """
 
 ARTIST_EVENTS_SQL = """
@@ -90,6 +80,16 @@ WHERE ea1.artist_id = %s
 GROUP BY a.id, a.name
 ORDER BY shared_events DESC
 LIMIT 10;
+"""
+
+ARTIST_EXTRACTED_TAGS_SQL = """
+SELECT
+    tag_type,
+    tag_value
+FROM artist_extracted_tags
+WHERE artist_id = %s
+  AND tag_type = ANY(%s)
+ORDER BY tag_type ASC, confidence DESC, tag_value ASC;
 """
 
 STYLE_LABEL_OVERRIDES = {
@@ -126,7 +126,6 @@ def present_style_label(value: str) -> str:
         return token_lower.capitalize()
 
     return " ".join(format_token(token) for token in lowered.split(" "))
-
 
 def _update_artist_biography_row(
     db,
@@ -180,19 +179,6 @@ def get_artist(
             raise HTTPException(status_code=404, detail="Use the search engine above for Artist profiles. Double click an Artist icon on the upper-right graph")
 
         biography = artist.get("biography_normalized") or artist.get("biography") or ""
-        profile_style_tags: list[str] = []
-        with db.cursor() as cur:
-            cur.execute("SELECT to_regclass('public.artist_extracted_genres') AS table_name")
-            has_artist_extracted_genres = cur.fetchone()["table_name"] is not None
-            if has_artist_extracted_genres:
-                cur.execute(ARTIST_STYLE_TAGS_SQL, (id,))
-                profile_style_tags = sorted(
-                    {
-                        canonical
-                        for row in cur.fetchall()
-                        for canonical in canonicalize_style_tags(row["extracted_genre"])
-                    }
-                )
 
         with db.cursor() as cur:
             cur.execute(ARTIST_EVENTS_SQL, (id,))
@@ -202,16 +188,39 @@ def get_artist(
             cur.execute(CONNECTED_ARTISTS_SQL, (id,))
             connected_rows = cur.fetchall()
 
-    if not profile_style_tags:
-        profile_style_tags = extract_style_tags(biography)
+        with db.cursor() as cur:
+            cur.execute("SELECT to_regclass('public.artist_extracted_tags') AS table_name")
+            has_artist_extracted_tags = cur.fetchone()["table_name"] is not None
+            extracted_tags: dict[str, list[str]] = {}
+            if has_artist_extracted_tags:
+                cur.execute(
+                    ARTIST_EXTRACTED_TAGS_SQL,
+                    (id, ["style", "label", "collective", "role", "residency", "alias"]),
+                )
+                seen_tag_values: dict[str, set[str]] = {}
+                style_tags: list[str] = []
+                for row in cur.fetchall():
+                    tag_type = row["tag_type"]
+                    tag_value = str(row["tag_value"]).strip()
+                    if not tag_value:
+                        continue
+                    if tag_type == "style":
+                        style_tags.extend(canonicalize_style_tags(tag_value))
+                        continue
+                    values = extracted_tags.setdefault(tag_type, [])
+                    seen_values = seen_tag_values.setdefault(tag_type, set())
+                    normalized_value = tag_value.casefold()
+                    if normalized_value not in seen_values:
+                        values.append(tag_value)
+                        seen_values.add(normalized_value)
 
-    genres = sorted(
-        {
-            present_style_label(tag)
-            for tag in profile_style_tags
-            if isinstance(tag, str) and tag.strip()
-        }
-    )
+                if style_tags:
+                    extracted_tags["style"] = [
+                        present_style_label(tag)
+                        for tag in suppress_parent_style_tags(style_tags)
+                    ]
+
+    genres: list[str] = []
 
     events = [
         EventSummary(
@@ -241,6 +250,7 @@ def get_artist(
         event_count=len(events),
         events=events,
         connected_artists=connected_artists,
+        extracted_tags=extracted_tags,
     )
 
 

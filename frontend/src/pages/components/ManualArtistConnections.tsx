@@ -108,14 +108,14 @@ export function ManualArtistConnections({
       className="grid gap-4 rounded-2xl border border-[var(--surface-border-soft)] bg-[var(--surface-soft)] p-4 scroll-mt-28 md:gap-5 md:p-5"
       aria-labelledby="artist-manual-connections-heading"
     >
-      <header className="flex flex-wrap items-start justify-between gap-3 border-b border-[var(--surface-border-soft)] pb-2">
+      <header className="flex flex-wrap items-start justify-between gap-3">
         <div className="grid gap-1">
           <h3
             id="artist-manual-connections-heading"
             tabIndex={-1}
-            className="scroll-mt-28 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-border)] focus-visible:ring-offset-2 focus-visible:ring-offset-transparent"
+            className="scroll-mt-28 text-xs font-semibold uppercase tracking-[0.14em] text-[var(--accent)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-border)] focus-visible:ring-offset-2 focus-visible:ring-offset-transparent"
           >
-            Artists you know
+            Manual connections
           </h3>
           <p className="m-0 text-sm text-[var(--text-muted)]">
             {helperCopy}

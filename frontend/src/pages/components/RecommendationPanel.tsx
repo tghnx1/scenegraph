@@ -900,6 +900,7 @@ export function PromoterRecommendationsPanel({
 
     const list = recommendationListRef.current
     if (!list) return
+    if (list.scrollHeight <= list.clientHeight) return
 
     const nearBottom = list.scrollHeight > 0
       && list.clientHeight > 0
@@ -1005,7 +1006,7 @@ export function PromoterRecommendationsPanel({
 
       {recommendationsData !== null && (
         <div className={cn(
-          'grid min-h-0 min-w-0 gap-3 overflow-hidden',
+          'grid h-full min-h-0 min-w-0 gap-3 overflow-hidden',
           selectedRecommendationNode
             ? 'min-[1400px]:grid-cols-[minmax(240px,0.76fr)_minmax(0,1.24fr)_minmax(320px,0.9fr)] max-[1399px]:grid-cols-[minmax(240px,0.84fr)_minmax(0,1.16fr)] max-[980px]:grid-cols-1'
             : 'grid-cols-[minmax(240px,0.84fr)_minmax(0,1.16fr)] max-[980px]:grid-cols-1',
@@ -1046,7 +1047,7 @@ export function PromoterRecommendationsPanel({
 
           <section
             ref={recommendationListRef}
-            className="grid min-h-0 min-w-0 content-start gap-3 overflow-y-auto overflow-x-hidden pr-1"
+            className="grid h-full min-h-0 min-w-0 content-start gap-3 overflow-y-auto overflow-x-hidden pr-1"
             aria-label="Recommended promoters"
             onScroll={maybeLoadMorePromoters}
           >
@@ -1096,6 +1097,18 @@ export function PromoterRecommendationsPanel({
                   onClick={() => handleToggleRecommendation(recommendation.id)}
                 >
                   <span className="min-w-0 flex-1 overflow-hidden text-sm font-semibold leading-snug [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]">{recommendation.name}</span>
+                  <span
+                    className={cn(
+                      'shrink-0 rounded-full border px-2 py-0.5 text-[0.68rem] font-semibold whitespace-nowrap',
+                      recommendation.promoterSizeSegment === 'small' && 'border-[var(--promoter-border)] bg-[var(--promoter-soft)]',
+                      recommendation.promoterSizeSegment === 'medium' && 'border-[var(--info-border)] bg-[var(--info-soft)]',
+                      recommendation.promoterSizeSegment === 'large' && 'border-[var(--selection-border)] bg-[var(--selection-soft)]',
+                    )}
+                    title={`Score: ${recommendationScore(recommendation).toFixed(2)}`}
+                    aria-label={`Score: ${recommendationScore(recommendation).toFixed(2)}`}
+                  >
+                    Score: {recommendationScore(recommendation).toFixed(2)}
+                  </span>
                   <span
                     className={cn(
                       'shrink-0 rounded-full border px-2 py-0.5 text-[0.68rem] font-semibold whitespace-nowrap',
@@ -1262,7 +1275,7 @@ export function PromoterRecommendationsPanel({
             )}
           </section>
 
-          <section className="grid min-h-[420px] min-w-0 overflow-hidden grid-rows-[auto_minmax(0,1fr)] gap-3 max-[980px]:hidden" aria-label="Recommendation evidence graph">
+          <section className="grid h-full min-h-[420px] min-w-0 overflow-hidden grid-rows-[auto_minmax(0,1fr)] gap-3 max-[980px]:hidden" aria-label="Recommendation evidence graph">
             <div className={panelHeadingClass}>
               <span className={labelClass}>
                 {recommendationGraphMode === 'compact' ? 'Artist-only path' : 'Full analytics graph'}

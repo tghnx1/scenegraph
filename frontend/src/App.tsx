@@ -64,6 +64,9 @@ export default function App() {
     : '/login'
   const profileWorkspace = useMemo(() => {
     const value = searchParams.get('workspace')
+    if (value === 'profile') {
+      return 'profile'
+    }
     if (!showGraphTab && value === 'graph') {
       return 'recommendations'
     }
@@ -93,7 +96,7 @@ export default function App() {
     }
   }, [])
 
-  const openProfileWorkspace = (workspace: 'recommendations' | 'graph') => {
+  const openProfileWorkspace = (workspace: 'profile' | 'recommendations' | 'graph') => {
     if (workspace === 'graph' && !showGraphTab) return
     const nextParams = new URLSearchParams(searchParams)
     nextParams.set('workspace', workspace)
@@ -146,6 +149,17 @@ export default function App() {
       <nav className="flex flex-wrap items-center gap-2 border-b border-[color-mix(in_srgb,var(--text)_18%,transparent)] bg-[color-mix(in_srgb,var(--background)_55%,transparent)] px-3 py-3 backdrop-blur-md sm:gap-3 sm:px-5">
         {isWorkspacePage ? (
           <div className="inline-flex w-fit gap-1 rounded-xl bg-[var(--surface-input)] p-1">
+            {(authRole === 'artist' || authRole === 'agent') && (
+              <Button
+                type="button"
+                size="sm"
+                variant={profileWorkspace === 'profile' ? 'default' : 'ghost'}
+                className={cn('rounded-lg', profileWorkspace === 'profile' && 'border-[var(--selection-border)] bg-[var(--selection-soft)]')}
+                onClick={() => openProfileWorkspace('profile')}
+              >
+                Profile
+              </Button>
+            )}
             <Button
               type="button"
               size="sm"
@@ -168,6 +182,13 @@ export default function App() {
             )}
           </div>
         ) : (
+          authRole === 'artist' || authRole === 'agent' ? (
+            <NavLink to="/profile" className={navLinkClass}>
+              Profile
+            </NavLink>
+          ) : null
+        )}
+        {!isWorkspacePage && authRole !== 'artist' && authRole !== 'agent' && (
           showGraphTab ? (
             <NavLink to="/graph" className={navLinkClass}>
               Graph

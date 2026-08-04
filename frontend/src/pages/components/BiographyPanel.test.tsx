@@ -1,6 +1,7 @@
 import {render, screen, waitFor, within} from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import {describe, expect, it, vi} from 'vitest'
+import {MemoryRouter} from 'react-router-dom'
 import {BiographyPanel} from './BiographyPanel'
 
 const fetchArtistBiography = vi.hoisted(() => vi.fn())
@@ -24,30 +25,41 @@ describe('BiographyPanel', () => {
       name: 'Holywanderer',
       bio: '',
       event_count: 0,
-      events: [],
-      connected_artists: [],
-      genres: [],
+      events: [
+        { id: 11, title: 'Club Night', event_date: '2026-07-01', venue_name: 'Kater' },
+      ],
+      connected_artists: [
+        { id: 201, name: 'ALIS.', shared_events: 3 },
+      ],
+      genres: ['Techno'],
+      extracted_tags: {
+        style: ['dark disco'],
+        label: ['Kekos Club'],
+        residency: ['We Are Gays'],
+      },
     })
 
     const onBiographyStatusChange = vi.fn()
 
     render(
-      <BiographyPanel
-        artistId={61}
-        selectedArtistName="Holywanderer"
-        manualConnections={{
-          connections: [],
-          isLoading: false,
-          pendingArtistId: null,
-          error: null,
-          onAdd: vi.fn(),
-          onRemove: vi.fn(),
-        }}
-        canEditBiography
-        hasApprovedArtistProfile
-        onBiographyStatusChange={onBiographyStatusChange}
-        onProfileChanged={vi.fn()}
-      />,
+      <MemoryRouter>
+        <BiographyPanel
+          artistId={61}
+          selectedArtistName="Holywanderer"
+          manualConnections={{
+            connections: [],
+            isLoading: false,
+            pendingArtistId: null,
+            error: null,
+            onAdd: vi.fn(),
+            onRemove: vi.fn(),
+          }}
+          canEditBiography
+          hasApprovedArtistProfile
+          onBiographyStatusChange={onBiographyStatusChange}
+          onProfileChanged={vi.fn()}
+        />
+      </MemoryRouter>,
     )
 
     expect(await screen.findByText('Artist profile')).toBeInTheDocument()
@@ -57,6 +69,22 @@ describe('BiographyPanel', () => {
     expect(screen.getByRole('heading', {name: 'Biography'})).toBeInTheDocument()
     expect(screen.getByText('No biography added yet.')).toBeInTheDocument()
     expect(screen.getByText('Describe your sound, styles, roles, labels, collectives and residencies.')).toBeInTheDocument()
+    expect(screen.getByText('Extracted tags and linked events that feed into your recommendations:')).toBeInTheDocument()
+    expect(screen.getByText('Genres')).toBeInTheDocument()
+    expect(screen.getByText('Techno')).toBeInTheDocument()
+    expect(screen.getByText('Styles')).toBeInTheDocument()
+    expect(screen.getByText('dark disco')).toBeInTheDocument()
+    expect(screen.getByText('Labels')).toBeInTheDocument()
+    expect(screen.getByText('Kekos Club')).toBeInTheDocument()
+    expect(screen.getByText('Residencies')).toBeInTheDocument()
+    expect(screen.getByText('We Are Gays')).toBeInTheDocument()
+    expect(screen.getByText('Artists you played with')).toBeInTheDocument()
+    expect(screen.getByText('ALIS.')).toBeInTheDocument()
+    expect(screen.getByText('3 shared events')).toBeInTheDocument()
+    expect(screen.getByText('Biography')).toBeInTheDocument()
+    expect(screen.getByText('Events')).toBeInTheDocument()
+    expect(screen.getByText('Club Night')).toBeInTheDocument()
+    expect(screen.getByText('2026-07-01 · Kater')).toBeInTheDocument()
 
     const biographySection = screen.getByRole('heading', {name: 'Biography'}).closest('section')
     expect(biographySection).not.toBeNull()
@@ -76,7 +104,6 @@ describe('BiographyPanel', () => {
     expect(screen.queryByText('Complete your artist profile')).not.toBeInTheDocument()
     expect(screen.queryByText('Linked artists')).not.toBeInTheDocument()
     expect(screen.queryByText('No linked artists yet.')).not.toBeInTheDocument()
-    expect(screen.getByTestId('manual-connections')).toBeInTheDocument()
 
     await waitFor(() => {
       expect(onBiographyStatusChange).toHaveBeenCalledWith({ isLoading: false, hasBiography: false })
@@ -93,31 +120,34 @@ describe('BiographyPanel', () => {
       events: [],
       connected_artists: [],
       genres: [],
+      extracted_tags: {},
     })
 
     render(
-      <BiographyPanel
-        artistId={61}
-        selectedArtistName="Holywanderer"
-        manualConnections={{
-          connections: [],
-          isLoading: false,
-          pendingArtistId: null,
-          error: null,
-          onAdd: vi.fn(),
-          onRemove: vi.fn(),
-        }}
-        canEditBiography={false}
-        hasApprovedArtistProfile
-      />,
+      <MemoryRouter>
+        <BiographyPanel
+          artistId={61}
+          selectedArtistName="Holywanderer"
+          manualConnections={{
+            connections: [],
+            isLoading: false,
+            pendingArtistId: null,
+            error: null,
+            onAdd: vi.fn(),
+            onRemove: vi.fn(),
+          }}
+          canEditBiography={false}
+          hasApprovedArtistProfile
+        />
+      </MemoryRouter>,
     )
 
     expect(await screen.findByText('Long bio text.')).toBeInTheDocument()
     expect(screen.getByText('Artist profile')).toBeInTheDocument()
-    expect(screen.getByRole('heading', {name: 'Biography'})).toBeInTheDocument()
+    expect(screen.getByText('Biography')).toBeInTheDocument()
     expect(screen.queryByRole('button', {name: 'Add biography'})).not.toBeInTheDocument()
     expect(screen.queryByRole('button', {name: 'Edit biography'})).not.toBeInTheDocument()
-    expect(screen.queryByText('Linked artists')).not.toBeInTheDocument()
-    expect(screen.queryByText('No linked artists yet.')).not.toBeInTheDocument()
+    expect(screen.getByText('Artists you played with')).toBeInTheDocument()
+    expect(screen.getByText('No linked artists yet.')).toBeInTheDocument()
   })
 })
