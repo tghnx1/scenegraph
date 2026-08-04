@@ -135,7 +135,6 @@ describe('ProfilePage', () => {
     expect(screen.queryByLabelText('Search Database')).not.toBeInTheDocument()
     expect(screen.queryByTestId('details-panel')).not.toBeInTheDocument()
     expect(screen.getByLabelText('Promoter recommendations workspace')).toHaveClass('col-span-full')
-    expect(screen.getByText('Improve your matches')).toBeInTheDocument()
   })
 
   it('scrolls to recommendations when the profile becomes ready', async () => {

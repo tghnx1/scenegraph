@@ -4,7 +4,6 @@ import { cn } from '@/shared/lib/cn-utils.ts'
 import { DetailsPanel } from './components/DetailsPanel.tsx'
 import { ScenegraphMapPanel } from './components/GraphPanel.tsx'
 import { PromoterRecommendationsPanel, type RecommendationTargetControls } from './components/RecommendationPanel.tsx'
-import { RecommendationSignalsHelp } from './components/RecommendationSignalsHelp.tsx'
 import { SearchInputField } from './components/SearchInputField.tsx'
 import { useGraphSearchDetails } from './hooks/useGraphSearchDetails.ts'
 import { useManualArtistConnections } from './hooks/useManualArtistConnections.ts'
@@ -285,9 +284,6 @@ export function ProfilePage({ recommendationTargetControls, showBiography = true
             />
           </div>
         )}
-        <div className="col-span-full">
-          <RecommendationSignalsHelp />
-        </div>
       </section>
     </div>
   )
