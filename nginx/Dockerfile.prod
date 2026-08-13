@@ -9,7 +9,8 @@ COPY frontend/tsconfig.app.json frontend/tsconfig.json frontend/tsconfig.node.js
 COPY frontend/assets ./assets
 COPY frontend/src ./src
 
-RUN npm run build
+# Keep type checking as a separate validation step; production image only needs the Vite bundle.
+RUN ./node_modules/.bin/vite build
 
 FROM nginx:1.27-alpine
 
