@@ -1,4 +1,12 @@
 services:
+  migrate:
+    build:
+      context: ./backend
+      dockerfile: prisma/Dockerfile
+    restart: "no"
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+
   backend:
     build:
       context: ./backend
@@ -39,6 +47,9 @@ services:
       RECOMMENDATION_JOB_RUNNING_RECLAIM_AFTER_SECONDS: ${RECOMMENDATION_JOB_RUNNING_RECLAIM_AFTER_SECONDS:-600}
     expose:
       - "3000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
     healthcheck:
       test:
         [
@@ -77,6 +88,9 @@ services:
       ARTIST_TAG_EXTRACTION_MAX_TAGS: ${ARTIST_TAG_EXTRACTION_MAX_TAGS:-32}
       ARTIST_TAG_EXTRACTION_CHUNK_CHARS: ${ARTIST_TAG_EXTRACTION_CHUNK_CHARS:-600}
       RECOMMENDATION_JOB_RUNNING_RECLAIM_AFTER_SECONDS: ${RECOMMENDATION_JOB_RUNNING_RECLAIM_AFTER_SECONDS:-600}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
 
   nginx:
     build:
