@@ -38,7 +38,12 @@ def test_artist_search_includes_claim_disambiguation_metadata():
                     INSERT INTO artists (id, ra_artist_id, name, biography)
                     VALUES (%s, %s, %s, %s)
                     """,
-                    (ARTIST_ID, RA_ARTIST_ID, "Search Metadata Artist", "A short test biography."),
+                    (
+                        ARTIST_ID,
+                        RA_ARTIST_ID,
+                        "Search Metadata Artist",
+                        "Techno, House. A short test biography.",
+                    ),
                 )
                 cursor.execute(
                     """
@@ -79,7 +84,7 @@ def test_artist_search_includes_claim_disambiguation_metadata():
         artist_detail = client.get(f"/api/artist/{ARTIST_ID}")
         assert artist_detail.status_code == 200
         detail = artist_detail.json()
-        assert detail["extracted_tags"]["style"] == ["Techno", "House"]
+        assert detail["extracted_tags"]["style"] == ["House", "Techno"]
         assert detail["genres"] == []
         assert detail["event_count"] == 1
         assert detail["events"][0]["title"] == "Search Metadata Latest Event"
@@ -129,6 +134,46 @@ def test_artist_detail_styles_follow_current_biography_not_stale_style_rows():
         assert "EBM" not in detail["extracted_tags"]["style"]
         assert "Italo" not in detail["extracted_tags"]["style"]
         assert "New Wave" not in detail["extracted_tags"]["style"]
+    finally:
+        cleanup()
+
+
+def test_artist_detail_does_not_fall_back_to_stale_style_rows_when_biography_has_no_styles():
+    cleanup()
+    try:
+        with get_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    INSERT INTO artists (id, ra_artist_id, name, biography)
+                    VALUES (%s, %s, %s, %s)
+                    """,
+                    (
+                        ARTIST_ID,
+                        RA_ARTIST_ID,
+                        "Search Metadata Artist",
+                        "A short bio with no explicit styles.",
+                    ),
+                )
+                cursor.execute(
+                    """
+                    INSERT INTO artist_extracted_tags
+                        (artist_id, tag_type, tag_value, source, confidence, extractor)
+                    VALUES
+                        (%s, 'style', 'dark disco', 'biography', 0.95, 'llm_artist_tags_v2:test'),
+                        (%s, 'style', 'ebm', 'biography', 0.94, 'llm_artist_tags_v2:test')
+                    """,
+                    (ARTIST_ID, ARTIST_ID),
+                )
+                connection.commit()
+
+        response = client.get(f"/api/artist/{ARTIST_ID}")
+
+        assert response.status_code == 200
+        detail = response.json()
+        assert detail["extracted_tags"].get("style") in (None, [])
+        assert "Dark Disco" not in detail["extracted_tags"].get("style", [])
+        assert "EBM" not in detail["extracted_tags"].get("style", [])
     finally:
         cleanup()
 
