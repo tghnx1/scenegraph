@@ -1,0 +1,20 @@
+name: Validate production Compose environment
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  validate-production-compose:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Validate required production environment
+        run: scripts/validate_prod_compose_env.sh
