@@ -3,7 +3,7 @@ from pydantic import BaseModel
 from typing import List, Optional
 from app.db import get_connection
 from app.auth import get_current_user_id
-from app.style_tags import canonicalize_style_tags, suppress_parent_style_tags
+from app.style_tags import canonicalize_style_tags, extract_style_tags, suppress_parent_style_tags
 from app.text_profiles import normalize_biography_text
 from app.recommendations.jobs import create_artist_bio_refresh_job
 
@@ -214,10 +214,12 @@ def get_artist(
                         values.append(tag_value)
                         seen_values.add(normalized_value)
 
-                if style_tags:
+                biography_style_tags = suppress_parent_style_tags(extract_style_tags(biography))
+                style_source_tags = biography_style_tags or suppress_parent_style_tags(style_tags)
+                if style_source_tags:
                     extracted_tags["style"] = [
                         present_style_label(tag)
-                        for tag in suppress_parent_style_tags(style_tags)
+                        for tag in style_source_tags
                     ]
 
     genres: list[str] = []

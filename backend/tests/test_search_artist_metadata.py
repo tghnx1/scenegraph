@@ -87,6 +87,52 @@ def test_artist_search_includes_claim_disambiguation_metadata():
         cleanup()
 
 
+def test_artist_detail_styles_follow_current_biography_not_stale_style_rows():
+    cleanup()
+    try:
+        with get_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    INSERT INTO artists (id, ra_artist_id, name, biography)
+                    VALUES (%s, %s, %s, %s)
+                    """,
+                    (
+                        ARTIST_ID,
+                        RA_ARTIST_ID,
+                        "Search Metadata Artist",
+                        "Indie Dance, Electro. Matreshkaberlin resident A short bio.",
+                    ),
+                )
+                cursor.execute(
+                    """
+                    INSERT INTO artist_extracted_tags
+                        (artist_id, tag_type, tag_value, source, confidence, extractor)
+                    VALUES
+                        (%s, 'style', 'dark disco', 'biography', 0.95, 'llm_artist_tags_v2:test'),
+                        (%s, 'style', 'ebm', 'biography', 0.94, 'llm_artist_tags_v2:test'),
+                        (%s, 'style', 'indie dance', 'biography', 0.93, 'llm_artist_tags_v2:test'),
+                        (%s, 'style', 'electro', 'biography', 0.92, 'llm_artist_tags_v2:test'),
+                        (%s, 'style', 'italo', 'biography', 0.91, 'llm_artist_tags_v2:test'),
+                        (%s, 'style', 'new wave', 'biography', 0.90, 'llm_artist_tags_v2:test')
+                    """,
+                    (ARTIST_ID, ARTIST_ID, ARTIST_ID, ARTIST_ID, ARTIST_ID, ARTIST_ID),
+                )
+                connection.commit()
+
+        response = client.get(f"/api/artist/{ARTIST_ID}")
+
+        assert response.status_code == 200
+        detail = response.json()
+        assert detail["extracted_tags"]["style"] == ["Electro", "Indie Dance"]
+        assert "Dark Disco" not in detail["extracted_tags"]["style"]
+        assert "EBM" not in detail["extracted_tags"]["style"]
+        assert "Italo" not in detail["extracted_tags"]["style"]
+        assert "New Wave" not in detail["extracted_tags"]["style"]
+    finally:
+        cleanup()
+
+
 def test_artist_search_returns_case_insensitive_exact_matches():
     cleanup()
     try:
