@@ -10,9 +10,32 @@ from app.artist_tag_extraction import (
     normalize_tag_value,
     parse_artist_batch_response,
     parse_tags_response,
+    replace_artist_tags,
     split_biography_chunks,
     tag_extraction_text_hash,
 )
+
+
+class RecordingCursor:
+    def __init__(self):
+        self.executed: list[tuple[str, tuple]] = []
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        return False
+
+    def execute(self, query: str, params=()):
+        self.executed.append((" ".join(query.split()), params))
+
+
+class RecordingConnection:
+    def __init__(self):
+        self.cursor_obj = RecordingCursor()
+
+    def cursor(self):
+        return self.cursor_obj
 
 
 def test_tag_extraction_config_reads_azure_env(monkeypatch):
@@ -275,4 +298,37 @@ def test_split_biography_chunks_covers_text_with_bounded_chunks():
 def test_tag_extraction_text_hash_normalizes_biography():
     assert tag_extraction_text_hash("Biography:  Dark\nDisco") == tag_extraction_text_hash(
         "Dark Disco"
+    )
+
+
+def test_replace_artist_tags_removes_stale_extractors_for_same_source():
+    connection = RecordingConnection()
+
+    replace_artist_tags(
+        connection,
+        artist_id=2178,
+        source="biography",
+        extractor="llm_artist_tags_v2:new-model",
+        text_hash="new-hash",
+        tags=[ArtistTag("style", "jazz", 0.9, "Jazz")],
+    )
+
+    statements = connection.cursor_obj.executed
+    tag_delete_sql, tag_delete_params = statements[0]
+    run_delete_sql, run_delete_params = statements[1]
+
+    assert tag_delete_params == (2178, "biography")
+    assert "DELETE FROM artist_extracted_tags" in tag_delete_sql
+    assert "extractor" not in tag_delete_sql
+    assert run_delete_params == (2178, "biography")
+    assert "DELETE FROM artist_tag_extraction_runs" in run_delete_sql
+    assert "extractor" not in run_delete_sql
+    assert statements[2][1] == (
+        2178,
+        "style",
+        "jazz",
+        "biography",
+        0.9,
+        "llm_artist_tags_v2:new-model",
+        "Jazz",
     )

@@ -739,9 +739,16 @@ def replace_artist_tags(
             DELETE FROM artist_extracted_tags
             WHERE artist_id = %s
               AND source = %s
-              AND extractor = %s
             """,
-            (artist_id, source, extractor),
+            (artist_id, source),
+        )
+        cursor.execute(
+            """
+            DELETE FROM artist_tag_extraction_runs
+            WHERE artist_id = %s
+              AND source = %s
+            """,
+            (artist_id, source),
         )
 
         for tag in tags:
