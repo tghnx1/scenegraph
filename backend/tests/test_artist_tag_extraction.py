@@ -11,6 +11,7 @@ from app.artist_tag_extraction import (
     parse_artist_batch_response,
     parse_tags_response,
     replace_artist_tags,
+    retain_biography_supported_styles,
     split_biography_chunks,
     tag_extraction_text_hash,
 )
@@ -247,6 +248,28 @@ def test_merge_artist_tags_deduplicates_and_keeps_highest_confidence():
     assert [(tag.tag_type, tag.tag_value, tag.confidence, tag.evidence) for tag in tags] == [
         ("style", "EBM", 0.9, "better"),
         ("role", "dj", 1.0, None),
+    ]
+
+
+def test_retain_biography_supported_styles_rejects_llm_style_guesses():
+    tags = retain_biography_supported_styles(
+        [
+            ArtistTag("style", "dark disco", 0.9),
+            ArtistTag("style", "indie dance", 0.9),
+            ArtistTag("style", "electro", 0.9),
+            ArtistTag("style", "ebm", 0.9),
+            ArtistTag("style", "italo", 0.9),
+            ArtistTag("style", "new wave", 0.9),
+            ArtistTag("role", "dj", 1.0),
+        ],
+        "Dark Disco, Indie Dance, Electro. DJ and promoter.",
+    )
+
+    assert [(tag.tag_type, tag.tag_value) for tag in tags] == [
+        ("style", "dark disco"),
+        ("style", "indie dance"),
+        ("style", "electro"),
+        ("role", "dj"),
     ]
 
 

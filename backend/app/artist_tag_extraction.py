@@ -10,7 +10,7 @@ from typing import Any, Literal
 from openai import AzureOpenAI
 from psycopg import Connection
 
-from app.style_tags import canonicalize_style_tags, suppress_parent_style_tags
+from app.style_tags import canonicalize_style_tags, extract_style_tags, suppress_parent_style_tags
 from app.text_profiles import normalize_biography_text, normalize_text, truncate_text
 
 
@@ -445,6 +445,18 @@ def merge_artist_tags(tag_groups: list[list[ArtistTag]], *, max_tags: int) -> li
     ][:max_tags]
 
 
+def retain_biography_supported_styles(
+    tags: list[ArtistTag],
+    biography: str,
+) -> list[ArtistTag]:
+    supported_styles = set(extract_style_tags(biography))
+    return [
+        tag
+        for tag in tags
+        if tag.tag_type != "style" or tag.tag_value in supported_styles
+    ]
+
+
 def is_generic_tag_value(tag_type: str, tag_value: str) -> bool:
     values = GENERIC_TAG_VALUES_BY_TYPE.get(tag_type)
     if not values:
@@ -583,7 +595,8 @@ def extract_artist_tags_with_llm(
     )
 
     payload = extract_json_object(content)
-    return parse_tags_response(payload, artist_name=artist_name, max_tags=config.max_tags)
+    tags = parse_tags_response(payload, artist_name=artist_name, max_tags=config.max_tags)
+    return retain_biography_supported_styles(tags, normalized_biography)
 
 
 def extract_artist_tags_with_chunked_fallback(
@@ -650,11 +663,21 @@ def extract_artist_tag_batch_with_llm(
     content = create_chat_completion(client, prompt=prompt, config=config)
 
     payload = extract_json_object(content)
-    return parse_artist_batch_response(
+    results = parse_artist_batch_response(
         payload,
         artists=prepared_artists,
         max_tags=config.max_tags,
     )
+    biographies_by_artist_id = {
+        int(artist["id"]): artist["biography"] for artist in prepared_artists
+    }
+    return {
+        artist_id: retain_biography_supported_styles(
+            tags,
+            biographies_by_artist_id[artist_id],
+        )
+        for artist_id, tags in results.items()
+    }
 
 
 def fetch_artist_biographies(
