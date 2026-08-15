@@ -6,6 +6,10 @@ on:
     branches:
       - main
 
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
 permissions:
   contents: read
 
@@ -18,3 +22,44 @@ jobs:
 
       - name: Validate required production environment
         run: scripts/validate_prod_compose_env.sh
+
+  deploy-production:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: validate-production-compose
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Connect to Tailscale
+        uses: tailscale/github-action@v4
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:ci
+          ping: 100.84.221.35
+
+      - name: Verify Coolify connectivity
+        run: python3 -c "import socket; socket.create_connection(('100.84.221.35', 8000), timeout=10).close(); print('Connected to Coolify')"
+
+      - name: Trigger Coolify deploy
+        id: coolify-deploy
+        env:
+          COOLIFY_DEPLOY_TOKEN: ${{ secrets.COOLIFY_DEPLOY_TOKEN }}
+        run: |
+          response_file="$RUNNER_TEMP/coolify-deploy-response.json"
+          http_status="$(curl -sS -o "$response_file" -w "%{http_code}" \
+            -H "Authorization: Bearer ${COOLIFY_DEPLOY_TOKEN}" \
+            "http://100.84.221.35:8000/api/v1/deploy?uuid=biclmmeszwg9zb6xi3iguo4p&force=false")"
+
+          echo "http_status=${http_status}" >> "$GITHUB_OUTPUT"
+          echo "Coolify deploy HTTP status: ${http_status}"
+
+          if [[ ! "$http_status" =~ ^2[0-9][0-9]$ ]]; then
+            echo "Coolify deploy request failed" >&2
+            cat "$response_file" >&2
+            exit 1
+          fi
