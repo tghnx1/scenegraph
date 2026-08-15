@@ -179,6 +179,7 @@ export function RenderDetails({
   if (isArtistDetail(result)) {
     const linkedArtists = result.connected_artists
     const linkedEvents = result.events
+    const styles = result.extracted_tags.style ?? []
 
     return (
       <article className={articleClassName}>
@@ -186,7 +187,7 @@ export function RenderDetails({
           <div>
             <span className={resultTypeClass}>Artist</span>
             <h2>{result.name}</h2>
-            <p className={resultMetaClass}>{result.genres.join(' · ') || 'No genres yet'}</p>
+            <p className={resultMetaClass}>{styles.join(' · ') || 'No genres yet'}</p>
           </div>
           <div className="flex shrink-0 items-start gap-2">
             <ManualArtistConnectionButton artistId={result.id} control={manualArtistConnections} />

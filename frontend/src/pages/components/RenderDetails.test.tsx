@@ -3,9 +3,60 @@ import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { describe, expect, it } from 'vitest'
 import { RenderDetails } from './RenderDetails'
+import type { ArtistDetail } from '../../types/artist'
 import type { PromoterDetail } from '../../types/promoter'
 
 describe('RenderDetails', () => {
+  it('shows biography-derived styles for selected artist details', () => {
+    const result: ArtistDetail = {
+      type: 'artist',
+      id: 2178,
+      name: 'Holywanderer',
+      genres: [],
+      bio: 'Artist biography',
+      event_count: 0,
+      events: [],
+      connected_artists: [],
+      extracted_tags: {
+        style: ['Dark Disco', 'EBM', 'Italo'],
+      },
+    }
+
+    render(
+      <MemoryRouter>
+        <RenderDetails result={result} />
+      </MemoryRouter>,
+    )
+
+    expect(screen.getByText('Dark Disco · EBM · Italo')).toBeInTheDocument()
+    expect(screen.queryByText('No genres yet')).not.toBeInTheDocument()
+  })
+
+  it('keeps the empty-style fallback for selected artist details', () => {
+    const result: ArtistDetail = {
+      type: 'artist',
+      id: 2178,
+      name: 'Holywanderer',
+      genres: ['Legacy genre'],
+      bio: 'Artist biography',
+      event_count: 0,
+      events: [],
+      connected_artists: [],
+      extracted_tags: {
+        style: [],
+      },
+    }
+
+    render(
+      <MemoryRouter>
+        <RenderDetails result={result} />
+      </MemoryRouter>,
+    )
+
+    expect(screen.getByText('No genres yet')).toBeInTheDocument()
+    expect(screen.queryByText('Legacy genre')).not.toBeInTheDocument()
+  })
+
   it('shows three promoter events by default and toggles the full list', async () => {
     const user = userEvent.setup()
     const result: PromoterDetail = {

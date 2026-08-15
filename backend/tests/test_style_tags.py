@@ -1,6 +1,11 @@
 import pytest
 
-from app.style_tags import canonicalize_style_tags, extract_style_tags, style_overlap_score
+from app.style_tags import (
+    canonicalize_style_tags,
+    extract_style_tags,
+    style_overlap_score,
+    suppress_parent_style_tags,
+)
 
 
 @pytest.mark.parametrize(
@@ -40,6 +45,19 @@ def test_canonicalize_multiple_styles_and_suppress_parents():
         "electro",
     ]
     assert canonicalize_style_tags("deep techno and techno") == ["deep techno"]
+
+
+def test_suppress_parent_style_tags_deduplicates_aggregated_styles():
+    assert suppress_parent_style_tags(
+        [
+            "dark disco",
+            "dark disco",
+            "ebm",
+            "ebm",
+            "indie dance",
+            "indie dance",
+        ]
+    ) == ["dark disco", "ebm", "indie dance"]
 
 
 @pytest.mark.parametrize(

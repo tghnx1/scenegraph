@@ -267,7 +267,7 @@ PARENT_STYLE_TAGS: dict[str, tuple[str, ...]] = {
 
 
 def suppress_parent_style_tags(tags: Iterable[str]) -> list[str]:
-    ordered_tags = [tag for tag in tags if tag]
+    ordered_tags = list(dict.fromkeys(tag for tag in tags if tag))
     tag_set = set(ordered_tags)
     for specific_tag, parent_tags in PARENT_STYLE_TAGS.items():
         if specific_tag in tag_set:
