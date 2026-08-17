@@ -18,20 +18,18 @@ export interface ChangePasswordResponse {
 }
 
 export const changePassword = (
-  username: string,
   current_password: string,
   new_password: string,
   new_password_confirm: string,
 ): Promise<ChangePasswordResponse> =>
   api.post<ChangePasswordResponse>('/change-password', {
-    username,
     current_password,
     new_password,
     new_password_confirm,
   })
 
-export const login = (username: string, password: string): Promise<LoginResponse> =>
-  api.post<LoginResponse>('/login', { username, password })
+export const login = (email: string, password: string): Promise<LoginResponse> =>
+  api.post<LoginResponse>('/login', { email, password })
 
 export interface PendingUser {
   id: number
@@ -67,9 +65,7 @@ export interface RegisterResponse {
 }
 
 export const register = (data: {
-  username: string
   email: string
-  instagram_url: string
   password: string
   password_confirm: string
   artist_id?: number | null

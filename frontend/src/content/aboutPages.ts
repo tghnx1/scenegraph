@@ -29,8 +29,8 @@ export const aboutPages: Record<AboutPageKey, AboutPageContent> = {
       {
         heading: 'Data we process',
         items: [
-          'Account information, including username, email address, role, account status, password hash, and account creation date.',
-          'Authentication information stored in the browser, including a login token, role, username, user ID, and artist ID.',
+          'Account information, including email address, role, account status, password hash, and account creation date.',
+          'Authentication information stored in the browser, including a login token, role, email address, user ID, and artist ID.',
           'Recommendation feedback, including selected entities, feedback values, optional reasons, and timestamps.',
           'Technical information needed to operate and secure the service, such as server logs, request metadata, IP addresses, and error information.',
           'Public or imported music-scene information about artists, events, venues, promoters, genres, and source URLs.',

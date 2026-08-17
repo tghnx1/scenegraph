@@ -33,9 +33,7 @@ function createStorageMock() {
 
 async function fillRegistrationForm(user: ReturnType<typeof userEvent.setup>) {
   await user.click(screen.getByRole('button', { name: 'Create account' }))
-  await user.type(screen.getByLabelText(/Login username/i), 'friend-user')
   await user.type(screen.getByLabelText(/^Email$/i), 'friend@example.com')
-  await user.type(screen.getByLabelText(/Instagram URL/i), 'https://www.instagram.com/frienduser/')
   await user.type(screen.getByLabelText(/Artist profile search/i), 'Friend Artist')
 
   await user.click(await screen.findByRole('button', { name: /Create new artist "Friend Artist"/i }))
@@ -51,6 +49,29 @@ describe('LoginPage registration status messaging', () => {
     vi.clearAllMocks()
     vi.stubGlobal('localStorage', createStorageMock())
     vi.stubGlobal('sessionStorage', createStorageMock())
+  })
+
+  it('signs in with email instead of a username', async () => {
+    const user = userEvent.setup()
+    api.login.mockResolvedValue({
+      success: true,
+      message: 'Login successful',
+      username: 'friend@example.com',
+      role: 'artist',
+      access_token: 'test-token',
+    })
+
+    render(
+      <MemoryRouter>
+        <LoginPage onLogin={vi.fn()} />
+      </MemoryRouter>,
+    )
+
+    await user.type(screen.getByLabelText(/^Email$/i), 'FRIEND@EXAMPLE.COM')
+    await user.type(screen.getByLabelText(/^Password$/i), 'Password123')
+    await user.click(screen.getByRole('button', { name: 'Sign in' }))
+
+    await waitFor(() => expect(api.login).toHaveBeenCalledWith('friend@example.com', 'Password123'))
   })
 
   it('shows manual review messaging when the backend returns a pending registration', async () => {
@@ -71,6 +92,11 @@ describe('LoginPage registration status messaging', () => {
     await fillRegistrationForm(user)
 
     await waitFor(() => expect(api.register).toHaveBeenCalled())
+    expect(api.register).toHaveBeenCalledWith(expect.objectContaining({ email: 'friend@example.com' }))
+    expect(api.register.mock.calls[0][0]).not.toHaveProperty('username')
+    expect(api.register.mock.calls[0][0]).not.toHaveProperty('instagram_url')
+    expect(screen.queryByLabelText(/Login username/i)).not.toBeInTheDocument()
+    expect(screen.queryByLabelText(/Instagram URL/i)).not.toBeInTheDocument()
     expect(screen.getByText('Registration submitted. Your account will be available after manual review.')).toBeInTheDocument()
   })
 

@@ -57,7 +57,7 @@ class GraphResponse(BaseModel):
 
 
 class LoginRequest(BaseModel):
-    username: str
+    email: str
     password: str
 
 
@@ -73,9 +73,7 @@ class LoginResponse(BaseModel):
 
 
 class RegisterRequest(BaseModel):
-    username: str
     email: str
-    instagram_url: str
     password: str
     password_confirm: str
     artist_id: int | None = None
@@ -90,7 +88,6 @@ class RegisterResponse(BaseModel):
 
 
 class ChangePasswordRequest(BaseModel):
-    username: str
     current_password: str
     new_password: str
     new_password_confirm: str

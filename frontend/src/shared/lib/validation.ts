@@ -1,4 +1,3 @@
-export const USERNAME_PATTERN = /^[a-zA-Z0-9_-]{3,32}$/
 export const EMAIL_MAX_LENGTH = 254
 export const PASSWORD_MIN_LENGTH = 8
 export const PASSWORD_MAX_LENGTH = 128
@@ -7,7 +6,6 @@ export const BIOGRAPHY_MAX_LENGTH = 6000
 const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/
 const DISPLAY_DATE_PATTERN = /^\d{2}\.\d{2}\.\d{4}$/
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-const INSTAGRAM_PROFILE_PATTERN = /^(https?:\/\/)?((www|m)\.)?instagram\.com\/[A-Za-z0-9._]{1,30}\/?(?:[?#].*)?$/i
 
 export function isoDateToDisplayDate(value: string) {
   if (!ISO_DATE_PATTERN.test(value)) return value
@@ -33,14 +31,6 @@ export function displayDateToIsoDate(value: string) {
   return `${year}-${month}-${day}`
 }
 
-export function validateUsername(value: string) {
-  if (!USERNAME_PATTERN.test(value.trim())) {
-    return 'Username must be 3-32 characters and contain only letters, numbers, _ or -'
-  }
-
-  return null
-}
-
 export function validateEmail(value: string) {
   const email = value.trim()
 
@@ -63,16 +53,6 @@ export function validatePassword(value: string) {
   return null
 }
 
-export function validateInstagramUrl(value: string) {
-  const url = value.trim()
-
-  if (!INSTAGRAM_PROFILE_PATTERN.test(url)) {
-    return 'Instagram URL must point to an Instagram profile'
-  }
-
-  return null
-}
-
 export function validateArtistProfileName(value: string) {
   const name = value.trim()
 
@@ -87,9 +67,9 @@ export function validateArtistProfileName(value: string) {
   return null
 }
 
-export function validateLoginForm(username: string, password: string) {
-  const usernameError = validateUsername(username)
-  if (usernameError) return usernameError
+export function validateLoginForm(email: string, password: string) {
+  const emailError = validateEmail(email)
+  if (emailError) return emailError
 
   if (!password) {
     return 'Password is required'
@@ -99,9 +79,7 @@ export function validateLoginForm(username: string, password: string) {
 }
 
 export function validateRegistrationForm(
-  username: string,
   email: string,
-  instagramUrl: string,
   password: string,
   passwordConfirm: string,
 ) {
@@ -110,9 +88,7 @@ export function validateRegistrationForm(
   }
 
   return (
-    validateUsername(username) ??
     validateEmail(email) ??
-    validateInstagramUrl(instagramUrl) ??
     validatePassword(password)
   )
 }

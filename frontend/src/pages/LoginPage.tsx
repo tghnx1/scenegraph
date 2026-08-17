@@ -60,7 +60,7 @@ const artistClaimMeta = (artist: SearchResult) => {
 
 export function LoginPage({ onLogin }: LoginPageProps) {
   const navigate = useNavigate()
-  const [username, setUsername] = useState(localStorage.getItem('last_username') ?? '')   // for keeping the username in the login mask
+  const [email, setEmail] = useState(localStorage.getItem('last_username') ?? '')
   const [password, setPassword] = useState('')
   const [feedbackTone, setFeedbackTone] = useState<'error' | 'success'>('error')
   const [error, setError] = useState(() => {
@@ -71,8 +71,6 @@ export function LoginPage({ onLogin }: LoginPageProps) {
 
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isRegistering, setIsRegistering] = useState(false)
-  const [email, setEmail] = useState('')
-  const [instagramUrl, setInstagramUrl] = useState('')
   const [passwordConfirm, setPasswordConfirm] = useState('')
   const [registrationMode, setRegistrationMode] = useState<RegistrationMode>('search')
   const [artistSearchValue, setArtistSearchValue] = useState('')
@@ -110,11 +108,10 @@ export function LoginPage({ onLogin }: LoginPageProps) {
     event.preventDefault()
     setError('')
     setFeedbackTone('error')
-    const cleanUsername = username.trim()
-    const cleanEmail = email.trim()
+    const cleanEmail = email.trim().toLowerCase()
 
     if (isRegistering) {
-      const validationError = validateRegistrationForm(cleanUsername, cleanEmail, instagramUrl, password, passwordConfirm)
+      const validationError = validateRegistrationForm(cleanEmail, password, passwordConfirm)
       if (validationError) {
         setError(validationError)
         return
@@ -134,9 +131,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
       setIsSubmitting(true)
       try {
         const response = await register({
-          username: cleanUsername,
           email: cleanEmail,
-          instagram_url: instagramUrl.trim(),
           password,
           password_confirm: passwordConfirm,
           artist_id: registrationMode === 'search' ? selectedArtist?.id ?? null : null,
@@ -157,8 +152,6 @@ export function LoginPage({ onLogin }: LoginPageProps) {
         setIsRegistering(false)
         setPassword('')
         setPasswordConfirm('')
-        setEmail('')
-        setInstagramUrl('')
         setArtistSearchValue('')
         setSelectedArtist(null)
         setRegistrationMode('search')
@@ -170,7 +163,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
       return
     }
 
-    const validationError = validateLoginForm(cleanUsername, password)
+    const validationError = validateLoginForm(cleanEmail, password)
     if (validationError) {
       setError(validationError)
       return
@@ -179,15 +172,15 @@ export function LoginPage({ onLogin }: LoginPageProps) {
     setIsSubmitting(true)
 
     try {
-      const response = await login(cleanUsername, password)
+      const response = await login(cleanEmail, password)
       if (!response.success || !response.access_token) {
-        setError(response.message || 'Invalid username or password')
+        setError(response.message || 'Invalid email or password')
         return
       }
       sessionStorage.removeItem('auth_message')
       setError('')
 
-      const authenticatedUsername = response.username ?? cleanUsername
+      const authenticatedUsername = response.username ?? cleanEmail
       const role: AuthRole =
         response.role === 'admin' 
           ? 'admin' 
@@ -245,46 +238,16 @@ export function LoginPage({ onLogin }: LoginPageProps) {
         </h1>
         <form onSubmit={handleSubmit} style={{ display: 'grid', gap: 14, marginTop: 24 }}>
           <label style={{ display: 'grid', gap: 6, color: colorVar('--text-muted'), fontSize: 14 }}>
-            Login username
+            Email
             <input
               style={inputStyle}
-              value={username}
-              onChange={(event) => setUsername(event.target.value)}
-              autoComplete="username"
+              type="email"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              autoComplete="email"
               required
             />
-            {isRegistering && (
-              <span style={{ fontSize: 12, color: colorVar('--text-muted') }}>
-                This is your login handle for sign in. It can be different from your public artist name.
-              </span>
-            )}
           </label>
-          {isRegistering && (
-            <label style={{ display: 'grid', gap: 6, color: colorVar('--text-muted'), fontSize: 14 }}>
-              Email
-              <input
-                style={inputStyle}
-                type="email"
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
-                required
-              />
-            </label>
-          )}
-          {isRegistering && (
-            <label style={{ display: 'grid', gap: 6, color: colorVar('--text-muted'), fontSize: 14 }}>
-              Instagram URL
-              <input
-                style={inputStyle}
-                type="url"
-                value={instagramUrl}
-                onChange={(event) => setInstagramUrl(event.target.value)}
-                placeholder="https://www.instagram.com/yourprofile"
-                autoComplete="url"
-                required
-              />
-            </label>
-          )}
           {isRegistering && (
             <div style={{ display: 'grid', gap: 10 }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
@@ -503,9 +466,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
             style={loginButtonStyle}
             onClick={() => {
               if (!isRegistering) {
-                setUsername('')
                 setEmail('')
-                setInstagramUrl('')
                 setPassword('')
                 setPasswordConfirm('')
                 setArtistSearchValue('')

@@ -8,7 +8,6 @@ from app.auth import (
     create_access_token,
     get_current_user,
     log_activity,
-    normalize_instagram_url,
     pwd_context,
     validate_password,
     validate_registration_input,
@@ -45,41 +44,42 @@ async def get_ui_settings() -> dict:
 
 @router.post("/login", response_model=LoginResponse, response_model_exclude_none=True)
 async def login(login_data: LoginRequest) -> LoginResponse:
-    check_rate_limit(f"login:{login_data.username}")
+    clean_email = login_data.email.strip().lower()
+    check_rate_limit(f"login:{clean_email}")
 
     with get_connection() as connection:
         with connection.cursor() as cursor:
             cursor.execute(
                 """
-                SELECT id, username, password_hash, role, status, must_change_password, artist_id
+                SELECT id, email, password_hash, role, status, must_change_password, artist_id
                 FROM users
-                WHERE username = %s
+                WHERE LOWER(email) = %s
                 """,
-                (login_data.username,),
+                (clean_email,),
             )
             user = cursor.fetchone()
 
     if user is None:
-        return LoginResponse(success=False, message="Invalid username or password")
+        return LoginResponse(success=False, message="Invalid email or password")
     if not pwd_context.verify(login_data.password, user["password_hash"]):
-        return LoginResponse(success=False, message="Invalid username or password")
+        return LoginResponse(success=False, message="Invalid email or password")
     if user["status"] != "approved":
         return LoginResponse(success=False, message="Account is not approved")
 
     with get_connection() as connection:
-        log_activity(connection, user["id"], user["username"], "login", "Login page")
+        log_activity(connection, user["id"], user["email"], "login", "Login page")
         connection.commit()
 
     return LoginResponse(
         success=True,
         message="Login successful",
         user_id=user["id"],
-        username=user["username"],
+        username=user["email"],
         role=user["role"],
         access_token=create_access_token(
             {
                 "sub": str(user["id"]),
-                "username": user["username"],
+                "username": user["email"],
                 "role": user["role"],
             }
         ),
@@ -90,7 +90,8 @@ async def login(login_data: LoginRequest) -> LoginResponse:
 
 @router.post("/register", response_model=RegisterResponse, response_model_exclude_none=True)
 async def register(register_data: RegisterRequest) -> RegisterResponse:
-    check_rate_limit(f"register:{register_data.email}", max_attempts=3, window_seconds=300)
+    clean_email = register_data.email.strip().lower()
+    check_rate_limit(f"register:{clean_email}", max_attempts=3, window_seconds=300)
 
     if register_data.password != register_data.password_confirm:
         return RegisterResponse(success=False, message="Passwords do not match")
@@ -108,26 +109,16 @@ async def register(register_data: RegisterRequest) -> RegisterResponse:
         )
 
     clean_new_artist_name = register_data.new_artist_name.strip() if register_data.new_artist_name else None
-    normalized_instagram_url = normalize_instagram_url(register_data.instagram_url)
     if clean_new_artist_name is not None and len(clean_new_artist_name) < 2:
         return RegisterResponse(success=False, message="Artist name must be at least 2 characters")
     if clean_new_artist_name is not None and len(clean_new_artist_name) > 100:
         return RegisterResponse(success=False, message="Artist name is too long")
-    if normalized_instagram_url is None:
-        return RegisterResponse(success=False, message="Instagram URL must point to an Instagram profile")
-
     with get_connection() as connection:
         try:
             with connection.cursor() as cursor:
                 auto_approve_pending_users = get_boolean_setting(
                     connection,
                     AUTO_APPROVE_PENDING_USERS_SETTING,
-                )
-                cursor.execute(
-                    """
-                    SELECT pg_advisory_xact_lock(hashtext(LOWER(BTRIM(%s))))
-                    """,
-                    (normalized_instagram_url,),
                 )
                 if has_existing_artist:
                     cursor.execute(
@@ -141,14 +132,14 @@ async def register(register_data: RegisterRequest) -> RegisterResponse:
                     """
                     SELECT id
                     FROM users
-                    WHERE username = %s OR email = %s
+                    WHERE LOWER(email) = %s
                     """,
-                    (register_data.username, register_data.email),
+                    (clean_email,),
                 )
                 existing_user = cursor.fetchone()
 
                 if existing_user is not None:
-                    return RegisterResponse(success=False, message="Username or email already exists")
+                    return RegisterResponse(success=False, message="Email already exists")
 
                 selected_artist = None
                 if has_existing_artist:
@@ -192,23 +183,6 @@ async def register(register_data: RegisterRequest) -> RegisterResponse:
                     if active_claim is not None:
                         return RegisterResponse(success=False, message="This artist profile already has a registration in progress")
 
-                cursor.execute(
-                    """
-                    SELECT id
-                    FROM artist_claims
-                    WHERE LOWER(BTRIM(instagram_url)) = LOWER(BTRIM(%s))
-                      AND status IN ('pending', 'approved')
-                    LIMIT 1
-                    """,
-                    (normalized_instagram_url,),
-                )
-                existing_claim = cursor.fetchone()
-                if existing_claim is not None:
-                    return RegisterResponse(
-                        success=False,
-                        message="This Instagram URL is already used by another registration",
-                    )
-
                 if has_new_artist_name:
                     cursor.execute(
                         """
@@ -229,8 +203,8 @@ async def register(register_data: RegisterRequest) -> RegisterResponse:
                     RETURNING id, status, artist_id
                     """,
                     (
-                        register_data.username,
-                        register_data.email,
+                        clean_email,
+                        clean_email,
                         hashed_password,
                         "artist",
                         created_user_status,
@@ -248,7 +222,7 @@ async def register(register_data: RegisterRequest) -> RegisterResponse:
                         (
                             created_user["id"],
                             selected_artist["id"],
-                            normalized_instagram_url,
+                            None,
                             "Requested during registration",
                             created_user_status,
                         ),
@@ -257,7 +231,7 @@ async def register(register_data: RegisterRequest) -> RegisterResponse:
                 log_activity(
                     connection,
                     created_user["id"],
-                    register_data.username,
+                    clean_email,
                     "registration",
                     selected_artist["name"] if selected_artist is not None else "User account",
                     commit=False,
@@ -268,10 +242,8 @@ async def register(register_data: RegisterRequest) -> RegisterResponse:
             constraint_name = getattr(getattr(exc, "diag", None), "constraint_name", None)
             if constraint_name == "artist_claims_active_artist_unique_idx":
                 return RegisterResponse(success=False, message="This artist profile already has a registration in progress")
-            if constraint_name == "artist_claims_active_instagram_unique_idx":
-                return RegisterResponse(success=False, message="This Instagram URL is already used by another registration")
             if constraint_name == "users_username_key":
-                return RegisterResponse(success=False, message="Username already exists")
+                return RegisterResponse(success=False, message="Email already exists")
             if constraint_name == "users_email_key":
                 return RegisterResponse(success=False, message="Email already exists")
             raise
@@ -302,9 +274,9 @@ async def change_password(
                 """
                 SELECT id, username, password_hash, status
                 FROM users
-                WHERE username = %s
+                WHERE id = %s
                 """,
-                (password_data.username,),
+                (current_user["id"],),
             )
             user = cursor.fetchone()
 

@@ -72,9 +72,7 @@ def test_registration_auto_approve_setting_returns_approved_status_and_user_reco
         register_response = client.post(
             "/api/register",
             json={
-                "username": username,
                 "email": email,
-                "instagram_url": "https://www.instagram.com/registrationautoapproveuser",
                 "password": "Password123",
                 "password_confirm": "Password123",
                 "new_artist_name": artist_name,
@@ -89,30 +87,41 @@ def test_registration_auto_approve_setting_returns_approved_status_and_user_reco
             with connection.cursor() as cursor:
                 cursor.execute(
                     """
-                    SELECT users.status, users.artist_id, artists.name
+                    SELECT users.username, users.email, users.status, users.artist_id, artists.name
                     FROM users
                     JOIN artists
                       ON artists.id = users.artist_id
-                    WHERE users.username = %s
+                    WHERE users.email = %s
                     """,
-                    (username,),
+                    (email,),
                 )
                 user_row = cursor.fetchone()
                 cursor.execute(
                     """
-                    SELECT status, decided_by
+                    SELECT status, decided_by, instagram_url
                     FROM artist_claims
-                    WHERE user_id = (SELECT id FROM users WHERE username = %s)
+                    WHERE user_id = (SELECT id FROM users WHERE email = %s)
                       AND artist_id = (SELECT id FROM artists WHERE name = %s)
                     """,
-                    (username, artist_name),
+                    (email, artist_name),
                 )
                 claim_row = cursor.fetchone()
 
         assert user_row["status"] == "approved"
+        assert user_row["username"] == email
+        assert user_row["email"] == email
         assert user_row["name"] == artist_name
         assert user_row["artist_id"] is not None
         assert claim_row["status"] == "approved"
         assert claim_row["decided_by"] is None
+        assert claim_row["instagram_url"] is None
+
+        login_response = client.post(
+            "/api/login",
+            json={"email": email, "password": "Password123"},
+        )
+        assert login_response.status_code == 200
+        assert login_response.json()["success"] is True
+        assert login_response.json()["username"] == email
     finally:
         cleanup(username, email, artist_name)

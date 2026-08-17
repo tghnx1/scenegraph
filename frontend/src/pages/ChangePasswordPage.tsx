@@ -31,7 +31,6 @@ const buttonStyle: CSSProperties = {
 
 export function ChangePasswordPage({ onLogin }: ChangePasswordPageProps) {
   const navigate = useNavigate()
-  const username = localStorage.getItem('username') ?? ''
   const [searchParams] = useSearchParams()
   const forced = searchParams.get('forced') === 'true'
 
@@ -57,7 +56,6 @@ export function ChangePasswordPage({ onLogin }: ChangePasswordPageProps) {
     setIsSubmitting(true)
     try {
         const response = await changePassword(
-            username,
             currentPassword,
             newPassword,
             newPasswordConfirm,
