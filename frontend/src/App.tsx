@@ -222,7 +222,7 @@ export default function App() {
 
       <main className="flex-1 overflow-y-auto overflow-x-hidden">
         <Routes>
-          <Route path="/" element={<Navigate to={showGraphTab ? '/graph' : defaultLandingPath} replace />} />
+          <Route path="/" element={<Navigate to="/login" replace />} />
           <Route path="/graph" element={graphPage} />
           <Route path="/login" element={isAuthenticated ? <Navigate to={defaultLandingPath} replace /> : <LoginPage onLogin={handleLogin} />} />
           <Route 

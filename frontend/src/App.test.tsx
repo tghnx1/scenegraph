@@ -52,3 +52,29 @@ describe('App graph visibility', () => {
     expect(screen.getByText('Dashboard page')).toBeInTheDocument()
   })
 })
+
+describe('App landing page', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    api.getUiSettings.mockResolvedValue({ success: true, show_graph_tab: true })
+    vi.stubGlobal('localStorage', {
+      getItem: vi.fn(() => null),
+      setItem: vi.fn(),
+      removeItem: vi.fn(),
+      clear: vi.fn(),
+      key: vi.fn(),
+      length: 0,
+    })
+  })
+
+  it('shows the login page at the site root for unauthenticated visitors', async () => {
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <App />
+      </MemoryRouter>,
+    )
+
+    expect(await screen.findByText('Login page')).toBeInTheDocument()
+    expect(screen.queryByText('Graph page')).not.toBeInTheDocument()
+  })
+})
