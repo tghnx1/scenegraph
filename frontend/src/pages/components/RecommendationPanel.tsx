@@ -412,6 +412,7 @@ export function PromoterRecommendationsPanel({
   const activeRecommendationJobRef = useRef<{ jobId: string; requestId: number; isRefresh: boolean } | null>(null)
   const autoLoadTriggeredArtistIdRef = useRef<number | null>(null)
   const recommendationRestoreAttemptedKeyRef = useRef<string | null>(null)
+  const recommendationRestoreBlockingRef = useRef(false)
   const recommendationArtistId = targetControls
     ? targetControls.artistId
     : artistId
@@ -456,6 +457,7 @@ export function PromoterRecommendationsPanel({
     setRecommendationGraphMode('full')
     setSelectedRecommendationNode(null)
     recommendationRestoreAttemptedKeyRef.current = null
+    recommendationRestoreBlockingRef.current = false
   }, [recommendationArtistId])
 
   useEffect(() => {
@@ -551,6 +553,7 @@ export function PromoterRecommendationsPanel({
         onRecommendationsSynced?.()
         return
       } else if (job.status === 'failed') {
+        const wasRestoringPersistedJob = recommendationRestoreBlockingRef.current
         if (!activeJob.isRefresh) {
           setRecommendationsData(null)
           setLoadedRecommendationJobId(null)
@@ -561,7 +564,8 @@ export function PromoterRecommendationsPanel({
         setActiveRecommendationJobId(null)
         activeRecommendationJobRef.current = null
         writeStoredRecommendationJobId(recommendationStorageKey, null)
-        autoLoadTriggeredArtistIdRef.current = recommendationArtistId
+        recommendationRestoreBlockingRef.current = false
+        autoLoadTriggeredArtistIdRef.current = wasRestoringPersistedJob ? null : recommendationArtistId
         return
       }
 
@@ -583,13 +587,15 @@ export function PromoterRecommendationsPanel({
     } catch (error) {
       const currentJob = activeRecommendationJobRef.current
       if (currentJob === null || currentJob.jobId !== jobId) return
+      const wasRestoringPersistedJob = recommendationRestoreBlockingRef.current
       setRecommendationsError(error instanceof Error ? error.message : 'Failed to read recommendation job')
       setIsRecommendationsLoading(false)
       setIsRecommendationsRefreshing(false)
       setActiveRecommendationJobId(null)
       activeRecommendationJobRef.current = null
       writeStoredRecommendationJobId(recommendationStorageKey, null)
-      autoLoadTriggeredArtistIdRef.current = recommendationArtistId
+      recommendationRestoreBlockingRef.current = false
+      autoLoadTriggeredArtistIdRef.current = wasRestoringPersistedJob ? null : recommendationArtistId
     }
   }, [onRecommendationsSynced, recommendationArtistId, recommendationStorageKey])
 
@@ -623,8 +629,12 @@ export function PromoterRecommendationsPanel({
 
     recommendationRestoreAttemptedKeyRef.current = recommendationStorageKey
     const storedJobId = readStoredRecommendationJobId(recommendationStorageKey)
-    if (!storedJobId) return
+    if (!storedJobId) {
+      recommendationRestoreBlockingRef.current = false
+      return
+    }
 
+    recommendationRestoreBlockingRef.current = true
     const requestId = recommendationRequestIdRef.current + 1
     recommendationRequestIdRef.current = requestId
     setRecommendationsError(null)
@@ -707,6 +717,7 @@ export function PromoterRecommendationsPanel({
     if (!autoLoad) return
     if (!isActive) return
     if (recommendationArtistId === null) return
+    if (recommendationRestoreBlockingRef.current) return
     if (recommendationsData !== null || isRecommendationsLoading) return
 
     if (shouldGateByProfileReadiness) {

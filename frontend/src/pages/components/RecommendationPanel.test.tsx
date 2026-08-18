@@ -287,13 +287,17 @@ function createDeferred<T>() {
   return { promise, resolve, reject }
 }
 
-function makeJobResponse(jobId: string, result: PromoterRecommendationResponse): RecommendationJobResponse {
+function makeJobResponse(
+  jobId: string,
+  result: PromoterRecommendationResponse | null,
+  status: RecommendationJobResponse['status'] = 'completed',
+): RecommendationJobResponse {
   return {
     jobId,
     jobType: 'artist_promoters',
     artistId: 61,
     params: { limit: 200, debug: false },
-    status: 'completed',
+    status,
     result,
     createdAt: '2026-07-21T10:00:00.000Z',
     updatedAt: '2026-07-21T10:00:01.000Z',
@@ -630,9 +634,7 @@ describe('PromoterRecommendationsPanel', () => {
 
     const { unmount } = render(
       <PromoterRecommendationsPanel
-        {...baseProps({
-          autoLoad: false,
-        })}
+        {...baseProps()}
       />,
     )
 
@@ -645,9 +647,7 @@ describe('PromoterRecommendationsPanel', () => {
 
     render(
       <PromoterRecommendationsPanel
-        {...baseProps({
-          autoLoad: false,
-        })}
+        {...baseProps()}
       />,
     )
 
@@ -655,6 +655,56 @@ describe('PromoterRecommendationsPanel', () => {
     expect(api.post).not.toHaveBeenCalled()
     expect(api.get).toHaveBeenCalledTimes(2)
     expect(window.sessionStorage.getItem(storageKey)).toBe('job-restore-1')
+  })
+
+  it('restores a running recommendation job from sessionStorage without posting a new one after remount', async () => {
+    const storageKey = 'scenegraph:recommendation-job:61:61'
+    window.sessionStorage.setItem(storageKey, 'job-restore-running')
+    api.get
+      .mockResolvedValueOnce(makeJobResponse('job-restore-running', null, 'running'))
+      .mockResolvedValueOnce(makeJobResponse('job-restore-running', null, 'running'))
+
+    const { unmount } = render(
+      <PromoterRecommendationsPanel
+        {...baseProps()}
+      />,
+    )
+
+    await waitFor(() => expect(api.get).toHaveBeenCalledTimes(1))
+    expect(api.post).not.toHaveBeenCalled()
+    expect(window.sessionStorage.getItem(storageKey)).toBe('job-restore-running')
+
+    unmount()
+
+    render(
+      <PromoterRecommendationsPanel
+        {...baseProps()}
+      />,
+    )
+
+    await waitFor(() => expect(api.get).toHaveBeenCalledTimes(2))
+    expect(api.post).not.toHaveBeenCalled()
+    expect(window.sessionStorage.getItem(storageKey)).toBe('job-restore-running')
+  })
+
+  it('clears a failed restored job and posts exactly once when autoload resumes', async () => {
+    const storageKey = 'scenegraph:recommendation-job:61:61'
+    window.sessionStorage.setItem(storageKey, 'job-restore-failed')
+    api.get
+      .mockRejectedValueOnce(new Error('404: No text-embedding-3-small embedding found for artist 61. Run scripts/generate_embeddings.py first.'))
+      .mockResolvedValueOnce(makeJobResponse('job-restore-new', refreshedResult))
+    api.post.mockResolvedValueOnce({ jobId: 'job-restore-new', status: 'queued' })
+
+    render(
+      <PromoterRecommendationsPanel
+        {...baseProps()}
+      />,
+    )
+
+    expect(await screen.findByText('Updated Promoter')).toBeInTheDocument()
+    await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(api.get).toHaveBeenCalledTimes(2))
+    expect(window.sessionStorage.getItem(storageKey)).toBe('job-restore-new')
   })
 
   it('replaces the stored job id when update recommendations creates a fresh job', async () => {
