@@ -7,6 +7,7 @@ from psycopg.types.json import Jsonb
 from app.auth import create_access_token
 from app.db import get_connection
 from app.main import app
+from app.recommendations import jobs as recommendation_jobs
 from app.schemas import GraphResponse, PromoterRecommendationItem, PromoterRecommendationResponse
 
 
@@ -73,7 +74,14 @@ def temp_recommendation_job_entities() -> Generator[None, None, None]:
             cursor.execute("DELETE FROM artists WHERE id = %s", (TEMP_ARTIST_ID,))
 
 
-def test_recommendation_job_creation_allows_identical_jobs():
+def test_recommendation_job_creation_reuses_active_identical_job(monkeypatch: pytest.MonkeyPatch):
+    notify_calls: list[tuple[str, str]] = []
+
+    def fake_notify(connection, channel: str, payload: str) -> None:
+        notify_calls.append((channel, payload))
+
+    monkeypatch.setattr(recommendation_jobs, '_notify', fake_notify)
+
     first = client.post(
         f"/api/recommendations/artists/{TEMP_ARTIST_ID}/promoters/jobs",
         headers=_headers(),
@@ -93,20 +101,7 @@ def test_recommendation_job_creation_allows_identical_jobs():
     second_payload = second.json()
     assert second_payload["status"] == "queued"
     assert second_payload["jobId"]
-    assert second_payload["jobId"] != first_payload["jobId"]
-
-
-def test_recommendation_job_creation_keeps_job_rows_distinct():
-    first = client.post(
-        f"/api/recommendations/artists/{TEMP_ARTIST_ID}/promoters/jobs",
-        headers=_headers(),
-        json=TEMP_JOB_PARAMS,
-    ).json()
-    second = client.post(
-        f"/api/recommendations/artists/{TEMP_ARTIST_ID}/promoters/jobs",
-        headers=_headers(),
-        json=TEMP_JOB_PARAMS,
-    ).json()
+    assert second_payload["jobId"] == first_payload["jobId"]
 
     with get_connection() as connection:
         with connection.cursor() as cursor:
@@ -117,15 +112,85 @@ def test_recommendation_job_creation_keeps_job_rows_distinct():
                 WHERE user_id = %s
                   AND artist_id = %s
                   AND job_type = 'artist_promoters'
-                  AND params_json = %s::jsonb
+                  AND params_hash = (
+                    SELECT params_hash
+                    FROM recommendation_jobs
+                    WHERE id = %s::uuid
+                  )
                 """,
-                (TEMP_USER_ID, TEMP_ARTIST_ID, Jsonb(TEMP_JOB_PARAMS)),
+                (TEMP_USER_ID, TEMP_ARTIST_ID, first_payload["jobId"]),
+            )
+            row = cursor.fetchone()
+
+    assert row is not None
+    assert row["job_count"] == 1
+    assert notify_calls == [('scenegraph_recommendation_job_created', f'{{"jobId":"{first_payload["jobId"]}"}}')]
+
+
+def test_recommendation_job_creation_starts_new_job_after_completion(monkeypatch: pytest.MonkeyPatch):
+    notify_calls: list[tuple[str, str]] = []
+
+    def fake_notify(connection, channel: str, payload: str) -> None:
+        notify_calls.append((channel, payload))
+
+    monkeypatch.setattr(recommendation_jobs, '_notify', fake_notify)
+
+    first = client.post(
+        f"/api/recommendations/artists/{TEMP_ARTIST_ID}/promoters/jobs",
+        headers=_headers(),
+        json=TEMP_JOB_PARAMS,
+    )
+    assert first.status_code == 202
+    first_payload = first.json()
+
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE recommendation_jobs
+                SET status = 'completed',
+                    finished_at = CURRENT_TIMESTAMP,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = %s::uuid
+                """,
+                (first_payload["jobId"],),
+            )
+
+    second = client.post(
+        f"/api/recommendations/artists/{TEMP_ARTIST_ID}/promoters/jobs",
+        headers=_headers(),
+        json=TEMP_JOB_PARAMS,
+    )
+    assert second.status_code == 202
+    second_payload = second.json()
+    assert second_payload["status"] == "queued"
+    assert second_payload["jobId"] != first_payload["jobId"]
+
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT
+                    count(*) AS job_count,
+                    count(*) FILTER (WHERE status IN ('queued', 'running')) AS active_job_count
+                FROM recommendation_jobs
+                WHERE user_id = %s
+                  AND artist_id = %s
+                  AND job_type = 'artist_promoters'
+                  AND params_hash = (
+                    SELECT params_hash
+                    FROM recommendation_jobs
+                    WHERE id = %s::uuid
+                  )
+                """,
+                (TEMP_USER_ID, TEMP_ARTIST_ID, first_payload["jobId"]),
             )
             row = cursor.fetchone()
 
     assert row is not None
     assert row["job_count"] == 2
-    assert first["jobId"] != second["jobId"]
+    assert row["active_job_count"] == 1
+    assert len(notify_calls) == 2
 
 
 def test_recommendation_job_result_can_be_paged():

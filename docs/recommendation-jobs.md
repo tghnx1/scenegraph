@@ -6,17 +6,21 @@ existing synchronous endpoint.
 ## Request flow
 
 1. The frontend creates a job with `POST /api/recommendations/artists/{artist_id}/promoters/jobs`.
-2. The API stores a `queued` row in `recommendation_jobs` and calls
-   `pg_notify('scenegraph_recommendation_job_created', ...)` in the same transaction.
-3. A recommendation worker blocks on `LISTEN scenegraph_recommendation_job_created`, wakes,
+2. The API first looks for an existing `queued` or `running` job with the same
+   `(user_id, artist_id, job_type, params_hash)`.
+3. If no active match exists, the API stores a new `queued` row in `recommendation_jobs` and
+   calls `pg_notify('scenegraph_recommendation_job_created', ...)` in the same transaction.
+4. A recommendation worker blocks on `LISTEN scenegraph_recommendation_job_created`, wakes,
    and claims work with `SELECT ... FOR UPDATE SKIP LOCKED`.
-4. The worker stores `running`, `completed`, or `failed` state in PostgreSQL. Each state update
+5. The worker stores `running`, `completed`, or `failed` state in PostgreSQL. Each state update
    calls `pg_notify('scenegraph_recommendation_job_updated', ...)` before commit.
-5. Each backend process keeps one PostgreSQL listener for job updates and forwards only
+6. Each backend process keeps one PostgreSQL listener for job updates and forwards only
    `{type, jobId, status}` to WebSocket clients owned by the affected user.
-6. The frontend receives the signal and reads durable state through
+7. The frontend receives the signal and reads durable state through
    `GET /api/recommendations/jobs/{job_id}`. Full recommendation data never travels through
    WebSocket notifications.
+8. If a job completed before the UI remounted, the frontend can restore the persisted job id
+   from `sessionStorage` and read the completed result without posting a new job.
 
 ### Current workflow diagram
 
@@ -58,6 +62,11 @@ PostgreSQL is the source of truth. Notifications are wake-up signals only. Worke
 rows once at startup so jobs created while workers were offline are not lost. Frontend clients
 also re-read their active job after WebSocket or PostgreSQL-listener reconnects.
 
+Active promoter recommendation jobs are concurrency-safe at the database layer through a partial
+unique index on `(user_id, artist_id, job_type, params_hash)` for rows whose status is
+`queued` or `running`. The API reuses an already-active row when it can, but the unique index is
+the final authority for identical concurrent POSTs.
+
 ## Processes
 
 `make up` and `make upd` start one `recommendation-worker` replica by default. More workers can
@@ -83,3 +92,6 @@ docker compose up -d --build
 
 The recommendation UI uses the job endpoints. The legacy artist-only recommendation endpoint
 has been removed.
+
+Explicit `Update recommendations` requests intentionally create a fresh job after completed or
+failed runs, but they still reuse any identical active row that is already queued or running.

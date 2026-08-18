@@ -161,6 +161,27 @@ function sharedGenreSourceGroups(
     .sort((left, right) => left.genre.localeCompare(right.genre))
 }
 
+function getRecommendationJobStorageKey(artistId: number | null): string | null {
+  if (artistId === null || typeof window === 'undefined') return null
+  const userId = window.localStorage.getItem('user_id')
+  if (!userId) return null
+  return `scenegraph:recommendation-job:${userId}:${artistId}`
+}
+
+function readStoredRecommendationJobId(storageKey: string | null): string | null {
+  if (!storageKey || typeof window === 'undefined') return null
+  return window.sessionStorage.getItem(storageKey)
+}
+
+function writeStoredRecommendationJobId(storageKey: string | null, jobId: string | null): void {
+  if (!storageKey || typeof window === 'undefined') return
+  if (jobId) {
+    window.sessionStorage.setItem(storageKey, jobId)
+  } else {
+    window.sessionStorage.removeItem(storageKey)
+  }
+}
+
 function hiddenReasonItems(recommendation: PromoterRecommendationResponse['recommendations'][number], reason: string): string[] {
   const moreMatch = reason.match(/\+(\d+)\s+more/i)
   if (!moreMatch) return []
@@ -390,9 +411,14 @@ export function PromoterRecommendationsPanel({
   const recommendationRequestIdRef = useRef(0)
   const activeRecommendationJobRef = useRef<{ jobId: string; requestId: number; isRefresh: boolean } | null>(null)
   const autoLoadTriggeredArtistIdRef = useRef<number | null>(null)
+  const recommendationRestoreAttemptedKeyRef = useRef<string | null>(null)
   const recommendationArtistId = targetControls
     ? targetControls.artistId
     : artistId
+  const recommendationStorageKey = useMemo(
+    () => getRecommendationJobStorageKey(recommendationArtistId),
+    [recommendationArtistId],
+  )
   const recommendationTargetName = (
     artistName
     ?? targetControls?.artistName
@@ -429,6 +455,7 @@ export function PromoterRecommendationsPanel({
     setLoadedRecommendationJobId(null)
     setRecommendationGraphMode('full')
     setSelectedRecommendationNode(null)
+    recommendationRestoreAttemptedKeyRef.current = null
   }, [recommendationArtistId])
 
   useEffect(() => {
@@ -520,16 +547,38 @@ export function PromoterRecommendationsPanel({
         setIsRecommendationsRefreshing(false)
         setActiveRecommendationJobId(null)
         activeRecommendationJobRef.current = null
+        writeStoredRecommendationJobId(recommendationStorageKey, jobId)
         onRecommendationsSynced?.()
+        return
       } else if (job.status === 'failed') {
         if (!activeJob.isRefresh) {
           setRecommendationsData(null)
+          setLoadedRecommendationJobId(null)
         }
         setRecommendationsError(job.errorMessage ?? 'Recommendation job failed')
         setIsRecommendationsLoading(false)
         setIsRecommendationsRefreshing(false)
         setActiveRecommendationJobId(null)
         activeRecommendationJobRef.current = null
+        writeStoredRecommendationJobId(recommendationStorageKey, null)
+        autoLoadTriggeredArtistIdRef.current = recommendationArtistId
+        return
+      }
+
+      writeStoredRecommendationJobId(recommendationStorageKey, jobId)
+      setRecommendationsError(null)
+      setActiveRecommendationJobId(jobId)
+      activeRecommendationJobRef.current = currentJob
+
+      if (activeJob.isRefresh) {
+        setIsRecommendationsRefreshing(true)
+      } else {
+        setRecommendationsData(null)
+        setLoadedRecommendationJobId(null)
+        setIsLoadingMorePromoters(false)
+        setRecommendationGraphMode('compact')
+        setIsRecommendationsLoading(true)
+        setIsRecommendationsRefreshing(false)
       }
     } catch (error) {
       const currentJob = activeRecommendationJobRef.current
@@ -539,8 +588,10 @@ export function PromoterRecommendationsPanel({
       setIsRecommendationsRefreshing(false)
       setActiveRecommendationJobId(null)
       activeRecommendationJobRef.current = null
+      writeStoredRecommendationJobId(recommendationStorageKey, null)
+      autoLoadTriggeredArtistIdRef.current = recommendationArtistId
     }
-  }, [onRecommendationsSynced])
+  }, [onRecommendationsSynced, recommendationArtistId, recommendationStorageKey])
 
   // Ignore status signals for stale jobs created by earlier UI requests.
   const handleRecommendationJobUpdate = useCallback((message: { jobId: string }) => {
@@ -560,6 +611,38 @@ export function PromoterRecommendationsPanel({
     handleRecommendationJobUpdate,
     handleRecommendationSocketConnected,
   )
+
+  useEffect(() => {
+    recommendationRestoreAttemptedKeyRef.current = null
+  }, [recommendationStorageKey])
+
+  useEffect(() => {
+    if (!isActive) return
+    if (recommendationStorageKey === null) return
+    if (recommendationRestoreAttemptedKeyRef.current === recommendationStorageKey) return
+
+    recommendationRestoreAttemptedKeyRef.current = recommendationStorageKey
+    const storedJobId = readStoredRecommendationJobId(recommendationStorageKey)
+    if (!storedJobId) return
+
+    const requestId = recommendationRequestIdRef.current + 1
+    recommendationRequestIdRef.current = requestId
+    setRecommendationsError(null)
+    setRecommendationsData(null)
+    setLoadedRecommendationJobId(null)
+    setIsLoadingMorePromoters(false)
+    setRecommendationGraphMode('compact')
+    setIsRecommendationsLoading(true)
+    setIsRecommendationsRefreshing(false)
+    setActiveRecommendationJobId(storedJobId)
+    activeRecommendationJobRef.current = {
+      jobId: storedJobId,
+      requestId,
+      isRefresh: false,
+    }
+
+    void refreshRecommendationJob(storedJobId)
+  }, [isActive, refreshRecommendationJob, recommendationStorageKey])
 
   const createRecommendationJob = useCallback(async (refreshing: boolean) => {
     if (recommendationArtistId === null) {
@@ -594,6 +677,7 @@ export function PromoterRecommendationsPanel({
         { limit: PROMOTER_RECOMMENDATION_JOB_LIMIT, debug: false },
       )
       if (recommendationRequestIdRef.current !== requestId) return
+      writeStoredRecommendationJobId(recommendationStorageKey, createdJob.jobId)
       activeRecommendationJobRef.current = { jobId: createdJob.jobId, requestId, isRefresh: refreshing }
       setActiveRecommendationJobId(createdJob.jobId)
       await refreshRecommendationJob(createdJob.jobId)
@@ -607,8 +691,9 @@ export function PromoterRecommendationsPanel({
       setIsRecommendationsRefreshing(false)
       setActiveRecommendationJobId(null)
       activeRecommendationJobRef.current = null
+      writeStoredRecommendationJobId(recommendationStorageKey, null)
     }
-  }, [emptyStateMessage, recommendationArtistId, refreshRecommendationJob, targetControls?.emptyMessage])
+  }, [emptyStateMessage, recommendationArtistId, recommendationStorageKey, refreshRecommendationJob, targetControls?.emptyMessage])
 
   const handleLoadRecommendations = useCallback(() => {
     void createRecommendationJob(false)

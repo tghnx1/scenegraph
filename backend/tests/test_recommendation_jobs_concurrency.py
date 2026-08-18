@@ -1,11 +1,13 @@
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
+import threading
 
 from fastapi.testclient import TestClient
 
 from app.auth import create_access_token
 from app.db import get_connection
 from app.main import app
+from app.recommendations import jobs as recommendation_jobs
 
 
 ARTIST_ID = 2178
@@ -118,3 +120,58 @@ def test_concurrent_recommendation_job_creates_are_isolated():
                                 "DELETE FROM recommendation_jobs WHERE id = ANY(%s::uuid[])",
                                 ([job["jobId"] for job in created_jobs],),
                             )
+
+
+def test_concurrent_identical_recommendation_job_requests_share_one_active_row(monkeypatch):
+    barrier = threading.Barrier(len(TEST_USERS))
+    original_insert_job_row = recommendation_jobs._insert_job_row
+
+    def delayed_insert_job_row(*args, **kwargs):
+        barrier.wait(timeout=10)
+        return original_insert_job_row(*args, **kwargs)
+
+    monkeypatch.setattr(recommendation_jobs, '_insert_job_row', delayed_insert_job_row)
+
+    created_jobs: list[dict[str, object]] = []
+    same_user_id = TEST_USERS[0]['id']
+
+    with seeded_test_users():
+        with TestClient(app) as client:
+            with ThreadPoolExecutor(max_workers=len(TEST_USERS)) as executor:
+                created_jobs = list(
+                    executor.map(
+                        lambda _: _create_job(client, same_user_id),
+                        range(len(TEST_USERS)),
+                    )
+                )
+
+        job_ids = [job['jobId'] for job in created_jobs]
+        assert len(job_ids) == len(TEST_USERS)
+        assert len(set(job_ids)) == 1
+        assert {job['status'] for job in created_jobs} == {'queued'}
+        assert {job['user_id'] for job in created_jobs} == {same_user_id}
+
+        with get_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT
+                        count(*) AS total_count,
+                        count(*) FILTER (WHERE status IN ('queued', 'running')) AS active_job_count
+                    FROM recommendation_jobs
+                    WHERE user_id = %s
+                      AND artist_id = %s
+                      AND job_type = 'artist_promoters'
+                      AND params_hash = (
+                        SELECT params_hash
+                        FROM recommendation_jobs
+                        WHERE id = %s::uuid
+                      )
+                    """,
+                    (same_user_id, ARTIST_ID, job_ids[0]),
+                )
+                row = cursor.fetchone()
+
+        assert row is not None
+        assert row['total_count'] == 1
+        assert row['active_job_count'] == 1

@@ -7,6 +7,7 @@ import uuid
 from typing import Any
 
 from psycopg import Connection
+from psycopg import errors as pg_errors
 from psycopg.types.json import Jsonb
 
 
@@ -47,6 +48,76 @@ def _notify(connection: Connection, channel: str, payload: str) -> None:
         cursor.execute("SELECT pg_notify(%s, %s)", (channel, payload))
 
 
+# Insert one recommendation job row.
+def _insert_job_row(
+    connection: Connection,
+    *,
+    job_id: uuid.UUID,
+    user_id: int,
+    artist_id: int,
+    job_type: str,
+    params: dict[str, Any],
+    params_hash: str,
+) -> dict[str, Any]:
+    """Persist one queued job row and return the stored record."""
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            INSERT INTO recommendation_jobs (
+                id,
+                user_id,
+                artist_id,
+                job_type,
+                params_hash,
+                params_json,
+                status
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, 'queued')
+            RETURNING *
+            """,
+            (
+                job_id,
+                user_id,
+                artist_id,
+                job_type,
+                params_hash,
+                Jsonb(params),
+            ),
+        )
+        row = cursor.fetchone()
+    if row is None:
+        raise RuntimeError("Failed to create recommendation job")
+    return row
+
+
+# Find an already-queued or already-running recommendation job for the same request.
+def _find_active_recommendation_job(
+    connection: Connection,
+    *,
+    user_id: int,
+    artist_id: int,
+    job_type: str,
+    params_hash: str,
+) -> dict[str, Any] | None:
+    """Return the oldest active job matching the request parameters, if any."""
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT *
+            FROM recommendation_jobs
+            WHERE user_id = %s
+              AND artist_id = %s
+              AND job_type = %s
+              AND params_hash = %s
+              AND status IN ('queued', 'running')
+            ORDER BY created_at ASC, id ASC
+            LIMIT 1
+            """,
+            (user_id, artist_id, job_type, params_hash),
+        )
+        return cursor.fetchone()
+
+
 # Store one queued recommendation job and wake workers after commit.
 def _create_job(
     connection: Connection,
@@ -60,33 +131,15 @@ def _create_job(
     params_hash = _params_hash(params)
     job_id = uuid.uuid4()
     with connection.transaction():
-        with connection.cursor() as cursor:
-            cursor.execute(
-                """
-                INSERT INTO recommendation_jobs (
-                    id,
-                    user_id,
-                    artist_id,
-                    job_type,
-                    params_hash,
-                    params_json,
-                    status
-                )
-                VALUES (%s, %s, %s, %s, %s, %s, 'queued')
-                RETURNING *
-                """,
-                (
-                    job_id,
-                    user_id,
-                    artist_id,
-                    job_type,
-                    params_hash,
-                    Jsonb(params),
-                ),
-            )
-            row = cursor.fetchone()
-        if row is None:
-            raise RuntimeError("Failed to create recommendation job")
+        row = _insert_job_row(
+            connection,
+            job_id=job_id,
+            user_id=user_id,
+            artist_id=artist_id,
+            job_type=job_type,
+            params=params,
+            params_hash=params_hash,
+        )
         _notify(
             connection,
             JOB_CREATED_CHANNEL,
@@ -104,13 +157,51 @@ def create_recommendation_job(
     params: dict[str, Any],
 ) -> dict[str, Any]:
     """Persist a queued Artist -> Promoters job and wake sleeping workers after commit."""
-    return _create_job(
-        connection,
-        user_id=user_id,
-        artist_id=artist_id,
-        job_type=ARTIST_PROMOTERS_JOB_TYPE,
-        params=params,
-    )
+    params_hash = _params_hash(params)
+    with connection.transaction():
+        existing_row = _find_active_recommendation_job(
+            connection,
+            user_id=user_id,
+            artist_id=artist_id,
+            job_type=ARTIST_PROMOTERS_JOB_TYPE,
+            params_hash=params_hash,
+        )
+        if existing_row is not None:
+            return existing_row
+
+        for _ in range(2):
+            job_id = uuid.uuid4()
+            try:
+                with connection.transaction():
+                    row = _insert_job_row(
+                        connection,
+                        job_id=job_id,
+                        user_id=user_id,
+                        artist_id=artist_id,
+                        job_type=ARTIST_PROMOTERS_JOB_TYPE,
+                        params=params,
+                        params_hash=params_hash,
+                    )
+            except pg_errors.UniqueViolation:
+                existing_row = _find_active_recommendation_job(
+                    connection,
+                    user_id=user_id,
+                    artist_id=artist_id,
+                    job_type=ARTIST_PROMOTERS_JOB_TYPE,
+                    params_hash=params_hash,
+                )
+                if existing_row is not None:
+                    return existing_row
+                continue
+
+            _notify(
+                connection,
+                JOB_CREATED_CHANNEL,
+                json.dumps({"jobId": str(row["id"])}, separators=(",", ":")),
+            )
+            return row
+
+        raise RuntimeError("Failed to create recommendation job")
 
 
 # Store a queued artist biography refresh job and wake workers after commit.

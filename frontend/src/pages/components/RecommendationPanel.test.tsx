@@ -22,6 +22,22 @@ vi.mock('./LoadingScreen', () => ({
 vi.mock('./GraphPanel', () => ({ ScenegraphMapPanel: scenegraphMapPanelMock }))
 vi.mock('./ExportRecommendation', () => ({ RecommendationExportMenu: () => <div data-testid="export-menu" /> }))
 
+function createStorageMock(initial: Record<string, string> = {}) {
+  const store = new Map<string, string>(Object.entries(initial))
+  return {
+    getItem: vi.fn((key: string) => store.get(key) ?? null),
+    setItem: vi.fn((key: string, value: string) => {
+      store.set(key, String(value))
+    }),
+    removeItem: vi.fn((key: string) => {
+      store.delete(key)
+    }),
+    clear: vi.fn(() => {
+      store.clear()
+    }),
+  }
+}
+
 const baseResult = (name: string, promoterId: number): PromoterRecommendationResponse => ({
   entityId: 61,
   entityType: 'artist',
@@ -287,6 +303,8 @@ function makeJobResponse(jobId: string, result: PromoterRecommendationResponse):
 describe('PromoterRecommendationsPanel', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    vi.stubGlobal('localStorage', createStorageMock({ user_id: '61' }))
+    vi.stubGlobal('sessionStorage', createStorageMock())
   })
 
   it('shows a neutral readiness check while biography and manual artists are loading', () => {
@@ -601,6 +619,71 @@ describe('PromoterRecommendationsPanel', () => {
     await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1))
     await waitFor(() => expect(api.get).toHaveBeenCalledTimes(1))
     expect(screen.queryByText('Complete your profile to generate recommendations')).not.toBeInTheDocument()
+  })
+
+  it('restores a completed recommendation job from sessionStorage without posting a new one after remount', async () => {
+    const storageKey = 'scenegraph:recommendation-job:61:61'
+    window.sessionStorage.setItem(storageKey, 'job-restore-1')
+    api.get
+      .mockResolvedValueOnce(makeJobResponse('job-restore-1', completedResult))
+      .mockResolvedValueOnce(makeJobResponse('job-restore-1', completedResult))
+
+    const { unmount } = render(
+      <PromoterRecommendationsPanel
+        {...baseProps({
+          autoLoad: false,
+        })}
+      />,
+    )
+
+    expect(await screen.findByText('First Promoter')).toBeInTheDocument()
+    expect(api.post).not.toHaveBeenCalled()
+    expect(api.get).toHaveBeenCalledTimes(1)
+    expect(window.sessionStorage.getItem(storageKey)).toBe('job-restore-1')
+
+    unmount()
+
+    render(
+      <PromoterRecommendationsPanel
+        {...baseProps({
+          autoLoad: false,
+        })}
+      />,
+    )
+
+    expect(await screen.findByText('First Promoter')).toBeInTheDocument()
+    expect(api.post).not.toHaveBeenCalled()
+    expect(api.get).toHaveBeenCalledTimes(2)
+    expect(window.sessionStorage.getItem(storageKey)).toBe('job-restore-1')
+  })
+
+  it('replaces the stored job id when update recommendations creates a fresh job', async () => {
+    const user = userEvent.setup()
+    const storageKey = 'scenegraph:recommendation-job:61:61'
+    window.sessionStorage.setItem(storageKey, 'job-restore-1')
+    api.get
+      .mockResolvedValueOnce(makeJobResponse('job-restore-1', completedResult))
+      .mockResolvedValueOnce(makeJobResponse('job-restore-2', refreshedResult))
+    api.post.mockResolvedValueOnce({ jobId: 'job-restore-2', status: 'queued' })
+
+    render(
+      <PromoterRecommendationsPanel
+        {...baseProps({
+          autoLoad: false,
+          profileChangedSinceRecommendations: true,
+        })}
+      />,
+    )
+
+    expect(await screen.findByText('First Promoter')).toBeInTheDocument()
+    expect(window.sessionStorage.getItem(storageKey)).toBe('job-restore-1')
+
+    await user.click(screen.getByRole('button', { name: 'Update recommendations' }))
+
+    expect(await screen.findByText('Updated Promoter')).toBeInTheDocument()
+    expect(api.post).toHaveBeenCalledTimes(1)
+    expect(api.get).toHaveBeenCalledTimes(2)
+    expect(window.sessionStorage.getItem(storageKey)).toBe('job-restore-2')
   })
 
   it('shows the stale-profile fallback card when the backend still rejects the ready profile', async () => {
