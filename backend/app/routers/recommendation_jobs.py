@@ -276,6 +276,8 @@ def read_recommendation_job(
 )
 def read_artist_promoter_job_state(
     artist_id: int,
+    recommendations_offset: Annotated[int, Query(ge=0)] = 0,
+    recommendations_limit: Annotated[int | None, Query(ge=1, le=PROMOTER_REC_API_LIMIT_MAX)] = None,
     current_user: dict = Depends(get_current_user),
 ) -> RecommendationJobStateResponse:
     """Return the newest completed job and current active job for the default UI params."""
@@ -288,12 +290,20 @@ def read_artist_promoter_job_state(
         )
     return RecommendationJobStateResponse(
         latestCompletedJob=(
-            _job_response(latest_completed_row)
+            _job_response(
+                latest_completed_row,
+                recommendations_offset=recommendations_offset,
+                recommendations_limit=recommendations_limit,
+            )
             if latest_completed_row is not None
             else None
         ),
         activeJob=(
-            _job_response(active_row)
+            _job_response(
+                active_row,
+                recommendations_offset=recommendations_offset,
+                recommendations_limit=recommendations_limit,
+            )
             if active_row is not None
             else None
         ),

@@ -68,3 +68,4 @@ def test_import_event_rebuilds_refreshable_event_relations_before_linking():
     assert delete_promoter_index < first_promoter_link_index
     assert delete_image_index < first_image_link_index
     assert any(query.startswith("INSERT INTO event_source_payloads") for query in queries)
+    assert not any("recommendation_jobs" in query for query in queries)

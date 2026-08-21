@@ -636,6 +636,242 @@ def test_recommendation_job_state_returns_latest_completed_and_active_default_jo
     assert payload["activeJob"]["status"] == "queued"
 
 
+def test_recommendation_job_state_pages_latest_completed_result():
+    params = recommendation_jobs.default_artist_promoter_recommendation_params()
+    created = client.post(
+        f"/api/recommendations/artists/{TEMP_ARTIST_ID}/promoters/jobs",
+        headers=_headers(),
+        json=params,
+    )
+    assert created.status_code == 202
+    job_id = created.json()["jobId"]
+
+    full_result = PromoterRecommendationResponse(
+        entityId=TEMP_ARTIST_ID,
+        model="state-page-test-model",
+        dimensions=3,
+        recommendations=[
+            PromoterRecommendationItem(
+                id=1,
+                name="Alpha Promoter",
+                score=0.95,
+                semanticScore=0.92,
+                strengthScore=0.85,
+                activityScore=0.71,
+                recencyScore=0.62,
+                reasons=["shared extracted genres: dark disco"],
+                matchedArtistCount=3,
+                eventCount=9,
+                promoterSizeSegment="small",
+            ),
+            PromoterRecommendationItem(
+                id=2,
+                name="Beta Promoter",
+                score=0.90,
+                semanticScore=0.88,
+                strengthScore=0.79,
+                activityScore=0.68,
+                recencyScore=0.58,
+                reasons=["shared extracted genres: dark disco"],
+                matchedArtistCount=4,
+                eventCount=11,
+                promoterSizeSegment="medium",
+            ),
+            PromoterRecommendationItem(
+                id=3,
+                name="Gamma Promoter",
+                score=0.80,
+                semanticScore=0.77,
+                strengthScore=0.70,
+                activityScore=0.66,
+                recencyScore=0.52,
+                reasons=["shared extracted genres: dark disco"],
+                matchedArtistCount=5,
+                eventCount=13,
+                promoterSizeSegment="large",
+            ),
+        ],
+        largeRecommendations=[
+            PromoterRecommendationItem(
+                id=3,
+                name="Gamma Promoter",
+                score=0.80,
+                semanticScore=0.77,
+                strengthScore=0.70,
+                activityScore=0.66,
+                recencyScore=0.52,
+                reasons=["shared extracted genres: dark disco"],
+                matchedArtistCount=5,
+                eventCount=13,
+                promoterSizeSegment="large",
+            ),
+        ],
+        mediumRecommendations=[
+            PromoterRecommendationItem(
+                id=2,
+                name="Beta Promoter",
+                score=0.90,
+                semanticScore=0.88,
+                strengthScore=0.79,
+                activityScore=0.68,
+                recencyScore=0.58,
+                reasons=["shared extracted genres: dark disco"],
+                matchedArtistCount=4,
+                eventCount=11,
+                promoterSizeSegment="medium",
+            ),
+        ],
+        smallRecommendations=[
+            PromoterRecommendationItem(
+                id=1,
+                name="Alpha Promoter",
+                score=0.95,
+                semanticScore=0.92,
+                strengthScore=0.85,
+                activityScore=0.71,
+                recencyScore=0.62,
+                reasons=["shared extracted genres: dark disco"],
+                matchedArtistCount=3,
+                eventCount=9,
+                promoterSizeSegment="small",
+            ),
+        ],
+        warmRecommendations=[],
+        discoveryRecommendations=[],
+        graph=GraphResponse(nodes=[], links=[]),
+    ).model_dump(mode="json", exclude_none=True)
+
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE recommendation_jobs
+                SET status = 'completed',
+                    result_json = %s,
+                    started_at = COALESCE(started_at, created_at),
+                    finished_at = COALESCE(finished_at, created_at),
+                    updated_at = NOW()
+                WHERE id = %s
+                """,
+                (Jsonb(full_result), job_id),
+            )
+
+    response = client.get(
+        f"/api/recommendations/artists/{TEMP_ARTIST_ID}/promoters/jobs/state?recommendations_offset=1&recommendations_limit=1",
+        headers=_headers(),
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["latestCompletedJob"]["jobId"] == job_id
+    assert payload["latestCompletedJob"]["result"]["recommendationsTotal"] == 3
+    assert payload["latestCompletedJob"]["result"]["recommendationsOffset"] == 1
+    assert payload["latestCompletedJob"]["result"]["recommendationsLimit"] == 1
+    assert [item["id"] for item in payload["latestCompletedJob"]["result"]["recommendations"]] == [2]
+    assert [item["id"] for item in payload["latestCompletedJob"]["result"]["mediumRecommendations"]] == [2]
+
+
+def test_recommendation_job_state_isolated_by_owning_user(monkeypatch: pytest.MonkeyPatch):
+    other_user_id = 99_002
+    monkeypatch.setattr(recommendation_jobs, "_notify", lambda *_args: None)
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("DELETE FROM users WHERE id = %s", (other_user_id,))
+            cursor.execute(
+                """
+                INSERT INTO users (id, username, email, password_hash, role, status)
+                VALUES (%s, %s, %s, %s, %s, %s)
+                """,
+                (
+                    other_user_id,
+                    f"recommendation-job-test-{other_user_id}",
+                    f"recommendation-job-test-{other_user_id}@example.com",
+                    "hash",
+                    "admin",
+                    "approved",
+                ),
+            )
+
+    created = client.post(
+        f"/api/recommendations/artists/{TEMP_ARTIST_ID}/promoters/jobs",
+        headers=_headers(),
+        json=recommendation_jobs.default_artist_promoter_recommendation_params(),
+    )
+    assert created.status_code == 202
+
+    other_headers = {"Authorization": f"Bearer {create_access_token({'sub': str(other_user_id)})}"}
+    response = client.get(
+        f"/api/recommendations/artists/{TEMP_ARTIST_ID}/promoters/jobs/state",
+        headers=other_headers,
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {}
+
+
+def test_newest_completed_generation_wins_by_creation_order(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(recommendation_jobs, "_notify", lambda *_args: None)
+    params = recommendation_jobs.default_artist_promoter_recommendation_params()
+
+    first = client.post(
+        f"/api/recommendations/artists/{TEMP_ARTIST_ID}/promoters/jobs",
+        headers=_headers(),
+        json=params,
+    )
+    second = client.post(
+        f"/api/recommendations/artists/{TEMP_ARTIST_ID}/promoters/jobs",
+        headers=_headers(),
+        json=params,
+    )
+    assert first.status_code == 202
+    assert second.status_code == 202
+
+    first_job_id = first.json()["jobId"]
+    second_job_id = second.json()["jobId"]
+
+    completed_result = PromoterRecommendationResponse(
+        entityId=TEMP_ARTIST_ID,
+        model="state-order-test-model",
+        dimensions=3,
+        recommendations=[],
+        graph=GraphResponse(nodes=[], links=[]),
+    ).model_dump(mode="json", exclude_none=True)
+
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE recommendation_jobs
+                SET status = 'completed',
+                    result_json = %s,
+                    finished_at = CURRENT_TIMESTAMP,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = %s::uuid
+                """,
+                (Jsonb(completed_result), first_job_id),
+            )
+            cursor.execute(
+                """
+                UPDATE recommendation_jobs
+                SET status = 'completed',
+                    result_json = %s,
+                    finished_at = CURRENT_TIMESTAMP,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = %s::uuid
+                """,
+                (Jsonb(completed_result), second_job_id),
+            )
+
+    response = client.get(
+        f"/api/recommendations/artists/{TEMP_ARTIST_ID}/promoters/jobs/state",
+        headers=_headers(),
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["latestCompletedJob"]["jobId"] == second_job_id
+
+
 def test_default_job_enqueue_reuses_active_job(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(recommendation_jobs, "_notify", lambda *_args: None)
     with get_connection() as connection:
