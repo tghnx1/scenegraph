@@ -78,8 +78,9 @@ also re-read their active job after WebSocket or PostgreSQL-listener reconnects.
 Successful manual artist connection create/delete and promoter feedback create/update/delete
 operations enqueue or reuse the default recommendation job for the authenticated user's own
 artist. Admin or agent changes do not create a job owned by that admin or agent for another
-artist. Biography changes enqueue promoter recommendations only after the worker successfully
-updates derived tags and embeddings.
+artist. DB imports and event imports do not enqueue recommendation jobs. Biography changes
+refresh recency only after the worker successfully updates derived tags and embeddings; there is
+no revision or dependency invalidation system at this stage.
 
 Active promoter recommendation jobs are concurrency-safe at the database layer through a partial
 unique index on `(user_id, artist_id, job_type, params_hash)` for rows whose status is
@@ -105,11 +106,12 @@ Run the bootstrap scheduler in a disposable backend container:
 make recommendation-scheduler
 ```
 
-This executes `python -m app.recommendations.scheduler` once and exits. It selects approved or
-pending artist accounts with a non-empty biography and at least three distinct manual artist
-connections. Each eligible pair uses the same `create_recommendation_job` path as the API, so
-an identical queued or running job is reused. The scheduler makes no HTTP calls and is
-intentionally not an always-running Compose service.
+This executes `python -m app.recommendations.scheduler` once and exits. It selects approved
+artist accounts only, requires a usable current source artist embedding, and looks for artists
+with a non-empty biography plus at least three distinct manual artist connections. Each eligible
+pair uses the same `create_recommendation_job` path as the API, so an identical queued or
+running job is reused. The scheduler makes no HTTP calls and is intended to run roughly daily,
+not as an always-running Compose service.
 
 ## Deployment order
 
@@ -128,3 +130,5 @@ has been removed.
 
 Explicit `Update recommendations` requests intentionally create a fresh job after completed or
 failed runs, but they still reuse any identical active row that is already queued or running.
+Scheduled bootstrap and manual recalculation are the supported ways to refresh recommendation
+recency.

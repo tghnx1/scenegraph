@@ -965,6 +965,51 @@ describe('PromoterRecommendationsPanel legacy UX coverage', () => {
     expect(onRecommendationsSynced).toHaveBeenCalledTimes(2)
   })
 
+  it('re-reads durable state after feedback and attaches to the backend refresh job', async () => {
+    const user = userEvent.setup()
+    const activeRefresh = createDeferred<RecommendationJobResponse>()
+    const feedbackActiveJob = job('job-feedback-active', 'running')
+    const refreshedFeedbackResult = recommendationResult('Feedback Refreshed Promoter', 12)
+    let stateRequestCount = 0
+
+    api.post.mockResolvedValueOnce({ id: 501 })
+    api.get.mockImplementation((path: string) => {
+      if (path.startsWith('/recommendations/artists/61/promoters/jobs/state')) {
+        stateRequestCount += 1
+        if (stateRequestCount === 1) {
+          return Promise.resolve({ latestCompletedJob: bootstrapCompletedJob, activeJob: null })
+        }
+        return Promise.resolve({ latestCompletedJob: bootstrapCompletedJob, activeJob: feedbackActiveJob })
+      }
+      if (path.startsWith('/recommendations/jobs/job-feedback-active?')) return activeRefresh.promise
+      throw new Error(`Unexpected GET ${path}`)
+    })
+
+    render(
+      <PromoterRecommendationsPanel
+        {...baseProps({ autoLoad: false })}
+      />,
+    )
+
+    expect(await screen.findByText('Database Promoter')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Interested' }))
+
+    await waitFor(() => expect(stateRequestCount).toBe(2))
+    expect(api.get).toHaveBeenCalledWith('/recommendations/artists/61/promoters/jobs/state?recommendations_offset=0&recommendations_limit=20')
+    expect(api.get).toHaveBeenCalledWith('/recommendations/jobs/job-feedback-active?recommendations_offset=0&recommendations_limit=20')
+    expect(api.post.mock.calls.some(([path]) => path === '/recommendations/artists/61/promoters/jobs')).toBe(false)
+    expect(screen.getByText('Database Promoter')).toBeInTheDocument()
+    expect(screen.queryByText('Feedback Refreshed Promoter')).not.toBeInTheDocument()
+
+    await act(async () => {
+      activeRefresh.resolve(job('job-feedback-active', 'completed', refreshedFeedbackResult))
+    })
+
+    expect(await screen.findByText('Feedback Refreshed Promoter')).toBeInTheDocument()
+    expect(screen.queryByText('Database Promoter')).not.toBeInTheDocument()
+  })
+
   it('shows a non-blocking error when an update fails and keeps the previous recommendations visible', async () => {
     const initialJob = createDeferred<RecommendationJobResponse>()
 

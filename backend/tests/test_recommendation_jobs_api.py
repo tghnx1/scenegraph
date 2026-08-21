@@ -1,4 +1,5 @@
 from collections.abc import Generator
+from datetime import datetime, timezone
 
 import pytest
 from fastapi.testclient import TestClient
@@ -818,16 +819,8 @@ def test_newest_completed_generation_wins_by_creation_order(monkeypatch: pytest.
         headers=_headers(),
         json=params,
     )
-    second = client.post(
-        f"/api/recommendations/artists/{TEMP_ARTIST_ID}/promoters/jobs",
-        headers=_headers(),
-        json=params,
-    )
     assert first.status_code == 202
-    assert second.status_code == 202
-
     first_job_id = first.json()["jobId"]
-    second_job_id = second.json()["jobId"]
 
     completed_result = PromoterRecommendationResponse(
         entityId=TEMP_ARTIST_ID,
@@ -850,16 +843,42 @@ def test_newest_completed_generation_wins_by_creation_order(monkeypatch: pytest.
                 """,
                 (Jsonb(completed_result), first_job_id),
             )
+
+    second = client.post(
+        f"/api/recommendations/artists/{TEMP_ARTIST_ID}/promoters/jobs",
+        headers=_headers(),
+        json=params,
+    )
+    assert second.status_code == 202
+    second_job_id = second.json()["jobId"]
+    assert first_job_id != second_job_id
+
+    earlier_finished_at = datetime(2026, 8, 21, 10, 0, 1, tzinfo=timezone.utc)
+    later_finished_at = datetime(2026, 8, 21, 10, 0, 2, tzinfo=timezone.utc)
+
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
             cursor.execute(
                 """
                 UPDATE recommendation_jobs
                 SET status = 'completed',
                     result_json = %s,
-                    finished_at = CURRENT_TIMESTAMP,
-                    updated_at = CURRENT_TIMESTAMP
+                    finished_at = %s,
+                    updated_at = %s
                 WHERE id = %s::uuid
                 """,
-                (Jsonb(completed_result), second_job_id),
+                (Jsonb(completed_result), earlier_finished_at, earlier_finished_at, second_job_id),
+            )
+            cursor.execute(
+                """
+                UPDATE recommendation_jobs
+                SET status = 'completed',
+                    result_json = %s,
+                    finished_at = %s,
+                    updated_at = %s
+                WHERE id = %s::uuid
+                """,
+                (Jsonb(completed_result), later_finished_at, later_finished_at, first_job_id),
             )
 
     response = client.get(
