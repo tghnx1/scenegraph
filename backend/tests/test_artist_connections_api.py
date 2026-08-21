@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 from app.auth import create_access_token
 from app.db import get_connection
 from app.main import app
+from app.routers import artist_connections
 
 
 client = TestClient(app)
@@ -175,6 +176,37 @@ def test_manual_artist_connection_can_be_deleted(artist_pair):
     second_delete_response = client.delete(item_path, headers=headers())
     assert second_delete_response.status_code == 404
     assert second_delete_response.json()["detail"] == "manual artist connection not found"
+
+
+def test_manual_connection_mutations_refresh_only_the_source_users_artist(
+    artist_pair,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    source_artist, connected_artist = artist_pair
+    refreshes = []
+    monkeypatch.setattr(
+        artist_connections,
+        "enqueue_user_artist_promoter_recommendation_job",
+        lambda connection, **kwargs: refreshes.append(kwargs),
+    )
+    collection_path = f"/api/artists/{source_artist['id']}/known-artists"
+
+    created = client.post(
+        collection_path,
+        headers=headers(),
+        json={"connectedArtistId": connected_artist["id"]},
+    )
+    deleted = client.delete(
+        f"{collection_path}/{connected_artist['id']}",
+        headers=headers(),
+    )
+
+    assert created.status_code == 200
+    assert deleted.status_code == 200
+    assert refreshes == [
+        {"user_id": SOURCE_ARTIST_USER_ID, "artist_id": source_artist["id"]},
+        {"user_id": SOURCE_ARTIST_USER_ID, "artist_id": source_artist["id"]},
+    ]
 
 
 def test_manual_artist_connection_rejects_self_link(artist_pair):

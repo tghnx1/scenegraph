@@ -85,3 +85,8 @@ export interface RecommendationJobResponse {
   finishedAt?: string
   updatedAt: string
 }
+
+export interface RecommendationJobStateResponse {
+  latestCompletedJob?: RecommendationJobResponse | null
+  activeJob?: RecommendationJobResponse | null
+}

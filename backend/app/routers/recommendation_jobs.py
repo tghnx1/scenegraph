@@ -8,7 +8,11 @@ from fastapi import APIRouter, Depends, HTTPException, Query, WebSocket, WebSock
 from app.auth import _user_id_from_jwt, get_current_user, require_artist_access
 from app.db import get_connection
 from app.recommendations.job_events import recommendation_job_socket_hub
-from app.recommendations.jobs import create_recommendation_job, get_recommendation_job
+from app.recommendations.jobs import (
+    create_recommendation_job,
+    get_default_artist_promoter_recommendation_state,
+    get_recommendation_job,
+)
 from app.recommendations.scoring import promoter_recommendation_api_limit_max_from_config
 from app.schemas import (
     GraphLink,
@@ -17,6 +21,7 @@ from app.schemas import (
     RecommendationJobCreatedResponse,
     RecommendationJobParams,
     RecommendationJobResponse,
+    RecommendationJobStateResponse,
 )
 
 
@@ -260,6 +265,38 @@ def read_recommendation_job(
         row,
         recommendations_offset=recommendations_offset,
         recommendations_limit=recommendations_limit,
+    )
+
+
+# Read the current durable default recommendation state for an artist.
+@router.get(
+    "/recommendations/artists/{artist_id}/promoters/jobs/state",
+    response_model=RecommendationJobStateResponse,
+    response_model_exclude_none=True,
+)
+def read_artist_promoter_job_state(
+    artist_id: int,
+    current_user: dict = Depends(get_current_user),
+) -> RecommendationJobStateResponse:
+    """Return the newest completed job and current active job for the default UI params."""
+    require_artist_access(current_user, artist_id)
+    with get_connection() as connection:
+        latest_completed_row, active_row = get_default_artist_promoter_recommendation_state(
+            connection,
+            user_id=int(current_user["id"]),
+            artist_id=artist_id,
+        )
+    return RecommendationJobStateResponse(
+        latestCompletedJob=(
+            _job_response(latest_completed_row)
+            if latest_completed_row is not None
+            else None
+        ),
+        activeJob=(
+            _job_response(active_row)
+            if active_row is not None
+            else None
+        ),
     )
 
 

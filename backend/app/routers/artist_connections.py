@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from app.auth import get_current_user, require_artist_access
 from app.db import get_connection
 from app.recommendations.helpers import ensure_feedback_entity_exists
+from app.recommendations.jobs import enqueue_user_artist_promoter_recommendation_job
 from app.schemas import (
     ArtistKnownConnectionItem,
     ArtistKnownConnectionRequest,
@@ -103,6 +104,11 @@ async def upsert_known_artist(
                 (request.connectedArtistId,),
             )
             artist_row = cursor.fetchone()
+        enqueue_user_artist_promoter_recommendation_job(
+            connection,
+            user_id=int(current_user["id"]),
+            artist_id=artist_id,
+        )
 
     row["connected_artist_name"] = artist_row["name"] if artist_row else ""
     return item_from_row(row)
@@ -143,6 +149,11 @@ async def delete_known_artist(
                 (connected_artist_id,),
             )
             artist_row = cursor.fetchone()
+        enqueue_user_artist_promoter_recommendation_job(
+            connection,
+            user_id=int(current_user["id"]),
+            artist_id=artist_id,
+        )
 
     row["connected_artist_name"] = artist_row["name"] if artist_row else ""
     return item_from_row(row)

@@ -48,6 +48,13 @@ def test_run_job_dispatches_artist_bio_refresh_jobs(monkeypatch):
         "complete_recommendation_job",
         lambda connection, **kwargs: calls.append(("complete", kwargs["job_id"])),
     )
+    monkeypatch.setattr(
+        recommendation_worker,
+        "enqueue_user_artist_promoter_recommendation_job",
+        lambda connection, **kwargs: calls.append(
+            ("enqueue", (kwargs["user_id"], kwargs["artist_id"]))
+        ),
+    )
 
     recommendation_worker._run_job(
         {
@@ -59,4 +66,8 @@ def test_run_job_dispatches_artist_bio_refresh_jobs(monkeypatch):
         }
     )
 
-    assert calls == [("refresh", 2178), ("complete", "job-1")]
+    assert calls == [
+        ("refresh", 2178),
+        ("enqueue", (1, 2178)),
+        ("complete", "job-1"),
+    ]

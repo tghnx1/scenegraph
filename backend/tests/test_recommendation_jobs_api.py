@@ -570,3 +570,105 @@ def test_recommendation_job_result_can_be_paged():
         (f"artist-{TEMP_ARTIST_ID}", "promoter-1", "recommendation"),
         (f"artist-{TEMP_ARTIST_ID}", "promoter-2", "fallback_recommendation"),
     }
+
+
+def test_recommendation_job_state_is_empty_before_default_job_exists():
+    response = client.get(
+        f"/api/recommendations/artists/{TEMP_ARTIST_ID}/promoters/jobs/state",
+        headers=_headers(),
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {}
+
+
+def test_recommendation_job_state_returns_latest_completed_and_active_default_jobs(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setattr(recommendation_jobs, "_notify", lambda *_args: None)
+    params = recommendation_jobs.default_artist_promoter_recommendation_params()
+    completed = client.post(
+        f"/api/recommendations/artists/{TEMP_ARTIST_ID}/promoters/jobs",
+        headers=_headers(),
+        json=params,
+    )
+    assert completed.status_code == 202
+    completed_job_id = completed.json()["jobId"]
+    completed_result = PromoterRecommendationResponse(
+        entityId=TEMP_ARTIST_ID,
+        model="state-test-model",
+        dimensions=3,
+        recommendations=[],
+        graph=GraphResponse(nodes=[], links=[]),
+    ).model_dump(mode="json", exclude_none=True)
+
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE recommendation_jobs
+                SET status = 'completed',
+                    result_json = %s,
+                    finished_at = CURRENT_TIMESTAMP,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = %s::uuid
+                """,
+                (Jsonb(completed_result), completed_job_id),
+            )
+
+    active = client.post(
+        f"/api/recommendations/artists/{TEMP_ARTIST_ID}/promoters/jobs",
+        headers=_headers(),
+        json=params,
+    )
+    assert active.status_code == 202
+
+    response = client.get(
+        f"/api/recommendations/artists/{TEMP_ARTIST_ID}/promoters/jobs/state",
+        headers=_headers(),
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["latestCompletedJob"]["jobId"] == completed_job_id
+    assert payload["latestCompletedJob"]["result"]["model"] == "state-test-model"
+    assert payload["activeJob"]["jobId"] == active.json()["jobId"]
+    assert payload["activeJob"]["status"] == "queued"
+
+
+def test_default_job_enqueue_reuses_active_job(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(recommendation_jobs, "_notify", lambda *_args: None)
+    with get_connection() as connection:
+        first = recommendation_jobs.enqueue_default_artist_promoter_recommendation_job(
+            connection,
+            user_id=TEMP_USER_ID,
+            artist_id=TEMP_ARTIST_ID,
+        )
+        second = recommendation_jobs.enqueue_default_artist_promoter_recommendation_job(
+            connection,
+            user_id=TEMP_USER_ID,
+            artist_id=TEMP_ARTIST_ID,
+        )
+
+    assert first["id"] == second["id"]
+    assert first["status"] == "queued"
+
+
+def test_user_local_enqueue_skips_an_artist_not_owned_by_the_user(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setattr(recommendation_jobs, "_notify", lambda *_args: None)
+    with get_connection() as connection:
+        own_job = recommendation_jobs.enqueue_user_artist_promoter_recommendation_job(
+            connection,
+            user_id=TEMP_USER_ID,
+            artist_id=TEMP_ARTIST_ID,
+        )
+        unrelated_job = recommendation_jobs.enqueue_user_artist_promoter_recommendation_job(
+            connection,
+            user_id=TEMP_USER_ID,
+            artist_id=TEMP_ARTIST_ID + 1,
+        )
+
+    assert own_job is not None
+    assert unrelated_job is None

@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from app.auth import get_current_user_id
 from app.db import get_connection
 from app.recommendations.helpers import ensure_feedback_entity_exists, feedback_item_from_row
+from app.recommendations.jobs import enqueue_user_artist_promoter_recommendation_job
 from app.schemas import (
     FeedbackCandidateKind,
     FeedbackSourceKind,
@@ -88,6 +89,12 @@ async def upsert_recommendation_feedback(
                 ),
             )
             row = cursor.fetchone()
+        if request.sourceEntityType == "artist" and request.candidateEntityType == "promoter":
+            enqueue_user_artist_promoter_recommendation_job(
+                connection,
+                user_id=user_id,
+                artist_id=request.sourceEntityId,
+            )
 
     return feedback_item_from_row(row)
 
@@ -178,6 +185,16 @@ async def delete_recommendation_feedback(
                 (feedback_id, user_id),
             )
             row = cursor.fetchone()
+        if (
+            row is not None
+            and row["source_entity_type"] == "artist"
+            and row["candidate_entity_type"] == "promoter"
+        ):
+            enqueue_user_artist_promoter_recommendation_job(
+                connection,
+                user_id=user_id,
+                artist_id=int(row["source_entity_id"]),
+            )
     if row is None:
         raise HTTPException(status_code=404, detail="recommendation feedback not found")
     return feedback_item_from_row(row)

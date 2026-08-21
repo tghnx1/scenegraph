@@ -15,6 +15,10 @@ JOB_CREATED_CHANNEL = "scenegraph_recommendation_job_created"
 JOB_UPDATED_CHANNEL = "scenegraph_recommendation_job_updated"
 ARTIST_PROMOTERS_JOB_TYPE = "artist_promoters"
 ARTIST_BIO_REFRESH_JOB_TYPE = "artist_bio_refresh"
+DEFAULT_ARTIST_PROMOTER_RECOMMENDATION_PARAMS: dict[str, Any] = {
+    "limit": 200,
+    "debug": False,
+}
 RUNNING_JOB_RECLAIM_AFTER_SECONDS = int(
     os.getenv("RECOMMENDATION_JOB_RUNNING_RECLAIM_AFTER_SECONDS", "600")
 )
@@ -116,6 +120,117 @@ def _find_active_recommendation_job(
             (user_id, artist_id, job_type, params_hash),
         )
         return cursor.fetchone()
+
+
+# Find the newest job matching the request and a terminal/non-terminal status filter.
+def _find_recommendation_job_by_status(
+    connection: Connection,
+    *,
+    user_id: int,
+    artist_id: int,
+    job_type: str,
+    params_hash: str,
+    status_clause: str,
+    newest_first: bool,
+) -> dict[str, Any] | None:
+    """Return one matching job row ordered by generation/request recency."""
+    order_direction = "DESC" if newest_first else "ASC"
+    with connection.cursor() as cursor:
+        cursor.execute(
+            f"""
+            SELECT *
+            FROM recommendation_jobs
+            WHERE user_id = %s
+              AND artist_id = %s
+              AND job_type = %s
+              AND params_hash = %s
+              AND {status_clause}
+            ORDER BY created_at {order_direction}, id {order_direction}
+            LIMIT 1
+            """,
+            (user_id, artist_id, job_type, params_hash),
+        )
+        return cursor.fetchone()
+
+
+# Return the default UI params used by the recommendation panel and scheduler.
+def default_artist_promoter_recommendation_params() -> dict[str, Any]:
+    """Return a copy of the default Artist -> Promoters job parameters."""
+    return dict(DEFAULT_ARTIST_PROMOTER_RECOMMENDATION_PARAMS)
+
+
+# Enqueue the default Artist -> Promoters recommendation job payload.
+def enqueue_default_artist_promoter_recommendation_job(
+    connection: Connection,
+    *,
+    user_id: int,
+    artist_id: int,
+) -> dict[str, Any]:
+    """Create or reuse the default Artist -> Promoters job for a user/artist pair."""
+    return create_recommendation_job(
+        connection,
+        user_id=user_id,
+        artist_id=artist_id,
+        params=default_artist_promoter_recommendation_params(),
+    )
+
+
+def enqueue_user_artist_promoter_recommendation_job(
+    connection: Connection,
+    *,
+    user_id: int,
+    artist_id: int,
+) -> dict[str, Any] | None:
+    """Enqueue only when the changed artist is the authenticated user's own artist."""
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT 1
+            FROM users
+            WHERE id = %s
+              AND artist_id = %s
+              AND role = 'artist'
+              AND status IN ('pending', 'approved')
+            """,
+            (user_id, artist_id),
+        )
+        if cursor.fetchone() is None:
+            return None
+    return enqueue_default_artist_promoter_recommendation_job(
+        connection,
+        user_id=user_id,
+        artist_id=artist_id,
+    )
+
+
+# Return the current durable recommendation state for the default UI params.
+def get_default_artist_promoter_recommendation_state(
+    connection: Connection,
+    *,
+    user_id: int,
+    artist_id: int,
+) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+    """Return the newest completed row and the active row for the default UI params."""
+    params_hash = _params_hash(DEFAULT_ARTIST_PROMOTER_RECOMMENDATION_PARAMS)
+    latest_completed_row = _find_recommendation_job_by_status(
+        connection,
+        user_id=user_id,
+        artist_id=artist_id,
+        job_type=ARTIST_PROMOTERS_JOB_TYPE,
+        params_hash=params_hash,
+        status_clause="status = 'completed'",
+        newest_first=True,
+    )
+    active_row = _find_recommendation_job_by_status(
+        connection,
+        user_id=user_id,
+        artist_id=artist_id,
+        job_type=ARTIST_PROMOTERS_JOB_TYPE,
+        params_hash=params_hash,
+        status_clause="status IN ('queued', 'running')",
+        newest_first=True,
+    )
+    return latest_completed_row, active_row
 
 
 # Store one queued recommendation job and wake workers after commit.

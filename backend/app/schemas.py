@@ -275,6 +275,11 @@ class RecommendationJobResponse(BaseModel):
     updatedAt: datetime
 
 
+class RecommendationJobStateResponse(BaseModel):
+    latestCompletedJob: RecommendationJobResponse | None = None
+    activeJob: RecommendationJobResponse | None = None
+
+
 class ArtistTagItem(BaseModel):
     type: Literal["style", "label", "collective", "role", "residency", "alias"]
     value: str

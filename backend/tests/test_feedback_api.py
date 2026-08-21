@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 from app.auth import create_access_token
 from app.db import get_connection
 from app.main import app
+from app.routers import feedback as feedback_router
 
 
 SOURCE_ARTIST_ID = 9_100_001
@@ -189,6 +190,41 @@ def test_delete_only_removes_current_users_feedback():
         headers=headers(USER_ONE),
     )
     assert deleted.status_code == 200
+
+
+def test_feedback_create_update_delete_refreshes_only_the_source_users_artist(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    refreshes = []
+    monkeypatch.setattr(
+        feedback_router,
+        "enqueue_user_artist_promoter_recommendation_job",
+        lambda connection, **kwargs: refreshes.append(kwargs),
+    )
+
+    created = client.post(
+        "/api/recommendation-feedback",
+        headers=headers(USER_ONE),
+        json=payload(feedback="positive"),
+    )
+    updated = client.post(
+        "/api/recommendation-feedback",
+        headers=headers(USER_ONE),
+        json=payload(feedback="negative"),
+    )
+    deleted = client.delete(
+        f"/api/recommendation-feedback/{created.json()['id']}",
+        headers=headers(USER_ONE),
+    )
+
+    assert created.status_code == 200
+    assert updated.status_code == 200
+    assert deleted.status_code == 200
+    assert refreshes == [
+        {"user_id": USER_ONE, "artist_id": SOURCE_ARTIST_ID},
+        {"user_id": USER_ONE, "artist_id": SOURCE_ARTIST_ID},
+        {"user_id": USER_ONE, "artist_id": SOURCE_ARTIST_ID},
+    ]
 
 
 @pytest.mark.parametrize(

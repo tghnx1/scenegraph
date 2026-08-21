@@ -14,6 +14,7 @@ from app.recommendations.jobs import (
     JOB_CREATED_CHANNEL,
     claim_next_recommendation_job,
     complete_recommendation_job,
+    enqueue_user_artist_promoter_recommendation_job,
     fail_recommendation_job,
     requeue_stale_running_jobs,
 )
@@ -45,6 +46,11 @@ def _run_job(job: dict[str, Any]) -> None:
             elif job_type == ARTIST_BIO_REFRESH_JOB_TYPE:
                 result_payload = refresh_artist_derived_data(
                     connection,
+                    artist_id=int(job["artist_id"]),
+                )
+                enqueue_user_artist_promoter_recommendation_job(
+                    connection,
+                    user_id=int(job["user_id"]),
                     artist_id=int(job["artist_id"]),
                 )
             else:

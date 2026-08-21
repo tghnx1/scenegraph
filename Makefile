@@ -32,7 +32,7 @@ NGINX_CERT_KEY ?= $(NGINX_CERT_DIR)/privkey.pem
 NGINX_CERT_FILE ?= $(NGINX_CERT_DIR)/fullchain.pem
 CERT_NAMES ?=
 
-.PHONY: help env cert build up upd upd-build debug-up debug-down down stop restart logs ps ensure-ssl-certs prisma-migrate db-shell full-pipeline import-dump export-dump clean list fclean
+.PHONY: help env cert build up upd upd-build debug-up debug-down down stop restart logs ps ensure-ssl-certs prisma-migrate db-shell recommendation-scheduler full-pipeline import-dump export-dump clean list fclean
 
 help:
 	@printf "\n"
@@ -58,6 +58,7 @@ help:
 	@printf "  make ps       Show running services\n"
 	@printf "  make prisma-migrate Apply Prisma migrations to Postgres\n"
 	@printf "  make db-shell Open a psql shell inside the Postgres container\n"
+	@printf "  make recommendation-scheduler Run the one-shot recommendation bootstrap scheduler\n"
 	@printf "  make full-pipeline Preferred end-to-end import/enrichment flow in Docker\n"
 	@printf "                flags: FULL_PIPELINE_MIN_DATE=2024-01-01 FULL_PIPELINE_MAX_DATE=2024-12-31\n"
 	@printf "                       FULL_PIPELINE_EVENTS_JSON=backend/data/events.json FULL_PIPELINE_ARTIFACTS_DIR=backend/data/import_runs\n"
@@ -138,6 +139,9 @@ prisma-migrate: env
 
 db-shell: env
 	$(COMPOSE) exec db psql -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"
+
+recommendation-scheduler: env
+	$(COMPOSE) run --rm --no-deps backend python -m app.recommendations.scheduler
 
 full-pipeline: env
 	@set -a; [ -f .env ] && . ./.env; set +a; \
