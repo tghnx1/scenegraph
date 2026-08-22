@@ -93,6 +93,7 @@ interface PromoterRecommendationsPanelProps {
   profileReadiness?: ArtistProfileReadiness
   onNavigateToSection?: (section: 'biography' | 'manual_artists') => void
   profileChangedSinceRecommendations?: boolean
+  profileChangeRevision?: number
   onRecommendationsSynced?: () => void
   emptyStateMessage?: string
 }
@@ -380,6 +381,7 @@ export function PromoterRecommendationsPanel({
   profileReadiness,
   onNavigateToSection,
   profileChangedSinceRecommendations = false,
+  profileChangeRevision = 0,
   onRecommendationsSynced,
   emptyStateMessage,
 }: PromoterRecommendationsPanelProps) {
@@ -403,6 +405,9 @@ export function PromoterRecommendationsPanel({
   const [loadedRecommendationJobId, setLoadedRecommendationJobId] = useState<string | null>(null)
   const [isRecommendationBootstrapComplete, setIsRecommendationBootstrapComplete] = useState(false)
   const [selectedRecommendationNode, setSelectedRecommendationNode] = useState<GraphNode | null>(null)
+  const recommendationsDataRef = useRef<PromoterRecommendationResponse | null>(null)
+  const loadedRecommendationJobIdRef = useRef<string | null>(null)
+  const lastSynchronizedRecommendationJobIdRef = useRef<string | null>(null)
   const recommendationListRef = useRef<HTMLElement | null>(null)
   const lastRecommendationFocusRef = useRef<HTMLElement | null>(null)
   const recommendationRequestIdRef = useRef(0)
@@ -410,6 +415,7 @@ export function PromoterRecommendationsPanel({
   const autoLoadTriggeredArtistIdRef = useRef<number | null>(null)
   const recommendationRestoreAttemptedKeyRef = useRef<string | null>(null)
   const recommendationRestoreBlockingRef = useRef(false)
+  const lastProfileChangeRevisionRef = useRef<number | null>(null)
   const recommendationArtistId = targetControls
     ? targetControls.artistId
     : artistId
@@ -457,6 +463,14 @@ export function PromoterRecommendationsPanel({
     recommendationRestoreBlockingRef.current = false
     setIsRecommendationBootstrapComplete(false)
   }, [recommendationArtistId])
+
+  useEffect(() => {
+    recommendationsDataRef.current = recommendationsData
+  }, [recommendationsData])
+
+  useEffect(() => {
+    loadedRecommendationJobIdRef.current = loadedRecommendationJobId
+  }, [loadedRecommendationJobId])
 
   useEffect(() => {
     if (!shouldGateByProfileReadiness) return
@@ -618,7 +632,10 @@ export function PromoterRecommendationsPanel({
 
   const applyRecommendationState = useCallback(async (
     state: RecommendationJobStateResponse,
-    _allowAutoCreate: boolean,
+    options: {
+      preserveExistingResult: boolean
+      markProfileSynced: boolean
+    },
   ) => {
     if (!isActive || recommendationArtistId === null) return
 
@@ -626,29 +643,40 @@ export function PromoterRecommendationsPanel({
     const activeJob = state.activeJob ?? null
     const requestId = recommendationRequestIdRef.current + 1
     recommendationRequestIdRef.current = requestId
+    const hasVisibleRecommendations = recommendationsDataRef.current !== null
+    const shouldPreserveVisibleRecommendations = options.preserveExistingResult && hasVisibleRecommendations
+    const shouldMarkProfileSynced = options.markProfileSynced
+      && completedJob !== null
+      && activeJob === null
+      && completedJob.jobId !== lastSynchronizedRecommendationJobIdRef.current
 
     setRecommendationsError(null)
-    setRecommendationsData(completedJob?.result ?? null)
-    setLoadedRecommendationJobId(completedJob?.jobId ?? null)
     setIsLoadingMorePromoters(false)
     setRecommendationGraphMode('compact')
 
     if (completedJob) {
+      lastSynchronizedRecommendationJobIdRef.current = completedJob.jobId
+      if (!shouldPreserveVisibleRecommendations || completedJob.jobId !== loadedRecommendationJobIdRef.current || !hasVisibleRecommendations) {
+        setRecommendationsData(completedJob.result ?? null)
+        setLoadedRecommendationJobId(completedJob.jobId)
+      }
       writeStoredRecommendationJobId(recommendationStorageKey, completedJob.jobId)
-    } else {
+    } else if (!shouldPreserveVisibleRecommendations) {
+      setRecommendationsData(null)
+      setLoadedRecommendationJobId(null)
       writeStoredRecommendationJobId(recommendationStorageKey, null)
     }
 
     if (activeJob) {
-      const isRefresh = completedJob !== null
+      const isRefresh = completedJob !== null || shouldPreserveVisibleRecommendations
       activeRecommendationJobRef.current = {
         jobId: activeJob.jobId,
         requestId,
         isRefresh,
       }
       setActiveRecommendationJobId(activeJob.jobId)
-      setIsRecommendationsLoading(!isRefresh)
-      setIsRecommendationsRefreshing(isRefresh)
+      setIsRecommendationsLoading(!isRefresh && !hasVisibleRecommendations)
+      setIsRecommendationsRefreshing(isRefresh || hasVisibleRecommendations)
       writeStoredRecommendationJobId(recommendationStorageKey, activeJob.jobId)
       await refreshRecommendationJob(activeJob.jobId)
       return
@@ -659,15 +687,15 @@ export function PromoterRecommendationsPanel({
     setIsRecommendationsLoading(false)
     setIsRecommendationsRefreshing(false)
     recommendationRestoreBlockingRef.current = false
+    if (shouldMarkProfileSynced) {
+      onRecommendationsSynced?.()
+    }
   }, [
-    autoLoad,
     isActive,
-    isProfileSetupLoading,
-    profileSetupReady,
+    onRecommendationsSynced,
     recommendationArtistId,
     recommendationStorageKey,
     refreshRecommendationJob,
-    shouldGateByProfileReadiness,
   ])
 
   useEffect(() => {
@@ -735,20 +763,31 @@ export function PromoterRecommendationsPanel({
     let cancelled = false
 
     const bootstrapFromDurableState = async () => {
+      let latestCompletedJob: RecommendationJobStateResponse['latestCompletedJob'] = null
+      let activeJob: RecommendationJobStateResponse['activeJob'] = null
       try {
         const state = await api.get<RecommendationJobStateResponse>(
           `${PROMOTER_RECOMMENDATIONS_API_PATH}/${recommendationArtistId}/promoters/jobs/state?recommendations_offset=0&recommendations_limit=${PROMOTER_RECOMMENDATION_INITIAL_PAGE_SIZE}`,
         )
         if (cancelled) return
-        await applyRecommendationState(state, true)
+        latestCompletedJob = state.latestCompletedJob ?? null
+        activeJob = state.activeJob ?? null
+        await applyRecommendationState(state, {
+          preserveExistingResult: false,
+          markProfileSynced: false,
+        })
+        if (profileChangedSinceRecommendations && (latestCompletedJob !== null || activeJob !== null)) {
+          lastProfileChangeRevisionRef.current = profileChangeRevision
+        }
+        if (profileChangedSinceRecommendations && latestCompletedJob !== null && activeJob === null) {
+          onRecommendationsSynced?.()
+        }
 
-        const completedJob = state.latestCompletedJob ?? null
-        const activeJob = state.activeJob ?? null
         const canAutoCreate = autoLoad && (
           !shouldGateByProfileReadiness
           || (!isProfileSetupLoading && profileSetupReady)
         )
-        if (!completedJob && !activeJob && canAutoCreate) {
+        if (!latestCompletedJob && !activeJob && canAutoCreate) {
           autoLoadTriggeredArtistIdRef.current = recommendationArtistId
           await createRecommendationJob(false)
         }
@@ -762,7 +801,9 @@ export function PromoterRecommendationsPanel({
         activeRecommendationJobRef.current = null
       } finally {
         if (!cancelled) {
-          recommendationRestoreBlockingRef.current = false
+          recommendationRestoreBlockingRef.current = profileChangedSinceRecommendations
+            && latestCompletedJob === null
+            && activeJob === null
           setIsRecommendationBootstrapComplete(true)
         }
       }
@@ -781,6 +822,8 @@ export function PromoterRecommendationsPanel({
     createRecommendationJob,
     isActive,
     isProfileSetupLoading,
+    profileChangeRevision,
+    profileChangedSinceRecommendations,
     profileSetupReady,
     recommendationArtistId,
     recommendationStorageKey,
@@ -828,6 +871,9 @@ export function PromoterRecommendationsPanel({
   ])
 
   const isProfileSetupError = isProfileSetupRecommendationError(recommendationsError)
+  const isAutomaticRecommendationRefreshVisible = profileChangedSinceRecommendations && (
+    isRecommendationsLoading || isRecommendationsRefreshing || activeRecommendationJobId !== null
+  )
 
   const handlePromoterFeedback = useCallback(async (
     promoterId: number,
@@ -882,7 +928,10 @@ export function PromoterRecommendationsPanel({
       const state = await api.get<RecommendationJobStateResponse>(
         `${PROMOTER_RECOMMENDATIONS_API_PATH}/${recommendationArtistId}/promoters/jobs/state?recommendations_offset=0&recommendations_limit=${PROMOTER_RECOMMENDATION_INITIAL_PAGE_SIZE}`,
       )
-      await applyRecommendationState(state, false)
+      await applyRecommendationState(state, {
+        preserveExistingResult: true,
+        markProfileSynced: false,
+      })
     } catch (error) {
       setLocalFeedbackByPromoterId((current) => ({ ...current, [promoterId]: previousFeedback ?? null }))
       setRecommendationsError(error instanceof Error ? error.message : 'Failed to save feedback')
@@ -890,6 +939,50 @@ export function PromoterRecommendationsPanel({
       setPendingFeedbackPromoterId(null)
     }
   }, [applyRecommendationState, emptyStateMessage, localFeedbackByPromoterId, localFeedbackIdByPromoterId, recommendationArtistId, recommendationsData, targetControls?.emptyMessage])
+
+  useEffect(() => {
+    if (!isActive || recommendationArtistId === null) return
+    if (!profileChangedSinceRecommendations) {
+      lastProfileChangeRevisionRef.current = profileChangeRevision
+      recommendationRestoreBlockingRef.current = false
+      return
+    }
+    if (!isRecommendationBootstrapComplete) return
+    if (lastProfileChangeRevisionRef.current === profileChangeRevision) return
+
+    lastProfileChangeRevisionRef.current = profileChangeRevision
+    recommendationRestoreBlockingRef.current = true
+    let cancelled = false
+
+    const syncProfileChangesFromDurableState = async () => {
+      try {
+        const state = await api.get<RecommendationJobStateResponse>(
+          `${PROMOTER_RECOMMENDATIONS_API_PATH}/${recommendationArtistId}/promoters/jobs/state?recommendations_offset=0&recommendations_limit=${PROMOTER_RECOMMENDATION_INITIAL_PAGE_SIZE}`,
+        )
+        if (cancelled) return
+        await applyRecommendationState(state, {
+          preserveExistingResult: true,
+          markProfileSynced: true,
+        })
+      } catch (error) {
+        if (cancelled) return
+        setRecommendationsError(error instanceof Error ? error.message : 'Failed to load recommendations')
+      }
+    }
+
+    void syncProfileChangesFromDurableState()
+
+    return () => {
+      cancelled = true
+    }
+  }, [
+    applyRecommendationState,
+    isActive,
+    isRecommendationBootstrapComplete,
+    profileChangeRevision,
+    profileChangedSinceRecommendations,
+    recommendationArtistId,
+  ])
 
   const handleSelectRecommendationNode = useCallback((node: GraphNode | null) => {
     if (node) {
@@ -1215,7 +1308,7 @@ export function PromoterRecommendationsPanel({
             </div>
           )}
 
-          {profileChangedSinceRecommendations && (
+          {profileChangedSinceRecommendations && !isAutomaticRecommendationRefreshVisible && (
             <div className="col-span-full flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[var(--info-border)] bg-[var(--info-soft)] p-3 text-sm text-[var(--text)]">
               <p className="m-0">
                 Your profile changed. Update recommendations to use the latest information.
@@ -1229,6 +1322,11 @@ export function PromoterRecommendationsPanel({
               >
                 Update recommendations
               </Button>
+            </div>
+          )}
+          {isAutomaticRecommendationRefreshVisible && (
+            <div className="col-span-full rounded-2xl border border-[var(--info-border)] bg-[var(--info-soft)] p-3 text-sm text-[var(--text)]">
+              Your recommendations are updating automatically…
             </div>
           )}
 

@@ -887,82 +887,184 @@ describe('PromoterRecommendationsPanel legacy UX coverage', () => {
   })
 
   it('keeps the current recommendations visible while updating them', async () => {
-    const initialJob = createDeferred<RecommendationJobResponse>()
+    const refreshJob = createDeferred<RecommendationJobResponse>()
 
     api.post.mockResolvedValueOnce({ jobId: 'job-1', status: 'queued' })
     api.get.mockImplementation((path: string) => {
       if (path.startsWith('/recommendations/artists/61/promoters/jobs/state')) {
-        return Promise.resolve({ latestCompletedJob: null, activeJob: null })
+        return Promise.resolve({ latestCompletedJob: bootstrapCompletedJob, activeJob: null })
       }
-      if (path.startsWith('/recommendations/jobs/job-1?')) return initialJob.promise
+      if (path.startsWith('/recommendations/jobs/job-1?')) return refreshJob.promise
       throw new Error(`Unexpected GET ${path}`)
     })
 
     render(
       <PromoterRecommendationsPanel
-        {...baseProps({ autoLoad: false, profileChangedSinceRecommendations: true })}
+        {...baseProps({ autoLoad: false, profileChangedSinceRecommendations: true, profileChangeRevision: 1 })}
       />,
     )
 
-    await waitForBootstrapState()
-    fireEvent.click(screen.getByRole('button', { name: 'Get recommendations' }))
+    expect(await screen.findByText('Database Promoter')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Update recommendations' }))
 
-    expect(await screen.findByTestId('recommendation-loading')).toBeInTheDocument()
+    expect(screen.getByText('Database Promoter')).toBeInTheDocument()
+    expect(screen.queryByTestId('recommendation-loading')).not.toBeInTheDocument()
 
     await act(async () => {
-      initialJob.resolve(makeJobResponse('job-1', completedResult))
+      refreshJob.resolve(makeJobResponse('job-1', refreshedResult))
     })
-    expect(await screen.findByText('First Promoter')).toBeInTheDocument()
-    expect(screen.getByText('Your profile changed. Update recommendations to use the latest information.')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Update recommendations' })).toBeEnabled()
-    expect(screen.getByText('First Promoter')).toBeInTheDocument()
-    expect(screen.queryByTestId('recommendation-loading')).not.toBeInTheDocument()
+
+    expect(await screen.findByText('Updated Promoter')).toBeInTheDocument()
+    expect(screen.queryByText('Database Promoter')).not.toBeInTheDocument()
   })
 
   it('shows a reminder when the profile changed after recommendations were generated', async () => {
-    const initialJob = createDeferred<RecommendationJobResponse>()
-    const refreshJob = createDeferred<RecommendationJobResponse>()
     const onRecommendationsSynced = vi.fn()
+    let stateRequestCount = 0
 
-    api.post
-      .mockResolvedValueOnce({ jobId: 'job-1', status: 'queued' })
-      .mockResolvedValueOnce({ jobId: 'job-2', status: 'queued' })
     api.get.mockImplementation((path: string) => {
       if (path.startsWith('/recommendations/artists/61/promoters/jobs/state')) {
-        return Promise.resolve({ latestCompletedJob: null, activeJob: null })
+        stateRequestCount += 1
+        return Promise.resolve({ latestCompletedJob: bootstrapCompletedJob, activeJob: null })
       }
-      if (path.startsWith('/recommendations/jobs/job-1?')) return initialJob.promise
-      if (path.startsWith('/recommendations/jobs/job-2?')) return refreshJob.promise
       throw new Error(`Unexpected GET ${path}`)
     })
 
-    render(
+    const { rerender } = render(
       <PromoterRecommendationsPanel
         {...baseProps({
           autoLoad: false,
-          profileChangedSinceRecommendations: true,
+          profileChangedSinceRecommendations: false,
           onRecommendationsSynced,
         })}
       />,
     )
 
-    await waitForBootstrapState()
-    fireEvent.click(screen.getByRole('button', { name: 'Get recommendations' }))
-    await act(async () => {
-      initialJob.resolve(makeJobResponse('job-1', completedResult))
+    expect(await screen.findByText('Database Promoter')).toBeInTheDocument()
+
+    rerender(
+      <PromoterRecommendationsPanel
+        {...baseProps({
+          autoLoad: false,
+          profileChangedSinceRecommendations: true,
+          profileChangeRevision: 1,
+          onRecommendationsSynced,
+        })}
+      />,
+    )
+
+    await waitFor(() => expect(stateRequestCount).toBeGreaterThanOrEqual(2))
+    expect(screen.getByText('Database Promoter')).toBeInTheDocument()
+    expect(screen.getByText('Your profile changed. Update recommendations to use the latest information.')).toBeInTheDocument()
+    expect(screen.queryByText('Your recommendations are updating automatically…')).not.toBeInTheDocument()
+    expect(onRecommendationsSynced).toHaveBeenCalledTimes(1)
+  })
+
+  it.each([
+    ['add', 1],
+    ['delete', 2],
+  ])('re-reads durable state after manual connection %s and attaches to the backend job', async (_mutation, revision) => {
+    const activeRefresh = createDeferred<RecommendationJobResponse>()
+    const refreshedResult = recommendationResult('Auto Refreshed Promoter', 12)
+    const onRecommendationsSynced = vi.fn()
+    let stateRequestCount = 0
+
+    api.get.mockImplementation((path: string) => {
+      if (path.startsWith('/recommendations/artists/61/promoters/jobs/state')) {
+        stateRequestCount += 1
+        if (stateRequestCount === 1) {
+          return Promise.resolve({ latestCompletedJob: bootstrapCompletedJob, activeJob: null })
+        }
+        return Promise.resolve({ latestCompletedJob: bootstrapCompletedJob, activeJob: job('job-auto-refresh', 'running') })
+      }
+      if (path.startsWith('/recommendations/jobs/job-auto-refresh?')) return activeRefresh.promise
+      throw new Error(`Unexpected GET ${path}`)
     })
 
-    expect(await screen.findByText('Your profile changed. Update recommendations to use the latest information.')).toBeInTheDocument()
+    const { rerender } = render(
+      <PromoterRecommendationsPanel
+        {...baseProps({
+          autoLoad: false,
+          profileChangedSinceRecommendations: false,
+          onRecommendationsSynced,
+        })}
+      />,
+    )
+
+    expect(await screen.findByText('Database Promoter')).toBeInTheDocument()
+
+    rerender(
+      <PromoterRecommendationsPanel
+        {...baseProps({
+          autoLoad: false,
+          profileChangedSinceRecommendations: true,
+          profileChangeRevision: revision,
+          onRecommendationsSynced,
+        })}
+      />,
+    )
+
+    await waitFor(() => expect(stateRequestCount).toBeGreaterThanOrEqual(2))
+    expect(api.post).not.toHaveBeenCalled()
+    expect(screen.getByText('Database Promoter')).toBeInTheDocument()
+    expect(screen.getByText('Your recommendations are updating automatically…')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Update recommendations' })).not.toBeInTheDocument()
+
+    await act(async () => {
+      activeRefresh.resolve(job('job-auto-refresh', 'completed', refreshedResult))
+    })
+
+    expect(await screen.findByText('Auto Refreshed Promoter')).toBeInTheDocument()
+    expect(screen.queryByText('Database Promoter')).not.toBeInTheDocument()
     expect(onRecommendationsSynced).toHaveBeenCalledTimes(1)
+  })
 
-    const updateButtons = screen.getAllByRole('button', { name: 'Update recommendations' })
-    fireEvent.click(updateButtons[0] ?? updateButtons[updateButtons.length - 1])
+  it('clears the profile-changed flag when a completed refresh is already in durable state before mount', async () => {
+    const completedRefreshResult = recommendationResult('Completed Before Mount', 13)
+    const onRecommendationsSynced = vi.fn()
+    let stateRequestCount = 0
 
-    expect(screen.getByText('First Promoter')).toBeInTheDocument()
-    refreshJob.resolve(makeJobResponse('job-2', refreshedResult))
+    api.get.mockImplementation((path: string) => {
+      if (path.startsWith('/recommendations/artists/61/promoters/jobs/state')) {
+        stateRequestCount += 1
+        return Promise.resolve({
+          latestCompletedJob: job('job-completed-before-mount', 'completed', completedRefreshResult),
+          activeJob: null,
+        })
+      }
+      throw new Error(`Unexpected GET ${path}`)
+    })
 
-    expect(await screen.findByText('Updated Promoter')).toBeInTheDocument()
-    expect(onRecommendationsSynced).toHaveBeenCalledTimes(2)
+    const { rerender } = render(
+      <PromoterRecommendationsPanel
+        {...baseProps({
+          autoLoad: false,
+          profileChangedSinceRecommendations: true,
+          profileChangeRevision: 1,
+          onRecommendationsSynced,
+        })}
+      />,
+    )
+
+    expect(await screen.findByText('Completed Before Mount')).toBeInTheDocument()
+    expect(api.post).not.toHaveBeenCalled()
+    expect(onRecommendationsSynced).toHaveBeenCalledTimes(1)
+    expect(stateRequestCount).toBe(1)
+    expect(screen.getByText('Your profile changed. Update recommendations to use the latest information.')).toBeInTheDocument()
+    expect(screen.queryByText('Your recommendations are updating automatically…')).not.toBeInTheDocument()
+
+    rerender(
+      <PromoterRecommendationsPanel
+        {...baseProps({
+          autoLoad: false,
+          profileChangedSinceRecommendations: false,
+          profileChangeRevision: 1,
+          onRecommendationsSynced,
+        })}
+      />,
+    )
+
+    expect(screen.queryByText('Your profile changed. Update recommendations to use the latest information.')).not.toBeInTheDocument()
   })
 
   it('re-reads durable state after feedback and attaches to the backend refresh job', async () => {
@@ -987,7 +1089,7 @@ describe('PromoterRecommendationsPanel legacy UX coverage', () => {
 
     render(
       <PromoterRecommendationsPanel
-        {...baseProps({ autoLoad: false })}
+        {...baseProps({ autoLoad: false, profileChangedSinceRecommendations: true, profileChangeRevision: 1 })}
       />,
     )
 
@@ -995,7 +1097,7 @@ describe('PromoterRecommendationsPanel legacy UX coverage', () => {
 
     await user.click(screen.getByRole('button', { name: 'Interested' }))
 
-    await waitFor(() => expect(stateRequestCount).toBe(2))
+    await waitFor(() => expect(stateRequestCount).toBeGreaterThanOrEqual(2))
     expect(api.get).toHaveBeenCalledWith('/recommendations/artists/61/promoters/jobs/state?recommendations_offset=0&recommendations_limit=20')
     expect(api.get).toHaveBeenCalledWith('/recommendations/jobs/job-feedback-active?recommendations_offset=0&recommendations_limit=20')
     expect(api.post.mock.calls.some(([path]) => path === '/recommendations/artists/61/promoters/jobs')).toBe(false)
@@ -1011,16 +1113,12 @@ describe('PromoterRecommendationsPanel legacy UX coverage', () => {
   })
 
   it('shows a non-blocking error when an update fails and keeps the previous recommendations visible', async () => {
-    const initialJob = createDeferred<RecommendationJobResponse>()
-
     api.post
-      .mockResolvedValueOnce({ jobId: 'job-1', status: 'queued' })
       .mockResolvedValueOnce({ jobId: 'job-2', status: 'queued' })
     api.get.mockImplementation((path: string) => {
       if (path.startsWith('/recommendations/artists/61/promoters/jobs/state')) {
-        return Promise.resolve({ latestCompletedJob: null, activeJob: null })
+        return Promise.resolve({ latestCompletedJob: bootstrapCompletedJob, activeJob: null })
       }
-      if (path.startsWith('/recommendations/jobs/job-1?')) return initialJob.promise
       if (path.startsWith('/recommendations/jobs/job-2?')) {
         return Promise.resolve({
           jobId: 'job-2',
@@ -1038,23 +1136,18 @@ describe('PromoterRecommendationsPanel legacy UX coverage', () => {
 
     render(
       <PromoterRecommendationsPanel
-        {...baseProps({ autoLoad: false, profileChangedSinceRecommendations: true })}
+        {...baseProps({ autoLoad: false, profileChangedSinceRecommendations: true, profileChangeRevision: 1 })}
       />,
     )
 
-    await waitForBootstrapState()
-    fireEvent.click(screen.getByRole('button', { name: 'Get recommendations' }))
-    await act(async () => {
-      initialJob.resolve(makeJobResponse('job-1', completedResult))
-    })
-
-    expect(await screen.findByText('First Promoter')).toBeInTheDocument()
+    expect(await screen.findByText('Database Promoter')).toBeInTheDocument()
+    expect(await screen.findByText('Your profile changed. Update recommendations to use the latest information.')).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'Update recommendations' }))
 
     expect(await screen.findByText('Couldn’t update recommendations. Your previous results are still shown.')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument()
-    expect(screen.getByText('First Promoter')).toBeInTheDocument()
+    expect(screen.getByText('Database Promoter')).toBeInTheDocument()
     expect(screen.queryByText('Complete your artist profile to unlock recommendations.')).not.toBeInTheDocument()
   })
 })

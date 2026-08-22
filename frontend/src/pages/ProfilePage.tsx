@@ -50,6 +50,7 @@ export function ProfilePage({ recommendationTargetControls, showBiography = true
     hasBiography: null,
   })
   const [hasProfileChangesSinceRecommendations, setHasProfileChangesSinceRecommendations] = useState(false)
+  const [profileChangeRevision, setProfileChangeRevision] = useState(0)
 
   const refreshCurrentUser = useCallback(async () => {
     try {
@@ -139,6 +140,7 @@ export function ProfilePage({ recommendationTargetControls, showBiography = true
     : artistId
   const markProfileChanged = useCallback(() => {
     setHasProfileChangesSinceRecommendations(true)
+    setProfileChangeRevision((current) => current + 1)
   }, [])
 
   const markRecommendationsSynced = useCallback(() => {
@@ -147,6 +149,7 @@ export function ProfilePage({ recommendationTargetControls, showBiography = true
 
   useEffect(() => {
     setHasProfileChangesSinceRecommendations(false)
+    setProfileChangeRevision(0)
   }, [profileArtistId])
 
   const manualConnections = useManualArtistConnections(manualConnectionsArtistId, markProfileChanged)
@@ -293,6 +296,7 @@ export function ProfilePage({ recommendationTargetControls, showBiography = true
                   profileReadiness={isArtistUser ? profileReadiness : undefined}
                   onNavigateToSection={isArtistUser ? navigateToProfileSection : undefined}
                   profileChangedSinceRecommendations={hasProfileChangesSinceRecommendations}
+                  profileChangeRevision={profileChangeRevision}
                   onRecommendationsSynced={markRecommendationsSynced}
                 />
               )}
