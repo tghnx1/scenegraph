@@ -88,6 +88,10 @@ jobs:
         working-directory: backend
         run: npm run prisma:deploy
 
+      - name: Seed disposable CI recommendation graph
+        working-directory: backend
+        run: PYTHONPATH=. python tests/ci_seed.py
+
       - name: Run backend test suite
         working-directory: backend
         run: PYTHONPATH=. pytest -q

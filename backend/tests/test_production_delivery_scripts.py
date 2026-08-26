@@ -96,3 +96,14 @@ def test_pgvector_migration_uses_indexable_embedding_dimensions():
 
     assert "embedding_vec vector(1536)" in migration
     assert "AND dimensions = 1536" in migration
+
+
+def test_ci_seed_provides_expected_recommendation_graph_contract():
+    seed = (REPO_ROOT / "backend" / "tests" / "ci_seed.py").read_text()
+
+    assert "(2178, 'ci-source-artist'" in seed
+    assert "(2179, 'ci-connected-artist'" in seed
+    assert "(9800001, 2178)" in seed
+    assert "(9800001, 2179)" in seed
+    assert "(9800002, 2179)" in seed
+    assert "(9800002, 9700001)" in seed
