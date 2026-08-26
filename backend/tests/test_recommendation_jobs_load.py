@@ -125,7 +125,8 @@ def test_parallel_recommendation_job_create_read_complete_flow():
                 )
 
             job_ids = [job["jobId"] for job in created_jobs]
-            assert len(job_ids) == len(set(job_ids))
+            assert len(set(job_ids)) == len(TEST_USERS)
+            assert all(job_ids.count(job_id) == jobs_per_user for job_id in set(job_ids))
             assert {job["status"] for job in created_jobs} == {"queued"}
 
             with ThreadPoolExecutor(max_workers=len(created_jobs)) as executor:

@@ -107,3 +107,5 @@ def test_ci_seed_provides_expected_recommendation_graph_contract():
     assert "(9800001, 2179)" in seed
     assert "(9800002, 2179)" in seed
     assert "(9800002, 9700001)" in seed
+    assert "'openai:text-embedding-3-small'" in seed
+    assert "array_fill(0.01::real, ARRAY[1536])::vector" in seed

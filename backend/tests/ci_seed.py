@@ -60,6 +60,52 @@ def main() -> None:
                 ON CONFLICT DO NOTHING
                 """
             )
+            cursor.execute(
+                """
+                INSERT INTO entity_embeddings (
+                    entity_type,
+                    entity_id,
+                    model,
+                    dimensions,
+                    text_hash,
+                    text_profile,
+                    embedding,
+                    embedding_vec
+                )
+                VALUES
+                    (
+                        'artist',
+                        2178,
+                        'openai:text-embedding-3-small',
+                        1536,
+                        'ci-source-hash',
+                        'CI Source Artist',
+                        array_fill(0.01::double precision, ARRAY[1536]),
+                        array_fill(0.01::real, ARRAY[1536])::vector
+                    ),
+                    (
+                        'artist',
+                        2179,
+                        'openai:text-embedding-3-small',
+                        1536,
+                        'ci-connected-hash',
+                        'CI Connected Artist',
+                        array_fill(0.01::double precision, ARRAY[1536]),
+                        array_fill(0.01::real, ARRAY[1536])::vector
+                    )
+                ON CONFLICT DO NOTHING
+                """
+            )
+            for table in ("artists", "users", "promoters", "events"):
+                cursor.execute(
+                    f"""
+                    SELECT setval(
+                        pg_get_serial_sequence('{table}', 'id'),
+                        (SELECT max(id) FROM {table}),
+                        TRUE
+                    )
+                    """
+                )
 
     print("Seeded disposable CI recommendation graph")
 
