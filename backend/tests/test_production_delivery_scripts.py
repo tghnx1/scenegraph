@@ -103,9 +103,11 @@ def test_ci_seed_provides_expected_recommendation_graph_contract():
 
     assert "(2178, 'ci-source-artist'" in seed
     assert "(2179, 'ci-connected-artist'" in seed
+    assert "(2180, 'ci-semantic-artist'" in seed
     assert "(9800001, 2178)" in seed
     assert "(9800001, 2179)" in seed
     assert "(9800002, 2179)" in seed
     assert "(9800002, 9700001)" in seed
+    assert "(9800003, 9700002)" in seed
     assert "'openai:text-embedding-3-small'" in seed
     assert "array_fill(0.01::real, ARRAY[1536])::vector" in seed

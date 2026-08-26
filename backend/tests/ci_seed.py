@@ -16,7 +16,8 @@ def main() -> None:
                 INSERT INTO artists (id, ra_artist_id, name)
                 VALUES
                     (2178, 'ci-source-artist', 'CI Source Artist'),
-                    (2179, 'ci-connected-artist', 'CI Connected Artist')
+                    (2179, 'ci-connected-artist', 'CI Connected Artist'),
+                    (2180, 'ci-semantic-artist', 'CI Semantic Artist')
                 ON CONFLICT DO NOTHING
                 """
             )
@@ -30,7 +31,9 @@ def main() -> None:
             cursor.execute(
                 """
                 INSERT INTO promoters (id, ra_promoter_id, name, live)
-                VALUES (9700001, 'ci-promoter', 'CI Promoter', TRUE)
+                VALUES
+                    (9700001, 'ci-warm-promoter', 'CI Warm Promoter', TRUE),
+                    (9700002, 'ci-semantic-promoter', 'CI Semantic Promoter', TRUE)
                 ON CONFLICT DO NOTHING
                 """
             )
@@ -39,7 +42,8 @@ def main() -> None:
                 INSERT INTO events (id, ra_event_id, title, event_date, interested_count, live)
                 VALUES
                     (9800001, 'ci-shared-event', 'CI Shared Event', CURRENT_TIMESTAMP - INTERVAL '30 days', 25, TRUE),
-                    (9800002, 'ci-promoted-event', 'CI Promoted Event', CURRENT_TIMESTAMP - INTERVAL '20 days', 50, TRUE)
+                    (9800002, 'ci-promoted-event', 'CI Promoted Event', CURRENT_TIMESTAMP - INTERVAL '20 days', 50, TRUE),
+                    (9800003, 'ci-semantic-event', 'CI Semantic Event', CURRENT_TIMESTAMP - INTERVAL '10 days', 40, TRUE)
                 ON CONFLICT DO NOTHING
                 """
             )
@@ -49,14 +53,17 @@ def main() -> None:
                 VALUES
                     (9800001, 2178),
                     (9800001, 2179),
-                    (9800002, 2179)
+                    (9800002, 2179),
+                    (9800003, 2180)
                 ON CONFLICT DO NOTHING
                 """
             )
             cursor.execute(
                 """
                 INSERT INTO event_promoters (event_id, promoter_id)
-                VALUES (9800002, 9700001)
+                VALUES
+                    (9800002, 9700001),
+                    (9800003, 9700002)
                 ON CONFLICT DO NOTHING
                 """
             )
@@ -90,6 +97,16 @@ def main() -> None:
                         1536,
                         'ci-connected-hash',
                         'CI Connected Artist',
+                        array_fill(0.01::double precision, ARRAY[1536]),
+                        array_fill(0.01::real, ARRAY[1536])::vector
+                    ),
+                    (
+                        'artist',
+                        2180,
+                        'openai:text-embedding-3-small',
+                        1536,
+                        'ci-semantic-hash',
+                        'CI Semantic Artist',
                         array_fill(0.01::double precision, ARRAY[1536]),
                         array_fill(0.01::real, ARRAY[1536])::vector
                     )
