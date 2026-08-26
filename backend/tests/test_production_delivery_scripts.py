@@ -82,3 +82,17 @@ def test_production_health_rejects_partial_success(payload):
     module = load_script("production_smoke_invalid", "production_smoke_test.py")
 
     assert module.validate_health_payload(payload)
+
+
+def test_pgvector_migration_uses_indexable_embedding_dimensions():
+    migration = (
+        REPO_ROOT
+        / "backend"
+        / "prisma"
+        / "migrations"
+        / "20260527101000_add_pgvector_embedding_vec"
+        / "migration.sql"
+    ).read_text()
+
+    assert "embedding_vec vector(1536)" in migration
+    assert "AND dimensions = 1536" in migration
