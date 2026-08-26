@@ -11,6 +11,7 @@ export interface LoginResponse {
   role?: AuthRole
   access_token?: string
   must_change_password?: boolean
+  profile_complete?: boolean
 }
 export interface ChangePasswordResponse {
   success: boolean
@@ -62,6 +63,11 @@ export interface RegisterResponse {
   message: string
   user_id?: number
   status?: 'pending' | 'approved'
+  username?: string
+  role?: AuthRole
+  artist_id?: number
+  access_token?: string
+  profile_complete?: boolean
 }
 
 export const register = (data: {
@@ -181,6 +187,7 @@ export interface MeResponse {
   role: AuthRole
   artist_id?: number | null
   artist_name?: string | null
+  profile_complete: boolean
 }
 
 export const getMe = (): Promise<MeResponse> =>

@@ -100,24 +100,31 @@ describe('LoginPage registration status messaging', () => {
     expect(screen.getByText('Registration submitted. Your account will be available after manual review.')).toBeInTheDocument()
   })
 
-  it('shows approved messaging when the backend returns an approved registration', async () => {
+  it('signs in immediately when registration is auto-approved', async () => {
     const user = userEvent.setup()
+    const onLogin = vi.fn()
     api.register.mockResolvedValue({
       success: true,
       message: 'Registration successful',
       user_id: 123,
       status: 'approved',
+      username: 'friend@example.com',
+      role: 'artist',
+      artist_id: 44,
+      access_token: 'registration-token',
+      profile_complete: false,
     })
 
     render(
       <MemoryRouter>
-        <LoginPage onLogin={vi.fn()} />
+        <LoginPage onLogin={onLogin} />
       </MemoryRouter>,
     )
 
     await fillRegistrationForm(user)
 
     await waitFor(() => expect(api.register).toHaveBeenCalled())
-    expect(screen.getByText('Registration approved. You can log in now.')).toBeInTheDocument()
+    expect(onLogin).toHaveBeenCalledWith('artist', true, false)
+    expect(localStorage.setItem).toHaveBeenCalledWith('token', 'registration-token')
   })
 })

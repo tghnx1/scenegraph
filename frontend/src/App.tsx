@@ -5,7 +5,7 @@ import { DashboardPage } from './pages/DashboardPage'
 import { ProfilePage } from './pages/ProfilePage'
 import { AgencyPage } from './pages/AgencyPage'
 import { LoginPage } from './pages/LoginPage'
-import { getUiSettings, logout, type AuthRole } from './api/auth'
+import { getMe, getUiSettings, logout, type AuthRole } from './api/auth'
 import { ChangePasswordPage } from './pages/ChangePasswordPage'
 import { AboutPage } from './pages/AboutPage'
 import { applyTheme, getStoredTheme, type ThemeName } from './shared/styles/colors'
@@ -46,7 +46,11 @@ export default function App() {
   })
   const [themeName, setThemeName] = useState<ThemeName>(() => getStoredTheme())
   const [showGraphTab, setShowGraphTab] = useState(true)
+  const [profileComplete, setProfileComplete] = useState(
+    () => localStorage.getItem('profile_complete') === 'true',
+  )
   const isAuthenticated = Boolean(authRole)
+  const [profileStatusLoaded, setProfileStatusLoaded] = useState(!isAuthenticated)
   const canOpenDashboard = authRole === 'admin'
   const graphPage = authRole === 'artist'
     ? <ProfilePage showGraphTab={showGraphTab} />
@@ -60,7 +64,11 @@ export default function App() {
     location.pathname === '/profile'
     || (location.pathname === '/graph' && authRole === 'artist')
   const defaultLandingPath = isAuthenticated
-    ? (authRole === 'admin' ? '/dashboard' : '/profile')
+    ? (authRole === 'admin'
+        ? '/dashboard'
+        : authRole === 'artist'
+          ? `/profile?workspace=${profileComplete ? 'recommendations' : 'profile'}`
+          : '/profile?workspace=profile')
     : '/login'
   const profileWorkspace = useMemo(() => {
     const value = searchParams.get('workspace')
@@ -96,6 +104,27 @@ export default function App() {
     }
   }, [])
 
+  useEffect(() => {
+    if (!isAuthenticated) return
+
+    let cancelled = false
+    setProfileStatusLoaded(false)
+    void getMe()
+      .then((response) => {
+        if (cancelled) return
+        setProfileComplete(response.profile_complete)
+        localStorage.setItem('profile_complete', String(response.profile_complete))
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        if (!cancelled) setProfileStatusLoaded(true)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [isAuthenticated])
+
   const openProfileWorkspace = (workspace: 'profile' | 'recommendations' | 'graph') => {
     if (workspace === 'graph' && !showGraphTab) return
     const nextParams = new URLSearchParams(searchParams)
@@ -116,7 +145,10 @@ export default function App() {
       localStorage.removeItem('username')
       localStorage.removeItem('user_id')
       localStorage.removeItem('artist_id')
+      localStorage.removeItem('profile_complete')
       setAuthRole(null)
+      setProfileComplete(false)
+      setProfileStatusLoaded(true)
       return
     }
 
@@ -128,11 +160,19 @@ export default function App() {
     navigate('/login')
   }
 
-  const handleLogin = (role: AuthRole, redirect = true) => {
+  const handleLogin = (role: AuthRole, redirect = true, nextProfileComplete = false) => {
     setAuthRole(role)
+    setProfileComplete(nextProfileComplete)
+    setProfileStatusLoaded(true)
 
     if (redirect) {
-      navigate(role === 'admin' ? '/dashboard' : '/profile')
+      navigate(
+        role === 'admin'
+          ? '/dashboard'
+          : role === 'artist'
+            ? `/profile?workspace=${nextProfileComplete ? 'recommendations' : 'profile'}`
+            : '/profile?workspace=profile',
+      )
     }
   }
 
@@ -222,9 +262,23 @@ export default function App() {
 
       <main className="flex-1 overflow-y-auto overflow-x-hidden">
         <Routes>
-          <Route path="/" element={<Navigate to="/login" replace />} />
+          <Route
+            path="/"
+            element={
+              isAuthenticated
+                ? profileStatusLoaded ? <Navigate to={defaultLandingPath} replace /> : null
+                : <Navigate to="/login" replace />
+            }
+          />
           <Route path="/graph" element={graphPage} />
-          <Route path="/login" element={isAuthenticated ? <Navigate to={defaultLandingPath} replace /> : <LoginPage onLogin={handleLogin} />} />
+          <Route
+            path="/login"
+            element={
+              isAuthenticated
+                ? profileStatusLoaded ? <Navigate to={defaultLandingPath} replace /> : null
+                : <LoginPage onLogin={handleLogin} />
+            }
+          />
           <Route 
             path="/change-password" 
             element={

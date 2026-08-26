@@ -28,6 +28,26 @@ from app.schemas import (
 router = APIRouter()
 
 
+def artist_profile_complete(cursor, artist_id: int | None) -> bool:
+    if artist_id is None:
+        return False
+    cursor.execute(
+        """
+        SELECT
+            COALESCE(NULLIF(BTRIM(COALESCE(a.biography_normalized, a.biography, '')), ''), '') <> ''
+            AND COUNT(DISTINCT amc.connected_artist_id) >= 3 AS profile_complete
+        FROM artists a
+        LEFT JOIN artist_manual_connections amc
+          ON amc.source_artist_id = a.id
+        WHERE a.id = %s
+        GROUP BY a.id
+        """,
+        (artist_id,),
+    )
+    row = cursor.fetchone()
+    return bool(row and row["profile_complete"])
+
+
 @router.get("/settings/ui", response_model=UiSettingsResponse)
 async def get_ui_settings() -> dict:
     with get_connection() as connection:
@@ -67,6 +87,8 @@ async def login(login_data: LoginRequest) -> LoginResponse:
         return LoginResponse(success=False, message="Account is not approved")
 
     with get_connection() as connection:
+        with connection.cursor() as cursor:
+            profile_complete = artist_profile_complete(cursor, user["artist_id"])
         log_activity(connection, user["id"], user["email"], "login", "Login page")
         connection.commit()
 
@@ -85,6 +107,7 @@ async def login(login_data: LoginRequest) -> LoginResponse:
         ),
         must_change_password=user["must_change_password"],
         artist_id=user["artist_id"],
+        profile_complete=profile_complete,
     )
 
 
@@ -113,6 +136,7 @@ async def register(register_data: RegisterRequest) -> RegisterResponse:
         return RegisterResponse(success=False, message="Artist name must be at least 2 characters")
     if clean_new_artist_name is not None and len(clean_new_artist_name) > 100:
         return RegisterResponse(success=False, message="Artist name is too long")
+    created_profile_complete = False
     with get_connection() as connection:
         try:
             with connection.cursor() as cursor:
@@ -228,6 +252,12 @@ async def register(register_data: RegisterRequest) -> RegisterResponse:
                         ),
                     )
 
+                if created_user["status"] == "approved":
+                    created_profile_complete = artist_profile_complete(
+                        cursor,
+                        created_user["artist_id"],
+                    )
+
                 log_activity(
                     connection,
                     created_user["id"],
@@ -253,6 +283,21 @@ async def register(register_data: RegisterRequest) -> RegisterResponse:
         message="Registration successful",
         user_id=created_user["id"],
         status=created_user["status"],
+        username=clean_email if created_user["status"] == "approved" else None,
+        role="artist" if created_user["status"] == "approved" else None,
+        artist_id=created_user["artist_id"] if created_user["status"] == "approved" else None,
+        access_token=(
+            create_access_token(
+                {
+                    "sub": str(created_user["id"]),
+                    "username": clean_email,
+                    "role": "artist",
+                }
+            )
+            if created_user["status"] == "approved"
+            else None
+        ),
+        profile_complete=created_profile_complete if created_user["status"] == "approved" else None,
     )
 
 
@@ -320,6 +365,7 @@ async def logout(current_user: dict = Depends(get_current_user)) -> dict:
 @router.get("/me")
 async def get_me(current_user: dict = Depends(get_current_user)) -> dict:
     artist_name = None
+    profile_complete = False
     if current_user["artist_id"] is not None:
         with get_connection() as connection:
             with connection.cursor() as cursor:
@@ -328,6 +374,7 @@ async def get_me(current_user: dict = Depends(get_current_user)) -> dict:
                     (current_user["artist_id"],),
                 )
                 artist_row = cursor.fetchone()
+                profile_complete = artist_profile_complete(cursor, current_user["artist_id"])
         artist_name = artist_row["name"] if artist_row else None
 
     return {
@@ -337,4 +384,5 @@ async def get_me(current_user: dict = Depends(get_current_user)) -> dict:
         "role": current_user["role"],
         "artist_id": current_user["artist_id"],
         "artist_name": artist_name,
+        "profile_complete": profile_complete,
     }

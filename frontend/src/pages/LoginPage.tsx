@@ -8,7 +8,7 @@ import type { SearchResponse, SearchResult } from '../types/search'
 import { useDebouncedValue } from './hooks/useDebouncedValue'
 
 interface LoginPageProps {
-  onLogin: (role: AuthRole, redirect?: boolean) => void }
+  onLogin: (role: AuthRole, redirect?: boolean, profileComplete?: boolean) => void }
 
 const colorVar = (name: string) => `var(${name})`
 const colorAlpha = (name: string, percent: number) =>
@@ -104,6 +104,29 @@ export function LoginPage({ onLogin }: LoginPageProps) {
     }
   }, [])
 
+  const persistAuthenticatedUser = (
+    response: {
+      username?: string
+      user_id?: number
+      artist_id?: number
+      profile_complete?: boolean
+    },
+    role: AuthRole,
+    fallbackUsername: string,
+    accessToken: string,
+  ) => {
+    const authenticatedUsername = response.username ?? fallbackUsername
+    localStorage.setItem('token', accessToken)
+    localStorage.setItem('role', role)
+    localStorage.setItem('username', authenticatedUsername)
+    localStorage.setItem('last_username', authenticatedUsername)
+    localStorage.setItem('profile_complete', String(response.profile_complete === true))
+
+    if (response.user_id !== undefined) localStorage.setItem('user_id', String(response.user_id))
+    if (response.artist_id) localStorage.setItem('artist_id', String(response.artist_id))
+    else localStorage.removeItem('artist_id')
+  }
+
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     setError('')
@@ -140,6 +163,12 @@ export function LoginPage({ onLogin }: LoginPageProps) {
 
         if (!response.success) {
           setError(response.message)
+          return
+        }
+
+        if (response.status === 'approved' && response.access_token) {
+          persistAuthenticatedUser(response, 'artist', cleanEmail, response.access_token)
+          onLogin('artist', true, response.profile_complete === true)
           return
         }
 
@@ -180,7 +209,6 @@ export function LoginPage({ onLogin }: LoginPageProps) {
       sessionStorage.removeItem('auth_message')
       setError('')
 
-      const authenticatedUsername = response.username ?? cleanEmail
       const role: AuthRole =
         response.role === 'admin' 
           ? 'admin' 
@@ -188,20 +216,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
             ? 'agent'
             : 'artist'
 
-      localStorage.setItem('token', response.access_token)
-      localStorage.setItem('role', role)
-      localStorage.setItem('username', authenticatedUsername)
-      localStorage.setItem('last_username', authenticatedUsername)
-
-      if (response.user_id !== undefined) {
-        localStorage.setItem('user_id', String(response.user_id))
-      }
-
-      if (response.artist_id) {
-         localStorage.setItem('artist_id', String(response.artist_id))
-      } else {
-         localStorage.removeItem('artist_id')
-      }
+      persistAuthenticatedUser(response, role, cleanEmail, response.access_token)
 
       //console.log('must_change_password:', response.must_change_password)
       if (response.must_change_password)
@@ -209,7 +224,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
         navigate('/change-password?forced=true', { replace: true })
         return
       }
-      onLogin(role)
+      onLogin(role, true, response.profile_complete === true)
 
     } catch {
       setError('Login failed. Please try again.')

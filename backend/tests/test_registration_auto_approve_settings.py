@@ -82,6 +82,9 @@ def test_registration_auto_approve_setting_returns_approved_status_and_user_reco
         register_payload = register_response.json()
         assert register_payload["success"] is True
         assert register_payload["status"] == "approved"
+        assert register_payload["access_token"]
+        assert register_payload["role"] == "artist"
+        assert register_payload["profile_complete"] is False
 
         with get_connection() as connection:
             with connection.cursor() as cursor:

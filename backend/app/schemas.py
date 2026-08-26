@@ -70,6 +70,7 @@ class LoginResponse(BaseModel):
     artist_id: int | None = None
     access_token: str | None = None
     must_change_password: bool | None = None
+    profile_complete: bool | None = None
 
 
 class RegisterRequest(BaseModel):
@@ -85,6 +86,11 @@ class RegisterResponse(BaseModel):
     message: str
     user_id: int | None = None
     status: Literal["pending", "approved"] | None = None
+    username: str | None = None
+    role: str | None = None
+    artist_id: int | None = None
+    access_token: str | None = None
+    profile_complete: bool | None = None
 
 
 class ChangePasswordRequest(BaseModel):
