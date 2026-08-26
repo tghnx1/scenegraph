@@ -186,7 +186,7 @@ export function ProfilePage({ recommendationTargetControls, showBiography = true
         if (!isCurrent) return
         setBiographyReadiness({
           isLoading: false,
-          hasBiography: artist.bio.trim().length > 0,
+          hasBiography: (artist.bio ?? '').trim().length > 0,
         })
       })
       .catch(() => {

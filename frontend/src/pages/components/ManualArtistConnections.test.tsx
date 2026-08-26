@@ -106,7 +106,7 @@ describe('ManualArtistConnections', () => {
       </MemoryRouter>,
     )
 
-    expect(screen.getByText('Artists you know')).toBeInTheDocument()
+    expect(screen.getByText('Manual connections')).toBeInTheDocument()
     expect(screen.getByText('Add artists you genuinely know, have played with, collaborated with, or who could recommend you.')).toBeInTheDocument()
     expect(screen.queryByText('Relevant connections help SceneGraph discover warm promoter paths.')).not.toBeInTheDocument()
     expect(screen.getByText('0 / 3 minimum')).toBeInTheDocument()

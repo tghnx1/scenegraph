@@ -78,6 +78,31 @@ services:
       migrate:
         condition: service_completed_successfully
 
+  ingestion-runner:
+    build:
+      context: .
+      dockerfile: tools/Dockerfile.daily
+    restart: unless-stopped
+    command: ["sleep", "infinity"]
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
+      SCHEMA_PREFLIGHT_STRICT: ${SCHEMA_PREFLIGHT_STRICT:-true}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:?OPENAI_API_KEY is required}
+      OPENAI_EMBEDDING_MODEL: ${OPENAI_EMBEDDING_MODEL:?OPENAI_EMBEDDING_MODEL is required}
+      OPENAI_EMBEDDING_DIMENSIONS: ${OPENAI_EMBEDDING_DIMENSIONS:?OPENAI_EMBEDDING_DIMENSIONS is required}
+      AZURE_OPENAI_API_KEY: ${AZURE_OPENAI_API_KEY:?AZURE_OPENAI_API_KEY is required}
+      AZURE_OPENAI_ENDPOINT: ${AZURE_OPENAI_ENDPOINT:?AZURE_OPENAI_ENDPOINT is required}
+      AZURE_OPENAI_CHAT_API_VERSION: ${AZURE_OPENAI_CHAT_API_VERSION:?AZURE_OPENAI_CHAT_API_VERSION is required}
+      AZURE_OPENAI_EXTRACTION_DEPLOYMENT: ${AZURE_OPENAI_EXTRACTION_DEPLOYMENT:?AZURE_OPENAI_EXTRACTION_DEPLOYMENT is required}
+      ARTIST_TAG_EXTRACTION_MAX_BIO_CHARS: ${ARTIST_TAG_EXTRACTION_MAX_BIO_CHARS:-6000}
+      ARTIST_TAG_EXTRACTION_MAX_TAGS: ${ARTIST_TAG_EXTRACTION_MAX_TAGS:-32}
+      ARTIST_TAG_EXTRACTION_CHUNK_CHARS: ${ARTIST_TAG_EXTRACTION_CHUNK_CHARS:-600}
+      SCENEGRAPH_DATA_DIR: /tmp/scenegraph-parser-data
+      DAILY_INGEST_ARTIFACTS_DIR: /tmp/scenegraph-import-runs
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
   nginx:
     build:
       context: .

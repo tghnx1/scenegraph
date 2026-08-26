@@ -34,6 +34,7 @@ describe('BiographyPanel', () => {
       genres: ['Techno'],
       extracted_tags: {
         style: ['dark disco'],
+        genre: ['Techno'],
         label: ['Kekos Club'],
         residency: ['We Are Gays'],
       },

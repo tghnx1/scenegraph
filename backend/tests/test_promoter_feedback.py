@@ -206,8 +206,8 @@ def test_feedback_boost_is_capped():
 def test_promoter_feedback_config_uses_config_defaults():
     config = promoter_feedback_config_from_config()
 
-    assert config.exact_positive_boost == pytest.approx(0.10)
-    assert config.similar_positive_boost == pytest.approx(0.03)
+    assert config.exact_positive_boost == pytest.approx(0.60)
+    assert config.similar_positive_boost == pytest.approx(0.50)
     assert config.max_total_boost == pytest.approx(0.15)
     assert config.similarity_min == pytest.approx(0.30)
     assert config.similar_promoter_limit == 10

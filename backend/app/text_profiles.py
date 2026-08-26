@@ -254,7 +254,9 @@ def compose_artist_text_profile(
         for value in extracted_tags.get("style", [])
         for canonical in canonicalize_style_tags(value)
     }
-    style_tags = suppress_parent_style_tags(set(extract_style_tags(biography)) | stored_style_tags)
+    style_tags = suppress_parent_style_tags(
+        sorted(set(extract_style_tags(biography)) | stored_style_tags)
+    )
 
     return join_sections(
         [
