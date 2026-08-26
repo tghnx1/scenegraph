@@ -90,7 +90,7 @@ jobs:
 
       - name: Run backend test suite
         working-directory: backend
-        run: pytest -q
+        run: PYTHONPATH=. pytest -q
 
   frontend-checks:
     runs-on: ubuntu-latest
