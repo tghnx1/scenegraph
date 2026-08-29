@@ -22,9 +22,9 @@ from app.event_tag_extraction import (
     extract_event_tags_with_llm,
     fetch_event_texts,
     has_current_event_tag_extraction,
-    is_content_filter_error,
     replace_event_tags,
 )
+from app.ingestion_quarantine import classify_extraction_error, quarantine_entity, resolve_quarantine
 
 
 DATABASE_URL = os.environ["DATABASE_URL"]
@@ -103,12 +103,13 @@ def print_completion_summary(
     *,
     processed: int,
     skipped: int,
+    quarantined: int,
     failed: int,
 ) -> None:
     print(
         f"Event tag extraction complete with extractor={config.extractor_key}; "
         "styles=source-aware-canonical-style-v3; "
-        f"processed={processed}; skipped={skipped}; failed={failed}",
+        f"processed={processed}; skipped={skipped}; quarantined={quarantined}; failed={failed}",
         file=sys.stderr,
     )
 
@@ -145,7 +146,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--batch-size", type=int, default=1, help="Number of events per LLM request.")
     parser.add_argument("--force", action="store_true", help="Re-extract even if text hash is unchanged.")
     parser.add_argument("--dry-run", action="store_true", help="Print extracted tags without writing to DB.")
-    parser.add_argument("--no-chunk-fallback", action="store_true", help="Disable chunk fallback on content filter.")
+    parser.add_argument(
+        "--no-chunk-fallback",
+        action="store_true",
+        help="Disable chunked retry for recoverable full-event extraction failures.",
+    )
     parser.add_argument("--continue-on-error", action="store_true", help="Continue when one event fails.")
     parser.add_argument(
         "--event-ids-file",
@@ -180,6 +185,7 @@ def main() -> None:
     client = create_extraction_client()
     processed = 0
     skipped = 0
+    quarantined = 0
     failed = 0
     event_ids = load_id_file(args.event_ids_file)
 
@@ -204,9 +210,16 @@ def main() -> None:
                 dry_run=args.dry_run,
             )
             processed += 1
+            if not args.dry_run:
+                resolve_quarantine(
+                    connection,
+                    entity_type="event",
+                    entity_id=event["id"],
+                    stage="extract_event_tags",
+                )
 
         def process_one(event: dict) -> bool:
-            nonlocal failed
+            nonlocal failed, quarantined
             try:
                 tags = extract_event_tags_with_llm(
                     client,
@@ -216,7 +229,8 @@ def main() -> None:
                     sources=event_source_fields(event),
                 )
             except Exception as exc:
-                if not args.no_chunk_fallback and is_content_filter_error(exc):
+                fallback_reason = classify_extraction_error(exc)
+                if not args.no_chunk_fallback and fallback_reason is not None:
                     try:
                         fallback = extract_event_tags_with_chunked_fallback(
                             client,
@@ -226,6 +240,23 @@ def main() -> None:
                             sources=event_source_fields(event),
                         )
                     except Exception as fallback_exc:
+                        fallback_error_type = classify_extraction_error(fallback_exc)
+                        if fallback_error_type is not None:
+                            quarantine_entity(
+                                connection,
+                                entity_type="event",
+                                entity_id=event["id"],
+                                stage="extract_event_tags",
+                                error=fallback_exc,
+                                metadata={"provider": "azure", "reason": fallback_error_type},
+                            )
+                            quarantined += 1
+                            print(
+                                f"Quarantined event {event['id']} {event['name']}: "
+                                f"stage=extract_event_tags; error_type={fallback_error_type}; attempts=1",
+                                file=sys.stderr,
+                            )
+                            return False
                         failed += 1
                         print(
                             f"Failed chunked fallback event {event['id']} {event['name']}: {fallback_exc}",
@@ -238,11 +269,39 @@ def main() -> None:
                         tags = fallback.tags
                         event["_extraction_mode"] = "chunked_fallback"
                     else:
-                        failed += 1
-                        if not args.continue_on_error:
-                            raise
+                        quarantine_entity(
+                            connection,
+                            entity_type="event",
+                            entity_id=event["id"],
+                            stage="extract_event_tags",
+                            error=exc,
+                            metadata={"provider": "azure", "reason": fallback_reason},
+                        )
+                        quarantined += 1
+                        print(
+                            f"Quarantined event {event['id']} {event['name']}: "
+                            f"stage=extract_event_tags; error_type={fallback_reason}; attempts=1",
+                            file=sys.stderr,
+                        )
                         return False
                 else:
+                    error_type = classify_extraction_error(exc)
+                    if error_type is not None and not args.no_chunk_fallback:
+                        quarantine_entity(
+                            connection,
+                            entity_type="event",
+                            entity_id=event["id"],
+                            stage="extract_event_tags",
+                            error=exc,
+                            metadata={"provider": "azure", "reason": error_type},
+                        )
+                        quarantined += 1
+                        print(
+                            f"Quarantined event {event['id']} {event['name']}: "
+                            f"stage=extract_event_tags; error_type={error_type}; attempts=1",
+                            file=sys.stderr,
+                        )
+                        return False
                     failed += 1
                     print(f"Failed event {event['id']} {event['name']}: {exc}", file=sys.stderr)
                     if not args.continue_on_error:
@@ -320,6 +379,7 @@ def main() -> None:
         config,
         processed=processed,
         skipped=skipped,
+        quarantined=quarantined,
         failed=failed,
     )
 

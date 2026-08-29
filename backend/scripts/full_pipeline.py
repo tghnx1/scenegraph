@@ -23,6 +23,7 @@ from app.artist_tag_extraction import TagExtractionConfig
 from app.embeddings import EmbeddingConfig
 from app.event_tag_extraction import EventTagExtractionConfig
 from app.import_run_logger import ImportRunLogger
+from app.ingestion_quarantine import fetch_run_quarantine_summary
 from app.schema_preflight import check_schema_tables, schema_preflight_strict_mode
 
 
@@ -372,6 +373,19 @@ def ensure_db_ready() -> None:
             raise SystemExit(f"Database schema is missing required tables: {missing}")
 
 
+def print_quarantine_summary(database_url: str, since: datetime) -> dict[str, int]:
+    if not database_url.strip():
+        return {"event": 0, "artist": 0, "total": 0}
+    summary = fetch_run_quarantine_summary(database_url, since=since)
+    print(
+        "\nDaily ingestion quarantine summary\n"
+        f"events:\n  quarantined={summary['event']}\n"
+        f"artists:\n  quarantined={summary['artist']}\n"
+        f"unresolved quarantine items added/updated this run={summary['total']}"
+    )
+    return summary
+
+
 def main() -> int:
     global ACTIVE_IMPORT_LOGGER
     args = parse_args()
@@ -420,6 +434,7 @@ def main() -> int:
                         raise
                     time.sleep(1.0)
     ensure_provider_env(args.skip_tags, args.skip_embeddings)
+    pipeline_started_at = datetime.now().astimezone()
 
     event_ids_file = run_artifacts_dir / "event_ids.txt"
     artist_ids_file = run_artifacts_dir / "artist_ids.txt"
@@ -630,7 +645,19 @@ def main() -> int:
             validate_cmd.extend(["--biographies-path", str(bio_json)])
         run_stage("validate-import", validate_cmd)
 
+        quarantine_summary = (
+            print_quarantine_summary(os.environ.get("DATABASE_URL", ""), pipeline_started_at)
+            if ACTIVE_IMPORT_LOGGER.enabled
+            else {"event": 0, "artist": 0, "total": 0}
+        )
+
         final_metrics = ACTIVE_IMPORT_LOGGER.collect_metrics(pipeline_event_ids, pipeline_artist_ids) if ACTIVE_IMPORT_LOGGER.enabled else {}
+        final_metrics.update(
+            {
+                "quarantined_events": quarantine_summary["event"],
+                "quarantined_artists": quarantine_summary["artist"],
+            }
+        )
         ACTIVE_IMPORT_LOGGER.update(status="succeeded", metrics=final_metrics)
         cleanup_old_import_runs(args.artifacts_dir.expanduser().resolve(), args.keep_runs)
         print("\nFull pipeline completed successfully.")

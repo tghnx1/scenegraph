@@ -245,6 +245,23 @@ model EventTagExtractionRun {
   @@map("event_tag_extraction_runs")
 }
 
+model IngestionQuarantine {
+  id           BigInt    @id @default(autoincrement())
+  entityType   String    @map("entity_type")
+  entityId     BigInt    @map("entity_id")
+  stage        String
+  errorType    String    @map("error_type")
+  errorMessage String?   @map("error_message")
+  attemptCount Int       @default(1) @map("attempt_count")
+  firstSeenAt  DateTime  @default(now()) @map("first_seen_at") @db.Timestamptz(6)
+  lastSeenAt   DateTime  @default(now()) @map("last_seen_at") @db.Timestamptz(6)
+  resolvedAt   DateTime? @map("resolved_at") @db.Timestamptz(6)
+  metadata     Json      @default("{}")
+
+  @@index([entityType, entityId, stage])
+  @@map("ingestion_quarantine")
+}
+
 model RecommendationFeedback {
   id                  BigInt   @id @default(autoincrement())
   userId              BigInt   @map("user_id")

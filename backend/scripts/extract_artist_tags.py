@@ -20,9 +20,9 @@ from app.artist_tag_extraction import (
     fetch_artist_biographies,
     has_current_artist_tag_extraction,
     replace_artist_tags,
-    should_chunk_fallback_for_error,
     tag_extraction_text_hash,
 )
+from app.ingestion_quarantine import classify_extraction_error, quarantine_entity, resolve_quarantine
 
 
 DATABASE_URL = os.environ["DATABASE_URL"]
@@ -90,7 +90,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--no-chunk-fallback",
         action="store_true",
-        help="Disable chunked retry when the provider blocks a full biography with content_filter.",
+        help="Disable chunked retry for recoverable full-biography extraction failures.",
     )
     parser.add_argument(
         "--continue-on-error",
@@ -128,6 +128,7 @@ def main() -> None:
     client = create_extraction_client(config)
     processed = 0
     skipped = 0
+    quarantined = 0
     failed = 0
     artist_ids = load_id_file(args.artist_ids_file)
 
@@ -173,11 +174,17 @@ def main() -> None:
                     tags=tags,
                 )
                 connection.commit()
+                resolve_quarantine(
+                    connection,
+                    entity_type="artist",
+                    entity_id=artist["id"],
+                    stage="extract_artist_tags",
+                )
 
             processed += 1
 
         def process_one(artist: dict) -> bool:
-            nonlocal failed
+            nonlocal failed, quarantined
             try:
                 tags = extract_artist_tags_with_llm(
                     client,
@@ -186,7 +193,7 @@ def main() -> None:
                     config=config,
                 )
             except Exception as exc:
-                fallback_reason = should_chunk_fallback_for_error(exc)
+                fallback_reason = classify_extraction_error(exc)
                 if not args.no_chunk_fallback and fallback_reason is not None:
                     try:
                         fallback = extract_artist_tags_with_chunked_fallback(
@@ -196,6 +203,23 @@ def main() -> None:
                             config=config,
                         )
                     except Exception as fallback_exc:
+                        fallback_error_type = classify_extraction_error(fallback_exc)
+                        if fallback_error_type is not None:
+                            quarantine_entity(
+                                connection,
+                                entity_type="artist",
+                                entity_id=artist["id"],
+                                stage="extract_artist_tags",
+                                error=fallback_exc,
+                                metadata={"provider": "azure", "reason": fallback_error_type},
+                            )
+                            quarantined += 1
+                            print(
+                                f"Quarantined artist {artist['id']} {artist['name']}: "
+                                f"stage=extract_artist_tags; error_type={fallback_error_type}; attempts=1",
+                                file=sys.stderr,
+                            )
+                            return False
                         failed += 1
                         print(
                             f"Failed chunked fallback artist {artist['id']} {artist['name']}: "
@@ -224,16 +248,39 @@ def main() -> None:
                             file=sys.stderr,
                         )
                     else:
-                        failed += 1
+                        quarantine_entity(
+                            connection,
+                            entity_type="artist",
+                            entity_id=artist["id"],
+                            stage="extract_artist_tags",
+                            error=exc,
+                            metadata={"provider": "azure", "reason": fallback_reason},
+                        )
+                        quarantined += 1
                         print(
-                            f"Failed artist {artist['id']} {artist['name']}: "
-                            f"all biography chunks were blocked by {fallback_reason}",
+                            f"Quarantined artist {artist['id']} {artist['name']}: "
+                            f"stage=extract_artist_tags; error_type={fallback_reason}; attempts=1",
                             file=sys.stderr,
                         )
-                        if not args.continue_on_error:
-                            raise
                         return False
                 else:
+                    error_type = classify_extraction_error(exc)
+                    if error_type is not None and not args.no_chunk_fallback:
+                        quarantine_entity(
+                            connection,
+                            entity_type="artist",
+                            entity_id=artist["id"],
+                            stage="extract_artist_tags",
+                            error=exc,
+                            metadata={"provider": "azure", "reason": error_type},
+                        )
+                        quarantined += 1
+                        print(
+                            f"Quarantined artist {artist['id']} {artist['name']}: "
+                            f"stage=extract_artist_tags; error_type={error_type}; attempts=1",
+                            file=sys.stderr,
+                        )
+                        return False
                     failed += 1
                     print(f"Failed artist {artist['id']} {artist['name']}: {exc}", file=sys.stderr)
                     if not args.continue_on_error:
@@ -339,7 +386,7 @@ def main() -> None:
     print(
         f"Artist tag extraction complete with extractor={config.extractor_key}; "
         "styles=canonical-style-v2; "
-        f"processed={processed}; skipped={skipped}; failed={failed}"
+        f"processed={processed}; skipped={skipped}; quarantined={quarantined}; failed={failed}"
     )
 
 
