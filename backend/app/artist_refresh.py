@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from psycopg import Connection
@@ -10,7 +11,7 @@ from app.artist_tag_extraction import (
     extract_artist_tags_with_chunked_fallback,
     extract_artist_tags_with_llm,
     has_current_artist_tag_extraction,
-    is_content_filter_error,
+    should_chunk_fallback_for_error,
     replace_artist_tags,
     tag_extraction_text_hash,
 )
@@ -60,7 +61,8 @@ def refresh_artist_derived_data(connection: Connection, *, artist_id: int) -> di
                 config=tag_config,
             )
         except Exception as exc:
-            if not is_content_filter_error(exc):
+            fallback_reason = should_chunk_fallback_for_error(exc)
+            if fallback_reason is None:
                 raise
 
             fallback = extract_artist_tags_with_chunked_fallback(
@@ -71,7 +73,7 @@ def refresh_artist_derived_data(connection: Connection, *, artist_id: int) -> di
             )
             if fallback.processed_chunks <= 0:
                 raise RuntimeError(
-                    f"All biography chunks were blocked by content_filter for artist {artist_id}"
+                    f"All biography chunks were blocked by {fallback_reason} for artist {artist_id}"
                 ) from exc
             tags = fallback.tags
 

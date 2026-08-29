@@ -293,6 +293,14 @@ def is_content_filter_error(error: BaseException) -> bool:
     )
 
 
+def should_chunk_fallback_for_error(error: BaseException) -> str | None:
+    if is_content_filter_error(error):
+        return "content_filter"
+    if isinstance(error, json.JSONDecodeError):
+        return "malformed_json"
+    return None
+
+
 def normalize_tag_value(tag_type: str, value: Any) -> str:
     text = normalize_text(value).strip(" \t\n\r,.;:|/\\")
     if not text:

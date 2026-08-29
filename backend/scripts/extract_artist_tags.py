@@ -19,8 +19,8 @@ from app.artist_tag_extraction import (
     extract_artist_tags_with_llm,
     fetch_artist_biographies,
     has_current_artist_tag_extraction,
-    is_content_filter_error,
     replace_artist_tags,
+    should_chunk_fallback_for_error,
     tag_extraction_text_hash,
 )
 
@@ -186,7 +186,8 @@ def main() -> None:
                     config=config,
                 )
             except Exception as exc:
-                if not args.no_chunk_fallback and is_content_filter_error(exc):
+                fallback_reason = should_chunk_fallback_for_error(exc)
+                if not args.no_chunk_fallback and fallback_reason is not None:
                     try:
                         fallback = extract_artist_tags_with_chunked_fallback(
                             client,
@@ -212,9 +213,11 @@ def main() -> None:
                             "totalChunks": fallback.total_chunks,
                             "processedChunks": fallback.processed_chunks,
                             "skippedChunks": fallback.skipped_chunks,
+                            "reason": fallback_reason,
                         }
                         print(
                             f"Chunked fallback artist {artist['id']} {artist['name']}: "
+                            f"reason={fallback_reason}; "
                             f"processed_chunks={fallback.processed_chunks}/"
                             f"{fallback.total_chunks}; skipped_chunks={fallback.skipped_chunks}; "
                             f"tags={len(tags)}",
@@ -224,7 +227,7 @@ def main() -> None:
                         failed += 1
                         print(
                             f"Failed artist {artist['id']} {artist['name']}: "
-                            "all biography chunks were blocked by content_filter",
+                            f"all biography chunks were blocked by {fallback_reason}",
                             file=sys.stderr,
                         )
                         if not args.continue_on_error:
