@@ -22,7 +22,12 @@ from app.artist_tag_extraction import (
     replace_artist_tags,
     tag_extraction_text_hash,
 )
-from app.ingestion_quarantine import classify_extraction_error, quarantine_entity, resolve_quarantine
+from app.ingestion_quarantine import (
+    classify_extraction_error,
+    extraction_error_metadata,
+    quarantine_entity,
+    resolve_quarantine,
+)
 
 
 DATABASE_URL = os.environ["DATABASE_URL"]
@@ -60,15 +65,16 @@ def print_batch_progress(
     batch: list[dict],
     processed: int,
     skipped: int,
+    quarantined: int,
     failed: int,
     total: int,
 ) -> None:
-    remaining = max(total - processed - skipped - failed, 0)
+    remaining = max(total - processed - skipped - quarantined - failed, 0)
     labels = ", ".join(artist_log_label(artist) for artist in batch)
     print(
         "Processed artist batch "
         f"[{labels}]; processed={processed}; skipped={skipped}; "
-        f"failed={failed}; remaining={remaining}/{total}",
+        f"quarantined={quarantined}; failed={failed}; remaining={remaining}/{total}",
         file=sys.stderr,
         flush=True,
     )
@@ -142,6 +148,27 @@ def main() -> None:
         )
         total_artists = len(artists)
 
+        def quarantine_artist(artist: dict, error: BaseException, error_type: str) -> None:
+            nonlocal quarantined
+            attempts: int | None = None
+            if not args.dry_run:
+                attempts = quarantine_entity(
+                    connection,
+                    entity_type="artist",
+                    entity_id=artist["id"],
+                    stage="extract_artist_tags",
+                    error=error,
+                    metadata=extraction_error_metadata(error),
+                )
+            quarantined += 1
+            attempt_text = f"; attempts={attempts}" if attempts is not None else "; dry_run=true"
+            action = "Would quarantine" if args.dry_run else "Quarantined"
+            print(
+                f"{action} artist {artist['id']} {artist['name']}: "
+                f"stage=extract_artist_tags; error_type={error_type}{attempt_text}",
+                file=sys.stderr,
+            )
+
         def write_artist_tags(artist: dict, tags: list) -> None:
             nonlocal processed
             if args.dry_run:
@@ -205,20 +232,7 @@ def main() -> None:
                     except Exception as fallback_exc:
                         fallback_error_type = classify_extraction_error(fallback_exc)
                         if fallback_error_type is not None:
-                            quarantine_entity(
-                                connection,
-                                entity_type="artist",
-                                entity_id=artist["id"],
-                                stage="extract_artist_tags",
-                                error=fallback_exc,
-                                metadata={"provider": "azure", "reason": fallback_error_type},
-                            )
-                            quarantined += 1
-                            print(
-                                f"Quarantined artist {artist['id']} {artist['name']}: "
-                                f"stage=extract_artist_tags; error_type={fallback_error_type}; attempts=1",
-                                file=sys.stderr,
-                            )
+                            quarantine_artist(artist, fallback_exc, fallback_error_type)
                             return False
                         failed += 1
                         print(
@@ -248,38 +262,12 @@ def main() -> None:
                             file=sys.stderr,
                         )
                     else:
-                        quarantine_entity(
-                            connection,
-                            entity_type="artist",
-                            entity_id=artist["id"],
-                            stage="extract_artist_tags",
-                            error=exc,
-                            metadata={"provider": "azure", "reason": fallback_reason},
-                        )
-                        quarantined += 1
-                        print(
-                            f"Quarantined artist {artist['id']} {artist['name']}: "
-                            f"stage=extract_artist_tags; error_type={fallback_reason}; attempts=1",
-                            file=sys.stderr,
-                        )
+                        quarantine_artist(artist, exc, fallback_reason)
                         return False
                 else:
                     error_type = classify_extraction_error(exc)
                     if error_type is not None and not args.no_chunk_fallback:
-                        quarantine_entity(
-                            connection,
-                            entity_type="artist",
-                            entity_id=artist["id"],
-                            stage="extract_artist_tags",
-                            error=exc,
-                            metadata={"provider": "azure", "reason": error_type},
-                        )
-                        quarantined += 1
-                        print(
-                            f"Quarantined artist {artist['id']} {artist['name']}: "
-                            f"stage=extract_artist_tags; error_type={error_type}; attempts=1",
-                            file=sys.stderr,
-                        )
+                        quarantine_artist(artist, exc, error_type)
                         return False
                     failed += 1
                     print(f"Failed artist {artist['id']} {artist['name']}: {exc}", file=sys.stderr)
@@ -304,6 +292,7 @@ def main() -> None:
                         batch=[batch_artist],
                         processed=processed,
                         skipped=skipped,
+                        quarantined=quarantined,
                         failed=failed,
                         total=total_artists,
                     )
@@ -327,6 +316,7 @@ def main() -> None:
                         batch=[batch_artist],
                         processed=processed,
                         skipped=skipped,
+                        quarantined=quarantined,
                         failed=failed,
                         total=total_artists,
                     )
@@ -345,6 +335,7 @@ def main() -> None:
                         batch=[batch_artist],
                         processed=processed,
                         skipped=skipped,
+                        quarantined=quarantined,
                         failed=failed,
                         total=total_artists,
                     )
@@ -357,6 +348,7 @@ def main() -> None:
                     batch=batch,
                     processed=processed,
                     skipped=skipped,
+                    quarantined=quarantined,
                     failed=failed,
                     total=total_artists,
                 )

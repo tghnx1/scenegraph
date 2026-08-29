@@ -24,7 +24,12 @@ from app.event_tag_extraction import (
     has_current_event_tag_extraction,
     replace_event_tags,
 )
-from app.ingestion_quarantine import classify_extraction_error, quarantine_entity, resolve_quarantine
+from app.ingestion_quarantine import (
+    classify_extraction_error,
+    extraction_error_metadata,
+    quarantine_entity,
+    resolve_quarantine,
+)
 
 
 DATABASE_URL = os.environ["DATABASE_URL"]
@@ -62,15 +67,16 @@ def print_batch_progress(
     batch: list[dict],
     processed: int,
     skipped: int,
+    quarantined: int,
     failed: int,
     total: int,
 ) -> None:
-    remaining = max(total - processed - skipped - failed, 0)
+    remaining = max(total - processed - skipped - quarantined - failed, 0)
     labels = ", ".join(event_log_label(event) for event in batch)
     print(
         "Processed event batch "
         f"[{labels}]; processed={processed}; skipped={skipped}; "
-        f"failed={failed}; remaining={remaining}/{total}",
+        f"quarantined={quarantined}; failed={failed}; remaining={remaining}/{total}",
         file=sys.stderr,
         flush=True,
     )
@@ -200,6 +206,27 @@ def main() -> None:
         )
         total_events = len(events)
 
+        def quarantine_event(event: dict, error: BaseException, error_type: str) -> None:
+            nonlocal quarantined
+            attempts: int | None = None
+            if not args.dry_run:
+                attempts = quarantine_entity(
+                    connection,
+                    entity_type="event",
+                    entity_id=event["id"],
+                    stage="extract_event_tags",
+                    error=error,
+                    metadata=extraction_error_metadata(error),
+                )
+            quarantined += 1
+            attempt_text = f"; attempts={attempts}" if attempts is not None else "; dry_run=true"
+            action = "Would quarantine" if args.dry_run else "Quarantined"
+            print(
+                f"{action} event {event['id']} {event['name']}: "
+                f"stage=extract_event_tags; error_type={error_type}{attempt_text}",
+                file=sys.stderr,
+            )
+
         def write_event_tags(event: dict, tags: list) -> None:
             nonlocal processed
             output_or_persist_event_tags(
@@ -242,20 +269,7 @@ def main() -> None:
                     except Exception as fallback_exc:
                         fallback_error_type = classify_extraction_error(fallback_exc)
                         if fallback_error_type is not None:
-                            quarantine_entity(
-                                connection,
-                                entity_type="event",
-                                entity_id=event["id"],
-                                stage="extract_event_tags",
-                                error=fallback_exc,
-                                metadata={"provider": "azure", "reason": fallback_error_type},
-                            )
-                            quarantined += 1
-                            print(
-                                f"Quarantined event {event['id']} {event['name']}: "
-                                f"stage=extract_event_tags; error_type={fallback_error_type}; attempts=1",
-                                file=sys.stderr,
-                            )
+                            quarantine_event(event, fallback_exc, fallback_error_type)
                             return False
                         failed += 1
                         print(
@@ -269,38 +283,12 @@ def main() -> None:
                         tags = fallback.tags
                         event["_extraction_mode"] = "chunked_fallback"
                     else:
-                        quarantine_entity(
-                            connection,
-                            entity_type="event",
-                            entity_id=event["id"],
-                            stage="extract_event_tags",
-                            error=exc,
-                            metadata={"provider": "azure", "reason": fallback_reason},
-                        )
-                        quarantined += 1
-                        print(
-                            f"Quarantined event {event['id']} {event['name']}: "
-                            f"stage=extract_event_tags; error_type={fallback_reason}; attempts=1",
-                            file=sys.stderr,
-                        )
+                        quarantine_event(event, exc, fallback_reason)
                         return False
                 else:
                     error_type = classify_extraction_error(exc)
                     if error_type is not None and not args.no_chunk_fallback:
-                        quarantine_entity(
-                            connection,
-                            entity_type="event",
-                            entity_id=event["id"],
-                            stage="extract_event_tags",
-                            error=exc,
-                            metadata={"provider": "azure", "reason": error_type},
-                        )
-                        quarantined += 1
-                        print(
-                            f"Quarantined event {event['id']} {event['name']}: "
-                            f"stage=extract_event_tags; error_type={error_type}; attempts=1",
-                            file=sys.stderr,
-                        )
+                        quarantine_event(event, exc, error_type)
                         return False
                     failed += 1
                     print(f"Failed event {event['id']} {event['name']}: {exc}", file=sys.stderr)
@@ -323,6 +311,7 @@ def main() -> None:
                         batch=[row],
                         processed=processed,
                         skipped=skipped,
+                        quarantined=quarantined,
                         failed=failed,
                         total=total_events,
                     )
@@ -336,6 +325,7 @@ def main() -> None:
                         batch=[row],
                         processed=processed,
                         skipped=skipped,
+                        quarantined=quarantined,
                         failed=failed,
                         total=total_events,
                     )
@@ -352,6 +342,7 @@ def main() -> None:
                     batch=batch,
                     processed=processed,
                     skipped=skipped,
+                    quarantined=quarantined,
                     failed=failed,
                     total=total_events,
                 )

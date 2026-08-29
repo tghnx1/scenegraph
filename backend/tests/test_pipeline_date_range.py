@@ -200,7 +200,7 @@ def test_full_pipeline_forwards_today_range(monkeypatch, tmp_path):
     logger_updates: list[dict] = []
 
     class FakeImportLogger:
-        enabled = False
+        enabled = True
 
         @classmethod
         def disabled(cls):
@@ -213,6 +213,9 @@ def test_full_pipeline_forwards_today_range(monkeypatch, tmp_path):
         def update(self, **kwargs):
             logger_updates.append(kwargs)
 
+        def collect_metrics(self, event_ids, artist_ids):
+            return {"event_count": len(event_ids), "artist_count": len(artist_ids)}
+
     monkeypatch.setattr(module, "ACTIVE_IMPORT_LOGGER", FakeImportLogger())
     monkeypatch.setattr(module.ImportRunLogger, "disabled", FakeImportLogger.disabled)
     monkeypatch.setattr(module.ImportRunLogger, "start", FakeImportLogger.start)
@@ -221,6 +224,11 @@ def test_full_pipeline_forwards_today_range(monkeypatch, tmp_path):
     monkeypatch.setattr(module, "ensure_playwright_available", lambda: None)
     monkeypatch.setattr(module, "ensure_cdp_ready", lambda cdp_url: None)
     monkeypatch.setattr(module, "ensure_provider_env", lambda skip_tags, skip_embeddings: None)
+    monkeypatch.setattr(
+        module,
+        "print_quarantine_summary",
+        lambda database_url, since: {"event": 1, "artist": 1, "total": 2},
+    )
     monkeypatch.setattr(
         module,
         "run_stage",
@@ -274,6 +282,11 @@ def test_full_pipeline_forwards_today_range(monkeypatch, tmp_path):
         "enrichmentArtists": 2,
         "enrichmentScope": "new_import",
     }
+    assert any(
+        update.get("metadata", {}).get("quarantine", {}).get("unresolvedAddedOrUpdated") == 2
+        for update in logger_updates
+    )
+    assert any(update.get("status") == "succeeded" for update in logger_updates)
 
 
 def test_full_pipeline_runs_generate_embeddings_before_backfill_vectors(monkeypatch, tmp_path):
@@ -596,7 +609,7 @@ def test_full_pipeline_backfills_existing_scope_when_dedup_leaves_no_new_events(
         "validate-import",
     ]
     event_tag_cmd = next(command for command in seen_commands if "extract_event_tags.py" in " ".join(map(str, command)))
-    assert "--continue-on-error" in event_tag_cmd
+    assert "--continue-on-error" not in event_tag_cmd
     assert events_json.with_name("event_ids.txt").read_text(encoding="utf-8").splitlines() == ["2454507"]
     assert events_json.with_name("artist_ids.txt").read_text(encoding="utf-8").splitlines() == ["2178"]
     scope_update = next(update for update in logger_updates if update.get("metadata", {}).get("enrichmentScope"))
@@ -709,3 +722,46 @@ def test_run_stage_records_success_and_failure(monkeypatch):
         (7, "succeeded", None),
         (7, "failed", "bad-stage failed with exit code 2"),
     ]
+
+
+def test_quarantine_metadata_does_not_block_final_succeeded_status():
+    install_import_stubs()
+    module = load_module(
+        "scenegraph_full_pipeline_quarantine_status",
+        REPO_ROOT / "backend" / "scripts" / "full_pipeline.py",
+    )
+    updates: list[dict] = []
+
+    class FakeImportLogger:
+        enabled = True
+
+        def update(self, **kwargs):
+            updates.append(kwargs)
+
+        def collect_metrics(self, event_ids, artist_ids):
+            return {"event_count": len(event_ids), "artist_count": len(artist_ids)}
+
+    module.finish_successful_import_run(
+        FakeImportLogger(),
+        event_ids=[1, 2],
+        artist_ids=[3],
+        quarantine_summary={"event": 1, "artist": 2, "total": 3},
+    )
+
+    assert updates == [
+        {
+            "metadata": {
+                "quarantine": {
+                    "events": 1,
+                    "artists": 2,
+                    "unresolvedAddedOrUpdated": 3,
+                }
+            }
+        },
+        {
+            "status": "succeeded",
+            "metrics": {"event_count": 2, "artist_count": 1},
+        },
+    ]
+    assert "quarantined_events" not in updates[1]["metrics"]
+    assert "quarantined_artists" not in updates[1]["metrics"]

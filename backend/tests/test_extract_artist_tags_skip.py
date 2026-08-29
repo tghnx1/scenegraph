@@ -339,3 +339,139 @@ def test_artist_tag_extraction_success_does_not_fallback(monkeypatch):
     assert llm_calls == ["Marvel Gold"]
     assert chunk_calls == []
     assert replaced and [tag.tag_value for tag in replaced[0][1]] == ["techno"]
+
+
+@pytest.mark.parametrize(
+    ("full_error", "fallback_result", "fallback_error", "expected_type"),
+    [
+        (
+            RuntimeError("content_filter"),
+            types.SimpleNamespace(tags=[], total_chunks=2, processed_chunks=0, skipped_chunks=2),
+            None,
+            "content_filter",
+        ),
+        (
+            json.JSONDecodeError("bad full response", '{"tags":"', 9),
+            None,
+            json.JSONDecodeError("bad chunk response", '{"tags":"', 9),
+            "malformed_json",
+        ),
+    ],
+)
+def test_recoverable_artist_failure_is_quarantined_and_next_artist_runs(
+    monkeypatch,
+    capsys,
+    full_error,
+    fallback_result,
+    fallback_error,
+    expected_type,
+):
+    args = _base_artist_args()
+    connection = FakeConnection()
+    artists = [
+        {"id": 1, "name": "Blocked", "biography": "blocked bio"},
+        {"id": 2, "name": "Healthy", "biography": "healthy bio"},
+    ]
+    written: list[int] = []
+    quarantined: list[tuple[int, str]] = []
+
+    monkeypatch.setattr(extract_artist_tags, "parse_args", lambda: args)
+    monkeypatch.setattr(
+        extract_artist_tags.TagExtractionConfig,
+        "from_env",
+        classmethod(lambda cls: types.SimpleNamespace(extractor_key="extractor", model="test")),
+    )
+    monkeypatch.setattr(extract_artist_tags, "ensure_provider_env", lambda config: None)
+    monkeypatch.setattr(extract_artist_tags, "create_extraction_client", lambda config: object())
+    monkeypatch.setattr(extract_artist_tags, "fetch_artist_biographies", lambda connection, **kwargs: artists)
+    monkeypatch.setattr(extract_artist_tags, "has_current_artist_tag_extraction", lambda connection, **kwargs: False)
+
+    def extract_one(*args, **kwargs):
+        if kwargs["artist_name"] == "Blocked":
+            raise full_error
+        return [types.SimpleNamespace(tag_type="style", tag_value="techno", confidence=1.0, evidence=None)]
+
+    def fallback(*args, **kwargs):
+        if fallback_error is not None:
+            raise fallback_error
+        return fallback_result
+
+    monkeypatch.setattr(extract_artist_tags, "extract_artist_tags_with_llm", extract_one)
+    monkeypatch.setattr(extract_artist_tags, "extract_artist_tags_with_chunked_fallback", fallback)
+    monkeypatch.setattr(
+        extract_artist_tags,
+        "quarantine_entity",
+        lambda connection, **kwargs: quarantined.append(
+            (kwargs["entity_id"], kwargs["error"].__class__.__name__)
+        )
+        or 4,
+    )
+    monkeypatch.setattr(extract_artist_tags, "resolve_quarantine", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        extract_artist_tags,
+        "replace_artist_tags",
+        lambda connection, **kwargs: written.append(kwargs["artist_id"]),
+    )
+    monkeypatch.setattr(extract_artist_tags.psycopg, "connect", lambda *args, **kwargs: connection, raising=False)
+
+    extract_artist_tags.main()
+
+    stderr = capsys.readouterr().err
+    assert quarantined == [(1, type(fallback_error or full_error).__name__)]
+    assert written == [2]
+    assert f"error_type={expected_type}; attempts=4" in stderr
+    assert "quarantined=1; failed=0; remaining=0/2" in stderr
+
+
+def test_artist_dry_run_does_not_mutate_quarantine(monkeypatch):
+    args = _base_artist_args(dry_run=True)
+    connection = FakeConnection()
+    artist = {"id": 1, "name": "Blocked", "biography": "blocked bio"}
+
+    monkeypatch.setattr(extract_artist_tags, "parse_args", lambda: args)
+    monkeypatch.setattr(
+        extract_artist_tags.TagExtractionConfig,
+        "from_env",
+        classmethod(lambda cls: types.SimpleNamespace(extractor_key="extractor", model="test")),
+    )
+    monkeypatch.setattr(extract_artist_tags, "ensure_provider_env", lambda config: None)
+    monkeypatch.setattr(extract_artist_tags, "create_extraction_client", lambda config: object())
+    monkeypatch.setattr(extract_artist_tags, "fetch_artist_biographies", lambda connection, **kwargs: [artist])
+    monkeypatch.setattr(extract_artist_tags, "has_current_artist_tag_extraction", lambda connection, **kwargs: False)
+    monkeypatch.setattr(
+        extract_artist_tags,
+        "extract_artist_tags_with_llm",
+        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("content_filter")),
+    )
+    monkeypatch.setattr(
+        extract_artist_tags,
+        "extract_artist_tags_with_chunked_fallback",
+        lambda *args, **kwargs: types.SimpleNamespace(tags=[], total_chunks=1, processed_chunks=0, skipped_chunks=1),
+    )
+    monkeypatch.setattr(
+        extract_artist_tags,
+        "quarantine_entity",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("dry-run wrote quarantine")),
+    )
+    monkeypatch.setattr(
+        extract_artist_tags,
+        "resolve_quarantine",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("dry-run resolved quarantine")),
+    )
+    monkeypatch.setattr(extract_artist_tags.psycopg, "connect", lambda *args, **kwargs: connection, raising=False)
+
+    extract_artist_tags.main()
+
+
+def test_successful_artist_reprocessing_resolves_quarantine(monkeypatch):
+    args, _, _, _ = _setup_single_artist_run(monkeypatch)
+    resolved: list[int] = []
+    monkeypatch.setattr(
+        extract_artist_tags,
+        "resolve_quarantine",
+        lambda connection, **kwargs: resolved.append(kwargs["entity_id"]),
+    )
+
+    extract_artist_tags.main()
+
+    assert resolved == [1883]

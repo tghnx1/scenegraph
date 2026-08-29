@@ -87,3 +87,25 @@ def test_scheduler_does_not_run_when_ingestion_fails():
         )
 
     assert len(calls) == 1
+
+
+def test_scheduler_runs_after_pipeline_succeeds_with_quarantined_entities(tmp_path):
+    calls: list[list[str]] = []
+    pipeline_had_quarantine = {"value": False}
+
+    def fake_run(command, *, cwd, check):
+        calls.append(command)
+        if "full_pipeline.py" in " ".join(command):
+            pipeline_had_quarantine["value"] = True
+        return subprocess.CompletedProcess(command, 0)
+
+    assert daily_ingestion.run_daily_ingestion(
+        environ={
+            "DAILY_INGEST_DATE": "2026-08-25",
+            "DAILY_INGEST_ARTIFACTS_DIR": str(tmp_path),
+        },
+        run_command=fake_run,
+    ) == 0
+
+    assert pipeline_had_quarantine["value"] is True
+    assert calls[1][-2:] == ["-m", "app.recommendations.scheduler"]

@@ -22,12 +22,19 @@ if "psycopg" not in sys.modules:
     psycopg_stub.rows = rows_stub
     sys.modules["psycopg"] = psycopg_stub
     sys.modules["psycopg.rows"] = rows_stub
-from app.ingestion_quarantine import classify_extraction_error, quarantine_entity, resolve_quarantine
+from app.ingestion_quarantine import (
+    classify_extraction_error,
+    extraction_error_metadata,
+    quarantine_entity,
+    resolve_quarantine,
+    safe_extraction_error_message,
+)
 
 
 class FakeCursor:
     def __init__(self):
         self.calls = []
+        self.attempt_count = 0
 
     def __enter__(self):
         return self
@@ -37,6 +44,11 @@ class FakeCursor:
 
     def execute(self, query, params=()):
         self.calls.append((query, params))
+        if "INSERT INTO ingestion_quarantine" in query:
+            self.attempt_count += 1
+
+    def fetchone(self):
+        return {"attempt_count": self.attempt_count}
 
 
 class FakeConnection:
@@ -61,7 +73,15 @@ def test_quarantine_upsert_and_resolve_are_db_backed():
     connection = FakeConnection()
     error = json.JSONDecodeError("bad", '{"tags":"', 9)
 
-    quarantine_entity(
+    first_attempt = quarantine_entity(
+        connection,
+        entity_type="artist",
+        entity_id=1883,
+        stage="extract_artist_tags",
+        error=error,
+        metadata={"provider": "azure", "reason": "malformed_json"},
+    )
+    second_attempt = quarantine_entity(
         connection,
         entity_type="artist",
         entity_id=1883,
@@ -76,8 +96,36 @@ def test_quarantine_upsert_and_resolve_are_db_backed():
         stage="extract_artist_tags",
     )
 
-    assert connection.commits == 2
+    assert first_attempt == 1
+    assert second_attempt == 2
+    assert connection.commits == 3
     insert_params = connection.cursor_obj.calls[0][1]
     assert insert_params[:4] == ("artist", 1883, "extract_artist_tags", "malformed_json")
     assert json.loads(insert_params[5]) == {"provider": "azure", "reason": "malformed_json"}
-    assert "resolved_at = CURRENT_TIMESTAMP" in connection.cursor_obj.calls[1][0]
+    assert "ON CONFLICT (entity_type, entity_id, stage) WHERE resolved_at IS NULL" in connection.cursor_obj.calls[0][0]
+    assert "resolved_at = CURRENT_TIMESTAMP" in connection.cursor_obj.calls[2][0]
+
+
+def test_content_filter_metadata_keeps_only_safe_category_and_severity():
+    error = RuntimeError("content_filter")
+    error.body = {
+        "error": {
+            "innererror": {
+                "content_filter_result": {
+                    "sexual": {"filtered": True, "severity": "medium"},
+                    "violence": {"filtered": False, "severity": "safe"},
+                }
+            },
+            "prompt": "must not be copied",
+        }
+    }
+
+    assert extraction_error_metadata(error) == {
+        "provider": "azure",
+        "reason": "content_filter",
+        "filter_category": "sexual",
+        "filter_severity": "medium",
+    }
+    assert safe_extraction_error_message(error) == (
+        "Provider rejected entity content under content_filter policy"
+    )

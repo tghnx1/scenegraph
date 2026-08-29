@@ -386,6 +386,26 @@ def print_quarantine_summary(database_url: str, since: datetime) -> dict[str, in
     return summary
 
 
+def finish_successful_import_run(
+    logger: ImportRunLogger,
+    *,
+    event_ids: list[int],
+    artist_ids: list[int],
+    quarantine_summary: dict[str, int],
+) -> None:
+    logger.update(
+        metadata={
+            "quarantine": {
+                "events": quarantine_summary["event"],
+                "artists": quarantine_summary["artist"],
+                "unresolvedAddedOrUpdated": quarantine_summary["total"],
+            }
+        }
+    )
+    final_metrics = logger.collect_metrics(event_ids, artist_ids) if logger.enabled else {}
+    logger.update(status="succeeded", metrics=final_metrics)
+
+
 def main() -> int:
     global ACTIVE_IMPORT_LOGGER
     args = parse_args()
@@ -592,7 +612,6 @@ def main() -> int:
                     str(REPO_ROOT / "backend" / "scripts" / "extract_event_tags.py"),
                     "--event-ids-file",
                     str(event_ids_file),
-                    "--continue-on-error",
                 ],
             )
             run_stage(
@@ -651,14 +670,12 @@ def main() -> int:
             else {"event": 0, "artist": 0, "total": 0}
         )
 
-        final_metrics = ACTIVE_IMPORT_LOGGER.collect_metrics(pipeline_event_ids, pipeline_artist_ids) if ACTIVE_IMPORT_LOGGER.enabled else {}
-        final_metrics.update(
-            {
-                "quarantined_events": quarantine_summary["event"],
-                "quarantined_artists": quarantine_summary["artist"],
-            }
+        finish_successful_import_run(
+            ACTIVE_IMPORT_LOGGER,
+            event_ids=pipeline_event_ids,
+            artist_ids=pipeline_artist_ids,
+            quarantine_summary=quarantine_summary,
         )
-        ACTIVE_IMPORT_LOGGER.update(status="succeeded", metrics=final_metrics)
         cleanup_old_import_runs(args.artifacts_dir.expanduser().resolve(), args.keep_runs)
         print("\nFull pipeline completed successfully.")
         return 0
