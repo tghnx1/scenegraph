@@ -53,6 +53,21 @@ def test_pipeline_advisory_lock_is_held_until_explicit_release(monkeypatch):
     assert connection.cursor_instance.executions[-1][1] == (PIPELINE_ADVISORY_LOCK_KEY,)
 
 
+def test_full_pipeline_cli_marks_lock_contention_as_transient(monkeypatch, capsys):
+    from scripts import full_pipeline
+
+    monkeypatch.setattr(
+        full_pipeline,
+        "main",
+        lambda: (_ for _ in ()).throw(
+            full_pipeline.PipelineAlreadyRunningError("pipeline busy")
+        ),
+    )
+
+    assert full_pipeline.cli_main() == 75
+    assert "Temporary lock contention" in capsys.readouterr().err
+
+
 def test_concurrent_pipeline_is_rejected_and_connection_closed(monkeypatch):
     connection = FakeConnection(False)
     monkeypatch.setattr("app.pipeline_lock.psycopg.connect", lambda *_args, **_kwargs: connection)

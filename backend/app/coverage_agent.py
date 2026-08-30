@@ -7,6 +7,9 @@ import sys
 from typing import Any
 
 from app.coverage import CoverageOperations
+from app.coverage_repair import CoverageRepairOrchestrator
+from app.coverage_runs import CoverageRunStore, public_run_status
+from app.event_dates import parse_calendar_date
 
 
 COVERAGE_AGENT_INSTRUCTIONS = """
@@ -167,26 +170,88 @@ class CoverageAgent:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Audit and safely repair Scenegraph historical coverage.")
-    parser.add_argument("mode", nargs="?", choices=("agent", "audit"), default="agent")
-    parser.add_argument("--min-date", required=True)
-    parser.add_argument("--max-date", required=True)
+    parser.add_argument("mode", nargs="?", choices=("agent", "audit", "status"), default="agent")
+    parser.add_argument("--min-date")
+    parser.add_argument("--max-date")
     parser.add_argument("--apply", action="store_true")
+    parser.add_argument("--background", action="store_true")
     parser.add_argument("--retry-quarantine", action="store_true")
+    parser.add_argument(
+        "--max-attempts",
+        type=int,
+        default=int(os.environ.get("COVERAGE_AGENT_REPAIR_MAX_ATTEMPTS", "3")),
+    )
+    parser.add_argument("--latest", action="store_true")
+    parser.add_argument("--run-id", type=int)
     return parser.parse_args()
 
 
 def main() -> int:
     args = parse_args()
+    database_url = os.environ.get("DATABASE_URL", "").strip()
+    if not database_url:
+        raise SystemExit("DATABASE_URL must be set")
+    if args.mode == "status":
+        if args.apply or args.background or args.retry_quarantine:
+            raise SystemExit("status is read-only and does not accept apply flags")
+        if args.min_date or args.max_date:
+            raise SystemExit("status does not accept a date range")
+        if args.latest == (args.run_id is not None):
+            raise SystemExit("status requires exactly one of --latest or --run-id")
+        store = CoverageRunStore(database_url)
+        run = store.get_latest() if args.latest else store.get_run(args.run_id)
+        print(json.dumps(public_run_status(run), ensure_ascii=False, indent=2))
+        return 0
+
+    if not args.min_date or not args.max_date:
+        raise SystemExit("--min-date and --max-date are required")
     if args.retry_quarantine and not args.apply:
         raise SystemExit("--retry-quarantine requires --apply")
+    if args.background and not args.apply:
+        raise SystemExit("--background requires --apply")
     if args.mode == "audit" and args.apply:
         raise SystemExit("Deterministic audit mode is read-only and does not accept --apply")
+    if args.max_attempts < 1 or args.max_attempts > 5:
+        raise SystemExit("--max-attempts must be between 1 and 5")
+
+    if args.apply:
+        if args.retry_quarantine:
+            raise SystemExit("Range repair does not automatically retry quarantine")
+        min_date = parse_calendar_date(args.min_date)
+        max_date = parse_calendar_date(args.max_date)
+        # Construction retains all existing range and environment safety checks.
+        CoverageOperations(
+            min_date=args.min_date,
+            max_date=args.max_date,
+            apply=True,
+            database_url=database_url,
+        )
+        store = CoverageRunStore(database_url)
+        run = store.enqueue(
+            min_date=min_date,
+            max_date=max_date,
+            max_attempts=args.max_attempts,
+        )
+        if args.background:
+            print(json.dumps({"queued": public_run_status(store.get_run(int(run["id"])))}, indent=2))
+            return 0
+
+        worker_lock = store.acquire_worker_lock()
+        if worker_lock is None:
+            raise RuntimeError("Coverage worker is active; use --background and inspect status")
+        try:
+            result = CoverageRepairOrchestrator(store).run(int(run["id"]))
+        finally:
+            store.release_worker_lock(worker_lock)
+        print(json.dumps(public_run_status(result), ensure_ascii=False, indent=2))
+        return 0 if result["status"] == "succeeded" else 1
 
     operations = CoverageOperations(
         min_date=args.min_date,
         max_date=args.max_date,
         apply=args.apply,
         allow_quarantine_retry=args.retry_quarantine,
+        database_url=database_url,
     )
     if args.mode == "audit":
         result = {

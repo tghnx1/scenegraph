@@ -25,7 +25,11 @@ from app.event_dates import event_in_date_range
 from app.event_tag_extraction import EventTagExtractionConfig
 from app.import_run_logger import ImportRunLogger
 from app.ingestion_quarantine import fetch_run_quarantine_summary
-from app.pipeline_lock import acquire_pipeline_lock, release_pipeline_lock
+from app.pipeline_lock import (
+    PipelineAlreadyRunningError,
+    acquire_pipeline_lock,
+    release_pipeline_lock,
+)
 from app.schema_preflight import check_schema_tables, schema_preflight_strict_mode
 
 
@@ -673,5 +677,13 @@ def main() -> int:
         release_pipeline_lock(pipeline_lock_connection)
 
 
+def cli_main() -> int:
+    try:
+        return main()
+    except PipelineAlreadyRunningError as exc:
+        print(f"[pipeline] Temporary lock contention: {exc}", file=sys.stderr)
+        return 75
+
+
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(cli_main())

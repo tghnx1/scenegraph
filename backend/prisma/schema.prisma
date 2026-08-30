@@ -390,3 +390,49 @@ model ImportRunStage {
   @@index([importRunId, stageName])
   @@map("import_run_stages")
 }
+
+model CoverageRun {
+  id              BigInt            @id @default(autoincrement())
+  minDate         DateTime          @map("min_date") @db.Date
+  maxDate         DateTime          @map("max_date") @db.Date
+  status          String            @default("queued")
+  maxAttempts     Int               @default(3) @map("max_attempts")
+  totalMissing    Int?              @map("total_missing")
+  workerId        String?           @map("worker_id")
+  error           String?
+  startedAt       DateTime?         @map("started_at") @db.Timestamptz(6)
+  completedAt     DateTime?         @map("completed_at") @db.Timestamptz(6)
+  createdAt       DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime          @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  dates           CoverageRunDate[]
+
+  @@index([status, createdAt])
+  @@index([minDate, maxDate, createdAt])
+  @@map("coverage_runs")
+}
+
+model CoverageRunDate {
+  id                   BigInt      @id @default(autoincrement())
+  coverageRunId        BigInt      @map("coverage_run_id")
+  coverageDate         DateTime    @map("coverage_date") @db.Date
+  status               String      @default("pending")
+  initialMissingCount  Int?        @map("initial_missing_count")
+  finalMissingCount    Int?        @map("final_missing_count")
+  auditStatus          String?     @map("audit_status")
+  backfillStatus       String      @default("pending") @map("backfill_status")
+  backfillAttemptCount Int         @default(0) @map("backfill_attempt_count")
+  verifyStatus         String      @default("pending") @map("verify_status")
+  verifyAttemptCount   Int         @default(0) @map("verify_attempt_count")
+  initialAudit         Json?       @map("initial_audit")
+  finalAudit           Json?       @map("final_audit")
+  error                String?
+  startedAt            DateTime?   @map("started_at") @db.Timestamptz(6)
+  completedAt          DateTime?   @map("completed_at") @db.Timestamptz(6)
+  createdAt            DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt            DateTime    @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  coverageRun          CoverageRun @relation(fields: [coverageRunId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@unique([coverageRunId, coverageDate])
+  @@index([coverageRunId, status])
+  @@map("coverage_run_dates")
+}

@@ -239,3 +239,100 @@ def test_retry_quarantine_cli_flag_requires_apply(monkeypatch):
 
     with pytest.raises(SystemExit, match="requires --apply"):
         coverage_agent.main()
+
+
+def test_background_apply_only_enqueues_persisted_run(monkeypatch, capsys):
+    calls = []
+    run = {
+        "id": 42,
+        "min_date": DATE,
+        "max_date": DATE,
+        "status": "queued",
+        "max_attempts": 3,
+        "total_missing": None,
+        "error": None,
+        "started_at": None,
+        "completed_at": None,
+        "created_at": DATE,
+        "updated_at": DATE,
+        "dates": [],
+    }
+
+    class FakeOperations:
+        def __init__(self, **kwargs):
+            calls.append(("validate", kwargs))
+
+    class FakeStore:
+        def __init__(self, database_url):
+            calls.append(("store", database_url))
+
+        def enqueue(self, **kwargs):
+            calls.append(("enqueue", kwargs))
+            return run
+
+        def get_run(self, run_id):
+            assert run_id == 42
+            return run
+
+    monkeypatch.setenv("DATABASE_URL", "postgresql://test/scenegraph")
+    monkeypatch.setattr(coverage_agent, "CoverageOperations", FakeOperations)
+    monkeypatch.setattr(coverage_agent, "CoverageRunStore", FakeStore)
+    monkeypatch.setattr(
+        coverage_agent,
+        "CoverageRepairOrchestrator",
+        lambda *_args, **_kwargs: pytest.fail("background launcher must not run repairs"),
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "coverage_agent.py",
+            "--min-date",
+            DATE,
+            "--max-date",
+            DATE,
+            "--apply",
+            "--background",
+        ],
+    )
+
+    assert coverage_agent.main() == 0
+    assert json.loads(capsys.readouterr().out)["queued"]["id"] == 42
+    assert [item[0] for item in calls] == ["validate", "store", "enqueue"]
+
+
+def test_status_latest_is_read_only(monkeypatch, capsys):
+    calls = []
+    run = {
+        "id": 42,
+        "min_date": DATE,
+        "max_date": DATE,
+        "status": "running",
+        "max_attempts": 3,
+        "total_missing": 1,
+        "error": None,
+        "started_at": DATE,
+        "completed_at": None,
+        "created_at": DATE,
+        "updated_at": DATE,
+        "dates": [],
+    }
+
+    class FakeStore:
+        def __init__(self, _database_url):
+            pass
+
+        def get_latest(self):
+            calls.append("get_latest")
+            return run
+
+        def enqueue(self, **_kwargs):
+            pytest.fail("status must not enqueue or mutate")
+
+    monkeypatch.setenv("DATABASE_URL", "postgresql://test/scenegraph")
+    monkeypatch.setattr(coverage_agent, "CoverageRunStore", FakeStore)
+    monkeypatch.setattr(sys, "argv", ["coverage_agent.py", "status", "--latest"])
+
+    assert coverage_agent.main() == 0
+    assert json.loads(capsys.readouterr().out)["status"] == "running"
+    assert calls == ["get_latest"]
