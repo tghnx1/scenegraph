@@ -24,6 +24,7 @@ from app.embeddings import EmbeddingConfig
 from app.event_tag_extraction import EventTagExtractionConfig
 from app.import_run_logger import ImportRunLogger
 from app.ingestion_quarantine import fetch_run_quarantine_summary
+from app.pipeline_lock import acquire_pipeline_lock, release_pipeline_lock
 from app.schema_preflight import check_schema_tables, schema_preflight_strict_mode
 
 
@@ -361,7 +362,7 @@ def ensure_provider_env(skip_tags: bool, skip_embeddings: bool) -> None:
             raise SystemExit("OPENAI_API_KEY must be set for embeddings")
 
 
-def ensure_db_ready() -> None:
+def ensure_db_ready() -> str:
     database_url = os.environ.get("DATABASE_URL", "").strip()
     if not database_url:
         raise SystemExit("DATABASE_URL must be set")
@@ -371,6 +372,7 @@ def ensure_db_ready() -> None:
         if schema_status["status"] == "error" and schema_preflight_strict_mode():
             missing = ", ".join(schema_status["missingRequiredTables"])
             raise SystemExit(f"Database schema is missing required tables: {missing}")
+    return database_url
 
 
 def print_quarantine_summary(database_url: str, since: datetime) -> dict[str, int]:
@@ -432,7 +434,7 @@ def main() -> int:
     ensure_writable_parent(artists_json)
     ensure_writable_parent(bio_json)
     run_artifacts_dir.mkdir(parents=True, exist_ok=True)
-    ensure_db_ready()
+    database_url = ensure_db_ready()
     chrome_proc: subprocess.Popen[bytes] | None = None
     if not args.skip_bio:
         ensure_playwright_available()
@@ -454,26 +456,31 @@ def main() -> int:
                         raise
                     time.sleep(1.0)
     ensure_provider_env(args.skip_tags, args.skip_embeddings)
+    try:
+        pipeline_lock_connection = acquire_pipeline_lock(database_url) if database_url else None
+    except BaseException:
+        if chrome_proc is not None and chrome_proc.poll() is None:
+            chrome_proc.terminate()
+        raise
     pipeline_started_at = datetime.now().astimezone()
 
     event_ids_file = run_artifacts_dir / "event_ids.txt"
     artist_ids_file = run_artifacts_dir / "artist_ids.txt"
-    ACTIVE_IMPORT_LOGGER = ImportRunLogger.start(
-        min_date=min_date,
-        max_date=max_date,
-        events_json=events_json,
-        event_ids_file=event_ids_file,
-        artist_ids_file=artist_ids_file,
-        metadata={
-            "skipBio": args.skip_bio,
-            "skipTags": args.skip_tags,
-            "skipEmbeddings": args.skip_embeddings,
-            "dedupWithDb": args.dedup_with_db,
-            "cdpUrl": args.cdp_url,
-        },
-    )
-
     try:
+        ACTIVE_IMPORT_LOGGER = ImportRunLogger.start(
+            min_date=min_date,
+            max_date=max_date,
+            events_json=events_json,
+            event_ids_file=event_ids_file,
+            artist_ids_file=artist_ids_file,
+            metadata={
+                "skipBio": args.skip_bio,
+                "skipTags": args.skip_tags,
+                "skipEmbeddings": args.skip_embeddings,
+                "dedupWithDb": args.dedup_with_db,
+                "cdpUrl": args.cdp_url,
+            },
+        )
         parse_cmd = [
             str(args.parse_python),
             str(REPO_ROOT / "parsers" / "run_ra_pipeline.py"),
@@ -686,6 +693,7 @@ def main() -> int:
         ACTIVE_IMPORT_LOGGER = ImportRunLogger.disabled()
         if chrome_proc is not None and chrome_proc.poll() is None:
             chrome_proc.terminate()
+        release_pipeline_lock(pipeline_lock_connection)
 
 
 if __name__ == "__main__":

@@ -17,6 +17,45 @@ RETRY_TARGETS = {
 }
 
 
+def build_retry_command(
+    entity_type: str,
+    entity_id: int,
+    stage: str,
+    *,
+    dry_run: bool = False,
+) -> list[str]:
+    target = RETRY_TARGETS.get((entity_type, stage))
+    if target is None:
+        raise RuntimeError(f"Unsupported quarantine retry target: {entity_type}/{stage}")
+    script, id_flag = target
+    command = [
+        sys.executable,
+        str(BACKEND_ROOT / script),
+        id_flag,
+        str(entity_id),
+        "--force",
+    ]
+    if dry_run:
+        command.append("--dry-run")
+    return command
+
+
+def retry_quarantine_item(
+    entity_type: str,
+    entity_id: int,
+    stage: str,
+    *,
+    dry_run: bool = False,
+    run_command=None,
+) -> None:
+    runner = run_command or subprocess.run
+    runner(
+        build_retry_command(entity_type, entity_id, stage, dry_run=dry_run),
+        cwd=BACKEND_ROOT.parent,
+        check=True,
+    )
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Inspect and retry ingestion quarantine items.")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -57,21 +96,12 @@ def list_items(args: argparse.Namespace) -> int:
 def retry_items(args: argparse.Namespace) -> int:
     items = _load_items(args)
     for item in items:
-        key = (str(item["entity_type"]), str(item["stage"]))
-        target = RETRY_TARGETS.get(key)
-        if target is None:
-            raise RuntimeError(f"Unsupported quarantine retry target: {key[0]}/{key[1]}")
-        script, id_flag = target
-        command = [
-            sys.executable,
-            str(BACKEND_ROOT / script),
-            id_flag,
-            str(item["entity_id"]),
-            "--force",
-        ]
-        if args.dry_run:
-            command.append("--dry-run")
-        subprocess.run(command, cwd=BACKEND_ROOT.parent, check=True)
+        retry_quarantine_item(
+            str(item["entity_type"]),
+            int(item["entity_id"]),
+            str(item["stage"]),
+            dry_run=args.dry_run,
+        )
     print(f"Retried quarantine items: {len(items)}", file=sys.stderr)
     return 0
 

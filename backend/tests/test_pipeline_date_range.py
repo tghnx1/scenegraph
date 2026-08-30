@@ -198,6 +198,8 @@ def test_full_pipeline_forwards_today_range(monkeypatch, tmp_path):
     seen_commands: list[list[str]] = []
     seen_stages: list[str] = []
     logger_updates: list[dict] = []
+    lock_calls: list[tuple[str, object]] = []
+    lock_token = object()
 
     class FakeImportLogger:
         enabled = True
@@ -220,7 +222,17 @@ def test_full_pipeline_forwards_today_range(monkeypatch, tmp_path):
     monkeypatch.setattr(module.ImportRunLogger, "disabled", FakeImportLogger.disabled)
     monkeypatch.setattr(module.ImportRunLogger, "start", FakeImportLogger.start)
     monkeypatch.setattr(module, "ensure_writable_parent", lambda path: None)
-    monkeypatch.setattr(module, "ensure_db_ready", lambda: None)
+    monkeypatch.setattr(module, "ensure_db_ready", lambda: "postgresql://test/scenegraph")
+    monkeypatch.setattr(
+        module,
+        "acquire_pipeline_lock",
+        lambda database_url: lock_calls.append(("acquire", database_url)) or lock_token,
+    )
+    monkeypatch.setattr(
+        module,
+        "release_pipeline_lock",
+        lambda connection: lock_calls.append(("release", connection)),
+    )
     monkeypatch.setattr(module, "ensure_playwright_available", lambda: None)
     monkeypatch.setattr(module, "ensure_cdp_ready", lambda cdp_url: None)
     monkeypatch.setattr(module, "ensure_provider_env", lambda skip_tags, skip_embeddings: None)
@@ -255,6 +267,10 @@ def test_full_pipeline_forwards_today_range(monkeypatch, tmp_path):
     exit_code = module.main()
 
     assert exit_code == 0
+    assert lock_calls == [
+        ("acquire", "postgresql://test/scenegraph"),
+        ("release", lock_token),
+    ]
     assert seen_stages == [
         "scrape-and-parse",
         "import-to-db",

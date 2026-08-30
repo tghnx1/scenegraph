@@ -7,12 +7,19 @@ import random
 import shutil
 import time
 from datetime import datetime, timedelta
-import subprocess
 import calendar
 import logging
 import tempfile
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
+
+try:
+    from .event_listings import fetch_event_listing_page_ids
+except ImportError:  # Direct script execution.
+    try:
+        from parsers.graphql_parser.event_listings import fetch_event_listing_page_ids
+    except ImportError:
+        from event_listings import fetch_event_listing_page_ids
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 PARSERS_DIR = SCRIPT_DIR.parent
@@ -650,22 +657,6 @@ def main():
     }
     """
 
-    # To replace 'page: 1' with variable in query
-    list_query_paginated = """
-    query GET_EVENT_LISTINGS($filters: FilterInputDtoInput, $filterOptions: FilterOptionsInputDtoInput, $page: Int!) {
-      eventListings(filters: $filters, filterOptions: $filterOptions, pageSize: 100, page: $page) {
-        data {
-          id
-          event {
-            id
-            title
-            date
-          }
-        }
-      }
-    }
-    """
-
     new_events_count = 0
     refreshed_events_count = 0
     dirty_years: Set[str] = set()
@@ -678,43 +669,16 @@ def main():
         # 2. Implement Pagination
         page = 1
         while True:
-            list_payload = {
-                "operationName": "GET_EVENT_LISTINGS",
-                "variables": {
-                    "filters": {
-                        "areas": {"eq": 34},
-                        "listingDate": {"gte": chunk_start, "lte": chunk_end}
-                    },
-                    "filterOptions": {},
-                    "page": page
-                },
-                "query": list_query_paginated
-            }
-
-            cmd = [
-                "curl", "-s", URL,
-                "-H", "Content-Type: application/json",
-                "-H", f"User-Agent: {get_random_ua()}",
-                "-H", "Referer: https://ra.co/events/de/berlin",
-                "--data-raw", json.dumps(list_payload)
-            ]
-
             try:
-                result = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
-                list_data = json.loads(result.stdout)
-
-                if "errors" in list_data:
-                    error_msg = f"GraphQL Errors on page {page}: {list_data['errors']}"
-                    print(error_msg)
-                    logging.error(error_msg)
-                    break
-
-                listings = list_data.get("data", {}).get("eventListings", {}).get("data", [])
-                if not listings:
+                page_event_ids = fetch_event_listing_page_ids(
+                    chunk_start,
+                    chunk_end,
+                    page,
+                    user_agent=get_random_ua(),
+                )
+                if not page_event_ids:
                     print(f"  Page {page} empty. Moving to next chunk.")
                     break
-
-                page_event_ids = [item["event"]["id"] for item in listings if item.get("event") and item["event"].get("id")]
                 print(f"  Found {len(page_event_ids)} events on page {page}.")
 
                 for eid in page_event_ids:
