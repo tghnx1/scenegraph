@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import socket
+import urllib.error
 import urllib.request
 from collections.abc import Callable
 from typing import Any
@@ -29,7 +31,57 @@ query GET_EVENT_LISTINGS(
 
 
 class RAListingError(RuntimeError):
-    pass
+    def __init__(
+        self,
+        message: str,
+        *,
+        retryable: bool = False,
+        reason: str = "invalid_response",
+        status_code: int | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.retryable = retryable
+        self.reason = reason
+        self.status_code = status_code
+
+
+def classify_listing_request_error(exc: BaseException, *, page: int) -> RAListingError:
+    status_code = exc.code if isinstance(exc, urllib.error.HTTPError) else None
+    if status_code == 429:
+        return RAListingError(
+            f"RA event listing request was rate limited on page {page}",
+            retryable=True,
+            reason="http_429",
+            status_code=status_code,
+        )
+    if status_code is not None and 500 <= status_code <= 599:
+        return RAListingError(
+            f"RA event listing server error on page {page}",
+            retryable=True,
+            reason="http_5xx",
+            status_code=status_code,
+        )
+    if status_code is not None:
+        return RAListingError(
+            f"RA event listing HTTP error on page {page}",
+            retryable=False,
+            reason="http_4xx",
+            status_code=status_code,
+        )
+
+    cause = exc.reason if isinstance(exc, urllib.error.URLError) else exc
+    retryable_types = (
+        ConnectionError,
+        TimeoutError,
+        socket.timeout,
+        ConnectionResetError,
+    )
+    retryable = isinstance(cause, retryable_types) or isinstance(exc, retryable_types)
+    return RAListingError(
+        f"RA event listing request failed on page {page}: {type(exc).__name__}",
+        retryable=retryable,
+        reason="transport" if retryable else "request_failed",
+    )
 
 
 def build_event_listing_payload(
@@ -106,8 +158,14 @@ def fetch_event_listing_page(
     try:
         with opener(request, timeout=timeout) as response:
             body = json.loads(response.read().decode("utf-8"))
+    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+        raise RAListingError(
+            f"RA event listing response could not be decoded on page {page}",
+            retryable=False,
+            reason="invalid_json",
+        ) from exc
     except Exception as exc:
-        raise RAListingError(f"RA event listing request failed on page {page}: {type(exc).__name__}") from exc
+        raise classify_listing_request_error(exc, page=page) from exc
 
     return extract_event_listings(body, page=page)
 

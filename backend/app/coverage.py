@@ -59,6 +59,8 @@ class DateCoverageAudit:
     missing_count: int
     status: str
     error_type: str | None = None
+    error_reason: str | None = None
+    retryable: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -176,6 +178,8 @@ class CoverageOperations:
                 missing_count=0,
                 status="audit_failed",
                 error_type=type(exc).__name__,
+                error_reason=getattr(exc, "reason", None),
+                retryable=bool(getattr(exc, "retryable", False)),
             )
 
         missing = sorted(ra_ids - db_ids, key=lambda item: (len(item), item))
@@ -221,6 +225,8 @@ class CoverageOperations:
                     "missing_event_ids": audit["missing_event_ids"],
                     "status": audit["status"],
                     "error_type": audit["error_type"],
+                    "error_reason": audit["error_reason"],
+                    "retryable": audit["retryable"],
                 }
             )
             current += timedelta(days=1)

@@ -97,7 +97,7 @@ class CoverageRepairOrchestrator:
                 return {"status": status, "audit": audit}
 
             error_type = str(audit.get("error_type") or "AuditError")
-            retryable = error_type in TRANSIENT_AUDIT_ERROR_TYPES
+            retryable = bool(audit.get("retryable")) or error_type in TRANSIENT_AUDIT_ERROR_TYPES
             self.store.update_date(
                 run_id,
                 coverage_date,
@@ -149,7 +149,8 @@ class CoverageRepairOrchestrator:
                     backfill_status="failed",
                     error=error_type,
                 )
-                if error_type not in TRANSIENT_AUDIT_ERROR_TYPES or attempt >= max_attempts:
+                retryable = bool(current_audit.get("retryable")) or error_type in TRANSIENT_AUDIT_ERROR_TYPES
+                if not retryable or attempt >= max_attempts:
                     return False
                 self.sleep(self._retry_delay(attempt))
                 continue

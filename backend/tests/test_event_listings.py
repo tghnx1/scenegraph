@@ -2,8 +2,12 @@ from __future__ import annotations
 
 import json
 import subprocess
+import urllib.error
+
+import pytest
 
 from parsers.graphql_parser.event_listings import (
+    RAListingError,
     EVENT_LISTINGS_QUERY,
     fetch_event_listing_ids,
     fetch_event_listing_page,
@@ -160,3 +164,25 @@ def test_daily_parser_preserves_fixed_curl_listing_transport():
         "lte": "2026-08-15",
     }
     assert payload["variables"]["page"] == 2
+
+
+@pytest.mark.parametrize("status", [429, 500, 503])
+def test_listing_http_transient_failures_are_typed_retryable(status):
+    def opener(*_args, **_kwargs):
+        raise urllib.error.HTTPError("https://ra.co/graphql", status, "failed", {}, None)
+
+    with pytest.raises(RAListingError) as caught:
+        fetch_event_listing_page("2026-08-15", "2026-08-15", 1, opener=opener)
+
+    assert caught.value.retryable is True
+    assert caught.value.status_code == status
+
+
+def test_listing_invalid_response_is_non_retryable():
+    def opener(*_args, **_kwargs):
+        return FakeResponse({"data": {"eventListings": {"data": "wrong"}}})
+
+    with pytest.raises(RAListingError) as caught:
+        fetch_event_listing_page("2026-08-15", "2026-08-15", 1, opener=opener)
+
+    assert caught.value.retryable is False

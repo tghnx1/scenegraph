@@ -436,3 +436,56 @@ model CoverageRunDate {
   @@index([coverageRunId, status])
   @@map("coverage_run_dates")
 }
+
+model CoverageReconciliation {
+  id                 BigInt                       @id @default(autoincrement())
+  requestedMinDate   DateTime                     @map("requested_min_date") @db.Date
+  requestedMaxDate   String                       @map("requested_max_date")
+  resolvedMaxDate    DateTime?                    @map("resolved_max_date") @db.Date
+  futureHorizonDays  Int                          @default(365) @map("future_horizon_days")
+  auditChunkDays     Int                          @default(31) @map("audit_chunk_days")
+  pipelineChunkDays  Int                          @default(7) @map("pipeline_chunk_days")
+  maxAttempts        Int                          @default(3) @map("max_attempts")
+  status             String                       @default("queued")
+  phase              String                       @default("pending")
+  currentMinDate     DateTime?                    @map("current_min_date") @db.Date
+  currentMaxDate     DateTime?                    @map("current_max_date") @db.Date
+  initialMissing     Int?                         @map("initial_missing")
+  finalMissing       Int?                         @map("final_missing")
+  workerId           String?                      @map("worker_id")
+  error              String?
+  startedAt          DateTime?                    @map("started_at") @db.Timestamptz(6)
+  completedAt        DateTime?                    @map("completed_at") @db.Timestamptz(6)
+  createdAt          DateTime                     @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime                     @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  dates              CoverageReconciliationDate[]
+
+  @@index([status, createdAt])
+  @@map("coverage_reconciliations")
+}
+
+model CoverageReconciliationDate {
+  id                   BigInt                 @id @default(autoincrement())
+  reconciliationId     BigInt                 @map("reconciliation_id")
+  coverageDate         DateTime               @map("coverage_date") @db.Date
+  period               String
+  status               String                 @default("pending")
+  initialAuditStatus   String?                @map("initial_audit_status")
+  initialMissingCount  Int?                   @map("initial_missing_count")
+  pipelineStatus       String                 @default("pending") @map("pipeline_status")
+  pipelineAttemptCount Int                    @default(0) @map("pipeline_attempt_count")
+  finalAuditStatus     String?                @map("final_audit_status")
+  finalMissingCount    Int?                   @map("final_missing_count")
+  initialAudit         Json?                  @map("initial_audit")
+  finalAudit           Json?                  @map("final_audit")
+  error                String?
+  startedAt            DateTime?              @map("started_at") @db.Timestamptz(6)
+  completedAt          DateTime?              @map("completed_at") @db.Timestamptz(6)
+  createdAt            DateTime               @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt            DateTime               @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  reconciliation       CoverageReconciliation @relation(fields: [reconciliationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@unique([reconciliationId, coverageDate])
+  @@index([reconciliationId, status, coverageDate])
+  @@map("coverage_reconciliation_dates")
+}
