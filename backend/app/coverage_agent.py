@@ -17,8 +17,8 @@ You may only make decisions based on structured results from the provided tools.
 Rules:
 1. Never infer missing events from titles, descriptions, counts alone, or intuition.
 2. audit_date and audit_range are the authority for coverage.
-3. If missing_count is zero, do not run backfill.
-4. If missing_count is greater than zero, run backfill only for that audited date.
+3. If missing_count is zero, do not propose or run backfill.
+4. In apply mode, if missing_count is greater than zero, run backfill only for that audited date.
 5. After every backfill, verify the same date.
 6. Never run the same backfill date more than once in one invocation.
 7. Quarantined enrichment does not mean the event is absent from the database.
@@ -33,7 +33,6 @@ Return a concise summary grounded only in tool results.
 def build_coverage_tools(
     operations: CoverageOperations,
     *,
-    include_quarantine_retry: bool,
     structured_tool_class=None,
 ) -> list[Any]:
     if structured_tool_class is None:
@@ -53,22 +52,27 @@ def build_coverage_tools(
             func=operations.audit_range,
         ),
         structured_tool_class.from_function(
-            name="run_backfill",
-            description="Run the fixed Scenegraph full pipeline for one audited date with missing events.",
-            func=operations.run_backfill,
-        ),
-        structured_tool_class.from_function(
-            name="verify_date",
-            description="Repeat deterministic coverage comparison after a backfill for the same date.",
-            func=operations.verify_date,
-        ),
-        structured_tool_class.from_function(
             name="quarantine_status",
             description="List compact unresolved enrichment quarantine status; quarantine is not missing coverage.",
             func=operations.quarantine_status,
         ),
     ]
-    if include_quarantine_retry:
+    if operations.apply:
+        tools.extend(
+            [
+                structured_tool_class.from_function(
+                    name="run_backfill",
+                    description="Run the fixed Scenegraph full pipeline for one audited date with missing events.",
+                    func=operations.run_backfill,
+                ),
+                structured_tool_class.from_function(
+                    name="verify_date",
+                    description="Repeat deterministic coverage comparison after a backfill for the same date.",
+                    func=operations.verify_date,
+                ),
+            ]
+        )
+    if operations.apply and operations.allow_quarantine_retry:
         tools.append(
             structured_tool_class.from_function(
                 name="retry_quarantine",
@@ -117,7 +121,6 @@ class CoverageAgent:
             agent_class = ReActToolCallingMotleyAgent
         tools = build_coverage_tools(
             operations,
-            include_quarantine_retry=operations.allow_quarantine_retry,
             structured_tool_class=structured_tool_class,
         )
         self.operations = operations
@@ -137,11 +140,21 @@ class CoverageAgent:
     def run(self) -> dict[str, Any]:
         mode = "APPLY" if self.operations.apply else "PLAN/READ-ONLY"
         retry = "enabled" if self.operations.allow_quarantine_retry else "disabled"
+        if self.operations.apply:
+            task = (
+                "Audit the range, repair only deterministic missing-event gaps, verify every "
+                "backfill, inspect quarantine status, and summarize."
+            )
+        else:
+            task = (
+                "Audit the range and inspect quarantine status. This is structurally read-only: "
+                "report dates with missing events as proposed repair dates, and do not attempt "
+                "backfill, verification, or quarantine retry."
+            )
         prompt = (
             f"Audit Scenegraph coverage from {self.operations.min_date.isoformat()} through "
             f"{self.operations.max_date.isoformat()}. Mode: {mode}. "
-            f"Quarantine retry: {retry}. Audit the range, repair only deterministic missing-event "
-            "gaps when permitted, verify every backfill, inspect quarantine status, and summarize."
+            f"Quarantine retry: {retry}. {task}"
         )
         output = self.agent.invoke({"prompt": prompt})
         report = self.operations.report()

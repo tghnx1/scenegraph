@@ -5,6 +5,7 @@ import json
 import sys
 import random
 import shutil
+import subprocess
 import time
 from datetime import datetime, timedelta
 import calendar
@@ -14,12 +15,15 @@ from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
 
 try:
-    from .event_listings import fetch_event_listing_page_ids
+    from .event_listings import build_event_listing_payload, extract_event_listing_ids
 except ImportError:  # Direct script execution.
     try:
-        from parsers.graphql_parser.event_listings import fetch_event_listing_page_ids
+        from parsers.graphql_parser.event_listings import (
+            build_event_listing_payload,
+            extract_event_listing_ids,
+        )
     except ImportError:
-        from event_listings import fetch_event_listing_page_ids
+        from event_listings import build_event_listing_payload, extract_event_listing_ids
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 PARSERS_DIR = SCRIPT_DIR.parent
@@ -239,6 +243,33 @@ USER_AGENTS = [
 
 def get_random_ua():
     return random.choice(USER_AGENTS)
+
+
+def fetch_event_listing_page_ids_with_curl(
+    min_date: str,
+    max_date: str,
+    page: int,
+    *,
+    user_agent: str,
+    runner=subprocess.run,
+) -> List[str]:
+    payload = build_event_listing_payload(min_date, max_date, page)
+    command = [
+        "curl",
+        "-s",
+        URL,
+        "-H",
+        "Content-Type: application/json",
+        "-H",
+        f"User-Agent: {user_agent}",
+        "-H",
+        "Referer: https://ra.co/events/de/berlin",
+        "--data-raw",
+        json.dumps(payload),
+    ]
+    result = runner(command, capture_output=True, text=True, timeout=15)
+    return extract_event_listing_ids(json.loads(result.stdout), page=page)
+
 
 def fetch_single_event(event_id):
     payload = {
@@ -670,7 +701,7 @@ def main():
         page = 1
         while True:
             try:
-                page_event_ids = fetch_event_listing_page_ids(
+                page_event_ids = fetch_event_listing_page_ids_with_curl(
                     chunk_start,
                     chunk_end,
                     page,

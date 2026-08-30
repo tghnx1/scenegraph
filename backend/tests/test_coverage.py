@@ -222,14 +222,20 @@ def test_quarantine_retry_is_allowlisted_bounded_and_attempt_limited():
         "error_type": "malformed_json",
         "attempt_count": 2,
     }
+    resolved_fetches = iter(([item], []))
     operations = make_operations(
         apply=True,
         allow_quarantine_retry=True,
-        quarantine_fetcher=lambda *_args, **_kwargs: [item],
+        quarantine_fetcher=lambda *_args, **_kwargs: next(resolved_fetches),
         quarantine_retry=lambda *args: retried.append(args),
     )
 
-    assert operations.retry_quarantine("artist", 1883, "extract_artist_tags")["status"] == "retried"
+    assert operations.retry_quarantine("artist", 1883, "extract_artist_tags") == {
+        "entity_type": "artist",
+        "entity_id": 1883,
+        "stage": "extract_artist_tags",
+        "status": "resolved",
+    }
     assert retried == [("artist", 1883, "extract_artist_tags")]
     with pytest.raises(RuntimeError, match="already been retried"):
         operations.retry_quarantine("artist", 1883, "extract_artist_tags")
@@ -242,6 +248,28 @@ def test_quarantine_retry_is_allowlisted_bounded_and_attempt_limited():
     )
     with pytest.raises(RuntimeError, match="retry limit"):
         limited.retry_quarantine("artist", 1883, "extract_artist_tags")
+
+
+def test_quarantine_retry_reports_still_quarantined_with_new_attempt_count():
+    before = {
+        "entity_type": "event",
+        "entity_id": 19907,
+        "stage": "extract_event_tags",
+        "error_type": "content_filter",
+        "attempt_count": 1,
+    }
+    after = {**before, "attempt_count": 2}
+    fetches = iter(([before], [after]))
+    operations = make_operations(
+        apply=True,
+        allow_quarantine_retry=True,
+        quarantine_fetcher=lambda *_args, **_kwargs: next(fetches),
+    )
+
+    result = operations.retry_quarantine("event", 19907, "extract_event_tags")
+
+    assert result["status"] == "still_quarantined"
+    assert result["attempt_count"] == 2
 
 
 def test_quarantine_retry_delegates_allowlist_validation():

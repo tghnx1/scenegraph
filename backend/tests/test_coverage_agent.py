@@ -60,6 +60,21 @@ class DeterministicFakeMotleyAgent:
         return {"output": "structured fake run complete"}
 
 
+class ReadOnlyFakeMotleyAgent:
+    received_tool_names: list[str] = []
+    received_prompt = None
+
+    def __init__(self, *, tools, **_kwargs):
+        self.tools = {tool.name: tool for tool in tools}
+        type(self).received_tool_names = list(self.tools)
+
+    def invoke(self, prompt):
+        type(self).received_prompt = prompt
+        self.tools["audit_range"].invoke({"min_date": DATE, "max_date": DATE})
+        self.tools["quarantine_status"].invoke({})
+        return {"output": "proposed repair date reported"}
+
+
 class ToolBindableFakeChatModel(FakeMessagesListChatModel):
     def bind_tools(self, tools=None, **_kwargs):
         return self
@@ -78,9 +93,9 @@ def test_motley_agent_receives_only_intended_tools_and_skips_complete_backfill()
     assert DeterministicFakeMotleyAgent.received_tool_names == [
         "audit_date",
         "audit_range",
+        "quarantine_status",
         "run_backfill",
         "verify_date",
-        "quarantine_status",
     ]
     assert report["backfilled_dates"] == []
 
@@ -105,29 +120,67 @@ def test_agent_backfills_missing_date_then_verifies_and_reports_repair():
 
 
 def test_retry_tool_is_exposed_only_when_explicitly_enabled():
-    disabled = make_operations(missing=False)
-    enabled = make_operations(missing=False)
-    enabled.allow_quarantine_retry = True
+    read_only = make_operations(missing=False, apply=False)
+    apply = make_operations(missing=False, apply=True)
+    retry_enabled = make_operations(missing=False, apply=True)
+    retry_enabled.allow_quarantine_retry = True
 
-    disabled_names = [
+    read_only_names = [
         tool.name
         for tool in build_coverage_tools(
-            disabled,
-            include_quarantine_retry=False,
+            read_only,
             structured_tool_class=FakeStructuredTool,
         )
     ]
-    enabled_names = [
+    apply_names = [
         tool.name
         for tool in build_coverage_tools(
-            enabled,
-            include_quarantine_retry=True,
+            apply,
+            structured_tool_class=FakeStructuredTool,
+        )
+    ]
+    retry_names = [
+        tool.name
+        for tool in build_coverage_tools(
+            retry_enabled,
             structured_tool_class=FakeStructuredTool,
         )
     ]
 
-    assert "retry_quarantine" not in disabled_names
-    assert enabled_names[-1] == "retry_quarantine"
+    assert read_only_names == ["audit_date", "audit_range", "quarantine_status"]
+    assert apply_names == [
+        "audit_date",
+        "audit_range",
+        "quarantine_status",
+        "run_backfill",
+        "verify_date",
+    ]
+    assert retry_names == [*apply_names, "retry_quarantine"]
+
+
+def test_missing_date_in_agent_read_only_mode_only_reports_proposed_repair():
+    subprocess_calls = []
+    operations = make_operations(missing=True, apply=False)
+    operations.run_command = lambda *args, **kwargs: subprocess_calls.append((args, kwargs))
+
+    report = CoverageAgent(
+        operations,
+        llm=object(),
+        agent_class=ReadOnlyFakeMotleyAgent,
+        structured_tool_class=FakeStructuredTool,
+    ).run()
+
+    assert ReadOnlyFakeMotleyAgent.received_tool_names == [
+        "audit_date",
+        "audit_range",
+        "quarantine_status",
+    ]
+    assert "run_backfill" not in ReadOnlyFakeMotleyAgent.received_tool_names
+    assert "verify_date" not in ReadOnlyFakeMotleyAgent.received_tool_names
+    assert "proposed repair dates" in ReadOnlyFakeMotleyAgent.received_prompt["prompt"]
+    assert report["proposed_repair_dates"] == [DATE]
+    assert report["backfilled_dates"] == []
+    assert subprocess_calls == []
 
 
 def test_real_motleycrew_agent_api_runs_without_network():

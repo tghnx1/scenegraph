@@ -357,12 +357,22 @@ class CoverageOperations:
             raise RuntimeError("Quarantine item is at or above the automatic retry limit")
         self.retried_quarantine.add(key)
         self.quarantine_retry(entity_type, entity_id, stage)
+        remaining = self.quarantine_fetcher(
+            self.database_url,
+            entity_type=entity_type,
+            stage=stage,
+            entity_id=entity_id,
+            limit=1,
+        )
+        retry_status = "still_quarantined" if remaining else "resolved"
         result = {
             "entity_type": entity_type,
             "entity_id": entity_id,
             "stage": stage,
-            "status": "retried",
+            "status": retry_status,
         }
+        if remaining:
+            result["attempt_count"] = int(remaining[0]["attempt_count"])
         self.actions.append({"action": "retry_quarantine", **result})
         return result
 
@@ -373,6 +383,9 @@ class CoverageOperations:
             "apply": self.apply,
             "audited_dates": sorted(self.audits),
             "coverage": [self.audits[value].to_dict() for value in sorted(self.audits)],
+            "proposed_repair_dates": sorted(
+                value for value, audit in self.audits.items() if audit.status == "missing_events"
+            ),
             "backfilled_dates": sorted(self.backfilled_dates),
             "actions": list(self.actions),
         }

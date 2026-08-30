@@ -11,3 +11,9 @@ python-jose[cryptography]
 pydevd-pycharm~=252.23892.439
 PyYAML>=6.0
 motleycrew==0.3.7
+langchain==0.3.30
+langchain-community==0.3.31
+langchain-core==0.3.86
+langchain-experimental==0.3.4
+langchain-openai==0.3.35
+langchain-text-splitters==0.3.11
