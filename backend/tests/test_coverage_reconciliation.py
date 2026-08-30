@@ -18,6 +18,7 @@ from app.coverage_reconciliation import (
 )
 from app.coverage_reconciliation_runs import public_reconciliation_status
 from app.coverage_runs import iter_dates
+from app.event_dates import berlin_calendar_today
 from parsers.graphql_parser.event_listings import RAListingError
 
 
@@ -339,6 +340,111 @@ def test_final_full_range_audit_is_mandatory_and_missing_blocks_success():
     assert calls == 2
     assert result["status"] == "failed"
     assert result["final_missing"] == 1
+
+
+def test_resumed_historical_run_repairs_gap_first_discovered_by_final_audit():
+    target = TODAY - timedelta(days=1)
+    expected = {target: {"existing"}}
+    db = {target: {"existing"}}
+    calls = []
+    fetches = 0
+
+    def changing_listings(start, end):
+        nonlocal fetches
+        fetches += 1
+        if fetches == 2:
+            expected[target].add("late")
+        return listing_fetcher(expected)(start, end)
+
+    store = MemoryReconciliationStore(target, target)
+    first = orchestrator(store, expected, db, calls, listings_fetcher=changing_listings).run(1)
+
+    assert first["status"] == "failed"
+    assert first["initial_missing"] == 0
+    assert first["final_missing"] == 1
+    assert calls == []
+
+    resumed = orchestrator(store, expected, db, calls).run(1)
+
+    assert resumed["status"] == "succeeded"
+    assert resumed["final_missing"] == 0
+    assert calls == [(target, target, False)]
+
+
+def test_resumed_future_run_refreshes_gap_first_discovered_by_final_audit():
+    expected = {TODAY: {"existing"}}
+    db = {TODAY: {"existing"}}
+    calls = []
+    fetches = 0
+
+    def changing_listings(start, end):
+        nonlocal fetches
+        fetches += 1
+        if fetches == 3:
+            expected[TODAY].add("late")
+        return listing_fetcher(expected)(start, end)
+
+    store = MemoryReconciliationStore(TODAY, TODAY)
+    first = orchestrator(store, expected, db, calls, listings_fetcher=changing_listings).run(1)
+
+    assert first["status"] == "failed"
+    assert first["dates"][0]["pipeline_status"] == "succeeded"
+    assert calls == [(TODAY, TODAY, True)]
+
+    resumed = orchestrator(store, expected, db, calls).run(1)
+
+    assert resumed["status"] == "succeeded"
+    assert resumed["final_missing"] == 0
+    assert calls == [(TODAY, TODAY, True), (TODAY, TODAY, True)]
+
+
+def test_resume_does_not_reprocess_healthy_completed_dates():
+    healthy = TODAY - timedelta(days=2)
+    changed = TODAY - timedelta(days=1)
+    expected = {healthy: {"healthy"}, changed: {"existing", "late"}}
+    db = {healthy: {"healthy"}, changed: {"existing"}}
+    calls = []
+    store = MemoryReconciliationStore(healthy, changed)
+    store.run["initial_missing"] = 0
+    for row in store.run["dates"]:
+        row["initial_audit_status"] = "complete"
+        row["initial_missing_count"] = 0
+        row["pipeline_status"] = "skipped"
+
+    result = orchestrator(store, expected, db, calls).run(1)
+
+    assert result["status"] == "succeeded"
+    assert calls == [(changed, changed, False)]
+
+
+def test_each_convergence_invocation_is_bounded_when_gap_keeps_reappearing():
+    target = TODAY - timedelta(days=1)
+    expected = {target: {"event-0"}}
+    db = {target: set()}
+    calls = []
+    final_audits = 0
+
+    def never_converges(start, end):
+        nonlocal final_audits
+        result = listing_fetcher(expected)(start, end)
+        if db[target] == expected[target]:
+            final_audits += 1
+            expected[target].add(f"event-{final_audits}")
+            result = listing_fetcher(expected)(start, end)
+        return result
+
+    store = MemoryReconciliationStore(target, target)
+    result = orchestrator(store, expected, db, calls, listings_fetcher=never_converges).run(1)
+
+    assert result["status"] == "failed"
+    assert result["final_missing"] == 1
+    assert len(calls) == 1
+    assert store.run["dates"][0]["pipeline_attempt_count"] == 1
+
+
+def test_berlin_calendar_today_controls_midnight_boundary():
+    assert berlin_calendar_today(datetime(2026, 8, 29, 22, 30, tzinfo=timezone.utc)) == date(2026, 8, 30)
+    assert berlin_calendar_today(datetime(2026, 8, 29, 21, 30, tzinfo=timezone.utc)) == date(2026, 8, 29)
 
 
 def test_worker_lifetime_is_independent_of_launcher_and_command_is_fixed():

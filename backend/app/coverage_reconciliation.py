@@ -13,7 +13,7 @@ from typing import Any
 from app.coverage import fetch_db_event_ids
 from app.coverage_reconciliation_runs import CoverageReconciliationStore
 from app.coverage_runs import iter_dates
-from app.event_dates import canonical_event_date, parse_calendar_date
+from app.event_dates import berlin_calendar_today, canonical_event_date, parse_calendar_date
 from parsers.graphql_parser.event_listings import RAListingError, fetch_event_listings
 
 
@@ -87,7 +87,7 @@ class CoverageReconciliationOrchestrator:
         db_fetcher: Callable[[str, str], set[str]] = fetch_db_event_ids,
         run_command: Callable[..., Any] = subprocess.run,
         sleep: Callable[[float], None] = time.sleep,
-        today: Callable[[], date] = date.today,
+        today: Callable[[], date] = berlin_calendar_today,
     ) -> None:
         self.store = store
         self.listings_fetcher = listings_fetcher
@@ -186,33 +186,42 @@ class CoverageReconciliationOrchestrator:
     def _rows(run: dict[str, Any]) -> dict[str, dict[str, Any]]:
         return {str(item["coverage_date"]): item for item in run.get("dates", [])}
 
-    def _initial_audit(self, run: dict[str, Any]) -> None:
+    def _current_audit(self, run: dict[str, Any]) -> dict[str, dict[str, Any]]:
         run_id = int(run["id"])
         min_date = run["requested_min_date"]
         max_date = run["resolved_max_date"]
+        current_audits: dict[str, dict[str, Any]] = {}
         for start, end in date_chunks(min_date, max_date, int(run["audit_chunk_days"])):
             latest = self._rows(self.store.get_run(run_id))
-            dates = [value.isoformat() for value in iter_dates(start, end)]
-            if all(latest[value]["initial_audit_status"] is not None for value in dates):
-                continue
             self.store.update_run(
-                run_id, phase="initial_audit", current_min_date=start, current_max_date=end
+                run_id, phase="planning_audit", current_min_date=start, current_max_date=end
             )
             for audit in self._audit_window(run, start, end):
-                if latest[audit["date"]]["initial_audit_status"] is not None:
-                    continue
+                current_audits[audit["date"]] = audit
+                row = latest[audit["date"]]
+                values: dict[str, Any] = {
+                    "status": "failed" if audit["status"] == "ra_empty_conflict" else "audited",
+                    "final_audit_status": audit["status"],
+                    "final_missing_count": audit["missing_count"],
+                    "final_audit": audit,
+                    "error": "RAEmptyConflict" if audit["status"] == "ra_empty_conflict" else None,
+                }
+                if row["initial_audit_status"] is None:
+                    values.update(
+                        initial_audit_status=audit["status"],
+                        initial_missing_count=audit["missing_count"],
+                        initial_audit=audit,
+                    )
                 self.store.update_date(
                     run_id,
                     audit["date"],
-                    status="failed" if audit["status"] == "ra_empty_conflict" else "audited",
-                    initial_audit_status=audit["status"],
-                    initial_missing_count=audit["missing_count"],
-                    initial_audit=audit,
-                    error="RAEmptyConflict" if audit["status"] == "ra_empty_conflict" else None,
+                    **values,
                 )
         latest = self.store.get_run(run_id)
-        total = sum(int(item["initial_missing_count"] or 0) for item in latest["dates"])
-        self.store.update_run(run_id, initial_missing=total)
+        if latest["initial_missing"] is None:
+            total = sum(int(item["initial_missing_count"] or 0) for item in latest["dates"])
+            self.store.update_run(run_id, initial_missing=total)
+        return current_audits
 
     def _pipeline_command(self, run: dict[str, Any], start: date, end: date, *, refresh: bool) -> list[str]:
         command = [
@@ -235,7 +244,8 @@ class CoverageReconciliationOrchestrator:
         latest = self._rows(self.store.get_run(run_id))
         starting_attempt = max(int(latest[value.isoformat()]["pipeline_attempt_count"]) for value in values)
         command = self._pipeline_command(run, start, end, refresh=refresh)
-        for attempt in range(starting_attempt + 1, int(run["max_attempts"]) + 1):
+        for local_attempt in range(1, int(run["max_attempts"]) + 1):
+            attempt = starting_attempt + local_attempt
             for value in values:
                 self.store.update_date(
                     run_id, value.isoformat(), status="processing", pipeline_status="running",
@@ -263,8 +273,8 @@ class CoverageReconciliationOrchestrator:
                 )
             if not retryable:
                 raise error
-            if attempt < int(run["max_attempts"]):
-                self.sleep(self._delay(attempt))
+            if local_attempt < int(run["max_attempts"]):
+                self.sleep(self._delay(local_attempt))
         return False
 
     def _verify_chunk(self, run: dict[str, Any], start: date, end: date) -> bool:
@@ -280,25 +290,31 @@ class CoverageReconciliationOrchestrator:
             complete = complete and healthy
         return complete
 
-    def _repair_historical(self, run: dict[str, Any]) -> bool:
+    def _repair_historical(
+        self,
+        run: dict[str, Any],
+        current_audits: dict[str, dict[str, Any]],
+    ) -> bool:
         run_id = int(run["id"])
         rows = self.store.get_run(run_id)["dates"]
         missing_dates: list[date] = []
+        all_complete = True
         for row in rows:
             if row["period"] != "historical":
                 continue
             value = str(row["coverage_date"])
-            if row["initial_audit_status"] == "ra_empty_conflict":
+            audit = current_audits[value]
+            if audit["status"] == "ra_empty_conflict":
+                all_complete = False
                 continue
-            if int(row["initial_missing_count"] or 0) == 0:
+            if int(audit["missing_count"]) == 0:
                 if row["pipeline_status"] == "pending":
                     self.store.update_date(
                         run_id, value, status="complete", pipeline_status="skipped", completed=True
                     )
-            elif row["pipeline_status"] != "succeeded":
+            else:
                 missing_dates.append(row["coverage_date"])
 
-        all_complete = True
         for start, end in contiguous_date_chunks(missing_dates, int(run["pipeline_chunk_days"])):
             self.store.update_run(
                 run_id, phase="historical_repair", current_min_date=start, current_max_date=end
@@ -307,8 +323,10 @@ class CoverageReconciliationOrchestrator:
             still_missing = [parse_calendar_date(item["date"]) for item in current if item["missing_count"] > 0]
             if not still_missing:
                 for item in current:
+                    row = self._rows(self.store.get_run(run_id))[item["date"]]
                     self.store.update_date(
-                        run_id, item["date"], status="complete", pipeline_status="skipped",
+                        run_id, item["date"], status="complete",
+                        pipeline_status=("skipped" if row["pipeline_status"] == "pending" else row["pipeline_status"]),
                         final_audit_status=item["status"], final_missing_count=0,
                         final_audit=item, error=None, completed=True,
                     )
@@ -320,12 +338,23 @@ class CoverageReconciliationOrchestrator:
                 all_complete = self._verify_chunk(run, child_start, child_end) and all_complete
         return all_complete
 
-    def _refresh_future(self, run: dict[str, Any]) -> bool:
+    def _refresh_future(
+        self,
+        run: dict[str, Any],
+        current_audits: dict[str, dict[str, Any]],
+        *,
+        refresh_all: bool,
+    ) -> bool:
         run_id = int(run["id"])
         rows = self.store.get_run(run_id)["dates"]
         pending = [
             row["coverage_date"] for row in rows
-            if row["period"] == "future" and row["pipeline_status"] != "succeeded"
+            if row["period"] == "future"
+            and (
+                int(current_audits[str(row["coverage_date"])]["missing_count"]) > 0
+                or row["pipeline_status"] != "succeeded"
+                or refresh_all
+            )
         ]
         all_complete = True
         for start, end in contiguous_date_chunks(pending, int(run["pipeline_chunk_days"])):
@@ -374,11 +403,16 @@ class CoverageReconciliationOrchestrator:
                     run_id, run["requested_min_date"], resolved, today=self.today()
                 )
             run = self.store.get_run(run_id)
-            self._initial_audit(run)
+            refresh_all_future = run["initial_missing"] is None
+            current_audits = self._current_audit(run)
             run = self.store.get_run(run_id)
-            historical_ok = self._repair_historical(run)
+            historical_ok = self._repair_historical(run, current_audits)
             run = self.store.get_run(run_id)
-            future_ok = self._refresh_future(run)
+            future_ok = self._refresh_future(
+                run,
+                current_audits,
+                refresh_all=refresh_all_future,
+            )
             run = self.store.get_run(run_id)
             final_missing, audit_ok = self._final_audit(run)
             latest = self.store.get_run(run_id)

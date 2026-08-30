@@ -1,7 +1,18 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
 from typing import Any, Mapping
+from zoneinfo import ZoneInfo
+
+
+BERLIN_TIMEZONE = ZoneInfo("Europe/Berlin")
+
+
+def berlin_calendar_today(now: datetime | None = None) -> date:
+    current = now or datetime.now(BERLIN_TIMEZONE)
+    if current.tzinfo is None:
+        raise ValueError("now must be timezone-aware")
+    return current.astimezone(BERLIN_TIMEZONE).date()
 
 
 def parse_calendar_date(value: str) -> date:
