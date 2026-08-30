@@ -12,22 +12,13 @@ import psycopg
 from psycopg.rows import dict_row
 
 from app.ingestion_quarantine import fetch_unresolved_quarantine
+from app.event_dates import event_in_date_range, parse_calendar_date
 from app.quarantine import retry_quarantine_item
 
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 REPO_ROOT = BACKEND_ROOT.parent
 BERLIN_TIMEZONE = "Europe/Berlin"
-
-
-def parse_calendar_date(value: str) -> date:
-    try:
-        parsed = date.fromisoformat(value)
-    except ValueError as exc:
-        raise ValueError(f"Invalid YYYY-MM-DD date: {value}") from exc
-    if parsed.isoformat() != value:
-        raise ValueError(f"Invalid YYYY-MM-DD date: {value}")
-    return parsed
 
 
 def _positive_env_int(name: str, default: int) -> int:
@@ -87,9 +78,21 @@ class RangeCoverageAudit:
 
 
 def default_ra_listing_fetcher(min_date: str, max_date: str) -> set[str]:
-    from parsers.graphql_parser.event_listings import fetch_event_listing_ids
+    from parsers.graphql_parser.event_listings import fetch_event_listings
 
-    return fetch_event_listing_ids(min_date, max_date)
+    return canonical_ra_event_ids(fetch_event_listings(min_date, max_date), min_date, max_date)
+
+
+def canonical_ra_event_ids(
+    listings: list[dict[str, str]],
+    min_date: str,
+    max_date: str,
+) -> set[str]:
+    return {
+        str(listing["id"])
+        for listing in listings
+        if event_in_date_range(listing, min_date, max_date)
+    }
 
 
 def fetch_db_event_ids(database_url: str, audit_date: str) -> set[str]:

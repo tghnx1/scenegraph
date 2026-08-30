@@ -6,7 +6,9 @@ import subprocess
 from parsers.graphql_parser.event_listings import (
     EVENT_LISTINGS_QUERY,
     fetch_event_listing_ids,
+    fetch_event_listing_page,
     fetch_event_listing_page_ids,
+    fetch_event_listings,
 )
 from parsers.graphql_parser.parse_past_events import fetch_event_listing_page_ids_with_curl
 
@@ -36,8 +38,14 @@ def test_listing_page_queries_exact_dates_and_returns_only_canonical_ids():
                 "data": {
                     "eventListings": {
                         "data": [
-                            {"event": {"id": 12, "title": "Ignored title"}},
-                            {"event": {"id": "13"}},
+                            {
+                                "event": {
+                                    "id": 12,
+                                    "date": "2026-08-14T23:00:00.000Z",
+                                    "title": "Ignored title",
+                                }
+                            },
+                            {"event": {"id": "13", "date": "2026-08-15T21:00:00.000Z"}},
                         ]
                     }
                 }
@@ -54,6 +62,41 @@ def test_listing_page_queries_exact_dates_and_returns_only_canonical_ids():
     assert body["query"] == EVENT_LISTINGS_QUERY
 
 
+def test_listing_page_preserves_only_event_id_and_canonical_date():
+    def opener(_request, *, timeout):
+        assert timeout == 15.0
+        return FakeResponse(
+            {
+                "data": {
+                    "eventListings": {
+                        "data": [
+                            {
+                                "event": {
+                                    "id": "A",
+                                    "date": "2026-08-27T22:00:00.000Z",
+                                    "title": "Must not escape",
+                                }
+                            },
+                            {"event": {"id": "B", "date": "2026-08-28T19:00:00.000Z"}},
+                        ]
+                    }
+                }
+            }
+        )
+
+    result = fetch_event_listing_page(
+        "2026-08-28",
+        "2026-08-28",
+        1,
+        opener=opener,
+    )
+
+    assert result == [
+        {"id": "A", "date": "2026-08-27T22:00:00.000Z"},
+        {"id": "B", "date": "2026-08-28T19:00:00.000Z"},
+    ]
+
+
 def test_listing_fetch_paginates_and_deduplicates_without_network():
     pages = {1: ["1", "2"], 2: ["2", "3"], 3: []}
 
@@ -64,6 +107,24 @@ def test_listing_fetch_paginates_and_deduplicates_without_network():
     )
 
     assert result == {"1", "2", "3"}
+
+
+def test_listing_fetch_preserves_adjacent_date_duplicates_for_canonical_filtering():
+    pages = {
+        1: [
+            {"id": "A", "date": "2026-08-27T22:00:00.000Z"},
+            {"id": "B", "date": "2026-08-28T19:00:00.000Z"},
+        ],
+        2: [],
+    }
+
+    result = fetch_event_listings(
+        "2026-08-28",
+        "2026-08-28",
+        page_fetcher=lambda _start, _end, page: pages[page],
+    )
+
+    assert result == pages[1]
 
 
 def test_daily_parser_preserves_fixed_curl_listing_transport():

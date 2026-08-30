@@ -7,7 +7,13 @@ from pathlib import Path
 import pytest
 
 from app import coverage
-from app.coverage import CoverageConfig, CoverageOperations, fetch_db_event_ids
+from app.coverage import (
+    CoverageConfig,
+    CoverageOperations,
+    canonical_ra_event_ids,
+    default_ra_listing_fetcher,
+    fetch_db_event_ids,
+)
 from app.quarantine import build_retry_command
 
 
@@ -51,6 +57,74 @@ def test_audit_date_complete_and_titles_are_not_inputs():
     assert result["status"] == "complete"
     assert result["missing_count"] == 0
     assert "title" not in result
+
+
+def test_canonical_ra_ids_exclude_adjacent_listing_date_events():
+    listings = [
+        {"id": "A", "date": "2026-08-27T22:00:00.000Z"},
+        {"id": "B", "date": "2026-08-28T19:00:00.000Z"},
+    ]
+
+    result = canonical_ra_event_ids(listings, "2026-08-28", "2026-08-28")
+
+    assert result == {"B"}
+
+
+def test_default_coverage_fetcher_uses_canonical_listing_dates(monkeypatch):
+    from parsers.graphql_parser import event_listings
+
+    monkeypatch.setattr(
+        event_listings,
+        "fetch_event_listings",
+        lambda _start, _end: [
+            {"id": "A", "date": "2026-08-27T22:00:00.000Z"},
+            {"id": "B", "date": "2026-08-28T19:00:00.000Z"},
+        ],
+    )
+
+    result = default_ra_listing_fetcher("2026-08-28", "2026-08-28")
+
+    assert result == {"B"}
+
+
+def test_same_ra_id_only_counts_toward_its_canonical_event_date():
+    repeated_listing = [{"id": "2479716", "date": "2026-08-27T20:00:00.000Z"}]
+
+    assert canonical_ra_event_ids(repeated_listing, "2026-08-27", "2026-08-27") == {
+        "2479716"
+    }
+    assert canonical_ra_event_ids(repeated_listing, "2026-08-28", "2026-08-28") == set()
+
+
+def test_adjacent_listing_duplicate_already_in_prior_db_slice_is_not_missing_next_day():
+    listing_results = {
+        "2026-08-27": [
+            {"id": "2479716", "date": "2026-08-27T20:00:00.000Z"},
+        ],
+        "2026-08-28": [
+            {"id": "2479716", "date": "2026-08-27T20:00:00.000Z"},
+            {"id": "B", "date": "2026-08-28T19:00:00.000Z"},
+        ],
+    }
+    db_results = {
+        "2026-08-27": {"2479716"},
+        "2026-08-28": {"B"},
+    }
+    operations = make_operations(
+        min_date="2026-08-27",
+        max_date="2026-08-28",
+        ra_fetcher=lambda start, end: canonical_ra_event_ids(
+            listing_results[start], start, end
+        ),
+        db_fetcher=lambda _url, audit_date: db_results[audit_date],
+    )
+
+    result = operations.audit_range("2026-08-27", "2026-08-28")
+
+    assert result["status"] == "complete"
+    assert result["total_missing"] == 0
+    assert result["dates"][1]["missing_event_ids"] == []
+    assert operations.audits["2026-08-28"].ra_event_ids == ["B"]
 
 
 def test_db_audit_uses_berlin_calendar_date_and_canonical_ids(monkeypatch):

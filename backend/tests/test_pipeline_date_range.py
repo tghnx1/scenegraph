@@ -79,6 +79,25 @@ def test_today_range_collapses_to_one_chunk():
     assert module.get_month_chunks(today, today) == [(today, today)]
 
 
+def test_full_pipeline_and_coverage_share_canonical_event_date_rule():
+    install_import_stubs()
+    module = load_module(
+        "scenegraph_full_pipeline_shared_event_date",
+        REPO_ROOT / "backend" / "scripts" / "full_pipeline.py",
+    )
+    from app.event_dates import event_in_date_range
+
+    prior_day_listing = {"id": "2479716", "date": "2026-08-27T20:00:00.000Z"}
+
+    assert module.event_in_date_range is event_in_date_range
+    assert module.event_in_date_range(
+        prior_day_listing, "2026-08-27", "2026-08-27"
+    )
+    assert not module.event_in_date_range(
+        prior_day_listing, "2026-08-28", "2026-08-28"
+    )
+
+
 def test_parse_past_events_replaces_existing_event_in_archive():
     module = load_module(
         "scenegraph_parse_past_events_refresh",

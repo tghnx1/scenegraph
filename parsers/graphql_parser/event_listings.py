@@ -53,7 +53,7 @@ def build_event_listing_payload(
     }
 
 
-def extract_event_listing_ids(body: Any, *, page: int) -> list[str]:
+def extract_event_listings(body: Any, *, page: int) -> list[dict[str, str]]:
     if not isinstance(body, dict):
         raise RAListingError(f"RA event listing response was not an object on page {page}")
     if body.get("errors"):
@@ -61,16 +61,27 @@ def extract_event_listing_ids(body: Any, *, page: int) -> list[str]:
     listings = body.get("data", {}).get("eventListings", {}).get("data", [])
     if not isinstance(listings, list):
         raise RAListingError(f"RA event listing data was not a list on page {page}")
-    return [
-        str(item["event"]["id"])
-        for item in listings
-        if isinstance(item, dict)
-        and isinstance(item.get("event"), dict)
-        and item["event"].get("id") is not None
-    ]
+    normalized: list[dict[str, str]] = []
+    for item in listings:
+        if not isinstance(item, dict) or not isinstance(item.get("event"), dict):
+            continue
+        event = item["event"]
+        if event.get("id") is None:
+            continue
+        normalized.append(
+            {
+                "id": str(event["id"]),
+                "date": str(event.get("date") or ""),
+            }
+        )
+    return normalized
 
 
-def fetch_event_listing_page_ids(
+def extract_event_listing_ids(body: Any, *, page: int) -> list[str]:
+    return [listing["id"] for listing in extract_event_listings(body, page=page)]
+
+
+def fetch_event_listing_page(
     min_date: str,
     max_date: str,
     page: int,
@@ -79,7 +90,7 @@ def fetch_event_listing_page_ids(
     timeout: float = 15.0,
     opener: Callable[..., Any] = urllib.request.urlopen,
     user_agent: str = "ScenegraphCoverage/1.0",
-) -> list[str]:
+) -> list[dict[str, str]]:
     payload = build_event_listing_payload(min_date, max_date, page, area_id=area_id)
     request = urllib.request.Request(
         RA_GRAPHQL_URL,
@@ -98,7 +109,58 @@ def fetch_event_listing_page_ids(
     except Exception as exc:
         raise RAListingError(f"RA event listing request failed on page {page}: {type(exc).__name__}") from exc
 
-    return extract_event_listing_ids(body, page=page)
+    return extract_event_listings(body, page=page)
+
+
+def fetch_event_listing_page_ids(
+    min_date: str,
+    max_date: str,
+    page: int,
+    *,
+    area_id: int = BERLIN_AREA_ID,
+    timeout: float = 15.0,
+    opener: Callable[..., Any] = urllib.request.urlopen,
+    user_agent: str = "ScenegraphCoverage/1.0",
+) -> list[str]:
+    return [
+        listing["id"]
+        for listing in fetch_event_listing_page(
+            min_date,
+            max_date,
+            page,
+            area_id=area_id,
+            timeout=timeout,
+            opener=opener,
+            user_agent=user_agent,
+        )
+    ]
+
+
+def fetch_event_listings(
+    min_date: str,
+    max_date: str,
+    *,
+    area_id: int = BERLIN_AREA_ID,
+    max_pages: int = 100,
+    page_fetcher: Callable[[str, str, int], list[dict[str, str]]] | None = None,
+) -> list[dict[str, str]]:
+    fetch_page = page_fetcher or (
+        lambda start, end, page: fetch_event_listing_page(
+            start,
+            end,
+            page,
+            area_id=area_id,
+        )
+    )
+    listings_by_key: dict[tuple[str, str], dict[str, str]] = {}
+    for page in range(1, max_pages + 1):
+        page_listings = fetch_page(min_date, max_date, page)
+        if not page_listings:
+            return list(listings_by_key.values())
+        for listing in page_listings:
+            key = (str(listing["id"]), str(listing.get("date") or ""))
+            listings_by_key[key] = {"id": key[0], "date": key[1]}
+    raise RAListingError(f"RA event listing exceeded the {max_pages}-page safety limit")
 
 
 def fetch_event_listing_ids(

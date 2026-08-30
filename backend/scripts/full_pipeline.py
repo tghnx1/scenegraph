@@ -21,6 +21,7 @@ sys.path.append(str(Path(__file__).resolve().parents[1]))
 
 from app.artist_tag_extraction import TagExtractionConfig
 from app.embeddings import EmbeddingConfig
+from app.event_dates import event_in_date_range
 from app.event_tag_extraction import EventTagExtractionConfig
 from app.import_run_logger import ImportRunLogger
 from app.ingestion_quarantine import fetch_run_quarantine_summary
@@ -42,30 +43,6 @@ DEFAULT_MIN_DATE = "2021-01-01"
 DEFAULT_MAX_DATE = ""
 DEFAULT_KEEP_RUNS = int(os.environ.get("FULL_PIPELINE_KEEP_RUNS", "10"))
 ACTIVE_IMPORT_LOGGER = ImportRunLogger.disabled()
-
-
-def parse_iso_date(value: str) -> tuple[int, int, int]:
-    year, month, day = value.split("-", 2)
-    return int(year), int(month), int(day)
-
-
-def event_in_date_range(event: dict[str, object], min_date: str, max_date: str) -> bool:
-    raw_date = str(event.get("date") or "").strip()
-    if not raw_date:
-        return False
-
-    candidate = raw_date[:10]
-    if len(candidate) != 10:
-        return False
-
-    try:
-        event_date = parse_iso_date(candidate)
-    except ValueError:
-        return False
-
-    min_bound = parse_iso_date(min_date)
-    max_bound = parse_iso_date(max_date)
-    return min_bound <= event_date <= max_bound
 
 
 def write_id_file(path: Path, ids: list[int]) -> None:
