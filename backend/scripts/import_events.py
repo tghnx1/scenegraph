@@ -70,6 +70,8 @@ ORPHAN_CONNECTOR_RE = re.compile(
     r"|\s*(?:\b(?:aka|and|with|b2b|back\s*to\s*back|vs\.?|x)\b|&|\+|,|[-/|:;])+$",
     re.IGNORECASE,
 )
+GERMANY_LATITUDE_RANGE = (47.0, 55.2)
+GERMANY_LONGITUDE_RANGE = (5.5, 15.5)
 
 
 class ImportValidationError(ValueError):
@@ -239,7 +241,6 @@ def validate_event(event: dict[str, Any], index: int) -> None:
         if not isinstance(venue, dict):
             raise ImportValidationError(f"{context}: venue must be an object")
         require_text(venue, "id", f"{context}.venue")
-        require_text(venue, "name", f"{context}.venue")
 
     for field in ("artists", "promoters", "genres", "images"):
         items = event.get(field, [])
@@ -315,9 +316,48 @@ def load_artist_biographies(path: Path) -> list[dict[str, Any]]:
     return items
 
 
+def normalized_venue_name(venue: dict[str, Any]) -> str:
+    name = normalize_optional_text(venue.get("name"))
+    if name:
+        return name
+
+    address = normalize_optional_text(venue.get("address"))
+    if address:
+        leading_segment = address.split(" - ", 1)[0].strip()
+        if leading_segment:
+            return leading_segment
+
+    return f"RA venue {str(venue['id']).strip()}"
+
+
+def normalized_venue_coordinates(venue: dict[str, Any]) -> tuple[Any, Any]:
+    latitude = nested(venue, "location", "latitude")
+    longitude = nested(venue, "location", "longitude")
+    area_name = normalize_optional_text(nested(venue, "area", "name"))
+    if not area_name or area_name.casefold() != "berlin":
+        return latitude, longitude
+    if latitude is None and longitude is None:
+        return None, None
+
+    try:
+        numeric_latitude = float(latitude)
+        numeric_longitude = float(longitude)
+    except (TypeError, ValueError):
+        return None, None
+
+    if not (
+        GERMANY_LATITUDE_RANGE[0] <= numeric_latitude <= GERMANY_LATITUDE_RANGE[1]
+        and GERMANY_LONGITUDE_RANGE[0] <= numeric_longitude <= GERMANY_LONGITUDE_RANGE[1]
+    ):
+        return None, None
+    return latitude, longitude
+
+
 def upsert_venue(cursor: psycopg.Cursor, venue: dict[str, Any] | None) -> int | None:
     if not venue:
         return None
+
+    latitude, longitude = normalized_venue_coordinates(venue)
 
     cursor.execute(
         """
@@ -338,11 +378,11 @@ def upsert_venue(cursor: psycopg.Cursor, venue: dict[str, Any] | None) -> int | 
         """,
         (
             str(venue["id"]),
-            venue["name"],
+            normalized_venue_name(venue),
             venue.get("contentUrl"),
             venue.get("address"),
-            nested(venue, "location", "latitude"),
-            nested(venue, "location", "longitude"),
+            latitude,
+            longitude,
             venue.get("live"),
             nested(venue, "area", "name"),
             nested(venue, "area", "country", "urlCode"),

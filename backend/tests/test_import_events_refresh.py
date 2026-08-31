@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import sys
 from pathlib import Path
@@ -8,7 +9,12 @@ os.environ.setdefault("DATABASE_URL", "postgresql://scenegraph:change-me@db:5432
 
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 
-from scripts.import_events import import_event
+from scripts.import_events import (
+    import_event,
+    load_events,
+    normalized_venue_coordinates,
+    normalized_venue_name,
+)
 
 
 class FakeImportCursor:
@@ -69,3 +75,81 @@ def test_import_event_rebuilds_refreshable_event_relations_before_linking():
     assert delete_image_index < first_image_link_index
     assert any(query.startswith("INSERT INTO event_source_payloads") for query in queries)
     assert not any("recommendation_jobs" in query for query in queries)
+
+
+def venue(**updates):
+    value = {
+        "id": "143430",
+        "name": "Existing Venue",
+        "address": "Uferstrasse 8-11 - 13357 Berlin",
+        "area": {"id": "34", "name": "Berlin"},
+        "location": {"latitude": 52.5412, "longitude": 13.3891},
+    }
+    value.update(updates)
+    return value
+
+
+def venue_insert_params(cursor):
+    return next(
+        params
+        for query, params in cursor.executed
+        if query.startswith("INSERT INTO venues")
+    )
+
+
+def test_blank_venue_name_uses_leading_address_segment():
+    assert normalized_venue_name(
+        venue(name=" ", address="Studio dB - Uferstrasse 8-11, Studio A14 - 13357 Berlin")
+    ) == "Studio dB"
+
+
+def test_blank_venue_name_without_usable_address_uses_ra_id():
+    assert normalized_venue_name(venue(name=None, address="  ")) == "RA venue 143430"
+
+
+def test_normal_venue_name_is_trimmed_and_unchanged():
+    assert normalized_venue_name(venue(name="  Existing Venue  ")) == "Existing Venue"
+
+
+def test_invalid_berlin_coordinates_become_null():
+    assert normalized_venue_coordinates(
+        venue(location={"latitude": 40.758449, "longitude": -73.990028})
+    ) == (None, None)
+
+
+def test_valid_berlin_coordinates_remain_unchanged():
+    assert normalized_venue_coordinates(venue()) == (52.5412, 13.3891)
+
+
+def test_malformed_venue_metadata_does_not_abort_valid_event_import(tmp_path):
+    raw_venue = venue(
+        name="",
+        address="Studio dB - Uferstrasse 8-11, Studio A14 - 13357 Berlin",
+        location={"latitude": 40.758449, "longitude": -73.990028},
+    )
+    event = {
+        "id": "2433416",
+        "title": "Inverted Sky:",
+        "date": "2026-08-30T00:00:00+00:00",
+        "venue": raw_venue,
+        "artists": [],
+        "genres": [],
+        "promoters": [],
+        "images": [],
+    }
+    import_path = tmp_path / "events.json"
+    import_path.write_text(json.dumps([event]), encoding="utf-8")
+
+    loaded_event = load_events(import_path)[0]
+    cursor = FakeImportCursor()
+    import_event(cursor, loaded_event)
+
+    params = venue_insert_params(cursor)
+    assert params[1] == "Studio dB"
+    assert params[4:6] == (None, None)
+    payload_params = next(
+        params
+        for query, params in cursor.executed
+        if query.startswith("INSERT INTO event_source_payloads")
+    )
+    assert json.loads(payload_params[3])["venue"] == raw_venue
