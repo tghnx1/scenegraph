@@ -278,6 +278,8 @@ def run_stage(name: str, command: list[str], *, cwd: Path | None = None, env: di
     if completed.returncode != 0:
         error = f"{name} failed with exit code {completed.returncode}"
         ACTIVE_IMPORT_LOGGER.finish_stage(stage_id, status="failed", started_at=started_at, error=error)
+        if completed.returncode == 75:
+            raise SystemExit(75)
         raise SystemExit(error)
     ACTIVE_IMPORT_LOGGER.finish_stage(stage_id, status="succeeded", started_at=started_at)
 

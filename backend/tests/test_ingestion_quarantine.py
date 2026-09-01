@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.append(str(Path(__file__).resolve().parents[1]))
@@ -25,6 +26,7 @@ if "psycopg" not in sys.modules:
 from app.ingestion_quarantine import (
     classify_extraction_error,
     extraction_error_metadata,
+    fetch_active_source_quarantine_ids,
     quarantine_entity,
     resolve_quarantine,
     safe_extraction_error_message,
@@ -129,3 +131,47 @@ def test_content_filter_metadata_keeps_only_safe_category_and_severity():
     assert safe_extraction_error_message(error) == (
         "Provider rejected entity content under content_filter policy"
     )
+
+
+def test_source_quarantine_lookup_applies_ttl_and_stage(monkeypatch):
+    captured = {}
+
+    class LookupCursor:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def execute(self, query, params):
+            captured["query"] = query
+            captured["params"] = params
+
+        def fetchall(self):
+            return [{"entity_id": 123}]
+
+    class LookupConnection:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def cursor(self):
+            return LookupCursor()
+
+    monkeypatch.setattr(
+        sys.modules["psycopg"],
+        "connect",
+        lambda *_args, **_kwargs: LookupConnection(),
+    )
+    now = datetime(2026, 9, 1, tzinfo=timezone.utc)
+
+    result = fetch_active_source_quarantine_ids(
+        "postgresql://test/scenegraph", {"123", "456"}, 7, now=now
+    )
+
+    assert result == {"123"}
+    assert "stage = 'ra_event_detail'" in captured["query"]
+    assert captured["params"][0].isoformat() == "2026-08-25T00:00:00+00:00"
+    assert captured["params"][1] == [123, 456]

@@ -14,6 +14,7 @@ from app.coverage import fetch_db_event_ids
 from app.coverage_reconciliation_runs import CoverageReconciliationStore
 from app.coverage_runs import iter_dates
 from app.event_dates import berlin_calendar_today, canonical_event_date, parse_calendar_date
+from app.ingestion_quarantine import fetch_active_source_quarantine_ids
 from parsers.graphql_parser.event_listings import RAListingError, fetch_event_listings
 
 
@@ -36,6 +37,7 @@ class ReconciliationConfig:
     pipeline_chunk_days: int = 7
     max_future_days: int = 365
     max_attempts: int = 3
+    source_quarantine_ttl_days: int = 7
     artifacts_dir: Path = Path("/tmp/scenegraph-reconciliation")
 
     @classmethod
@@ -45,6 +47,9 @@ class ReconciliationConfig:
             pipeline_chunk_days=_bounded_env_int("RECONCILIATION_PIPELINE_CHUNK_DAYS", 7, 7),
             max_future_days=_bounded_env_int("RECONCILIATION_MAX_FUTURE_DAYS", 365, 3660),
             max_attempts=_bounded_env_int("RECONCILIATION_MAX_ATTEMPTS", 3, 5),
+            source_quarantine_ttl_days=_bounded_env_int(
+                "RA_EVENT_DETAIL_QUARANTINE_TTL_DAYS", 7, 365
+            ),
             artifacts_dir=Path(
                 os.environ.get("RECONCILIATION_ARTIFACTS_DIR", "/tmp/scenegraph-reconciliation")
             ).expanduser().resolve(),
@@ -86,6 +91,10 @@ class CoverageReconciliationOrchestrator:
         listings_fetcher: Callable[[str, str], list[dict[str, str]]] = fetch_event_listings,
         db_fetcher: Callable[[str, str], set[str]] = fetch_db_event_ids,
         run_command: Callable[..., Any] = subprocess.run,
+        source_quarantine_fetcher: Callable[[str, set[str], int], set[str]] = (
+            fetch_active_source_quarantine_ids
+        ),
+        source_quarantine_ttl_days: int | None = None,
         sleep: Callable[[float], None] = time.sleep,
         today: Callable[[], date] = berlin_calendar_today,
     ) -> None:
@@ -93,6 +102,10 @@ class CoverageReconciliationOrchestrator:
         self.listings_fetcher = listings_fetcher
         self.db_fetcher = db_fetcher
         self.run_command = run_command
+        self.source_quarantine_fetcher = source_quarantine_fetcher
+        self.source_quarantine_ttl_days = source_quarantine_ttl_days or _bounded_env_int(
+            "RA_EVENT_DETAIL_QUARANTINE_TTL_DAYS", 7, 365
+        )
         self.sleep = sleep
         self.today = today
 
@@ -158,7 +171,16 @@ class CoverageReconciliationOrchestrator:
             if not ra_ids and db_ids:
                 confirmation = self._fetch_listings(current, current, int(run["max_attempts"]))
                 ra_ids = self._ids_by_date(confirmation, current, current).get(current, set())
-            missing = sorted(ra_ids - db_ids, key=lambda item: (len(item), item))
+            raw_missing_ids = ra_ids - db_ids
+            source_unresolvable_ids = raw_missing_ids & self.source_quarantine_fetcher(
+                self.store.database_url, raw_missing_ids, self.source_quarantine_ttl_days
+            )
+            repairable_missing_ids = raw_missing_ids - source_unresolvable_ids
+            raw_missing = sorted(raw_missing_ids, key=lambda item: (len(item), item))
+            source_unresolvable = sorted(
+                source_unresolvable_ids, key=lambda item: (len(item), item)
+            )
+            missing = sorted(repairable_missing_ids, key=lambda item: (len(item), item))
             extra = sorted(db_ids - ra_ids, key=lambda item: (len(item), item))
             if not ra_ids and db_ids:
                 status = "ra_empty_conflict"
@@ -166,6 +188,8 @@ class CoverageReconciliationOrchestrator:
                 status = "empty_on_ra"
             elif missing:
                 status = "missing_events"
+            elif source_unresolvable:
+                status = "complete_with_source_unresolvable"
             else:
                 status = "complete"
             audits.append(
@@ -174,6 +198,10 @@ class CoverageReconciliationOrchestrator:
                     "status": status,
                     "ra_count": len(ra_ids),
                     "db_count": len(db_ids),
+                    "raw_missing_count": len(raw_missing),
+                    "raw_missing_event_ids": raw_missing,
+                    "source_unresolvable_count": len(source_unresolvable),
+                    "source_unresolvable_event_ids": source_unresolvable,
                     "missing_count": len(missing),
                     "missing_event_ids": missing,
                     "extra_event_ids": extra,

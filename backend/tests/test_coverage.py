@@ -28,6 +28,7 @@ def make_operations(**overrides) -> CoverageOperations:
         "ra_fetcher": lambda _start, _end: {"1", "2"},
         "db_fetcher": lambda _url, _date: {"1", "2"},
         "quarantine_fetcher": lambda *_args, **_kwargs: [],
+        "source_quarantine_fetcher": lambda *_args, **_kwargs: set(),
         "quarantine_retry": lambda *_args: None,
         "run_command": lambda *_args, **_kwargs: None,
     }
@@ -57,6 +58,26 @@ def test_audit_date_complete_and_titles_are_not_inputs():
     assert result["status"] == "complete"
     assert result["missing_count"] == 0
     assert "title" not in result
+
+
+def test_audit_date_reports_source_unresolvable_separately_from_db_coverage():
+    operations = make_operations(
+        ra_fetcher=lambda *_args: {"123"},
+        db_fetcher=lambda *_args: set(),
+        source_quarantine_fetcher=lambda _url, ids, ttl: {"123"},
+    )
+
+    result = operations.audit_date(DATE)
+
+    assert result["db_count"] == 0
+    assert result["raw_missing_count"] == 1
+    assert result["source_unresolvable_count"] == 1
+    assert result["missing_count"] == 0
+    assert result["status"] == "complete_with_source_unresolvable"
+
+    range_result = operations.audit_range(DATE, DATE)
+    assert range_result["status"] == "complete_with_source_unresolvable"
+    assert range_result["total_missing"] == 0
 
 
 def test_canonical_ra_ids_exclude_adjacent_listing_date_events():

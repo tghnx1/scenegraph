@@ -759,6 +759,34 @@ def test_run_stage_records_success_and_failure(monkeypatch):
     ]
 
 
+def test_full_pipeline_preserves_retryable_stage_exit_code(monkeypatch):
+    install_import_stubs()
+    module = load_module(
+        "scenegraph_full_pipeline_retryable_exit",
+        REPO_ROOT / "backend" / "scripts" / "full_pipeline.py",
+    )
+
+    class FakeImportLogger:
+        def start_stage(self, _name, _command):
+            return 7, 1.0
+
+        def finish_stage(self, *_args, **_kwargs):
+            return None
+
+    monkeypatch.setattr(module, "ACTIVE_IMPORT_LOGGER", FakeImportLogger())
+    monkeypatch.setattr(module, "print_stage", lambda *_args: None)
+    monkeypatch.setattr(
+        subprocess,
+        "run",
+        lambda *_args, **_kwargs: types.SimpleNamespace(returncode=75),
+    )
+
+    with pytest.raises(SystemExit) as captured:
+        module.run_stage("ra-pipeline", ["parse"])
+
+    assert captured.value.code == 75
+
+
 def test_quarantine_metadata_does_not_block_final_succeeded_status():
     install_import_stubs()
     module = load_module(

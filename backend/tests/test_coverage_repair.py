@@ -105,6 +105,7 @@ def operations_factory(db_by_date, run_command, *, ra_by_date=None, max_backfill
             db_fetcher=lambda _url, audit_date: set(db_by_date[audit_date]),
             run_command=run_command,
             quarantine_fetcher=lambda *_args, **_kwargs: [],
+            source_quarantine_fetcher=lambda *_args, **_kwargs: set(),
         )
 
     return factory
@@ -226,6 +227,7 @@ def test_final_range_audit_blocks_success_when_gap_reappears():
             db_fetcher=db_fetcher,
             run_command=lambda *_args, **_kwargs: None,
             quarantine_fetcher=lambda *_args, **_kwargs: [],
+            source_quarantine_fetcher=lambda *_args, **_kwargs: set(),
         )
 
     result = CoverageRepairOrchestrator(store, operations_factory=factory).run(1)
@@ -365,6 +367,7 @@ def test_quarantine_is_not_part_of_coverage_repair():
             db_fetcher=lambda *_args: db[DATE_1],
             run_command=lambda *_args, **_kwargs: pytest.fail("no backfill expected"),
             quarantine_fetcher=lambda *_args, **_kwargs: quarantine_calls.append(True),
+            source_quarantine_fetcher=lambda *_args, **_kwargs: set(),
         )
 
     result = CoverageRepairOrchestrator(store, operations_factory=factory).run(1)

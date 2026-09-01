@@ -1,5 +1,7 @@
 import argparse
+import http.client
 import os
+import urllib.error
 import urllib.request
 import json
 import sys
@@ -11,8 +13,9 @@ from datetime import datetime, timedelta
 import calendar
 import logging
 import tempfile
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
 try:
     from .event_listings import build_event_listing_payload, extract_event_listing_ids
@@ -43,8 +46,11 @@ BACKUP_DIR = DATA_DIR / "backups" / "json"
 DEFAULT_OUTPUT_PATH = JSON_DIR / "events_by_year"
 LEGACY_OUTPUT_PATH = JSON_DIR / "ra_berlin_past_events.json"
 DEFAULT_CHECKPOINT_EVERY = 50
+DEFAULT_EVENT_DETAIL_ATTEMPTS = 3
 DEFAULT_MIN_DATE = "2021-01-01"
 YEARLY_FILE_PREFIX = "ra_berlin_past_events_"
+RETRYABLE_HTTP_STATUSES = {429, 500, 502, 503, 504}
+RA_EVENT_DETAIL_STAGE = "ra_event_detail"
 
 JSON_DIR.mkdir(parents=True, exist_ok=True)
 LOG_DIR.mkdir(parents=True, exist_ok=True)
@@ -245,6 +251,40 @@ def get_random_ua():
     return random.choice(USER_AGENTS)
 
 
+class EventDetailError(RuntimeError):
+    def __init__(
+        self,
+        event_id: str,
+        reason: str,
+        *,
+        retryable: bool,
+        http_status: int | None = None,
+    ) -> None:
+        super().__init__(f"RA event detail {event_id}: {reason}")
+        self.event_id = str(event_id)
+        self.reason = reason
+        self.retryable = retryable
+        self.http_status = http_status
+
+
+class EventDetailTransientError(EventDetailError):
+    pass
+
+
+class EventDetailUnresolvableError(EventDetailError):
+    pass
+
+
+class EventDetailSystemError(EventDetailError):
+    pass
+
+
+@dataclass(frozen=True)
+class EventDetailResult:
+    event: dict[str, Any]
+    attempts: int
+
+
 def fetch_event_listing_page_ids_with_curl(
     min_date: str,
     max_date: str,
@@ -271,7 +311,40 @@ def fetch_event_listing_page_ids_with_curl(
     return extract_event_listing_ids(json.loads(result.stdout), page=page)
 
 
-def fetch_single_event(event_id):
+def _event_from_graphql_payload(event_id: str, parsed: Any) -> dict[str, Any]:
+    if not isinstance(parsed, dict):
+        raise EventDetailUnresolvableError(
+            event_id, "invalid_detail_payload", retryable=False
+        )
+
+    data = parsed.get("data")
+    event = data.get("event") if isinstance(data, dict) else None
+    if isinstance(event, dict) and str(event.get("id") or "").strip():
+        return event
+
+    errors = parsed.get("errors")
+    if isinstance(errors, list) and errors:
+        error_text = " ".join(
+            str(item.get("message") or "") if isinstance(item, dict) else str(item)
+            for item in errors
+        ).casefold()
+        reason = "graphql_not_found" if "not found" in error_text else "invalid_detail_payload"
+    elif isinstance(data, dict) and event is None:
+        reason = "event_null"
+    else:
+        reason = "invalid_detail_payload"
+    raise EventDetailUnresolvableError(event_id, reason, retryable=False)
+
+
+def fetch_single_event(
+    event_id: str,
+    *,
+    max_attempts: int = DEFAULT_EVENT_DETAIL_ATTEMPTS,
+    opener: Callable[..., Any] = urllib.request.urlopen,
+    sleep: Callable[[float], None] = time.sleep,
+) -> EventDetailResult:
+    if max_attempts < 1 or max_attempts > 5:
+        raise ValueError("max_attempts must be between 1 and 5")
     payload = {
         "operationName": "GET_EVENT",
         "variables": {"id": str(event_id)},
@@ -287,23 +360,115 @@ def fetch_single_event(event_id):
     }
 
     req = urllib.request.Request(URL, data=data, headers=headers, method="POST")
-    try:
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            raw = resp.read().decode("utf-8")
-            parsed = json.loads(raw)
+    last_error: EventDetailError | None = None
+    for attempt in range(1, max_attempts + 1):
+        try:
+            with opener(req, timeout=15) as resp:
+                try:
+                    parsed = json.loads(resp.read().decode("utf-8"))
+                except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+                    raise EventDetailTransientError(
+                        str(event_id), "undecodable_response", retryable=True
+                    ) from exc
+                event = _event_from_graphql_payload(str(event_id), parsed)
+                return EventDetailResult(event=event, attempts=attempt)
+        except urllib.error.HTTPError as exc:
+            retryable = exc.code in RETRYABLE_HTTP_STATUSES
+            error_class = EventDetailTransientError if retryable else EventDetailUnresolvableError
+            last_error = error_class(
+                str(event_id),
+                f"http_{exc.code}",
+                retryable=retryable,
+                http_status=exc.code,
+            )
+        except (
+            urllib.error.URLError,
+            ConnectionError,
+            TimeoutError,
+            http.client.IncompleteRead,
+        ) as exc:
+            last_error = EventDetailTransientError(
+                str(event_id), type(exc).__name__.lower(), retryable=True
+            )
+        except EventDetailError as exc:
+            last_error = exc
 
-            if "errors" in parsed:
-                print(f"[GraphQL error] event {event_id}: {parsed['errors']}", file=sys.stderr)
-                logging.error(f"GraphQL error for event {event_id}: {parsed['errors']}")
-                return None
+        if attempt < max_attempts:
+            sleep(float(min(4, 2 ** (attempt - 1))))
 
-            return parsed
+    assert last_error is not None
+    if last_error.retryable:
+        raise EventDetailTransientError(
+            str(event_id),
+            last_error.reason,
+            retryable=True,
+            http_status=last_error.http_status,
+        ) from last_error
+    raise last_error
 
-    except Exception as e:
-        error_msg = f"Error fetching event {event_id}: {e}"
-        print(error_msg, file=sys.stderr)
-        logging.error(error_msg)
-        return None
+
+def fetch_source_quarantined_event_ids(database_url: str) -> set[str]:
+    backend_root = Path(__file__).resolve().parents[2] / "backend"
+    if str(backend_root) not in sys.path:
+        sys.path.append(str(backend_root))
+    from app.ingestion_quarantine import fetch_unresolved_quarantine
+
+    items = fetch_unresolved_quarantine(
+        database_url,
+        entity_type="event",
+        stage=RA_EVENT_DETAIL_STAGE,
+        limit=10_000,
+    )
+    return {str(item["entity_id"]) for item in items}
+
+
+def quarantine_source_unresolvable(
+    database_url: str,
+    error: EventDetailUnresolvableError,
+    *,
+    min_date: str,
+    max_date: str,
+) -> None:
+    backend_root = Path(__file__).resolve().parents[2] / "backend"
+    if str(backend_root) not in sys.path:
+        sys.path.append(str(backend_root))
+    import psycopg
+    from psycopg.rows import dict_row
+    from app.ingestion_quarantine import quarantine_entity
+
+    metadata: dict[str, Any] = {
+        "reason": error.reason,
+        "requested_min_date": min_date,
+        "requested_max_date": max_date,
+        "source": "ra",
+    }
+    if error.http_status is not None:
+        metadata["http_status"] = error.http_status
+    with psycopg.connect(database_url, row_factory=dict_row) as connection:
+        quarantine_entity(
+            connection,
+            entity_type="event",
+            entity_id=int(error.event_id),
+            stage=RA_EVENT_DETAIL_STAGE,
+            error=error,
+            metadata=metadata,
+        )
+
+
+def resolve_source_quarantine(database_url: str, event_id: str) -> None:
+    backend_root = Path(__file__).resolve().parents[2] / "backend"
+    if str(backend_root) not in sys.path:
+        sys.path.append(str(backend_root))
+    import psycopg
+    from app.ingestion_quarantine import resolve_quarantine
+
+    with psycopg.connect(database_url) as connection:
+        resolve_quarantine(
+            connection,
+            entity_type="event",
+            entity_id=int(event_id),
+            stage=RA_EVENT_DETAIL_STAGE,
+        )
 
 def get_month_chunks(start_date_str, end_date_str):
     chunks = []
@@ -670,6 +835,12 @@ def main():
             f"Dedup set size: {before} -> {len(scraped_ids)}"
         )
 
+    source_quarantined_ids = (
+        fetch_source_quarantined_event_ids(args.database_url)
+        if args.database_url
+        else set()
+    )
+
     # 1. Chunk the Date Ranges
     date_chunks = get_month_chunks(min_date, max_date)
 
@@ -724,10 +895,45 @@ def main():
                         continue
 
                     print(f"    Fetching details for ID {eid}")
-                    data = fetch_single_event(eid)
+                    try:
+                        detail = fetch_single_event(eid)
+                    except EventDetailUnresolvableError as exc:
+                        if not args.database_url:
+                            raise
+                        try:
+                            quarantine_source_unresolvable(
+                                args.database_url,
+                                exc,
+                                min_date=min_date,
+                                max_date=max_date,
+                            )
+                        except Exception as persistence_error:
+                            raise EventDetailSystemError(
+                                eid_text,
+                                "quarantine_persistence_failed",
+                                retryable=False,
+                            ) from persistence_error
+                        source_quarantined_ids.add(eid_text)
+                        warning_msg = (
+                            f"    -> Source-unresolvable event {eid}: reason={exc.reason}"
+                        )
+                        print(warning_msg)
+                        logging.warning(warning_msg)
+                        continue
 
-                    if data and data.get("data") and data["data"].get("event"):
-                        event = data["data"]["event"]
+                    event = detail.event
+                    if args.database_url and eid_text in source_quarantined_ids:
+                        try:
+                            resolve_source_quarantine(args.database_url, eid_text)
+                        except Exception as persistence_error:
+                            raise EventDetailSystemError(
+                                eid_text,
+                                "quarantine_resolution_failed",
+                                retryable=False,
+                            ) from persistence_error
+                        source_quarantined_ids.discard(eid_text)
+
+                    if event:
                         # 3. Remove Exact Date Validation
                         year = event_year(event)
                         action = upsert_event_in_dataset(events_by_year, event)
@@ -760,14 +966,11 @@ def main():
                             dirty_years.clear()
                             needs_full_reshard = False
 
-                    else:
-                        warning_msg = f"    -> Error or invalid data for event {eid}"
-                        print(warning_msg)
-                        logging.warning(warning_msg)
-
                     # 6. Use Randomized Delays
                     time.sleep(random.uniform(1.5, 3.5))
 
+            except EventDetailError:
+                raise
             except Exception as e:
                 error_msg = f"Error fetching event list on page {page} via GraphQL using curl: {e}"
                 print(error_msg)
@@ -801,6 +1004,25 @@ def main():
         f"\\nFinished! Successfully compiled {total_event_count(events_by_year)} total past events to {out_file} "
         f"(artifact_new={new_events_count}, refreshed={refreshed_events_count})"
     )
+    return 0
+
+
+def cli_main() -> int:
+    try:
+        return main()
+    except EventDetailTransientError as exc:
+        print(
+            f"Retryable RA event-detail failure: event={exc.event_id}; reason={exc.reason}",
+            file=sys.stderr,
+        )
+        return 75
+    except EventDetailUnresolvableError as exc:
+        print(
+            f"Unresolved RA event detail without quarantine persistence: "
+            f"event={exc.event_id}; reason={exc.reason}",
+            file=sys.stderr,
+        )
+        return 1
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(cli_main())

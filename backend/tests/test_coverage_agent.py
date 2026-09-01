@@ -40,6 +40,7 @@ def make_operations(*, missing: bool, apply: bool = True) -> CoverageOperations:
         db_fetcher=lambda _url, _date: next(db_results),
         run_command=lambda *_args, **_kwargs: None,
         quarantine_fetcher=lambda *_args, **_kwargs: [],
+        source_quarantine_fetcher=lambda *_args, **_kwargs: set(),
     )
 
 

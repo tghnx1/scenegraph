@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import psycopg
@@ -186,3 +186,31 @@ def fetch_unresolved_quarantine(
                 params,
             )
             return list(cursor.fetchall())
+
+
+def fetch_active_source_quarantine_ids(
+    database_url: str,
+    event_ids: set[str],
+    ttl_days: int,
+    *,
+    now: datetime | None = None,
+) -> set[str]:
+    if not event_ids:
+        return set()
+    numeric_ids = sorted({int(item) for item in event_ids})
+    cutoff = (now or datetime.now(timezone.utc)) - timedelta(days=ttl_days)
+    with psycopg.connect(database_url, row_factory=dict_row) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT entity_id
+                FROM ingestion_quarantine
+                WHERE entity_type = 'event'
+                  AND stage = 'ra_event_detail'
+                  AND resolved_at IS NULL
+                  AND last_seen_at >= %s
+                  AND entity_id = ANY(%s)
+                """,
+                (cutoff, numeric_ids),
+            )
+            return {str(row["entity_id"]) for row in cursor.fetchall()}

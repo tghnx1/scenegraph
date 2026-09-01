@@ -11,7 +11,10 @@ from typing import Any, Callable
 import psycopg
 from psycopg.rows import dict_row
 
-from app.ingestion_quarantine import fetch_unresolved_quarantine
+from app.ingestion_quarantine import (
+    fetch_active_source_quarantine_ids,
+    fetch_unresolved_quarantine,
+)
 from app.event_dates import event_in_date_range, parse_calendar_date
 from app.quarantine import retry_quarantine_item
 
@@ -28,11 +31,19 @@ def _positive_env_int(name: str, default: int) -> int:
     return value
 
 
+def _bounded_env_int(name: str, default: int, maximum: int) -> int:
+    value = _positive_env_int(name, default)
+    if value > maximum:
+        raise ValueError(f"{name} must be at most {maximum}")
+    return value
+
+
 @dataclass(frozen=True)
 class CoverageConfig:
     max_audit_days: int = 31
     max_backfills_per_run: int = 7
     quarantine_max_attempts: int = 3
+    source_quarantine_ttl_days: int = 7
     artifacts_dir: Path = Path("/tmp/scenegraph-coverage-agent")
 
     @classmethod
@@ -41,6 +52,9 @@ class CoverageConfig:
             max_audit_days=_positive_env_int("COVERAGE_AGENT_MAX_AUDIT_DAYS", 31),
             max_backfills_per_run=_positive_env_int("COVERAGE_AGENT_MAX_BACKFILLS_PER_RUN", 7),
             quarantine_max_attempts=_positive_env_int("COVERAGE_AGENT_QUARANTINE_MAX_ATTEMPTS", 3),
+            source_quarantine_ttl_days=_bounded_env_int(
+                "RA_EVENT_DETAIL_QUARANTINE_TTL_DAYS", 7, 365
+            ),
             artifacts_dir=Path(
                 os.environ.get("COVERAGE_AGENT_ARTIFACTS_DIR", "/tmp/scenegraph-coverage-agent")
             ).expanduser().resolve(),
@@ -52,10 +66,14 @@ class DateCoverageAudit:
     date: str
     ra_event_ids: list[str]
     db_event_ids: list[str]
+    raw_missing_event_ids: list[str]
+    source_unresolvable_event_ids: list[str]
     missing_event_ids: list[str]
     extra_event_ids: list[str]
     ra_count: int
     db_count: int
+    raw_missing_count: int
+    source_unresolvable_count: int
     missing_count: int
     status: str
     error_type: str | None = None
@@ -126,6 +144,9 @@ class CoverageOperations:
         db_fetcher: Callable[[str, str], set[str]] = fetch_db_event_ids,
         run_command: Callable[..., Any] = subprocess.run,
         quarantine_fetcher: Callable[..., list[dict[str, Any]]] = fetch_unresolved_quarantine,
+        source_quarantine_fetcher: Callable[[str, set[str], int], set[str]] = (
+            fetch_active_source_quarantine_ids
+        ),
         quarantine_retry: Callable[..., None] = retry_quarantine_item,
     ) -> None:
         self.min_date = parse_calendar_date(min_date)
@@ -143,6 +164,7 @@ class CoverageOperations:
         self.db_fetcher = db_fetcher
         self.run_command = run_command
         self.quarantine_fetcher = quarantine_fetcher
+        self.source_quarantine_fetcher = source_quarantine_fetcher
         self.quarantine_retry = quarantine_retry
         self.audits: dict[str, DateCoverageAudit] = {}
         self.backfilled_dates: set[str] = set()
@@ -171,10 +193,14 @@ class CoverageOperations:
                 date=value,
                 ra_event_ids=[],
                 db_event_ids=[],
+                raw_missing_event_ids=[],
+                source_unresolvable_event_ids=[],
                 missing_event_ids=[],
                 extra_event_ids=[],
                 ra_count=0,
                 db_count=0,
+                raw_missing_count=0,
+                source_unresolvable_count=0,
                 missing_count=0,
                 status="audit_failed",
                 error_type=type(exc).__name__,
@@ -182,17 +208,38 @@ class CoverageOperations:
                 retryable=bool(getattr(exc, "retryable", False)),
             )
 
-        missing = sorted(ra_ids - db_ids, key=lambda item: (len(item), item))
+        raw_missing_ids = ra_ids - db_ids
+        source_unresolvable_ids = raw_missing_ids & self.source_quarantine_fetcher(
+            self.database_url, raw_missing_ids, self.config.source_quarantine_ttl_days
+        )
+        missing_ids = raw_missing_ids - source_unresolvable_ids
+        raw_missing = sorted(raw_missing_ids, key=lambda item: (len(item), item))
+        source_unresolvable = sorted(
+            source_unresolvable_ids, key=lambda item: (len(item), item)
+        )
+        missing = sorted(missing_ids, key=lambda item: (len(item), item))
         extra = sorted(db_ids - ra_ids, key=lambda item: (len(item), item))
-        status = "empty_on_ra" if not ra_ids else "missing_events" if missing else "complete"
+        status = (
+            "empty_on_ra"
+            if not ra_ids
+            else "missing_events"
+            if missing
+            else "complete_with_source_unresolvable"
+            if source_unresolvable
+            else "complete"
+        )
         return DateCoverageAudit(
             date=value,
             ra_event_ids=sorted(ra_ids, key=lambda item: (len(item), item)),
             db_event_ids=sorted(db_ids, key=lambda item: (len(item), item)),
+            raw_missing_event_ids=raw_missing,
+            source_unresolvable_event_ids=source_unresolvable,
             missing_event_ids=missing,
             extra_event_ids=extra,
             ra_count=len(ra_ids),
             db_count=len(db_ids),
+            raw_missing_count=len(raw_missing),
+            source_unresolvable_count=len(source_unresolvable),
             missing_count=len(missing),
             status=status,
         )
@@ -221,6 +268,10 @@ class CoverageOperations:
                     "date": audit["date"],
                     "ra_count": audit["ra_count"],
                     "db_count": audit["db_count"],
+                    "raw_missing_count": audit["raw_missing_count"],
+                    "raw_missing_event_ids": audit["raw_missing_event_ids"],
+                    "source_unresolvable_count": audit["source_unresolvable_count"],
+                    "source_unresolvable_event_ids": audit["source_unresolvable_event_ids"],
                     "missing_count": audit["missing_count"],
                     "missing_event_ids": audit["missing_event_ids"],
                     "status": audit["status"],
@@ -231,13 +282,22 @@ class CoverageOperations:
             )
             current += timedelta(days=1)
         incomplete = [item["date"] for item in audits if item["status"] in {"missing_events", "audit_failed"}]
+        has_source_unresolvable = any(
+            int(item["source_unresolvable_count"]) > 0 for item in audits
+        )
         result = RangeCoverageAudit(
             min_date=min_date,
             max_date=max_date,
             dates=audits,
             incomplete_dates=incomplete,
             total_missing=sum(int(item["missing_count"]) for item in audits),
-            status="incomplete" if incomplete else "complete",
+            status=(
+                "incomplete"
+                if incomplete
+                else "complete_with_source_unresolvable"
+                if has_source_unresolvable
+                else "complete"
+            ),
         )
         return result.to_dict()
 

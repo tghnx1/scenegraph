@@ -149,6 +149,9 @@ def orchestrator(store, expected, db, calls, **kwargs):
         store,
         listings_fetcher=kwargs.pop("listings_fetcher", listing_fetcher(expected)),
         db_fetcher=lambda _url, value: set(db.get(date.fromisoformat(value), set())),
+        source_quarantine_fetcher=kwargs.pop(
+            "source_quarantine_fetcher", lambda *_args, **_kwargs: set()
+        ),
         run_command=kwargs.pop("run_command", pipeline_runner(expected, db, calls)),
         sleep=lambda _seconds: None,
         today=lambda: TODAY,
@@ -263,6 +266,71 @@ def test_ra_empty_db_empty_is_safe_but_ra_empty_db_present_is_conflict():
     assert conflict["status"] == "ra_empty_conflict"
 
 
+def test_active_source_quarantine_is_visible_but_not_repairable_missing():
+    target = TODAY - timedelta(days=1)
+    store = MemoryReconciliationStore(target, target)
+    observed = []
+    worker = orchestrator(
+        store,
+        {target: {"123"}},
+        {target: set()},
+        [],
+        source_quarantine_fetcher=lambda database_url, event_ids, ttl_days: (
+            observed.append((database_url, event_ids, ttl_days)) or {"123"}
+        ),
+    )
+
+    audit = worker._audit_window(store.get_run(1), target, target)[0]
+
+    assert audit["raw_missing_count"] == 1
+    assert audit["raw_missing_event_ids"] == ["123"]
+    assert audit["source_unresolvable_count"] == 1
+    assert audit["source_unresolvable_event_ids"] == ["123"]
+    assert audit["missing_count"] == 0
+    assert audit["missing_event_ids"] == []
+    assert audit["db_count"] == 0
+    assert audit["status"] == "complete_with_source_unresolvable"
+    assert observed == [(store.database_url, {"123"}, 7)]
+
+
+def test_expired_source_quarantine_does_not_suppress_missing_event():
+    target = TODAY - timedelta(days=1)
+    store = MemoryReconciliationStore(target, target)
+    audit = orchestrator(
+        store,
+        {target: {"123"}},
+        {target: set()},
+        [],
+        source_quarantine_fetcher=lambda *_args: set(),
+    )._audit_window(store.get_run(1), target, target)[0]
+
+    assert audit["raw_missing_count"] == 1
+    assert audit["source_unresolvable_count"] == 0
+    assert audit["missing_count"] == 1
+    assert audit["missing_event_ids"] == ["123"]
+    assert audit["status"] == "missing_events"
+
+
+def test_final_reconciliation_can_succeed_with_visible_source_unresolvable():
+    target = TODAY - timedelta(days=1)
+    store = MemoryReconciliationStore(target, target)
+    result = orchestrator(
+        store,
+        {target: {"123"}},
+        {target: set()},
+        [],
+        source_quarantine_fetcher=lambda *_args: {"123"},
+    ).run(1)
+
+    assert result["status"] == "succeeded"
+    assert result["final_missing"] == 0
+    assert result["dates"][0]["final_audit_status"] == (
+        "complete_with_source_unresolvable"
+    )
+    assert result["dates"][0]["final_audit"]["db_count"] == 0
+    assert result["dates"][0]["final_audit"]["source_unresolvable_event_ids"] == ["123"]
+
+
 def test_historical_complete_date_skips_pipeline_and_future_complete_date_refreshes():
     historical = TODAY - timedelta(days=1)
     expected = {historical: {"old"}, TODAY: {"future"}}
@@ -332,6 +400,7 @@ def test_final_full_range_audit_is_mandatory_and_missing_blocks_success():
         store,
         listings_fetcher=lambda *_args: [{"id": "event", "date": f"{target}T20:00:00Z"}],
         db_fetcher=db_fetcher,
+        source_quarantine_fetcher=lambda *_args, **_kwargs: set(),
         run_command=lambda *_args, **_kwargs: pytest.fail("healthy initial range should not backfill"),
         today=lambda: TODAY,
     )
