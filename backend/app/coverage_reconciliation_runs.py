@@ -31,6 +31,7 @@ class CoverageReconciliationStore:
         audit_chunk_days: int,
         pipeline_chunk_days: int,
         max_attempts: int,
+        source_quarantine_ttl_days: int,
     ) -> dict[str, Any]:
         with self._connect() as connection:
             with connection.cursor() as cursor:
@@ -64,8 +65,9 @@ class CoverageReconciliationStore:
                     """
                     INSERT INTO coverage_reconciliations (
                         requested_min_date, requested_max_date, future_horizon_days,
-                        audit_chunk_days, pipeline_chunk_days, max_attempts
-                    ) VALUES (%s, %s, %s, %s, %s, %s) RETURNING *
+                        audit_chunk_days, pipeline_chunk_days, max_attempts,
+                        source_quarantine_ttl_days
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s) RETURNING *
                     """,
                     (
                         min_date,
@@ -74,6 +76,7 @@ class CoverageReconciliationStore:
                         audit_chunk_days,
                         pipeline_chunk_days,
                         max_attempts,
+                        source_quarantine_ttl_days,
                     ),
                 )
                 run = dict(cursor.fetchone())

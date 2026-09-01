@@ -39,6 +39,7 @@ class MemoryReconciliationStore:
             "audit_chunk_days": 31,
             "pipeline_chunk_days": 7,
             "max_attempts": 3,
+            "source_quarantine_ttl_days": 7,
             "status": "queued",
             "phase": "pending",
             "current_min_date": None,
@@ -291,6 +292,25 @@ def test_active_source_quarantine_is_visible_but_not_repairable_missing():
     assert audit["db_count"] == 0
     assert audit["status"] == "complete_with_source_unresolvable"
     assert observed == [(store.database_url, {"123"}, 7)]
+
+
+def test_persisted_source_quarantine_ttl_is_used_after_environment_changes(monkeypatch):
+    target = TODAY - timedelta(days=1)
+    store = MemoryReconciliationStore(target, target)
+    store.run["source_quarantine_ttl_days"] = 11
+    observed = []
+    monkeypatch.setenv("RA_EVENT_DETAIL_QUARANTINE_TTL_DAYS", "1")
+    worker = orchestrator(
+        store,
+        {target: {"123"}},
+        {target: set()},
+        [],
+        source_quarantine_fetcher=lambda _url, _ids, ttl: observed.append(ttl) or set(),
+    )
+
+    worker._audit_window(store.get_run(1), target, target)
+
+    assert observed == [11]
 
 
 def test_expired_source_quarantine_does_not_suppress_missing_event():
@@ -568,6 +588,7 @@ def test_status_is_compact_read_only_and_launcher_only_enqueues(monkeypatch, cap
             return {"id": 12, "status": "queued"}
 
     monkeypatch.setattr(coverage_reconcile, "CoverageReconciliationStore", FakeLaunchStore)
+    monkeypatch.setenv("RA_EVENT_DETAIL_QUARANTINE_TTL_DAYS", "13")
     monkeypatch.setattr(
         "sys.argv",
         [
@@ -580,6 +601,7 @@ def test_status_is_compact_read_only_and_launcher_only_enqueues(monkeypatch, cap
     assert coverage_reconcile.main() == 0
     assert json.loads(capsys.readouterr().out)["run_id"] == 12
     assert enqueued[0]["requested_max_date"] == "auto"
+    assert enqueued[0]["source_quarantine_ttl_days"] == 13
 
 
 def test_existing_coverage_limits_remain_unchanged():

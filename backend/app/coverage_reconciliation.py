@@ -94,7 +94,6 @@ class CoverageReconciliationOrchestrator:
         source_quarantine_fetcher: Callable[[str, set[str], int], set[str]] = (
             fetch_active_source_quarantine_ids
         ),
-        source_quarantine_ttl_days: int | None = None,
         sleep: Callable[[float], None] = time.sleep,
         today: Callable[[], date] = berlin_calendar_today,
     ) -> None:
@@ -103,9 +102,6 @@ class CoverageReconciliationOrchestrator:
         self.db_fetcher = db_fetcher
         self.run_command = run_command
         self.source_quarantine_fetcher = source_quarantine_fetcher
-        self.source_quarantine_ttl_days = source_quarantine_ttl_days or _bounded_env_int(
-            "RA_EVENT_DETAIL_QUARANTINE_TTL_DAYS", 7, 365
-        )
         self.sleep = sleep
         self.today = today
 
@@ -173,7 +169,9 @@ class CoverageReconciliationOrchestrator:
                 ra_ids = self._ids_by_date(confirmation, current, current).get(current, set())
             raw_missing_ids = ra_ids - db_ids
             source_unresolvable_ids = raw_missing_ids & self.source_quarantine_fetcher(
-                self.store.database_url, raw_missing_ids, self.source_quarantine_ttl_days
+                self.store.database_url,
+                raw_missing_ids,
+                int(run["source_quarantine_ttl_days"]),
             )
             repairable_missing_ids = raw_missing_ids - source_unresolvable_ids
             raw_missing = sorted(raw_missing_ids, key=lambda item: (len(item), item))

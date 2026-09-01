@@ -446,6 +446,7 @@ model CoverageReconciliation {
   auditChunkDays     Int                          @default(31) @map("audit_chunk_days")
   pipelineChunkDays  Int                          @default(7) @map("pipeline_chunk_days")
   maxAttempts        Int                          @default(3) @map("max_attempts")
+  sourceQuarantineTtlDays Int                     @default(7) @map("source_quarantine_ttl_days")
   status             String                       @default("queued")
   phase              String                       @default("pending")
   currentMinDate     DateTime?                    @map("current_min_date") @db.Date

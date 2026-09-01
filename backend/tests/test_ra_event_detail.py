@@ -94,6 +94,98 @@ def test_http_504_exhaustion_is_retryable_and_cli_returns_75(monkeypatch):
     assert parser.cli_main() == 75
 
 
+@pytest.mark.parametrize("status", [408, 429, 500, 502, 503, 504, 599])
+def test_retryable_http_statuses_include_timeout_rate_limit_and_5xx(status):
+    def opener(*_args, **_kwargs):
+        raise urllib.error.HTTPError(parser.URL, status, "server error", {}, None)
+
+    with pytest.raises(parser.EventDetailTransientError) as captured:
+        parser.fetch_single_event(
+            "123", max_attempts=1, opener=opener, sleep=lambda _seconds: None
+        )
+
+    assert captured.value.reason == f"http_{status}"
+    assert captured.value.retryable is True
+
+
+@pytest.mark.parametrize("status", [400, 403, 404])
+def test_generic_http_4xx_is_non_retryable_system_failure(status):
+    attempts = 0
+
+    def opener(*_args, **_kwargs):
+        nonlocal attempts
+        attempts += 1
+        raise urllib.error.HTTPError(parser.URL, status, "request rejected", {}, None)
+
+    with pytest.raises(parser.EventDetailSystemError) as captured:
+        parser.fetch_single_event("123", opener=opener, sleep=lambda _seconds: None)
+
+    assert attempts == 1
+    assert captured.value.reason == f"http_{status}"
+    assert captured.value.retryable is False
+
+
+def test_unknown_graphql_error_is_non_retryable_system_failure():
+    response = FakeResponse(
+        {"errors": [{"message": "Request was rejected", "extensions": {"code": "FORBIDDEN"}}]}
+    )
+
+    with pytest.raises(parser.EventDetailSystemError) as captured:
+        parser.fetch_single_event(
+            "123", opener=lambda *_args, **_kwargs: response, sleep=lambda _seconds: None
+        )
+
+    assert captured.value.reason == "graphql_error"
+
+
+def test_non_entity_graphql_not_found_is_system_failure():
+    response = FakeResponse(
+        {
+            "errors": [
+                {
+                    "message": "Persisted query not found",
+                    "extensions": {"code": "PERSISTED_QUERY_NOT_FOUND"},
+                }
+            ]
+        }
+    )
+
+    with pytest.raises(parser.EventDetailSystemError) as captured:
+        parser.fetch_single_event(
+            "123", opener=lambda *_args, **_kwargs: response, sleep=lambda _seconds: None
+        )
+
+    assert captured.value.reason == "graphql_error"
+
+
+def test_structurally_invalid_graphql_payload_is_system_failure():
+    with pytest.raises(parser.EventDetailSystemError) as captured:
+        parser.fetch_single_event(
+            "123",
+            opener=lambda *_args, **_kwargs: FakeResponse({"unexpected": True}),
+            sleep=lambda _seconds: None,
+        )
+
+    assert captured.value.reason == "invalid_detail_payload"
+
+
+def test_explicit_graphql_not_found_is_confirmed_as_source_unresolvable():
+    attempts = 0
+
+    def opener(*_args, **_kwargs):
+        nonlocal attempts
+        attempts += 1
+        return FakeResponse(
+            {"errors": [{"message": "Event not found", "extensions": {"code": "NOT_FOUND"}}]}
+        )
+
+    with pytest.raises(parser.EventDetailUnresolvableError) as captured:
+        parser.fetch_single_event("123", opener=opener, sleep=lambda _seconds: None)
+
+    assert attempts == 3
+    assert captured.value.reason == "graphql_not_found"
+
+
 def test_event_null_is_confirmed_with_bounded_attempts():
     attempts = 0
 
@@ -186,6 +278,28 @@ def test_quarantine_persistence_failure_is_not_swallowed(monkeypatch, tmp_path):
         parser.main()
 
     assert captured.value.reason == "quarantine_persistence_failed"
+
+
+def test_http_403_does_not_create_source_quarantine(monkeypatch, tmp_path):
+    configure_single_listing(monkeypatch, tmp_path)
+    error = parser.EventDetailSystemError(
+        "123", "http_403", retryable=False, http_status=403
+    )
+    monkeypatch.setattr(
+        parser,
+        "fetch_single_event",
+        lambda _event_id: (_ for _ in ()).throw(error),
+    )
+    monkeypatch.setattr(
+        parser,
+        "quarantine_source_unresolvable",
+        lambda *_args, **_kwargs: pytest.fail("system errors must not be quarantined"),
+    )
+
+    with pytest.raises(parser.EventDetailSystemError) as captured:
+        parser.main()
+
+    assert captured.value is error
 
 
 def test_successful_later_fetch_resolves_source_quarantine(monkeypatch, tmp_path):

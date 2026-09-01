@@ -49,8 +49,14 @@ DEFAULT_CHECKPOINT_EVERY = 50
 DEFAULT_EVENT_DETAIL_ATTEMPTS = 3
 DEFAULT_MIN_DATE = "2021-01-01"
 YEARLY_FILE_PREFIX = "ra_berlin_past_events_"
-RETRYABLE_HTTP_STATUSES = {429, 500, 502, 503, 504}
 RA_EVENT_DETAIL_STAGE = "ra_event_detail"
+TRANSIENT_GRAPHQL_CODES = {
+    "INTERNAL_SERVER_ERROR",
+    "RATE_LIMITED",
+    "SERVICE_UNAVAILABLE",
+    "THROTTLED",
+    "TIMEOUT",
+}
 
 JSON_DIR.mkdir(parents=True, exist_ok=True)
 LOG_DIR.mkdir(parents=True, exist_ok=True)
@@ -313,7 +319,7 @@ def fetch_event_listing_page_ids_with_curl(
 
 def _event_from_graphql_payload(event_id: str, parsed: Any) -> dict[str, Any]:
     if not isinstance(parsed, dict):
-        raise EventDetailUnresolvableError(
+        raise EventDetailSystemError(
             event_id, "invalid_detail_payload", retryable=False
         )
 
@@ -324,16 +330,40 @@ def _event_from_graphql_payload(event_id: str, parsed: Any) -> dict[str, Any]:
 
     errors = parsed.get("errors")
     if isinstance(errors, list) and errors:
+        error_codes = {
+            str(item.get("extensions", {}).get("code") or "").upper()
+            for item in errors
+            if isinstance(item, dict) and isinstance(item.get("extensions"), dict)
+        }
         error_text = " ".join(
             str(item.get("message") or "") if isinstance(item, dict) else str(item)
             for item in errors
         ).casefold()
-        reason = "graphql_not_found" if "not found" in error_text else "invalid_detail_payload"
-    elif isinstance(data, dict) and event is None:
-        reason = "event_null"
-    else:
-        reason = "invalid_detail_payload"
-    raise EventDetailUnresolvableError(event_id, reason, retryable=False)
+        event_not_found = "EVENT_NOT_FOUND" in error_codes or (
+            "event" in error_text
+            and ("not found" in error_text or "does not exist" in error_text)
+        )
+        if event_not_found:
+            raise EventDetailUnresolvableError(
+                event_id, "graphql_not_found", retryable=False
+            )
+        if error_codes & TRANSIENT_GRAPHQL_CODES or any(
+            marker in error_text
+            for marker in (
+                "internal server error",
+                "rate limit",
+                "temporarily unavailable",
+                "timeout",
+                "too many requests",
+            )
+        ):
+            raise EventDetailTransientError(
+                event_id, "graphql_transient", retryable=True
+            )
+        raise EventDetailSystemError(event_id, "graphql_error", retryable=False)
+    if isinstance(data, dict) and event is None:
+        raise EventDetailUnresolvableError(event_id, "event_null", retryable=False)
+    raise EventDetailSystemError(event_id, "invalid_detail_payload", retryable=False)
 
 
 def fetch_single_event(
@@ -373,14 +403,20 @@ def fetch_single_event(
                 event = _event_from_graphql_payload(str(event_id), parsed)
                 return EventDetailResult(event=event, attempts=attempt)
         except urllib.error.HTTPError as exc:
-            retryable = exc.code in RETRYABLE_HTTP_STATUSES
-            error_class = EventDetailTransientError if retryable else EventDetailUnresolvableError
-            last_error = error_class(
-                str(event_id),
-                f"http_{exc.code}",
-                retryable=retryable,
-                http_status=exc.code,
-            )
+            if exc.code in {408, 429} or 500 <= exc.code <= 599:
+                last_error = EventDetailTransientError(
+                    str(event_id),
+                    f"http_{exc.code}",
+                    retryable=True,
+                    http_status=exc.code,
+                )
+            else:
+                raise EventDetailSystemError(
+                    str(event_id),
+                    f"http_{exc.code}",
+                    retryable=False,
+                    http_status=exc.code,
+                ) from exc
         except (
             urllib.error.URLError,
             ConnectionError,
@@ -390,7 +426,9 @@ def fetch_single_event(
             last_error = EventDetailTransientError(
                 str(event_id), type(exc).__name__.lower(), retryable=True
             )
-        except EventDetailError as exc:
+        except EventDetailSystemError:
+            raise
+        except (EventDetailTransientError, EventDetailUnresolvableError) as exc:
             last_error = exc
 
         if attempt < max_attempts:

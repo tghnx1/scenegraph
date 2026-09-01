@@ -57,6 +57,7 @@ def main() -> int:
         audit_chunk_days=config.audit_chunk_days,
         pipeline_chunk_days=config.pipeline_chunk_days,
         max_attempts=config.max_attempts,
+        source_quarantine_ttl_days=config.source_quarantine_ttl_days,
     )
     print(
         json.dumps(
