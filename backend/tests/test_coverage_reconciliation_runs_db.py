@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 from datetime import date, datetime, timezone
+import os
 
+import psycopg
 import pytest
 
 from app.coverage_reconciliation_runs import CoverageReconciliationStore
@@ -353,3 +355,98 @@ def test_reconciliation_worker_advisory_lock_is_single_owner_and_releasable():
     second_lock = store.acquire_worker_lock()
     assert second_lock is None
     store.release_worker_lock(first_lock)
+
+
+def _database_url_or_skip() -> str:
+    database_url = os.getenv("DATABASE_URL")
+    if not database_url:
+        pytest.skip("DATABASE_URL is not configured")
+    try:
+        with psycopg.connect(database_url):
+            pass
+    except psycopg.OperationalError as exc:
+        pytest.skip(f"PostgreSQL is unavailable: {exc}")
+    return database_url
+
+
+def _cleanup_integration_rows(database_url: str) -> None:
+    with psycopg.connect(database_url) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                DELETE FROM coverage_reconciliations
+                WHERE requested_min_date = %s AND requested_max_date = %s
+                """,
+                (MIN_DATE, MAX_DATE.isoformat()),
+            )
+        connection.commit()
+
+
+def _enqueue(store: CoverageReconciliationStore, *, refresh_all_future: bool) -> dict[str, object]:
+    return store.enqueue(
+        min_date=MIN_DATE,
+        requested_max_date=MAX_DATE.isoformat(),
+        future_horizon_days=365,
+        audit_chunk_days=31,
+        pipeline_chunk_days=7,
+        max_attempts=3,
+        source_quarantine_ttl_days=11,
+        refresh_all_future=refresh_all_future,
+    )
+
+
+def test_reconciliation_store_db_preserves_resume_state_and_isolates_refresh_modes():
+    database_url = _database_url_or_skip()
+    try:
+        _cleanup_integration_rows(database_url)
+        store = CoverageReconciliationStore(database_url)
+
+        gap_only = _enqueue(store, refresh_all_future=False)
+        gap_only_id = int(gap_only["id"])
+        store.initialize_dates(gap_only_id, MIN_DATE, MAX_DATE, today=date(2099, 1, 1))
+        store.update_date(
+            gap_only_id,
+            MIN_DATE.isoformat(),
+            status="processing",
+            initial_audit_status="missing_events",
+            initial_missing_count=1,
+            pipeline_status="running",
+            pipeline_attempt_count=2,
+        )
+        store.update_run(gap_only_id, status="failed", error="interrupted", completed=True)
+
+        resumed = _enqueue(store, refresh_all_future=False)
+        persisted = store.get_run(gap_only_id)
+        assert int(resumed["id"]) == gap_only_id
+        assert resumed["status"] == "queued"
+        assert resumed["source_quarantine_ttl_days"] == 11
+        assert resumed["refresh_all_future"] is False
+        assert persisted["dates"][0]["pipeline_attempt_count"] == 2
+        assert persisted["dates"][0]["initial_missing_count"] == 1
+
+        # The schema permits only one active request for a date range, so finish
+        # the resumed run before asserting that another mode gets its own row.
+        store.update_run(gap_only_id, status="succeeded", completed=True)
+        full_refresh = _enqueue(store, refresh_all_future=True)
+        assert int(full_refresh["id"]) != gap_only_id
+        assert full_refresh["refresh_all_future"] is True
+        assert store.get_run(gap_only_id)["refresh_all_future"] is False
+    finally:
+        _cleanup_integration_rows(database_url)
+
+
+def test_reconciliation_store_db_reverse_refresh_mode_isolated():
+    database_url = _database_url_or_skip()
+    try:
+        _cleanup_integration_rows(database_url)
+        store = CoverageReconciliationStore(database_url)
+        full_refresh = _enqueue(store, refresh_all_future=True)
+        full_refresh_id = int(full_refresh["id"])
+        store.update_run(full_refresh_id, status="succeeded", completed=True)
+
+        gap_only = _enqueue(store, refresh_all_future=False)
+        assert int(gap_only["id"]) != full_refresh_id
+        assert gap_only["refresh_all_future"] is False
+        assert store.get_run(full_refresh_id)["refresh_all_future"] is True
+    finally:
+        _cleanup_integration_rows(database_url)
