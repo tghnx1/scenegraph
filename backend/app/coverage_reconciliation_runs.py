@@ -41,10 +41,11 @@ class CoverageReconciliationStore:
                     """
                     SELECT * FROM coverage_reconciliations
                     WHERE requested_min_date = %s AND requested_max_date = %s
+                      AND refresh_all_future = %s
                       AND status IN ('queued', 'running', 'failed')
                     ORDER BY id DESC LIMIT 1 FOR UPDATE
                     """,
-                    (min_date, requested_max_date),
+                    (min_date, requested_max_date, refresh_all_future),
                 )
                 existing = cursor.fetchone()
                 if existing:
