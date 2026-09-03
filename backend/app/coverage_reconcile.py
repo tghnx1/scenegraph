@@ -58,6 +58,7 @@ def main() -> int:
         pipeline_chunk_days=config.pipeline_chunk_days,
         max_attempts=config.max_attempts,
         source_quarantine_ttl_days=config.source_quarantine_ttl_days,
+        refresh_all_future=True,
     )
     print(
         json.dumps(

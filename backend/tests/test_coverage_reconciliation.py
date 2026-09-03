@@ -40,6 +40,7 @@ class MemoryReconciliationStore:
             "pipeline_chunk_days": 7,
             "max_attempts": 3,
             "source_quarantine_ttl_days": 7,
+            "refresh_all_future": True,
             "status": "queued",
             "phase": "pending",
             "current_min_date": None,
@@ -365,6 +366,51 @@ def test_historical_complete_date_skips_pipeline_and_future_complete_date_refres
     assert result["dates"][0]["pipeline_status"] == "skipped"
 
 
+def test_gap_only_mode_skips_healthy_future_event():
+    expected = {TODAY: {"future"}}
+    db = {TODAY: {"future"}}
+    calls = []
+    store = MemoryReconciliationStore(TODAY, TODAY)
+    store.run["refresh_all_future"] = False
+
+    result = orchestrator(store, expected, db, calls).run(1)
+
+    assert result["status"] == "succeeded"
+    assert calls == []
+    assert result["dates"][0]["pipeline_status"] == "skipped"
+
+
+def test_gap_only_mode_repairs_missing_future_event_immediately():
+    expected = {TODAY: {"100", "101", "102"}}
+    db = {TODAY: {"100", "102"}}
+    calls = []
+    store = MemoryReconciliationStore(TODAY, TODAY)
+    store.run["refresh_all_future"] = False
+
+    result = orchestrator(store, expected, db, calls).run(1)
+
+    assert result["status"] == "succeeded"
+    assert result["final_missing"] == 0
+    assert calls == [(TODAY, TODAY, True)]
+    assert db[TODAY] == expected[TODAY]
+
+
+def test_extra_db_event_remains_diagnostic_and_is_never_repaired_or_deleted():
+    target = TODAY - timedelta(days=1)
+    expected = {target: {"100", "102"}}
+    db = {target: {"100", "101", "102"}}
+    calls = []
+    store = MemoryReconciliationStore(target, target)
+    store.run["refresh_all_future"] = False
+
+    result = orchestrator(store, expected, db, calls).run(1)
+
+    assert result["status"] == "succeeded"
+    assert calls == []
+    assert db[target] == {"100", "101", "102"}
+    assert result["dates"][0]["final_audit"]["extra_event_ids"] == ["101"]
+
+
 def test_transient_pipeline_lock_contention_retries_same_chunk():
     target = TODAY - timedelta(days=1)
     expected = {target: {"missing"}}
@@ -602,6 +648,7 @@ def test_status_is_compact_read_only_and_launcher_only_enqueues(monkeypatch, cap
     assert json.loads(capsys.readouterr().out)["run_id"] == 12
     assert enqueued[0]["requested_max_date"] == "auto"
     assert enqueued[0]["source_quarantine_ttl_days"] == 13
+    assert enqueued[0]["refresh_all_future"] is True
 
 
 def test_existing_coverage_limits_remain_unchanged():

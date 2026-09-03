@@ -35,6 +35,7 @@ def test_reconciliation_store_persists_dates_and_requeues_failed_range():
             pipeline_chunk_days=7,
             max_attempts=3,
             source_quarantine_ttl_days=11,
+            refresh_all_future=False,
         )
         run_id = int(first["id"])
         store.update_run(run_id, resolved_max_date=MAX_DATE, status="running")
@@ -59,6 +60,7 @@ def test_reconciliation_store_persists_dates_and_requeues_failed_range():
             pipeline_chunk_days=7,
             max_attempts=3,
             source_quarantine_ttl_days=3,
+            refresh_all_future=True,
         )
         persisted = store.get_run(run_id)
 
@@ -66,6 +68,9 @@ def test_reconciliation_store_persists_dates_and_requeues_failed_range():
         assert resumed["status"] == "queued"
         assert resumed["source_quarantine_ttl_days"] == 11
         assert persisted["source_quarantine_ttl_days"] == 11
+        assert resumed["refresh_all_future"] is False
+        assert persisted["refresh_all_future"] is False
+        assert persisted["started_at"] is not None
         assert len(persisted["dates"]) == 3
         assert persisted["dates"][0]["initial_audit"]["missing_count"] == 1
         assert persisted["dates"][0]["pipeline_attempt_count"] == 1

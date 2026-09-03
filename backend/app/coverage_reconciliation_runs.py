@@ -32,6 +32,7 @@ class CoverageReconciliationStore:
         pipeline_chunk_days: int,
         max_attempts: int,
         source_quarantine_ttl_days: int,
+        refresh_all_future: bool = True,
     ) -> dict[str, Any]:
         with self._connect() as connection:
             with connection.cursor() as cursor:
@@ -66,8 +67,8 @@ class CoverageReconciliationStore:
                     INSERT INTO coverage_reconciliations (
                         requested_min_date, requested_max_date, future_horizon_days,
                         audit_chunk_days, pipeline_chunk_days, max_attempts,
-                        source_quarantine_ttl_days
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s) RETURNING *
+                        source_quarantine_ttl_days, refresh_all_future
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s) RETURNING *
                     """,
                     (
                         min_date,
@@ -77,6 +78,7 @@ class CoverageReconciliationStore:
                         pipeline_chunk_days,
                         max_attempts,
                         source_quarantine_ttl_days,
+                        refresh_all_future,
                     ),
                 )
                 run = dict(cursor.fetchone())
@@ -188,6 +190,8 @@ class CoverageReconciliationStore:
             params.append(compact_error(value) if name == "error" else value)
         if values.get("status") in {"running", "succeeded"} and "error" not in values:
             assignments.append("error = NULL")
+        if values.get("status") == "running":
+            assignments.append("started_at = COALESCE(started_at, CURRENT_TIMESTAMP)")
         if completed:
             assignments.append("completed_at = CURRENT_TIMESTAMP")
         params.append(run_id)
@@ -247,6 +251,7 @@ def public_reconciliation_status(run: dict[str, Any], *, verbose: bool = False) 
         "current_max_date": run["current_max_date"],
         "initial_missing": run["initial_missing"],
         "final_missing": run["final_missing"],
+        "refresh_all_future": run["refresh_all_future"],
         "error": run["error"],
         "dates_total": len(dates),
         "dates_initially_audited": sum(item["initial_audit_status"] is not None for item in dates),

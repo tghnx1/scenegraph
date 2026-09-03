@@ -1,11 +1,20 @@
 from __future__ import annotations
 
+import calendar
 from datetime import date, datetime
 from typing import Any, Mapping
 from zoneinfo import ZoneInfo
 
 
 BERLIN_TIMEZONE = ZoneInfo("Europe/Berlin")
+
+
+def shift_calendar_months(value: date, months: int) -> date:
+    month_index = value.year * 12 + value.month - 1 + months
+    year, zero_based_month = divmod(month_index, 12)
+    month = zero_based_month + 1
+    day = min(value.day, calendar.monthrange(year, month)[1])
+    return date(year, month, day)
 
 
 def berlin_calendar_today(now: datetime | None = None) -> date:

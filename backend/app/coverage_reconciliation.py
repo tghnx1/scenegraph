@@ -4,7 +4,7 @@ import os
 import subprocess
 import sys
 import time
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from datetime import date, timedelta
 from pathlib import Path
@@ -24,8 +24,14 @@ TRANSIENT_PIPELINE_EXIT_CODES = {75}
 TRANSIENT_PIPELINE_ERRORS = (ConnectionError, TimeoutError, subprocess.TimeoutExpired)
 
 
-def _bounded_env_int(name: str, default: int, maximum: int) -> int:
-    value = int(os.environ.get(name, str(default)))
+def _bounded_env_int(
+    name: str,
+    default: int,
+    maximum: int,
+    environ: Mapping[str, str] | None = None,
+) -> int:
+    environment = os.environ if environ is None else environ
+    value = int(environment.get(name, str(default)))
     if value < 1 or value > maximum:
         raise ValueError(f"{name} must be between 1 and {maximum}")
     return value
@@ -41,17 +47,28 @@ class ReconciliationConfig:
     artifacts_dir: Path = Path("/tmp/scenegraph-reconciliation")
 
     @classmethod
-    def from_env(cls) -> "ReconciliationConfig":
+    def from_env(cls, environ: Mapping[str, str] | None = None) -> "ReconciliationConfig":
+        environment = os.environ if environ is None else environ
         return cls(
-            audit_chunk_days=_bounded_env_int("RECONCILIATION_AUDIT_CHUNK_DAYS", 31, 31),
-            pipeline_chunk_days=_bounded_env_int("RECONCILIATION_PIPELINE_CHUNK_DAYS", 7, 7),
-            max_future_days=_bounded_env_int("RECONCILIATION_MAX_FUTURE_DAYS", 365, 3660),
-            max_attempts=_bounded_env_int("RECONCILIATION_MAX_ATTEMPTS", 3, 5),
+            audit_chunk_days=_bounded_env_int(
+                "RECONCILIATION_AUDIT_CHUNK_DAYS", 31, 31, environment
+            ),
+            pipeline_chunk_days=_bounded_env_int(
+                "RECONCILIATION_PIPELINE_CHUNK_DAYS", 7, 7, environment
+            ),
+            max_future_days=_bounded_env_int(
+                "RECONCILIATION_MAX_FUTURE_DAYS", 365, 3660, environment
+            ),
+            max_attempts=_bounded_env_int(
+                "RECONCILIATION_MAX_ATTEMPTS", 3, 5, environment
+            ),
             source_quarantine_ttl_days=_bounded_env_int(
-                "RA_EVENT_DETAIL_QUARANTINE_TTL_DAYS", 7, 365
+                "RA_EVENT_DETAIL_QUARANTINE_TTL_DAYS", 7, 365, environment
             ),
             artifacts_dir=Path(
-                os.environ.get("RECONCILIATION_ARTIFACTS_DIR", "/tmp/scenegraph-reconciliation")
+                environment.get(
+                    "RECONCILIATION_ARTIFACTS_DIR", "/tmp/scenegraph-reconciliation"
+                )
             ).expanduser().resolve(),
         )
 
@@ -373,13 +390,27 @@ class CoverageReconciliationOrchestrator:
     ) -> bool:
         run_id = int(run["id"])
         rows = self.store.get_run(run_id)["dates"]
+        if not refresh_all:
+            for row in rows:
+                value = str(row["coverage_date"])
+                if (
+                    row["period"] == "future"
+                    and int(current_audits[value]["missing_count"]) == 0
+                    and row["pipeline_status"] in {"pending", "failed"}
+                ):
+                    self.store.update_date(
+                        run_id,
+                        value,
+                        status="complete",
+                        pipeline_status="skipped",
+                        completed=True,
+                    )
         pending = [
             row["coverage_date"] for row in rows
             if row["period"] == "future"
             and (
                 int(current_audits[str(row["coverage_date"])]["missing_count"]) > 0
-                or row["pipeline_status"] != "succeeded"
-                or refresh_all
+                or (refresh_all and row["pipeline_status"] != "succeeded")
             )
         ]
         all_complete = True
@@ -429,7 +460,7 @@ class CoverageReconciliationOrchestrator:
                     run_id, run["requested_min_date"], resolved, today=self.today()
                 )
             run = self.store.get_run(run_id)
-            refresh_all_future = run["initial_missing"] is None
+            refresh_all_future = bool(run["refresh_all_future"])
             current_audits = self._current_audit(run)
             run = self.store.get_run(run_id)
             historical_ok = self._repair_historical(run, current_audits)
@@ -442,8 +473,14 @@ class CoverageReconciliationOrchestrator:
             run = self.store.get_run(run_id)
             final_missing, audit_ok = self._final_audit(run)
             latest = self.store.get_run(run_id)
+            successful_future_pipeline_statuses = (
+                {"succeeded"}
+                if bool(run["refresh_all_future"])
+                else {"succeeded", "skipped"}
+            )
             future_complete = all(
-                item["period"] != "future" or item["pipeline_status"] == "succeeded"
+                item["period"] != "future"
+                or item["pipeline_status"] in successful_future_pipeline_statuses
                 for item in latest["dates"]
             )
             succeeded = historical_ok and future_ok and future_complete and audit_ok and final_missing == 0
