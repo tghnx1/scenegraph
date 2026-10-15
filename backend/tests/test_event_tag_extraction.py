@@ -50,6 +50,7 @@ def test_event_config_reads_kimi_code_provider(monkeypatch):
 
     assert config.provider == "kimi_code"
     assert config.model == "k3"
+    assert config.reasoning_effort == "low"
     assert config.extractor_key == "llm_event_tags_v3:kimi_code:chat_completions:k3"
 
 

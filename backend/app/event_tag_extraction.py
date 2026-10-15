@@ -82,6 +82,7 @@ class EventTagExtractionConfig:
     max_tags: int
     chunk_chars: int
     provider: str = "azure"
+    reasoning_effort: str = "low"
 
     @classmethod
     def from_env(cls) -> "EventTagExtractionConfig":
@@ -103,6 +104,17 @@ class EventTagExtractionConfig:
             max_tags=int(_required_env("EVENT_TAG_EXTRACTION_MAX_TAGS")),
             chunk_chars=int(_required_env("EVENT_TAG_EXTRACTION_CHUNK_CHARS")),
             provider=provider,
+            reasoning_effort=(
+                os.environ.get(
+                    "MOONSHOT_REASONING_EFFORT"
+                    if provider == "moonshot"
+                    else "KIMI_REASONING_EFFORT",
+                    "low",
+                ).strip()
+                or "low"
+            )
+            if provider in {"moonshot", "kimi_code"}
+            else "low",
         )
 
     @property
