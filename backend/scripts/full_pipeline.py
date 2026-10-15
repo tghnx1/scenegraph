@@ -334,10 +334,11 @@ def launch_local_chrome(args: argparse.Namespace) -> subprocess.Popen[bytes]:
 
 def ensure_provider_env(skip_tags: bool, skip_embeddings: bool) -> None:
     if not skip_tags:
-        EventTagExtractionConfig.from_env()
+        event_config = EventTagExtractionConfig.from_env()
         TagExtractionConfig.from_env()
-        if not os.environ.get("AZURE_OPENAI_API_KEY"):
-            raise SystemExit("AZURE_OPENAI_API_KEY must be set for tag extraction")
+        key_name = "MOONSHOT_API_KEY" if event_config.provider == "moonshot" else "AZURE_OPENAI_API_KEY"
+        if not os.environ.get(key_name):
+            raise SystemExit(f"{key_name} must be set for {event_config.provider} tag extraction")
 
     if not skip_embeddings:
         EmbeddingConfig.from_env()

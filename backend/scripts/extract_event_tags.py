@@ -168,8 +168,9 @@ def parse_args() -> argparse.Namespace:
 
 
 def ensure_provider_env(config: EventTagExtractionConfig) -> None:
-    if not os.environ.get("AZURE_OPENAI_API_KEY"):
-        raise SystemExit("AZURE_OPENAI_API_KEY must be set for Azure tag extraction")
+    key_name = "MOONSHOT_API_KEY" if config.provider == "moonshot" else "AZURE_OPENAI_API_KEY"
+    if not os.environ.get(key_name):
+        raise SystemExit(f"{key_name} must be set for {config.provider} tag extraction")
 
 
 def main() -> None:

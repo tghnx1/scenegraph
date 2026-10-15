@@ -7,7 +7,7 @@ import re
 from dataclasses import dataclass
 from typing import Any, Literal
 
-from openai import AzureOpenAI
+from openai import AzureOpenAI, OpenAI
 from psycopg import Connection
 
 from app.artist_tag_extraction import (
@@ -81,19 +81,29 @@ class EventTagExtractionConfig:
     max_text_chars: int
     max_tags: int
     chunk_chars: int
+    provider: str = "azure"
 
     @classmethod
     def from_env(cls) -> "EventTagExtractionConfig":
+        provider = os.environ.get("EXTRACTION_PROVIDER", "azure").strip().lower()
+        if provider not in {"azure", "moonshot"}:
+            raise ValueError("EXTRACTION_PROVIDER must be azure or moonshot")
+        model_name = (
+            _required_env("MOONSHOT_EXTRACTION_MODEL")
+            if provider == "moonshot"
+            else _required_env("AZURE_OPENAI_EXTRACTION_DEPLOYMENT")
+        )
         return cls(
-            model=_required_env("AZURE_OPENAI_EXTRACTION_DEPLOYMENT"),
+            model=model_name,
             max_text_chars=int(_required_env("EVENT_TAG_EXTRACTION_MAX_TEXT_CHARS")),
             max_tags=int(_required_env("EVENT_TAG_EXTRACTION_MAX_TAGS")),
             chunk_chars=int(_required_env("EVENT_TAG_EXTRACTION_CHUNK_CHARS")),
+            provider=provider,
         )
 
     @property
     def extractor_key(self) -> str:
-        return f"llm_event_tags_v3:azure:chat_completions:{self.model}"
+        return f"llm_event_tags_v3:{self.provider}:chat_completions:{self.model}"
 
 
 def _required_env(name: str) -> str:
@@ -103,7 +113,15 @@ def _required_env(name: str) -> str:
     return value
 
 
-def create_extraction_client() -> AzureOpenAI:
+def create_extraction_client(config: EventTagExtractionConfig | None = None) -> OpenAI | AzureOpenAI:
+    provider = config.provider if config else os.environ.get("EXTRACTION_PROVIDER", "azure").strip().lower()
+    if provider == "moonshot":
+        if not os.environ.get("MOONSHOT_API_KEY"):
+            raise RuntimeError("MOONSHOT_API_KEY must be set for Moonshot tag extraction")
+        return OpenAI(
+            api_key=os.environ["MOONSHOT_API_KEY"],
+            base_url=os.environ.get("MOONSHOT_BASE_URL", "https://api.moonshot.ai/v1"),
+        )
     if not os.environ.get("AZURE_OPENAI_API_KEY"):
         raise RuntimeError("AZURE_OPENAI_API_KEY must be set for Azure tag extraction")
     return AzureOpenAI(

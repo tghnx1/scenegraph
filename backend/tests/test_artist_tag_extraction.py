@@ -15,6 +15,7 @@ from app.artist_tag_extraction import (
     split_biography_chunks,
     tag_extraction_text_hash,
 )
+import app.artist_tag_extraction as artist_tag_extraction
 
 
 class RecordingCursor:
@@ -66,6 +67,43 @@ def test_tag_extraction_config_requires_azure_deployment(monkeypatch):
 
     with pytest.raises(ValueError, match="AZURE_OPENAI_EXTRACTION_DEPLOYMENT"):
         TagExtractionConfig.from_env()
+
+
+def test_tag_extraction_config_reads_moonshot_env(monkeypatch):
+    monkeypatch.setenv("EXTRACTION_PROVIDER", "moonshot")
+    monkeypatch.setenv("MOONSHOT_EXTRACTION_MODEL", "kimi-k3")
+    monkeypatch.setenv("MOONSHOT_BASE_URL", "https://api.moonshot.ai/v1")
+    monkeypatch.setenv("ARTIST_TAG_EXTRACTION_MAX_BIO_CHARS", "6000")
+    monkeypatch.setenv("ARTIST_TAG_EXTRACTION_MAX_TAGS", "12")
+    monkeypatch.setenv("ARTIST_TAG_EXTRACTION_CHUNK_CHARS", "600")
+
+    config = TagExtractionConfig.from_env()
+
+    assert config.provider == "moonshot"
+    assert config.model == "kimi-k3"
+    assert config.extractor_key == "llm_artist_tags_v2:moonshot:chat_completions:kimi-k3"
+
+
+def test_moonshot_client_uses_openai_compatible_endpoint(monkeypatch):
+    captured = {}
+    monkeypatch.setenv("MOONSHOT_API_KEY", "test-key")
+    config = TagExtractionConfig(
+        provider="moonshot",
+        model="kimi-k3",
+        max_biography_chars=6000,
+        max_tags=12,
+        chunk_chars=600,
+        base_url="https://api.moonshot.ai/v1",
+    )
+    monkeypatch.setattr(
+        artist_tag_extraction,
+        "OpenAI",
+        lambda **kwargs: captured.update(kwargs) or object(),
+    )
+
+    artist_tag_extraction.create_extraction_client(config)
+
+    assert captured == {"api_key": "test-key", "base_url": "https://api.moonshot.ai/v1"}
 
 
 def test_extract_json_object_handles_surrounding_text():

@@ -7,7 +7,7 @@ import re
 from dataclasses import dataclass
 from typing import Any, Literal
 
-from openai import AzureOpenAI
+from openai import AzureOpenAI, OpenAI
 from psycopg import Connection
 
 from app.style_tags import canonicalize_style_tags, extract_style_tags, suppress_parent_style_tags
@@ -119,16 +119,37 @@ class ChunkedTagExtractionResult:
 
 @dataclass(frozen=True)
 class TagExtractionConfig:
+    provider: str
     model: str
-    azure_endpoint: str
-    api_version: str
     max_biography_chars: int
     max_tags: int
     chunk_chars: int
+    azure_endpoint: str = ""
+    api_version: str = ""
+    base_url: str = ""
+    reasoning_effort: str = "low"
 
     @classmethod
     def from_env(cls) -> "TagExtractionConfig":
+        provider = os.environ.get("EXTRACTION_PROVIDER", "azure").strip().lower()
+        if provider not in {"azure", "moonshot"}:
+            raise ValueError("EXTRACTION_PROVIDER must be azure or moonshot")
+        if provider == "moonshot":
+            model = _required_env("MOONSHOT_EXTRACTION_MODEL")
+            base_url = os.environ.get("MOONSHOT_BASE_URL", "https://api.moonshot.ai/v1").strip()
+            if not base_url:
+                raise ValueError("MOONSHOT_BASE_URL must be set")
+            return cls(
+                provider=provider,
+                model=model,
+                base_url=base_url,
+                reasoning_effort=os.environ.get("MOONSHOT_REASONING_EFFORT", "low").strip() or "low",
+                max_biography_chars=int(_required_env("ARTIST_TAG_EXTRACTION_MAX_BIO_CHARS")),
+                max_tags=int(_required_env("ARTIST_TAG_EXTRACTION_MAX_TAGS")),
+                chunk_chars=int(_required_env("ARTIST_TAG_EXTRACTION_CHUNK_CHARS")),
+            )
         return cls(
+            provider=provider,
             model=_required_env("AZURE_OPENAI_EXTRACTION_DEPLOYMENT"),
             azure_endpoint=_required_env("AZURE_OPENAI_ENDPOINT"),
             api_version=_required_env("AZURE_OPENAI_CHAT_API_VERSION"),
@@ -139,7 +160,7 @@ class TagExtractionConfig:
 
     @property
     def extractor_key(self) -> str:
-        return f"llm_artist_tags_v2:azure:chat_completions:{self.model}"
+        return f"llm_artist_tags_v2:{self.provider}:chat_completions:{self.model}"
 
 
 def _required_env(name: str) -> str:
@@ -153,7 +174,11 @@ def tag_extraction_text_hash(text: str) -> str:
     return hashlib.sha256(normalize_biography_text(text).encode("utf-8")).hexdigest()
 
 
-def create_extraction_client(config: TagExtractionConfig) -> AzureOpenAI:
+def create_extraction_client(config: TagExtractionConfig) -> OpenAI | AzureOpenAI:
+    if config.provider == "moonshot":
+        if not os.environ.get("MOONSHOT_API_KEY"):
+            raise RuntimeError("MOONSHOT_API_KEY must be set for Moonshot tag extraction")
+        return OpenAI(api_key=os.environ["MOONSHOT_API_KEY"], base_url=config.base_url)
     if not os.environ.get("AZURE_OPENAI_API_KEY"):
         raise RuntimeError("AZURE_OPENAI_API_KEY must be set for Azure tag extraction")
     return AzureOpenAI(
@@ -163,7 +188,7 @@ def create_extraction_client(config: TagExtractionConfig) -> AzureOpenAI:
     )
 
 
-def create_chat_client(config: TagExtractionConfig) -> AzureOpenAI:
+def create_chat_client(config: TagExtractionConfig) -> OpenAI | AzureOpenAI:
     return create_extraction_client(config)
 
 
@@ -509,7 +534,7 @@ def parse_artist_batch_response(
 
 
 def create_chat_completion(
-    client: AzureOpenAI,
+    client: OpenAI | AzureOpenAI,
     *,
     prompt: str,
     config: TagExtractionConfig,
@@ -518,15 +543,19 @@ def create_chat_completion(
     if client is None:
         raise RuntimeError("Chat completions extraction requires a client")
 
-    response = client.chat.completions.create(
-        model=config.model,
-        temperature=0,
-        response_format={"type": "json_object"},
-        messages=[
+    request: dict[str, Any] = {
+        "model": config.model,
+        "response_format": {"type": "json_object"},
+        "messages": [
             {"role": "system", "content": instructions or system_prompt()},
             {"role": "user", "content": prompt},
         ],
-    )
+    }
+    if config.provider == "moonshot":
+        request["reasoning_effort"] = config.reasoning_effort
+    else:
+        request["temperature"] = 0
+    response = client.chat.completions.create(**request)
     return response.choices[0].message.content or "{}"
 
 
