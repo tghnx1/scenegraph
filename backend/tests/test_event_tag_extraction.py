@@ -39,6 +39,20 @@ def test_event_config_reads_moonshot_provider(monkeypatch):
     assert config.extractor_key == "llm_event_tags_v3:moonshot:chat_completions:kimi-k3"
 
 
+def test_event_config_reads_kimi_code_provider(monkeypatch):
+    monkeypatch.setenv("EXTRACTION_PROVIDER", "kimi_code")
+    monkeypatch.setenv("KIMI_EXTRACTION_MODEL", "k3")
+    monkeypatch.setenv("EVENT_TAG_EXTRACTION_MAX_TEXT_CHARS", "7000")
+    monkeypatch.setenv("EVENT_TAG_EXTRACTION_MAX_TAGS", "12")
+    monkeypatch.setenv("EVENT_TAG_EXTRACTION_CHUNK_CHARS", "800")
+
+    config = EventTagExtractionConfig.from_env()
+
+    assert config.provider == "kimi_code"
+    assert config.model == "k3"
+    assert config.extractor_key == "llm_event_tags_v3:kimi_code:chat_completions:k3"
+
+
 def test_event_user_prompt_mentions_only_mood_and_theme():
     prompt = event_user_prompt("A Night", "safe and inclusive", 6)
     assert "mood|theme" in prompt

@@ -106,6 +106,20 @@ def test_moonshot_client_uses_openai_compatible_endpoint(monkeypatch):
     assert captured == {"api_key": "test-key", "base_url": "https://api.moonshot.ai/v1"}
 
 
+def test_kimi_code_config_uses_coding_endpoint(monkeypatch):
+    monkeypatch.setenv("EXTRACTION_PROVIDER", "kimi_code")
+    monkeypatch.setenv("KIMI_EXTRACTION_MODEL", "k3")
+    monkeypatch.setenv("ARTIST_TAG_EXTRACTION_MAX_BIO_CHARS", "6000")
+    monkeypatch.setenv("ARTIST_TAG_EXTRACTION_MAX_TAGS", "12")
+    monkeypatch.setenv("ARTIST_TAG_EXTRACTION_CHUNK_CHARS", "600")
+
+    config = TagExtractionConfig.from_env()
+
+    assert config.provider == "kimi_code"
+    assert config.base_url == "https://api.kimi.ai/coding/v1"
+    assert config.model == "k3"
+
+
 def test_extract_json_object_handles_surrounding_text():
     payload = extract_json_object('Here: {"tags": [{"type": "style", "value": "EBM"}]}')
 

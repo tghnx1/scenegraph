@@ -336,7 +336,10 @@ def ensure_provider_env(skip_tags: bool, skip_embeddings: bool) -> None:
     if not skip_tags:
         event_config = EventTagExtractionConfig.from_env()
         TagExtractionConfig.from_env()
-        key_name = "MOONSHOT_API_KEY" if event_config.provider == "moonshot" else "AZURE_OPENAI_API_KEY"
+        key_name = {
+            "moonshot": "MOONSHOT_API_KEY",
+            "kimi_code": "KIMI_API_KEY",
+        }.get(event_config.provider, "AZURE_OPENAI_API_KEY")
         if not os.environ.get(key_name):
             raise SystemExit(f"{key_name} must be set for {event_config.provider} tag extraction")
 

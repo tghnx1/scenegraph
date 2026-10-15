@@ -86,11 +86,15 @@ class EventTagExtractionConfig:
     @classmethod
     def from_env(cls) -> "EventTagExtractionConfig":
         provider = os.environ.get("EXTRACTION_PROVIDER", "azure").strip().lower()
-        if provider not in {"azure", "moonshot"}:
-            raise ValueError("EXTRACTION_PROVIDER must be azure or moonshot")
+        if provider not in {"azure", "moonshot", "kimi_code"}:
+            raise ValueError("EXTRACTION_PROVIDER must be azure, moonshot, or kimi_code")
         model_name = (
-            _required_env("MOONSHOT_EXTRACTION_MODEL")
-            if provider == "moonshot"
+            _required_env(
+                "MOONSHOT_EXTRACTION_MODEL"
+                if provider == "moonshot"
+                else "KIMI_EXTRACTION_MODEL"
+            )
+            if provider in {"moonshot", "kimi_code"}
             else _required_env("AZURE_OPENAI_EXTRACTION_DEPLOYMENT")
         )
         return cls(
@@ -115,12 +119,21 @@ def _required_env(name: str) -> str:
 
 def create_extraction_client(config: EventTagExtractionConfig | None = None) -> OpenAI | AzureOpenAI:
     provider = config.provider if config else os.environ.get("EXTRACTION_PROVIDER", "azure").strip().lower()
-    if provider == "moonshot":
-        if not os.environ.get("MOONSHOT_API_KEY"):
-            raise RuntimeError("MOONSHOT_API_KEY must be set for Moonshot tag extraction")
+    if provider in {"moonshot", "kimi_code"}:
+        key_name = "MOONSHOT_API_KEY" if provider == "moonshot" else "KIMI_API_KEY"
+        if not os.environ.get(key_name):
+            raise RuntimeError(f"{key_name} must be set for {provider} tag extraction")
+        default_base_url = (
+            "https://api.moonshot.ai/v1"
+            if provider == "moonshot"
+            else "https://api.kimi.ai/coding/v1"
+        )
         return OpenAI(
-            api_key=os.environ["MOONSHOT_API_KEY"],
-            base_url=os.environ.get("MOONSHOT_BASE_URL", "https://api.moonshot.ai/v1"),
+            api_key=os.environ[key_name],
+            base_url=os.environ.get(
+                "MOONSHOT_BASE_URL" if provider == "moonshot" else "KIMI_BASE_URL",
+                default_base_url,
+            ),
         )
     if not os.environ.get("AZURE_OPENAI_API_KEY"):
         raise RuntimeError("AZURE_OPENAI_API_KEY must be set for Azure tag extraction")

@@ -132,18 +132,26 @@ class TagExtractionConfig:
     @classmethod
     def from_env(cls) -> "TagExtractionConfig":
         provider = os.environ.get("EXTRACTION_PROVIDER", "azure").strip().lower()
-        if provider not in {"azure", "moonshot"}:
-            raise ValueError("EXTRACTION_PROVIDER must be azure or moonshot")
-        if provider == "moonshot":
-            model = _required_env("MOONSHOT_EXTRACTION_MODEL")
-            base_url = os.environ.get("MOONSHOT_BASE_URL", "https://api.moonshot.ai/v1").strip()
+        if provider not in {"azure", "moonshot", "kimi_code"}:
+            raise ValueError("EXTRACTION_PROVIDER must be azure, moonshot, or kimi_code")
+        if provider in {"moonshot", "kimi_code"}:
+            key_prefix = "MOONSHOT" if provider == "moonshot" else "KIMI"
+            model = _required_env(f"{key_prefix}_EXTRACTION_MODEL")
+            default_base_url = (
+                "https://api.moonshot.ai/v1"
+                if provider == "moonshot"
+                else "https://api.kimi.ai/coding/v1"
+            )
+            base_url = os.environ.get(f"{key_prefix}_BASE_URL", default_base_url).strip()
             if not base_url:
                 raise ValueError("MOONSHOT_BASE_URL must be set")
             return cls(
                 provider=provider,
                 model=model,
                 base_url=base_url,
-                reasoning_effort=os.environ.get("MOONSHOT_REASONING_EFFORT", "low").strip() or "low",
+                reasoning_effort=os.environ.get(
+                    f"{key_prefix}_REASONING_EFFORT", "low"
+                ).strip() or "low",
                 max_biography_chars=int(_required_env("ARTIST_TAG_EXTRACTION_MAX_BIO_CHARS")),
                 max_tags=int(_required_env("ARTIST_TAG_EXTRACTION_MAX_TAGS")),
                 chunk_chars=int(_required_env("ARTIST_TAG_EXTRACTION_CHUNK_CHARS")),
@@ -175,10 +183,11 @@ def tag_extraction_text_hash(text: str) -> str:
 
 
 def create_extraction_client(config: TagExtractionConfig) -> OpenAI | AzureOpenAI:
-    if config.provider == "moonshot":
-        if not os.environ.get("MOONSHOT_API_KEY"):
-            raise RuntimeError("MOONSHOT_API_KEY must be set for Moonshot tag extraction")
-        return OpenAI(api_key=os.environ["MOONSHOT_API_KEY"], base_url=config.base_url)
+    if config.provider in {"moonshot", "kimi_code"}:
+        key_name = "MOONSHOT_API_KEY" if config.provider == "moonshot" else "KIMI_API_KEY"
+        if not os.environ.get(key_name):
+            raise RuntimeError(f"{key_name} must be set for {config.provider} tag extraction")
+        return OpenAI(api_key=os.environ[key_name], base_url=config.base_url)
     if not os.environ.get("AZURE_OPENAI_API_KEY"):
         raise RuntimeError("AZURE_OPENAI_API_KEY must be set for Azure tag extraction")
     return AzureOpenAI(
@@ -551,7 +560,7 @@ def create_chat_completion(
             {"role": "user", "content": prompt},
         ],
     }
-    if config.provider == "moonshot":
+    if config.provider in {"moonshot", "kimi_code"}:
         request["reasoning_effort"] = config.reasoning_effort
     else:
         request["temperature"] = 0
