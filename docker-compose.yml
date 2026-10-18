@@ -94,6 +94,27 @@ services:
     volumes:
       - ./backend/app:/app/app
 
+  supervisor:
+    build:
+      context: ./backend
+    profiles:
+      - supervisor
+    restart: unless-stopped
+    command: ["python", "-m", "app.supervisor", "telegram"]
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      SUPERVISOR_TELEGRAM_BOT_TOKEN: ${SUPERVISOR_TELEGRAM_BOT_TOKEN:-}
+      SUPERVISOR_TELEGRAM_ALLOWED_USER_IDS: ${SUPERVISOR_TELEGRAM_ALLOWED_USER_IDS:-}
+      SUPERVISOR_TELEGRAM_CHAT_IDS: ${SUPERVISOR_TELEGRAM_CHAT_IDS:-}
+      SUPERVISOR_STATE_PATH: /app/data/supervisor/state.json
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./backend/data:/app/data
+
   frontend:
     build:
       context: ./frontend

@@ -107,6 +107,24 @@ services:
       migrate:
         condition: service_completed_successfully
 
+  supervisor:
+    build:
+      context: ./backend
+    restart: unless-stopped
+    command: ["python", "-m", "app.supervisor", "telegram"]
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
+      SUPERVISOR_TELEGRAM_BOT_TOKEN: ${SUPERVISOR_TELEGRAM_BOT_TOKEN:?SUPERVISOR_TELEGRAM_BOT_TOKEN is required}
+      SUPERVISOR_TELEGRAM_ALLOWED_USER_IDS: ${SUPERVISOR_TELEGRAM_ALLOWED_USER_IDS:?SUPERVISOR_TELEGRAM_ALLOWED_USER_IDS is required}
+      SUPERVISOR_TELEGRAM_CHAT_IDS: ${SUPERVISOR_TELEGRAM_CHAT_IDS:?SUPERVISOR_TELEGRAM_CHAT_IDS is required}
+      SUPERVISOR_STATE_PATH: /app/data/supervisor/state.json
+      SUPERVISOR_MONITOR_INTERVAL_SECONDS: ${SUPERVISOR_MONITOR_INTERVAL_SECONDS:-15}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    volumes:
+      - supervisor_state:/app/data/supervisor
+
   coverage-worker:
     build:
       context: .
@@ -181,3 +199,6 @@ services:
       timeout: 5s
       retries: 5
       start_period: 10s
+
+volumes:
+  supervisor_state:
