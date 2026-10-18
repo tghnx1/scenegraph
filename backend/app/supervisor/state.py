@@ -239,13 +239,14 @@ class DeterministicSupervisor:
         state = self.store.load()
         runs = state.setdefault("runs", {})
         previous = runs.get(snapshot.run_id, {})
-        notification_key = f"{snapshot.status}:{category or 'none'}:{snapshot.error or ''}"
+        notification_category = category or ("succeeded" if snapshot.status == "succeeded" else None)
+        notification_key = f"{snapshot.status}:{notification_category or 'none'}:{snapshot.error or ''}"
         report["observed_at"] = datetime.now(timezone.utc).isoformat()
         report["notification_key"] = notification_key
         runs[snapshot.run_id] = report
         self.store.save(state)
-        if category and notification_key != previous.get("notification_key"):
-            self._notify(snapshot, category)
+        if notification_category and notification_key != previous.get("notification_key"):
+            self._notify(snapshot, notification_category)
         return report
 
     @staticmethod
@@ -260,7 +261,11 @@ class DeterministicSupervisor:
         return "unknown_system" if snapshot.status == "failed" else None
 
     def _notify(self, snapshot: ImportRunSnapshot, category: str) -> None:
-        if category == "quota_exhausted":
+        if category == "succeeded":
+            self.telegram.send(
+                f"Ingestion succeeded: run={snapshot.run_id}; events={snapshot.events_imported}; artists={snapshot.artists_imported}"
+            )
+        elif category == "quota_exhausted":
             self.telegram.send(f"Extraction paused: provider quota exhausted; run={snapshot.run_id}; remaining_events={snapshot.remaining_events}; remaining_artists={snapshot.remaining_artists}")
         elif category in {"authentication", "unknown_system"}:
             self.telegram.send(f"Ingestion requires attention: run={snapshot.run_id}; category={category}")

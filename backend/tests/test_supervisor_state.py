@@ -85,3 +85,18 @@ def test_quota_state_and_notification_survive_restart_without_raw_secret() -> No
         assert second_report["progress"]["artists"]["remaining"] == 9
         assert len(telegram.messages) == 1
         assert "sk-secret" not in json.dumps(JsonStateStore(path).load())
+
+
+def test_success_notification_is_deduplicated() -> None:
+    database = FakeDatabase()
+    telegram = FakeTelegram()
+    with tempfile.TemporaryDirectory() as directory:
+        supervisor = DeterministicSupervisor(
+            ProductRunReader(database),
+            JsonStateStore(Path(directory) / "state.json"),
+            telegram,
+        )
+        supervisor.observe(192)
+        supervisor.observe(192)
+
+    assert telegram.messages == ["Ingestion succeeded: run=192; events=25; artists=80"]
