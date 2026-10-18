@@ -89,6 +89,13 @@ def fetch_table_count(
     )
 
 
+def minimum_artists_for_scope(artist_ids: list[int] | None, configured_minimum: int) -> int:
+    """Allow an explicitly empty artist scope while preserving non-empty checks."""
+    if artist_ids is not None and not artist_ids:
+        return 0
+    return configured_minimum
+
+
 def run_checks(connection: psycopg.Connection, args: argparse.Namespace) -> list[CheckResult]:
     results: list[CheckResult] = []
     event_ids = load_id_file(args.event_ids_file)
@@ -225,13 +232,14 @@ def run_checks(connection: psycopg.Connection, args: argparse.Namespace) -> list
             )
         ),
     }
+    minimum_artists = minimum_artists_for_scope(artist_ids, args.min_artists)
     results.append(
         CheckResult(
             "row-counts",
-            counts["events"] >= args.min_events and counts["artists"] >= args.min_artists,
+            counts["events"] >= args.min_events and counts["artists"] >= minimum_artists,
             (
                 f"events={counts['events']} (min={args.min_events}), "
-                f"artists={counts['artists']} (min={args.min_artists}), "
+                f"artists={counts['artists']} (min={minimum_artists}), "
                 f"event_artists={counts['event_artists']}, "
                 f"event_promoters={counts['event_promoters']}, "
                 f"event_genres={counts['event_genres']}, "
