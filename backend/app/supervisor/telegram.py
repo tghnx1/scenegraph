@@ -101,12 +101,14 @@ class TelegramCommandService:
         *,
         allowed_user_ids: Iterable[str],
         action_executor: ApprovedActionExecutor | None = None,
+        analysis_fn=None,
     ) -> None:
         self.supervisor = supervisor
         self.store = store
         self.telegram = telegram
         self.allowed_user_ids = {str(value) for value in allowed_user_ids}
         self.action_executor = action_executor
+        self.analysis_fn = analysis_fn
 
     def handle(self, message: TelegramMessage) -> str:
         if message.user_id not in self.allowed_user_ids:
@@ -177,12 +179,16 @@ class TelegramCommandService:
             report = self.supervisor.observe(int(run_id))
         except (TypeError, ValueError):
             return "invalid_run_id"
+        analysis = analyze_report(report)
+        llm_analysis = self.analysis_fn(report) if self.analysis_fn else None
+        if llm_analysis:
+            analysis["llm"] = llm_analysis
         return json.dumps(
             {
                 "summary": explain_report(report),
                 "run_id": report["run_id"],
                 "stages": report["stages"],
-                "analysis": analyze_report(report),
+                "analysis": analysis,
             },
             sort_keys=True,
         )

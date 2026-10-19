@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from app.supervisor.state import DeterministicSupervisor, ImportRunSnapshot, JsonStateStore
+from app.supervisor.analysis import OptionalLLMAnalyzer
 from app.supervisor.telegram import (
     TelegramCommandService,
     TelegramMessage,
@@ -147,3 +148,31 @@ def test_approved_quarantine_retry_uses_bounded_action_executor(tmp_path: Path) 
     assert service.handle(TelegramMessage(2, "trusted-user", "chat", "approve action-1")) == "completed"
     assert service.handle(TelegramMessage(3, "trusted-user", "chat", "approve action-1")) == '{"entity_id": 1481, "entity_type": "artist", "status": "resolved"}'
     assert len(executor.actions) == 1
+
+
+def test_optional_llm_analyzer_only_receives_compact_operational_report() -> None:
+    class FakeCompletions:
+        def __init__(self) -> None:
+            self.request = None
+
+        def create(self, **kwargs):
+            self.request = kwargs
+            return type("Response", (), {"choices": [type("Choice", (), {"message": type("Message", (), {"content": '{"summary":"quota hit","cause":"provider limit","next_step":"wait"}'})()})()]})()
+
+    completions = FakeCompletions()
+    client = type("Client", (), {"chat": type("Chat", (), {"completions": completions})()})()
+    analyzer = OptionalLLMAnalyzer(client, "test-model")
+
+    result = analyzer(
+        {
+            "run_id": "42",
+            "status": "failed",
+            "failure_category": "quota_exhausted",
+            "progress": {"events": {"remaining": 2}},
+            "stages": [{"name": "extract", "status": "failed", "error": "quota"}],
+            "biography": "must not be sent",
+        }
+    )
+
+    assert result["cause"] == "provider limit"
+    assert "biography" not in completions.request["messages"][1]["content"]

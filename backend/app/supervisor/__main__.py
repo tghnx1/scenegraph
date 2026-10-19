@@ -12,6 +12,7 @@ from psycopg.rows import dict_row
 from .state import DeterministicSupervisor, JsonStateStore, ProductRunReader
 from .telegram import TelegramBotApi, TelegramCommandService
 from .actions import ApprovedActionExecutor
+from .analysis import build_optional_llm_analyzer
 
 
 def parse_args() -> argparse.Namespace:
@@ -77,6 +78,7 @@ def run_telegram(database_url: str, *, once: bool) -> int:
             ProductRunReader(connection),
             store,
             telegram=TelegramNotificationSink(telegram, chat_ids),
+            analysis_fn=build_optional_llm_analyzer(),
         )
         service = TelegramCommandService(
             supervisor,
@@ -84,6 +86,7 @@ def run_telegram(database_url: str, *, once: bool) -> int:
             telegram,
             allowed_user_ids=allowed,
             action_executor=ApprovedActionExecutor(database_url),
+            analysis_fn=supervisor.analysis_fn,
         )
         if once:
             supervisor.observe()

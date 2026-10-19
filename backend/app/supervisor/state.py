@@ -7,7 +7,7 @@ import tempfile
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, Callable, Protocol
 
 
 LATEST_RUN_SQL = """
@@ -224,10 +224,17 @@ class JsonStateStore:
 class DeterministicSupervisor:
     """Persist a safe run projection and notify without requiring an LLM."""
 
-    def __init__(self, reader: ProductRunReader, store: JsonStateStore, telegram: TelegramSink) -> None:
+    def __init__(
+        self,
+        reader: ProductRunReader,
+        store: JsonStateStore,
+        telegram: TelegramSink,
+        analysis_fn: Callable[[dict[str, Any]], dict[str, str] | None] | None = None,
+    ) -> None:
         self.reader = reader
         self.store = store
         self.telegram = telegram
+        self.analysis_fn = analysis_fn
 
     def observe(self, run_id: int | None = None) -> dict[str, Any]:
         snapshot = self.reader.read(run_id)
@@ -246,7 +253,7 @@ class DeterministicSupervisor:
         runs[snapshot.run_id] = report
         self.store.save(state)
         if notification_category and notification_key != previous.get("notification_key"):
-            self._notify(snapshot, notification_category)
+            self._notify(snapshot, notification_category, report)
         return report
 
     @staticmethod
@@ -260,12 +267,15 @@ class DeterministicSupervisor:
             return "authentication"
         return "unknown_system" if snapshot.status == "failed" else None
 
-    def _notify(self, snapshot: ImportRunSnapshot, category: str) -> None:
+    def _notify(self, snapshot: ImportRunSnapshot, category: str, report: dict[str, Any]) -> None:
         from .analysis import explain_report
 
         report = snapshot.public_dict()
         report["failure_category"] = None if category == "succeeded" else category
         explanation = explain_report(report)
+        llm_analysis = self.analysis_fn(report) if self.analysis_fn else None
+        if llm_analysis:
+            explanation += "\nOptional analysis: " + json.dumps(llm_analysis, ensure_ascii=False, sort_keys=True)
         if category == "succeeded":
             self.telegram.send(explanation)
         elif category == "quota_exhausted":
