@@ -2,9 +2,13 @@ from __future__ import annotations
 
 from typing import Any
 import json
+import logging
 import os
 
 from .state import sanitize
+
+
+LOGGER = logging.getLogger(__name__)
 
 
 def analyze_report(report: dict[str, Any]) -> dict[str, Any]:
@@ -92,6 +96,15 @@ class OptionalLLMAnalyzer:
         self.model = model
         self.temperature = temperature
 
+    @staticmethod
+    def _log_provider_failure(exc: Exception) -> None:
+        status = getattr(exc, "status_code", None)
+        LOGGER.warning(
+            "Supervisor LLM analysis unavailable: error_type=%s status_code=%s; using deterministic fallback",
+            type(exc).__name__,
+            status if isinstance(status, int) else "unknown",
+        )
+
     def __call__(self, report: dict[str, Any]) -> dict[str, str] | None:
         try:
             response = self.client.chat.completions.create(
@@ -120,7 +133,8 @@ class OptionalLLMAnalyzer:
                 if value:
                     result[key] = sanitize_for_explanation(value, 600)
             return result or None
-        except Exception:
+        except Exception as exc:
+            self._log_provider_failure(exc)
             return None
 
     def answer(self, report: dict[str, Any], question: str) -> str | None:
@@ -151,7 +165,8 @@ class OptionalLLMAnalyzer:
             )
             content = response.choices[0].message.content
             return sanitize_for_explanation(content, 1200) if content else None
-        except Exception:
+        except Exception as exc:
+            self._log_provider_failure(exc)
             return None
 
 
