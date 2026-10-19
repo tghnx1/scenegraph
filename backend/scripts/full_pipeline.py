@@ -271,12 +271,38 @@ def print_stage(name: str, command: list[str]) -> None:
     print(shlex.join(command))
 
 
+def classify_stage_output(output: object) -> str | None:
+    text = str(output or "").casefold()
+    if any(marker in text for marker in ("quota", "usage limit", "rate limit", "exceeded_current_quota", "http 429")):
+        return "provider quota/rate limit exhausted"
+    if any(marker in text for marker in ("authentication", "invalid api key", "unauthorized", "http 401", "http 403")):
+        return "provider authentication/configuration failure"
+    if any(marker in text for marker in ("jsondecodeerror", "unterminated string", "malformed json")):
+        return "malformed provider JSON"
+    if any(marker in text for marker in ("connection error", "connecterror", "name or service not known", "timed out")):
+        return "provider connection failure"
+    return None
+
+
 def run_stage(name: str, command: list[str], *, cwd: Path | None = None, env: dict[str, str] | None = None) -> None:
     print_stage(name, command)
     stage_id, started_at = ACTIVE_IMPORT_LOGGER.start_stage(name, command)
-    completed = subprocess.run(command, cwd=str(cwd or REPO_ROOT), env=env)
+    completed = subprocess.run(
+        command,
+        cwd=str(cwd or REPO_ROOT),
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+    )
+    output = getattr(completed, "stdout", "") or ""
+    if output:
+        print(output, end="" if output.endswith("\n") else "\n")
     if completed.returncode != 0:
         error = f"{name} failed with exit code {completed.returncode}"
+        detail = classify_stage_output(output)
+        if detail:
+            error += f"; {detail}"
         ACTIVE_IMPORT_LOGGER.finish_stage(stage_id, status="failed", started_at=started_at, error=error)
         if completed.returncode == 75:
             raise SystemExit(75)

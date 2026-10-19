@@ -759,6 +759,38 @@ def test_run_stage_records_success_and_failure(monkeypatch):
     ]
 
 
+def test_run_stage_persists_safe_provider_quota_category(monkeypatch):
+    install_import_stubs()
+    module = load_module(
+        "scenegraph_full_pipeline_stage_quota_detail",
+        REPO_ROOT / "backend" / "scripts" / "full_pipeline.py",
+    )
+    finished: list[object] = []
+
+    class FakeImportLogger:
+        def start_stage(self, _name, _command):
+            return 7, 1.0
+
+        def finish_stage(self, *_args, **kwargs):
+            finished.append(kwargs["error"])
+
+    monkeypatch.setattr(module, "ACTIVE_IMPORT_LOGGER", FakeImportLogger())
+    monkeypatch.setattr(module, "print_stage", lambda *_args: None)
+    monkeypatch.setattr(
+        subprocess,
+        "run",
+        lambda *args, **kwargs: types.SimpleNamespace(
+            returncode=1,
+            stdout="RateLimitError: exceeded_current_quota_error; secret=should-not-be-persisted",
+        ),
+    )
+
+    with pytest.raises(SystemExit):
+        module.run_stage("extract-event-tags", ["extract"])
+
+    assert finished == ["extract-event-tags failed with exit code 1; provider quota/rate limit exhausted"]
+
+
 def test_full_pipeline_preserves_retryable_stage_exit_code(monkeypatch):
     install_import_stubs()
     module = load_module(
