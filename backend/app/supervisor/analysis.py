@@ -87,9 +87,10 @@ def compact_report(report: dict[str, Any]) -> dict[str, Any]:
 class OptionalLLMAnalyzer:
     """Best-effort report analysis with deterministic fallback outside this class."""
 
-    def __init__(self, client: Any, model: str) -> None:
+    def __init__(self, client: Any, model: str, *, temperature: int | float = 0) -> None:
         self.client = client
         self.model = model
+        self.temperature = temperature
 
     def __call__(self, report: dict[str, Any]) -> dict[str, str] | None:
         try:
@@ -105,7 +106,7 @@ class OptionalLLMAnalyzer:
                     },
                     {"role": "user", "content": json.dumps(compact_report(report), sort_keys=True)},
                 ],
-                temperature=0,
+                temperature=self.temperature,
                 max_tokens=300,
                 response_format={"type": "json_object"},
             )
@@ -145,7 +146,7 @@ class OptionalLLMAnalyzer:
                         ),
                     },
                 ],
-                temperature=0,
+                temperature=self.temperature,
                 max_tokens=350,
             )
             content = response.choices[0].message.content
@@ -192,7 +193,12 @@ def build_optional_llm_analyzer() -> OptionalLLMAnalyzer | None:
                 }[provider],
                 "",
             ).strip()
-            return OptionalLLMAnalyzer(OpenAI(api_key=key, base_url=base_url or None), model)
+            temperature = 1 if provider == "kimi_code" else 0
+            return OptionalLLMAnalyzer(
+                OpenAI(api_key=key, base_url=base_url or None),
+                model,
+                temperature=temperature,
+            )
     except Exception:
         return None
     return None
