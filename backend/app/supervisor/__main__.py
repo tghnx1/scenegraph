@@ -11,6 +11,7 @@ from psycopg.rows import dict_row
 
 from .state import DeterministicSupervisor, JsonStateStore, ProductRunReader
 from .telegram import TelegramBotApi, TelegramCommandService
+from .actions import ApprovedActionExecutor
 
 
 def parse_args() -> argparse.Namespace:
@@ -82,6 +83,7 @@ def run_telegram(database_url: str, *, once: bool) -> int:
             store,
             telegram,
             allowed_user_ids=allowed,
+            action_executor=ApprovedActionExecutor(database_url),
         )
         if once:
             supervisor.observe()

@@ -54,7 +54,7 @@ class FakeTelegram:
         return list(self.updates)
 
 
-def make_service(tmp_path: Path, telegram: FakeTelegram) -> TelegramCommandService:
+def make_service(tmp_path: Path, telegram: FakeTelegram, action_executor=None) -> TelegramCommandService:
     supervisor = DeterministicSupervisor(
         SnapshotReader(),
         JsonStateStore(tmp_path / "state.json"),
@@ -65,6 +65,7 @@ def make_service(tmp_path: Path, telegram: FakeTelegram) -> TelegramCommandServi
         supervisor.store,
         telegram,
         allowed_user_ids={"trusted-user"},
+        action_executor=action_executor,
     )
 
 
@@ -123,3 +124,26 @@ def test_poll_once_persists_next_update_id(tmp_path: Path) -> None:
     assert service.store.load()["telegram"]["next_update_id"] == 18
     assert service.poll_once() == 1
     assert telegram.offsets == [None, 18]
+
+
+def test_approved_quarantine_retry_uses_bounded_action_executor(tmp_path: Path) -> None:
+    telegram = FakeTelegram()
+
+    class FakeExecutor:
+        def __init__(self) -> None:
+            self.actions: list[dict] = []
+
+        def execute(self, action: dict) -> dict:
+            self.actions.append(action)
+            return {"status": "resolved", "entity_type": "artist", "entity_id": 1481}
+
+    executor = FakeExecutor()
+    service = make_service(tmp_path, telegram, executor)
+
+    proposal = service.handle(
+        TelegramMessage(1, "trusted-user", "chat", "propose retry_quarantine:artist:1481:extract_artist_tags")
+    )
+    assert proposal.startswith("Proposed action-1")
+    assert service.handle(TelegramMessage(2, "trusted-user", "chat", "approve action-1")) == "completed"
+    assert service.handle(TelegramMessage(3, "trusted-user", "chat", "approve action-1")) == '{"entity_id": 1481, "entity_type": "artist", "status": "resolved"}'
+    assert len(executor.actions) == 1

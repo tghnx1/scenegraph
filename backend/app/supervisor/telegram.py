@@ -5,9 +5,11 @@ import urllib.parse
 import urllib.request
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+import re
 from typing import Any, Iterable
 
 from .analysis import analyze_report, explain_report
+from .actions import ApprovedActionExecutor
 from .state import DeterministicSupervisor, JsonStateStore, sanitize
 
 
@@ -26,6 +28,7 @@ class SupervisorCommand:
 
 
 ALLOWED_COMMANDS = {"status", "details", "propose", "approve", "reject"}
+RETRY_ACTION_RE = re.compile(r"^retry_quarantine:(artist|event):([1-9][0-9]*):([a-z0-9_-]+)$")
 
 
 def parse_command(text: str) -> SupervisorCommand | None:
@@ -97,11 +100,13 @@ class TelegramCommandService:
         telegram: TelegramBotApi,
         *,
         allowed_user_ids: Iterable[str],
+        action_executor: ApprovedActionExecutor | None = None,
     ) -> None:
         self.supervisor = supervisor
         self.store = store
         self.telegram = telegram
         self.allowed_user_ids = {str(value) for value in allowed_user_ids}
+        self.action_executor = action_executor
 
     def handle(self, message: TelegramMessage) -> str:
         if message.user_id not in self.allowed_user_ids:
@@ -122,6 +127,31 @@ class TelegramCommandService:
         return response
 
     def _propose(self, run_id: str) -> str:
+        retry_match = RETRY_ACTION_RE.fullmatch(run_id)
+        if retry_match:
+            if self.action_executor is None:
+                return "actions_not_enabled"
+            entity_type, entity_id, stage = retry_match.groups()
+            if stage not in {"extract_artist_tags", "extract_event_tags"}:
+                return "unsupported_retry_stage"
+            state = self.store.load()
+            actions = state.setdefault("actions", {})
+            action_id = f"action-{len(actions) + 1}"
+            created_at = datetime.now(timezone.utc)
+            actions[action_id] = {
+                "id": action_id,
+                "type": "retry_quarantine",
+                "arguments": {
+                    "entity_type": entity_type,
+                    "entity_id": int(entity_id),
+                    "stage": stage,
+                },
+                "status": "pending",
+                "created_at": created_at.isoformat(),
+                "expires_at": (created_at + timedelta(hours=1)).isoformat(),
+            }
+            self.store.save(state)
+            return f"Proposed {action_id}; explicit approval is required."
         try:
             report = self.supervisor.observe(int(run_id))
         except (TypeError, ValueError):
@@ -174,7 +204,9 @@ class TelegramCommandService:
         action = state.get("actions", {}).get(action_id)
         if action is None:
             return "unknown_action"
-        if action.get("status") in {"approved", "rejected"}:
+        if action.get("status") in {"approved", "completed", "failed", "rejected"}:
+            if action.get("status") in {"approved", "completed"} and action.get("result"):
+                return json.dumps(action["result"], sort_keys=True)
             return str(action["status"])
         try:
             expired = datetime.now(timezone.utc) >= datetime.fromisoformat(str(action["expires_at"]))
@@ -184,6 +216,19 @@ class TelegramCommandService:
             action["status"] = "expired"
             self.store.save(state)
             return "expired"
-        action["status"] = "approved" if command == "approve" else "rejected"
+        if command == "reject":
+            action["status"] = "rejected"
+            self.store.save(state)
+            return "rejected"
+        if action.get("type") == "retry_quarantine" and self.action_executor is None:
+            return "actions_not_enabled"
+        action["status"] = "approved"
+        if self.action_executor is not None:
+            try:
+                action["result"] = self.action_executor.execute(action)
+                action["status"] = "completed"
+            except Exception as exc:
+                action["status"] = "failed"
+                action["result"] = {"status": "failed", "error_type": type(exc).__name__}
         self.store.save(state)
         return str(action["status"])
