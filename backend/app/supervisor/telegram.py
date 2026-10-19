@@ -29,6 +29,7 @@ class SupervisorCommand:
 
 ALLOWED_COMMANDS = {"status", "details", "propose", "approve", "reject"}
 RETRY_ACTION_RE = re.compile(r"^retry_quarantine:(artist|event):([1-9][0-9]*):([a-z0-9_-]+)$")
+RUN_REFERENCE_RE = re.compile(r"\b(?:run|запуск|прогон)\s*#?\s*([1-9][0-9]*)\b", re.IGNORECASE)
 
 
 def parse_command(text: str) -> SupervisorCommand | None:
@@ -135,7 +136,8 @@ class TelegramCommandService:
     def _chat(self, question: str) -> str:
         lowered = question.casefold()
         try:
-            report = self.supervisor.observe()
+            run_match = RUN_REFERENCE_RE.search(question)
+            report = self.supervisor.observe(int(run_match.group(1))) if run_match else self.supervisor.observe()
         except LookupError:
             return "В базе пока нет ingestion run для анализа."
         if any(word in lowered for word in ("повтори", "запусти", "перезапусти", "retry")):

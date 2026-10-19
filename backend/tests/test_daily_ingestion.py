@@ -209,22 +209,22 @@ def test_single_day_mode_is_used_by_daily_ingestion(tmp_path):
     assert refresh_command[refresh_command.index("--max-date") + 1] == REFERENCE_DATE.isoformat()
 
 
-def test_single_day_mode_skips_already_successful_run(tmp_path, capsys):
+def test_single_day_mode_does_not_skip_after_scheduled_success_marker(tmp_path):
     class SuccessfulStore(FakeStore):
         def has_successful_single_day_run(self, target_date):
             assert target_date == REFERENCE_DATE
             return True
 
     store = SuccessfulStore()
+    steps = []
     assert daily_ingestion.run_daily_ingestion(
         environ={**daily_environment(tmp_path), "DAILY_INGEST_SINGLE_DAY": "true"},
+        run_command=lambda command, **_kwargs: steps.append(command) or subprocess.CompletedProcess(command, 0),
         store_factory=lambda _url: store,
-        orchestrator_factory=lambda *_args, **_kwargs: (_ for _ in ()).throw(
-            AssertionError("successful run must not start reconciliation")
-        ),
+        orchestrator_factory=orchestrator_factory(coverage_result(), [], error=None),
     ) == 0
-    assert store.enqueue_values is None
-    assert "already succeeded" in capsys.readouterr().out
+    assert store.enqueue_values is not None
+    assert len(steps) == 2
 
 
 def test_existing_nearby_event_skips_gap_repair_but_is_forced_refreshed(tmp_path):

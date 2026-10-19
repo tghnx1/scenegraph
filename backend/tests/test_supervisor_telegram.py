@@ -127,6 +127,25 @@ def test_plain_text_is_analyzed_without_exposing_mutating_tools(tmp_path: Path) 
     assert "provider quota usage limit" in response
 
 
+def test_plain_text_run_reference_analyzes_requested_previous_run(tmp_path: Path) -> None:
+    telegram = FakeTelegram()
+    service = make_service(tmp_path, telegram)
+    observed: list[int | None] = []
+    original_observe = service.supervisor.observe
+
+    def observe(run_id: int | None = None):
+        observed.append(run_id)
+        return original_observe(run_id)
+
+    service.supervisor.observe = observe
+    response = service.handle(
+        TelegramMessage(1, "trusted-user", "chat", "Почему упал run 42?")
+    )
+
+    assert observed == [42]
+    assert "Run 42: status=failed." in response
+
+
 def test_plain_text_retry_request_is_explained_without_running_ingestion(tmp_path: Path) -> None:
     telegram = FakeTelegram()
     service = make_service(tmp_path, telegram)

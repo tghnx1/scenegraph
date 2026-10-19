@@ -32,6 +32,9 @@ class CoverageReconciliationStore:
                     WHERE pipeline_name = 'full-pipeline'
                       AND status = 'succeeded'
                       AND metadata->>'dailyIngestDate' = %s
+                      -- A local single-day smoke run must not satisfy the
+                      -- production scheduled-run guard.
+                      AND min_date IS DISTINCT FROM max_date
                     ORDER BY finished_at DESC NULLS LAST, id DESC
                     LIMIT 1
                     """,

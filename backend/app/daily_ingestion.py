@@ -156,7 +156,9 @@ def run_daily_ingestion(
         raise ValueError("DATABASE_URL must be set")
     store = store_factory(database_url)
     checker = successful_run_checker or getattr(store, "has_successful_single_day_run", None)
-    if checker is not None and checker(reference_date):
+    # The single-day switch is a local smoke-test mode. It must not consume
+    # or honor the production scheduled-run success marker.
+    if not single_day and checker is not None and checker(reference_date):
         print(
             "Daily ingestion already succeeded for "
             f"{reference_date.isoformat()}; skipping duplicate scheduled run."
