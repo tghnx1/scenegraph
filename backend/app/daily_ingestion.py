@@ -55,7 +55,25 @@ def resolve_target_date(
     return current.astimezone(BERLIN_TIMEZONE).date()
 
 
-def daily_date_ranges(reference_date: date) -> dict[str, date]:
+def daily_date_ranges(
+    reference_date: date,
+    *,
+    single_day: bool | None = None,
+) -> dict[str, date]:
+    if single_day is None:
+        single_day = os.environ.get("DAILY_INGEST_SINGLE_DAY", "").strip().lower() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        }
+    if single_day:
+        return {
+            "coverage_min": reference_date,
+            "coverage_max": reference_date,
+            "refresh_min": reference_date,
+            "refresh_max": reference_date,
+        }
     return {
         "coverage_min": shift_calendar_months(reference_date, -3),
         "coverage_max": shift_calendar_months(reference_date, 3),
@@ -64,8 +82,14 @@ def daily_date_ranges(reference_date: date) -> dict[str, date]:
     }
 
 
-def build_pipeline_command(min_date: date, max_date: date, artifacts_dir: Path) -> list[str]:
-    return [
+def build_pipeline_command(
+    min_date: date,
+    max_date: date,
+    artifacts_dir: Path,
+    *,
+    daily_ingest_date: date | None = None,
+) -> list[str]:
+    command = [
         sys.executable,
         str(BACKEND_ROOT / "scripts" / "full_pipeline.py"),
         "--min-date",
@@ -77,6 +101,9 @@ def build_pipeline_command(min_date: date, max_date: date, artifacts_dir: Path) 
         "--skip-bio",
         "--no-dedup-with-db",
     ]
+    if daily_ingest_date is not None:
+        command.extend(["--daily-ingest-date", daily_ingest_date.isoformat()])
+    return command
 
 
 def _print_coverage_summary(run: Mapping[str, object]) -> None:
@@ -107,21 +134,35 @@ def run_daily_ingestion(
     environ: Mapping[str, str] | None = None,
     run_command: Callable[..., subprocess.CompletedProcess[object]] = subprocess.run,
     store_factory: Callable[[str], CoverageReconciliationStore] = CoverageReconciliationStore,
+    successful_run_checker: Callable[[date], bool] | None = None,
     orchestrator_factory: Callable[..., CoverageReconciliationOrchestrator] = (
         CoverageReconciliationOrchestrator
     ),
 ) -> int:
     environment = os.environ if environ is None else environ
     reference_date = target_date or resolve_target_date(environ=environment)
-    ranges = daily_date_ranges(reference_date)
+    single_day = environment.get("DAILY_INGEST_SINGLE_DAY", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+    ranges = daily_date_ranges(reference_date, single_day=single_day)
     artifacts_dir = Path(
         environment.get("DAILY_INGEST_ARTIFACTS_DIR", str(DEFAULT_ARTIFACTS_DIR))
     ).expanduser()
     database_url = environment.get("DATABASE_URL", "").strip()
     if not database_url:
         raise ValueError("DATABASE_URL must be set")
-    config = ReconciliationConfig.from_env(environment)
     store = store_factory(database_url)
+    checker = successful_run_checker or getattr(store, "has_successful_single_day_run", None)
+    if checker is not None and checker(reference_date):
+        print(
+            "Daily ingestion already succeeded for "
+            f"{reference_date.isoformat()}; skipping duplicate scheduled run."
+        )
+        return 0
+    config = ReconciliationConfig.from_env(environment)
     worker_lock = store.acquire_worker_lock()
     if worker_lock is None:
         raise DailyIngestionBusyError("coverage reconciliation worker lock is busy")
@@ -167,6 +208,7 @@ def run_daily_ingestion(
                 ranges["refresh_min"],
                 ranges["refresh_max"],
                 artifacts_dir,
+                daily_ingest_date=reference_date,
             ),
             cwd=REPO_ROOT,
             check=True,

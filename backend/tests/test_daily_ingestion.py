@@ -129,6 +129,15 @@ def test_daily_ranges_use_calendar_month_arithmetic():
     }
 
 
+def test_single_day_mode_collapses_coverage_and_refresh_ranges():
+    assert daily_ingestion.daily_date_ranges(REFERENCE_DATE, single_day=True) == {
+        "coverage_min": REFERENCE_DATE,
+        "coverage_max": REFERENCE_DATE,
+        "refresh_min": REFERENCE_DATE,
+        "refresh_max": REFERENCE_DATE,
+    }
+
+
 @pytest.mark.parametrize(
     ("value", "months", "expected"),
     [
@@ -176,6 +185,46 @@ def test_coverage_then_forced_refresh_then_scheduler_once(tmp_path, capsys):
     assert "missing=1; final_missing=0" in output
     assert "extra=1; repaired=1" in output
     assert "Forced event refresh: succeeded" in output
+
+
+def test_single_day_mode_is_used_by_daily_ingestion(tmp_path):
+    store = FakeStore()
+    commands = []
+
+    def fake_run(command, **_kwargs):
+        commands.append(command)
+        return subprocess.CompletedProcess(command, 0)
+
+    assert daily_ingestion.run_daily_ingestion(
+        environ={**daily_environment(tmp_path), "DAILY_INGEST_SINGLE_DAY": "true"},
+        run_command=fake_run,
+        store_factory=lambda _url: store,
+        orchestrator_factory=orchestrator_factory(coverage_result(), []),
+    ) == 0
+
+    assert store.enqueue_values["min_date"] == REFERENCE_DATE
+    assert store.enqueue_values["requested_max_date"] == REFERENCE_DATE.isoformat()
+    refresh_command = commands[0]
+    assert refresh_command[refresh_command.index("--min-date") + 1] == REFERENCE_DATE.isoformat()
+    assert refresh_command[refresh_command.index("--max-date") + 1] == REFERENCE_DATE.isoformat()
+
+
+def test_single_day_mode_skips_already_successful_run(tmp_path, capsys):
+    class SuccessfulStore(FakeStore):
+        def has_successful_single_day_run(self, target_date):
+            assert target_date == REFERENCE_DATE
+            return True
+
+    store = SuccessfulStore()
+    assert daily_ingestion.run_daily_ingestion(
+        environ={**daily_environment(tmp_path), "DAILY_INGEST_SINGLE_DAY": "true"},
+        store_factory=lambda _url: store,
+        orchestrator_factory=lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("successful run must not start reconciliation")
+        ),
+    ) == 0
+    assert store.enqueue_values is None
+    assert "already succeeded" in capsys.readouterr().out
 
 
 def test_existing_nearby_event_skips_gap_repair_but_is_forced_refreshed(tmp_path):

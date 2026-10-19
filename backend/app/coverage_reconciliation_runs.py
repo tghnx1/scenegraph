@@ -22,6 +22,23 @@ class CoverageReconciliationStore:
     def _connect(self, **kwargs: Any) -> psycopg.Connection:
         return psycopg.connect(self.database_url, row_factory=dict_row, **kwargs)
 
+    def has_successful_single_day_run(self, target_date: date) -> bool:
+        with self._connect() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT 1
+                    FROM import_runs
+                    WHERE pipeline_name = 'full-pipeline'
+                      AND status = 'succeeded'
+                      AND metadata->>'dailyIngestDate' = %s
+                    ORDER BY finished_at DESC NULLS LAST, id DESC
+                    LIMIT 1
+                    """,
+                    (target_date.isoformat(),),
+                )
+                return cursor.fetchone() is not None
+
     def enqueue(
         self,
         *,

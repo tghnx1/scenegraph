@@ -117,6 +117,26 @@ def test_details_includes_human_readable_summary_and_json(tmp_path: Path) -> Non
     assert '"analysis":' in response
 
 
+def test_plain_text_is_analyzed_without_exposing_mutating_tools(tmp_path: Path) -> None:
+    telegram = FakeTelegram()
+    service = make_service(tmp_path, telegram)
+
+    response = service.handle(TelegramMessage(1, "trusted-user", "chat", "Почему ingestion упал?"))
+
+    assert "Run 42: status=failed." in response
+    assert "provider quota usage limit" in response
+
+
+def test_plain_text_retry_request_is_explained_without_running_ingestion(tmp_path: Path) -> None:
+    telegram = FakeTelegram()
+    service = make_service(tmp_path, telegram)
+
+    response = service.handle(TelegramMessage(1, "trusted-user", "chat", "повтори последний запуск"))
+
+    assert "не запускаю ingestion" in response
+    assert "Coolify" in response
+
+
 def test_poll_once_persists_next_update_id(tmp_path: Path) -> None:
     telegram = FakeTelegram([TelegramMessage(17, "trusted-user", "chat", "status")])
     service = make_service(tmp_path, telegram)

@@ -52,6 +52,10 @@ def explain_report(report: dict[str, Any]) -> str:
             name = sanitize_for_explanation(stage.get("name"), 120)
             error = sanitize_for_explanation(stage.get("error") or "no error recorded", 700)
             lines.append(f"Failed stage: {name}; error: {error}.")
+    elif report.get("error"):
+        lines.append(
+            "Run error: " + sanitize_for_explanation(report.get("error"), 700) + "."
+        )
     analysis = analyze_report(report)
     lines.append(f"Recommendation: {analysis['explanation']}")
     return "\n".join(lines)
@@ -115,6 +119,37 @@ class OptionalLLMAnalyzer:
                 if value:
                     result[key] = sanitize_for_explanation(value, 600)
             return result or None
+        except Exception:
+            return None
+
+    def answer(self, report: dict[str, Any], question: str) -> str | None:
+        """Answer an operator question using only the compact run projection."""
+        try:
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": (
+                            "You are a cautious ingestion operations analyst. Answer the operator's "
+                            "question using only the supplied run metadata. Do not invent causes, "
+                            "do not expose secrets, and do not claim that you ran or changed anything. "
+                            "If the data is insufficient, say so. Keep the answer under 1200 characters."
+                        ),
+                    },
+                    {
+                        "role": "user",
+                        "content": json.dumps(
+                            {"question": sanitize_for_explanation(question, 512), "run": compact_report(report)},
+                            sort_keys=True,
+                        ),
+                    },
+                ],
+                temperature=0,
+                max_tokens=350,
+            )
+            content = response.choices[0].message.content
+            return sanitize_for_explanation(content, 1200) if content else None
         except Exception:
             return None
 

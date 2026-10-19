@@ -102,6 +102,7 @@ class TelegramCommandService:
         allowed_user_ids: Iterable[str],
         action_executor: ApprovedActionExecutor | None = None,
         analysis_fn=None,
+        chat_fn=None,
     ) -> None:
         self.supervisor = supervisor
         self.store = store
@@ -109,13 +110,16 @@ class TelegramCommandService:
         self.allowed_user_ids = {str(value) for value in allowed_user_ids}
         self.action_executor = action_executor
         self.analysis_fn = analysis_fn
+        self.chat_fn = chat_fn
 
     def handle(self, message: TelegramMessage) -> str:
         if message.user_id not in self.allowed_user_ids:
             return "unauthorized"
         command = parse_command(message.text)
         if command is None:
-            return "command_not_allowed"
+            response = self._chat(message.text)
+            self.telegram.send(response, chat_id=message.chat_id)
+            return response
         if command.name == "status":
             report = self.supervisor.observe()
             response = json.dumps({"run_id": report["run_id"], "status": report["status"], "progress": report["progress"]}, sort_keys=True)
@@ -127,6 +131,23 @@ class TelegramCommandService:
             response = self._resolve_action(command.name, command.argument or "")
         self.telegram.send(response, chat_id=message.chat_id)
         return response
+
+    def _chat(self, question: str) -> str:
+        lowered = question.casefold()
+        try:
+            report = self.supervisor.observe()
+        except LookupError:
+            return "В базе пока нет ingestion run для анализа."
+        if any(word in lowered for word in ("повтори", "запусти", "перезапусти", "retry")):
+            return (
+                "Я не запускаю ingestion из Telegram. Production-runner запускается по расписанию "
+                "Coolify каждые 6 часов и повторит failed запуск. Я сообщу результат и причину."
+            )
+        if self.chat_fn is not None:
+            answer = self.chat_fn(report, question)
+            if answer:
+                return answer
+        return explain_report(report)
 
     def _propose(self, run_id: str) -> str:
         retry_match = RETRY_ACTION_RE.fullmatch(run_id)

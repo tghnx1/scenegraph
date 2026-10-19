@@ -74,11 +74,12 @@ def run_telegram(database_url: str, *, once: bool) -> int:
     with psycopg.connect(database_url, row_factory=dict_row) as connection:
         store = JsonStateStore(Path(state_path))
         telegram = TelegramBotApi(token)
+        chat_analyzer = build_optional_llm_analyzer()
         supervisor = DeterministicSupervisor(
             ProductRunReader(connection),
             store,
             telegram=TelegramNotificationSink(telegram, chat_ids),
-            analysis_fn=build_optional_llm_analyzer(),
+            analysis_fn=chat_analyzer,
         )
         service = TelegramCommandService(
             supervisor,
@@ -87,6 +88,7 @@ def run_telegram(database_url: str, *, once: bool) -> int:
             allowed_user_ids=allowed,
             action_executor=ApprovedActionExecutor(database_url),
             analysis_fn=supervisor.analysis_fn,
+            chat_fn=chat_analyzer.answer if chat_analyzer is not None else None,
         )
         if once:
             supervisor.observe()

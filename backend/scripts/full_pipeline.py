@@ -173,6 +173,11 @@ def parse_args() -> argparse.Namespace:
         help="Newest event date to crawl (YYYY-MM-DD). Defaults to today if omitted.",
     )
     parser.add_argument(
+        "--daily-ingest-date",
+        default=None,
+        help="Berlin calendar date owned by a scheduled daily-ingestion run.",
+    )
+    parser.add_argument(
         "--cdp-url",
         default=DEFAULT_CDP_URL,
         help="Chrome remote-debugging endpoint used by the biography scraper.",
@@ -492,6 +497,7 @@ def main() -> int:
                 "skipEmbeddings": args.skip_embeddings,
                 "dedupWithDb": args.dedup_with_db,
                 "cdpUrl": args.cdp_url,
+                **({"dailyIngestDate": args.daily_ingest_date} if args.daily_ingest_date else {}),
             },
         )
         parse_cmd = [
