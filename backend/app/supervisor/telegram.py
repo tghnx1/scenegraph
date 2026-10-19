@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any, Iterable
 
-from .analysis import analyze_report
+from .analysis import analyze_report, explain_report
 from .state import DeterministicSupervisor, JsonStateStore, sanitize
 
 
@@ -148,7 +148,12 @@ class TelegramCommandService:
         except (TypeError, ValueError):
             return "invalid_run_id"
         return json.dumps(
-            {"run_id": report["run_id"], "stages": report["stages"], "analysis": analyze_report(report)},
+            {
+                "summary": explain_report(report),
+                "run_id": report["run_id"],
+                "stages": report["stages"],
+                "analysis": analyze_report(report),
+            },
             sort_keys=True,
         )
 

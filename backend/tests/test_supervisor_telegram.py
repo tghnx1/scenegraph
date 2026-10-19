@@ -104,6 +104,17 @@ def test_commands_require_valid_run_id_and_actions_are_idempotent(tmp_path: Path
     assert all("provider quota" not in message for message, _ in telegram.sent)
 
 
+def test_details_includes_human_readable_summary_and_json(tmp_path: Path) -> None:
+    telegram = FakeTelegram()
+    service = make_service(tmp_path, telegram)
+
+    response = service.handle(TelegramMessage(1, "trusted-user", "chat", "details 42"))
+
+    assert '"summary":' in response
+    assert "Run 42: status=failed." in response
+    assert '"analysis":' in response
+
+
 def test_poll_once_persists_next_update_id(tmp_path: Path) -> None:
     telegram = FakeTelegram([TelegramMessage(17, "trusted-user", "chat", "status")])
     service = make_service(tmp_path, telegram)

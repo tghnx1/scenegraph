@@ -99,4 +99,6 @@ def test_success_notification_is_deduplicated() -> None:
         supervisor.observe(192)
         supervisor.observe(192)
 
-    assert telegram.messages == ["Ingestion succeeded: run=192; events=25; artists=80"]
+    assert len(telegram.messages) == 1
+    assert "Run 192: status=succeeded." in telegram.messages[0]
+    assert "Events: 25/25; artists: 80/89." in telegram.messages[0]

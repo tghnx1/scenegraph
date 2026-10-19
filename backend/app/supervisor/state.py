@@ -261,11 +261,14 @@ class DeterministicSupervisor:
         return "unknown_system" if snapshot.status == "failed" else None
 
     def _notify(self, snapshot: ImportRunSnapshot, category: str) -> None:
+        from .analysis import explain_report
+
+        report = snapshot.public_dict()
+        report["failure_category"] = None if category == "succeeded" else category
+        explanation = explain_report(report)
         if category == "succeeded":
-            self.telegram.send(
-                f"Ingestion succeeded: run={snapshot.run_id}; events={snapshot.events_imported}; artists={snapshot.artists_imported}"
-            )
+            self.telegram.send(explanation)
         elif category == "quota_exhausted":
-            self.telegram.send(f"Extraction paused: provider quota exhausted; run={snapshot.run_id}; remaining_events={snapshot.remaining_events}; remaining_artists={snapshot.remaining_artists}")
+            self.telegram.send(explanation)
         elif category in {"authentication", "unknown_system"}:
-            self.telegram.send(f"Ingestion requires attention: run={snapshot.run_id}; category={category}")
+            self.telegram.send(explanation)
