@@ -102,3 +102,18 @@ def test_success_notification_is_deduplicated() -> None:
     assert len(telegram.messages) == 1
     assert "Run 192: status=succeeded." in telegram.messages[0]
     assert "Events: 25/25; artists: 80/89." in telegram.messages[0]
+
+
+def test_failed_report_explains_partial_tag_snapshot() -> None:
+    database = FakeDatabase("provider quota usage limit")
+    telegram = FakeTelegram()
+    report = DeterministicSupervisor(
+        ProductRunReader(database),
+        JsonStateStore(Path(tempfile.mkdtemp()) / "state.json"),
+        telegram,
+    ).observe(192)
+
+    explanation = telegram.messages[-1]
+    assert "Persisted scope snapshot at failure" in explanation
+    assert "event tag records=25" in explanation
+    assert "artist tag records=70" in explanation

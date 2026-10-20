@@ -56,6 +56,11 @@ def explain_report(report: dict[str, Any]) -> str:
             name = sanitize_for_explanation(stage.get("name"), 120)
             error = sanitize_for_explanation(stage.get("error") or "no error recorded", 700)
             lines.append(f"Failed stage: {name}; error: {error}.")
+        lines.append(
+            "Persisted scope snapshot at failure: "
+            f"event tag records={report.get('event_tags', 0)}; "
+            f"artist tag records={report.get('artist_tags', 0)}."
+        )
     elif report.get("error"):
         lines.append(
             "Run error: " + sanitize_for_explanation(report.get("error"), 700) + "."
@@ -77,6 +82,14 @@ def compact_report(report: dict[str, Any]) -> dict[str, Any]:
         "status": report.get("status"),
         "failure_category": report.get("failure_category"),
         "progress": report.get("progress", {}),
+        "metrics": {
+            "events_imported": report.get("events_imported", 0),
+            "artists_imported": report.get("artists_imported", 0),
+            "event_tags": report.get("event_tags", 0),
+            "artist_tags": report.get("artist_tags", 0),
+            "event_embeddings": report.get("event_embeddings", 0),
+            "artist_embeddings": report.get("artist_embeddings", 0),
+        },
         "stages": [
             {
                 "name": sanitize_for_explanation(stage.get("name"), 120),

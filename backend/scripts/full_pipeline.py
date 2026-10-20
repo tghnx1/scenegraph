@@ -426,6 +426,31 @@ def finish_successful_import_run(
     logger.update(status="succeeded", metrics=final_metrics)
 
 
+def persist_partial_import_metrics(
+    logger: ImportRunLogger,
+    *,
+    event_ids: list[int],
+    artist_ids: list[int],
+) -> None:
+    """Persist best-effort scope metrics before recording a failed run."""
+    if not logger.enabled or not event_ids and not artist_ids:
+        return
+    try:
+        metrics = logger.collect_metrics(event_ids, artist_ids)
+        logger.update(
+            metrics=metrics,
+            metadata={
+                "partialMetrics": True,
+                "partialMetricsScope": "current_entity_scope",
+            },
+        )
+    except Exception as exc:
+        print(
+            f"[pipeline] Could not persist partial import metrics: {type(exc).__name__}",
+            file=sys.stderr,
+        )
+
+
 def main() -> int:
     global ACTIVE_IMPORT_LOGGER
     args = parse_args()
@@ -484,6 +509,8 @@ def main() -> int:
 
     event_ids_file = run_artifacts_dir / "event_ids.txt"
     artist_ids_file = run_artifacts_dir / "artist_ids.txt"
+    pipeline_event_ids: list[int] = []
+    pipeline_artist_ids: list[int] = []
     try:
         ACTIVE_IMPORT_LOGGER = ImportRunLogger.start(
             min_date=min_date,
@@ -706,6 +733,11 @@ def main() -> int:
         print("\nFull pipeline completed successfully.")
         return 0
     except BaseException as exc:
+        persist_partial_import_metrics(
+            ACTIVE_IMPORT_LOGGER,
+            event_ids=pipeline_event_ids,
+            artist_ids=pipeline_artist_ids,
+        )
         ACTIVE_IMPORT_LOGGER.update(status="failed", error=exc)
         raise
     finally:

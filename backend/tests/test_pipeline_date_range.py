@@ -860,3 +860,45 @@ def test_quarantine_metadata_does_not_block_final_succeeded_status():
     ]
     assert "quarantined_events" not in updates[1]["metrics"]
     assert "quarantined_artists" not in updates[1]["metrics"]
+
+
+def test_partial_import_metrics_are_persisted_before_failure():
+    install_import_stubs()
+    module = load_module(
+        "scenegraph_full_pipeline_partial_metrics",
+        REPO_ROOT / "backend" / "scripts" / "full_pipeline.py",
+    )
+    updates: list[dict] = []
+
+    class FakeImportLogger:
+        enabled = True
+
+        def collect_metrics(self, event_ids, artist_ids):
+            return {
+                "events_imported": len(event_ids),
+                "artists_imported": len(artist_ids),
+                "event_tags": 3,
+                "artist_tags": 5,
+            }
+
+        def update(self, **kwargs):
+            updates.append(kwargs)
+
+    module.persist_partial_import_metrics(
+        FakeImportLogger(), event_ids=[1, 2], artist_ids=[10, 11, 12]
+    )
+
+    assert updates == [
+        {
+            "metrics": {
+                "events_imported": 2,
+                "artists_imported": 3,
+                "event_tags": 3,
+                "artist_tags": 5,
+            },
+            "metadata": {
+                "partialMetrics": True,
+                "partialMetricsScope": "current_entity_scope",
+            },
+        }
+    ]
