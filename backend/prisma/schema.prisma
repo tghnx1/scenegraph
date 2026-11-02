@@ -23,6 +23,7 @@ model Artist {
   extractedTags        ArtistExtractedTag[]
   tagExtractionRuns    ArtistTagExtractionRun[]
   recommendationJobs   RecommendationJob[]
+  users                User[]
 
   @@map("artists")
 }
@@ -69,6 +70,9 @@ model Event {
   eventSourcePayloads EventSourcePayload[]
   extractedTags       EventExtractedTag[]
   tagExtractionRuns   EventTagExtractionRun[]
+  promoterRoles       PromoterEventRole[]
+  organizerCandidates EventOrganizerCandidate[]
+  promoterBackfillItems PromoterRoleBackfillItem[]
 
   @@map("events")
 }
@@ -107,6 +111,9 @@ model Promoter {
   live            Boolean?
   hasTicketAccess Boolean?         @map("has_ticket_access")
   eventPromoters  EventPromoter[]
+  eventRoles      PromoterEventRole[]
+  identityMember  PromoterIdentityMember?
+  organizerCandidates EventOrganizerCandidate[]
 
   @@map("promoters")
 }
@@ -151,6 +158,93 @@ model EventPromoter {
 
   @@id([eventId, promoterId])
   @@map("event_promoters")
+}
+
+model PromoterEventRole {
+  eventId BigInt @map("event_id")
+  promoterId BigInt @map("promoter_id")
+  role String
+  confidence Float?
+  reasonCode String @map("reason_code")
+  evidence String?
+  method String
+  classifierVersion String @map("classifier_version")
+  inputHash String @map("input_hash")
+  needsReview Boolean @default(false) @map("needs_review")
+  classifiedAt DateTime @default(now()) @map("classified_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  promoter Promoter @relation(fields: [promoterId], references: [id], onDelete: Cascade)
+  @@id([eventId, promoterId])
+  @@index([promoterId])
+  @@map("promoter_event_role")
+}
+
+model PromoterIdentity {
+  id BigInt @id @default(autoincrement())
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  members PromoterIdentityMember[]
+  @@map("promoter_identity")
+}
+
+model PromoterIdentityMember {
+  promoterId BigInt @id @map("promoter_id")
+  identityId BigInt @map("identity_id")
+  status String
+  reason String
+  version String
+  updatedAt DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  promoter Promoter @relation(fields: [promoterId], references: [id], onDelete: Cascade)
+  identity PromoterIdentity @relation(fields: [identityId], references: [id], onDelete: Cascade)
+  @@index([identityId])
+  @@map("promoter_identity_member")
+}
+
+model EventOrganizerCandidate {
+  id BigInt @id @default(autoincrement())
+  eventId BigInt @map("event_id")
+  name String
+  normalizedName String @map("normalized_name")
+  evidence String
+  confidence Float?
+  classifierVersion String @map("classifier_version")
+  inputHash String @map("input_hash")
+  status String @default("pending")
+  promoterId BigInt? @map("promoter_id")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  promoter Promoter? @relation(fields: [promoterId], references: [id], onDelete: SetNull)
+  @@unique([eventId, normalizedName, inputHash, classifierVersion])
+  @@map("event_organizer_candidate")
+}
+
+model PromoterRoleBackfillRun {
+  id BigInt @id @default(autoincrement())
+  scope Json
+  classifierVersion String @map("classifier_version")
+  configHash String @map("config_hash")
+  status String
+  startedAt DateTime? @map("started_at") @db.Timestamptz(6)
+  completedAt DateTime? @map("completed_at") @db.Timestamptz(6)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  items PromoterRoleBackfillItem[]
+  @@map("promoter_role_backfill_run")
+}
+
+model PromoterRoleBackfillItem {
+  runId BigInt @map("run_id")
+  eventId BigInt @map("event_id")
+  status String
+  attempts Int @default(0)
+  inputHash String? @map("input_hash")
+  errorCode String? @map("error_code")
+  updatedAt DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  run PromoterRoleBackfillRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  @@id([runId, eventId])
+  @@map("promoter_role_backfill_item")
 }
 
 model EventSourcePayload {
