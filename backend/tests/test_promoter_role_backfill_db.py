@@ -767,6 +767,8 @@ def test_evaluation_never_passes_with_unavailable_or_nonrepresentative_cases(dat
     assert report.unavailable == 1
     assert not report.release_ready
     assert report.cases[1].predicted_role == "unknown"
+    assert report.quality.true_negative == 0
+    assert not report.quality.passes
     assert not evaluate_current_cases(database, cases, config_hash="config", representative=False).release_ready
 
 

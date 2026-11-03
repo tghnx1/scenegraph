@@ -39,7 +39,7 @@ class EvaluationReport:
 
 def evaluate_current_cases(connection: Connection, cases: tuple[ReviewedCase, ...], *,
                            config_hash: str, representative: bool) -> EvaluationReport:
-    """Treat absent or stale decisions as unknown; manual overrides are not model output."""
+    """Exclude unavailable decisions from metrics; any missing decision blocks release."""
     results: list[EvaluatedCase] = []
     scores: list[ReviewedRole] = []
     for case in cases:
@@ -68,7 +68,8 @@ def evaluate_current_cases(connection: Connection, cases: tuple[ReviewedCase, ..
                     predicted = row[0]
                     available = True
         results.append(EvaluatedCase(case.ra_event_id, case.ra_promoter_id, case.expected_organizer, predicted, available))
-        scores.append(ReviewedRole(case.expected_organizer, predicted))
+        if available:
+            scores.append(ReviewedRole(case.expected_organizer, predicted))
     quality = evaluate_roles(tuple(scores))
     unavailable = sum(not result.available for result in results)
     return EvaluationReport(tuple(results), quality, unavailable,
