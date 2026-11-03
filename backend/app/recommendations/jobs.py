@@ -10,6 +10,8 @@ from psycopg import Connection
 from psycopg import errors as pg_errors
 from psycopg.types.json import Jsonb
 
+from app.promoter_role_runtime import RoleRuntimeContext, resolve_runtime_context
+
 
 JOB_CREATED_CHANNEL = "scenegraph_recommendation_job_created"
 JOB_UPDATED_CHANNEL = "scenegraph_recommendation_job_updated"
@@ -29,6 +31,18 @@ def _params_hash(params: dict[str, Any]) -> str:
     """Return a deterministic fingerprint for the recommendation job parameters."""
     payload = json.dumps(params, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
     return hashlib.md5(payload.encode("utf-8")).hexdigest()
+
+
+def role_aware_params_hash(params: dict[str, Any], context: RoleRuntimeContext) -> str:
+    """Keep legacy cache keys until role rollout has ever changed state."""
+    if context.mode == "off" and context.revision == 0:
+        return _params_hash(params)
+    return _params_hash({
+        "params": params,
+        "promoter_role_mode": context.mode,
+        "promoter_role_revision": context.revision,
+        "promoter_role_config": context.config_hash,
+    })
 
 
 # Build the compact event used to route a status update to the owning user.
@@ -211,7 +225,8 @@ def get_default_artist_promoter_recommendation_state(
     artist_id: int,
 ) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
     """Return the newest completed row and the active row for the default UI params."""
-    params_hash = _params_hash(DEFAULT_ARTIST_PROMOTER_RECOMMENDATION_PARAMS)
+    context = resolve_runtime_context(connection, user_id=user_id, lock=True)
+    params_hash = role_aware_params_hash(DEFAULT_ARTIST_PROMOTER_RECOMMENDATION_PARAMS, context)
     latest_completed_row = _find_recommendation_job_by_status(
         connection,
         user_id=user_id,
@@ -272,8 +287,9 @@ def create_recommendation_job(
     params: dict[str, Any],
 ) -> dict[str, Any]:
     """Persist a queued Artist -> Promoters job and wake sleeping workers after commit."""
-    params_hash = _params_hash(params)
     with connection.transaction():
+        context = resolve_runtime_context(connection, user_id=user_id, lock=True)
+        params_hash = role_aware_params_hash(params, context)
         existing_row = _find_active_recommendation_job(
             connection,
             user_id=user_id,
@@ -391,7 +407,12 @@ def get_recommendation_job(
             """,
             (job_id, user_id, ARTIST_PROMOTERS_JOB_TYPE),
         )
-        return cursor.fetchone()
+        row = cursor.fetchone()
+    if row is not None:
+        context = resolve_runtime_context(connection, user_id=user_id, lock=True)
+        if row["params_hash"] != role_aware_params_hash(row["params_json"], context):
+            return None
+    return row
 
 
 # Claim one queued job atomically without waiting for another worker's row lock.

@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from app.db import get_connection
 from app.auth import get_current_user, require_artist_access
 from app.recommendations.scoring import promoter_recommendation_api_limit_max_from_config
-from app.recommendations.services import build_artist_promoter_recommendation_response
+from app.recommendations.role_aware import build_role_aware_recommendations
 from app.schemas import ArtistTagItem, ArtistTagsResponse, PromoterRecommendationResponse
 
 router = APIRouter()
@@ -92,7 +92,7 @@ async def recommend_promoters_for_artist(
 ) -> PromoterRecommendationResponse:
     require_artist_access(current_user, artist_id)
     with get_connection() as connection:
-        return build_artist_promoter_recommendation_response(
+        return build_role_aware_recommendations(
             connection,
             artist_id=artist_id,
             limit=limit,

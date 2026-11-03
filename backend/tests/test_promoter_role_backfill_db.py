@@ -293,6 +293,10 @@ def test_confirmed_aliases_deduplicate_without_losing_source_ids(database, monke
     assert matches[0].source_ids == (1, 2)
     rows = database.execute("SELECT promoter_id, source_promoter_ids FROM promoter_role_eligible_links WHERE event_id = 1").fetchall()
     assert rows == [(1, [1, 2])]
+    with role_filtered_relation(database, "config"):
+        assert database.execute(
+            "SELECT promoter_id, source_promoter_ids FROM event_promoters WHERE event_id = 1"
+        ).fetchall() == [(1, [1, 2])]
 
 
 def test_sql_eligibility_rejects_changed_event_and_changed_alias(database, monkeypatch):
@@ -471,6 +475,28 @@ def test_runtime_context_requires_approved_config_and_user_audience(database):
         resolve_runtime_context(database, user_id=42, current_config_hash="wrong")
     database.execute("UPDATE promoter_role_runtime_state SET audience = 'all' WHERE id = 1")
     assert resolve_runtime_context(database, user_id=99, current_config_hash="config").mode == "enforce"
+
+
+def test_recommendation_cache_does_not_reuse_old_role_revision(database):
+    from psycopg.rows import dict_row
+    from app.recommendations.jobs import create_recommendation_job, get_recommendation_job
+
+    database.execute("""CREATE TABLE recommendation_jobs (
+        id UUID PRIMARY KEY, user_id BIGINT, artist_id BIGINT, job_type TEXT,
+        params_hash TEXT, params_json JSONB, status TEXT,
+        created_at TIMESTAMPTZ DEFAULT now())""")
+    database.row_factory = dict_row
+    try:
+        params = {"limit": 10, "debug": False}
+        first = create_recommendation_job(database, user_id=42, artist_id=1, params=params)
+        assert get_recommendation_job(database, user_id=42, job_id=str(first["id"])) is not None
+        database.execute("UPDATE promoter_role_runtime_state SET revision = revision + 1 WHERE id = 1")
+        assert get_recommendation_job(database, user_id=42, job_id=str(first["id"])) is None
+        second = create_recommendation_job(database, user_id=42, artist_id=1, params=params)
+        assert second["id"] != first["id"]
+        assert get_recommendation_job(database, user_id=42, job_id=str(second["id"])) is not None
+    finally:
+        database.row_factory = psycopg.rows.tuple_row
 
 
 def test_runtime_cannot_be_enabled_without_matching_quality_review(database):

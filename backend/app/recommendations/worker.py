@@ -18,7 +18,10 @@ from app.recommendations.jobs import (
     enqueue_user_artist_promoter_recommendation_job,
     fail_recommendation_job,
     requeue_stale_running_jobs,
+    role_aware_params_hash,
 )
+from app.promoter_role_runtime import resolve_runtime_context
+from app.recommendations.role_aware import build_role_aware_recommendations
 from app.recommendations.services import build_artist_promoter_recommendation_response
 from app.event_tag_extraction import EventTagExtractionConfig
 from app.promoter_role_backfill import extraction_config_hash
@@ -72,7 +75,7 @@ def _run_job(job: dict[str, Any]) -> None:
         with get_connection() as connection:
             if job_type == ARTIST_PROMOTERS_JOB_TYPE:
                 params = RecommendationJobParams.model_validate(job["params_json"])
-                result = build_artist_promoter_recommendation_response(
+                result = build_role_aware_recommendations(
                     connection,
                     artist_id=int(job["artist_id"]),
                     limit=params.limit,
@@ -95,6 +98,10 @@ def _run_job(job: dict[str, Any]) -> None:
                 raise RuntimeError(f"Unsupported recommendation job type: {job_type}")
 
         with get_connection() as connection:
+            if job_type == ARTIST_PROMOTERS_JOB_TYPE:
+                context = resolve_runtime_context(connection, user_id=int(job["user_id"]), lock=True)
+                if job["params_hash"] != role_aware_params_hash(job["params_json"], context):
+                    raise RuntimeError("Promoter recommendation job is stale; request a new calculation")
             complete_recommendation_job(
                 connection,
                 job_id=job_id,

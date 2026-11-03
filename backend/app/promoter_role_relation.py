@@ -30,7 +30,7 @@ def role_filtered_relation(connection: Connection, config_hash: str) -> Iterator
         with connection.cursor() as cursor:
             cursor.execute("""
                 CREATE TEMPORARY TABLE event_promoters ON COMMIT DROP AS
-                SELECT event_id, promoter_id FROM promoter_role_eligible_links
+                SELECT event_id, promoter_id, source_promoter_ids FROM promoter_role_eligible_links
                 WHERE config_hash = %s AND classifier_version = %s
             """, (config_hash, CLASSIFIER_VERSION))
             cursor.execute("CREATE INDEX ON event_promoters (event_id)")
