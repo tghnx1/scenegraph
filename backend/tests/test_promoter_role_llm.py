@@ -38,6 +38,27 @@ def test_text_only_candidate_requires_quote_containing_its_name():
     assert parse_role_response(raw, event).candidates[0].name == "Collective Alpha"
 
 
+def test_candidate_can_supplement_ra_promoters_when_text_explicitly_credits_it():
+    event = EventRoleInput(3, "Collective x Club present a night", "", 1, "Club", (PromoterProfile(4, "Collective"),))
+    raw = json.dumps({"roles": [{"promoter_id": 4, "role": "organizer", "confidence": 0.9, "evidence": "Collective x Club present"}],
+                      "candidates": [{"name": "Club", "confidence": 0.9, "evidence": "Collective x Club present"}]})
+    assert parse_role_response(raw, event).candidates[0].name == "Club"
+
+
+def test_candidate_cannot_duplicate_existing_ra_profile():
+    raw = json.dumps({"roles": [{"promoter_id": 4, "role": "both", "confidence": 1, "evidence": "8MM present"}],
+                      "candidates": [{"name": "8MM", "confidence": 1, "evidence": "8MM present"}]})
+    with pytest.raises(InvalidRoleResponse, match="duplicates"):
+        parse_role_response(raw, EVENT)
+
+
+def test_punctuation_only_candidate_is_rejected():
+    event = EventRoleInput(1, "!!! presents", "", None, None, ())
+    raw = json.dumps({"roles": [], "candidates": [{"name": "!!!", "confidence": 1, "evidence": "!!! presents"}]})
+    with pytest.raises(InvalidRoleResponse):
+        parse_role_response(raw, event)
+
+
 def test_model_path_uses_ingestion_configuration_and_validates_response(monkeypatch):
     from app import promoter_role_llm
 

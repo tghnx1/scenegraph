@@ -9,18 +9,19 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Iterator
 
 from psycopg import Connection
 from psycopg.types.json import Jsonb
 from openai import APIConnectionError, APITimeoutError, InternalServerError, OpenAIError, PermissionDeniedError, RateLimitError
 
-from app.promoter_role_llm import InvalidRoleResponse, ProposedRole, RoleResponse, classify_with_llm
+from app.promoter_role_llm import InvalidRoleResponse, OrganizerCandidate, ProposedRole, RoleResponse, classify_with_llm
 from app.event_tag_extraction import EventTagExtractionConfig
 from app.promoter_role_store import EventInputChanged, load_event_input, save_llm_roles
-from app.promoter_roles import CLASSIFIER_VERSION, EventRoleInput, classify_explicit_presenter
+from app.promoter_roles import CLASSIFIER_VERSION, EventRoleInput, classify_explicit_presenter, normalize_name
 from app.promoter_roles import role_input_hash, role_input_snapshot
 
 LOCK_KEY = 0x534750524F4C4553
@@ -30,6 +31,9 @@ MAX_ATTEMPTS = 3
 
 def deterministic_response(event: EventRoleInput) -> RoleResponse | None:
     """Skip the provider only when every existing profile has explicit evidence."""
+    # A collaboration can name an additional organizer absent from the RA profiles.
+    if re.search(r"\s(?:x|&)\s.*\bpresents?\b", event.title, re.IGNORECASE):
+        return None
     decisions = []
     for profile in event.promoters:
         signal = classify_explicit_presenter(profile.name, event.venue_name, event.title)
@@ -37,6 +41,21 @@ def deterministic_response(event: EventRoleInput) -> RoleResponse | None:
             return None
         decisions.append(ProposedRole(profile.id, signal.role, 1.0, signal.evidence))
     return RoleResponse(tuple(decisions), ()) if decisions else None
+
+
+def add_explicit_venue_candidate(event: EventRoleInput, response: RoleResponse) -> RoleResponse:
+    """Flag an unlisted venue only when the title explicitly credits it as presenter."""
+    if not event.venue_name:
+        return response
+    venue_key = normalize_name(event.venue_name)
+    if not venue_key or any(normalize_name(profile.name) == venue_key for profile in event.promoters):
+        return response
+    if any(normalize_name(candidate.name) == venue_key for candidate in response.candidates):
+        return response
+    signal = classify_explicit_presenter(event.venue_name, event.venue_name, event.title)
+    if signal.role != "both" or signal.evidence is None:
+        return response
+    return replace(response, candidates=(*response.candidates, OrganizerCandidate(event.venue_name, 1.0, signal.evidence)))
 
 
 class BackfillBusy(RuntimeError):
@@ -237,6 +256,7 @@ def process_run(connection: Connection, run_id: int, current_config_hash: str) -
                 method = "rule" if response is not None else "llm"
                 if response is None:
                     response = classify_with_llm(source)
+                response = add_explicit_venue_candidate(source, response)
                 save_llm_roles(connection, source, response, method=method)
                 with connection.cursor() as cursor:
                     cursor.execute("""

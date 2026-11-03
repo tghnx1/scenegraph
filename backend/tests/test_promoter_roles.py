@@ -50,3 +50,28 @@ def test_only_confirmed_aliases_count_as_one_identity():
 
 def test_at_venue_is_not_evidence_of_organization():
     assert classify_explicit_presenter("8MM", "8MM", "Concert at 8MM").role == "unknown"
+
+
+def test_collaboration_with_missing_profile_is_not_resolved_by_single_rule():
+    from app.promoter_role_backfill import deterministic_response
+
+    event = EventRoleInput(1, "Collective x Club present tonight", "", 2, "Club", (PromoterProfile(1, "Club"),))
+    assert deterministic_response(event) is None
+
+
+def test_explicit_unlisted_venue_presenter_becomes_pending_candidate():
+    from app.promoter_role_backfill import add_explicit_venue_candidate
+    from app.promoter_role_llm import RoleResponse
+
+    event = EventRoleInput(1, "Collective x Der Kegel present: MASSIF", "", 2, "Der Kegel", (PromoterProfile(1, "Collective"),))
+    result = add_explicit_venue_candidate(event, RoleResponse((), ()))
+    assert result.candidates[0].name == "Der Kegel"
+    assert result.candidates[0].evidence == "Der Kegel present"
+
+
+def test_unlisted_venue_without_presenter_credit_is_not_inferred():
+    from app.promoter_role_backfill import add_explicit_venue_candidate
+    from app.promoter_role_llm import RoleResponse
+
+    event = EventRoleInput(1, "Collective at Der Kegel", "", 2, "Der Kegel", (PromoterProfile(1, "Collective"),))
+    assert add_explicit_venue_candidate(event, RoleResponse((), ())).candidates == ()

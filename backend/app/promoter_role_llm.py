@@ -8,7 +8,7 @@ from typing import Literal
 
 from app.artist_tag_extraction import create_chat_completion
 from app.event_tag_extraction import EventTagExtractionConfig, create_extraction_client
-from app.promoter_roles import DESCRIPTION_LIMIT, EventRoleInput
+from app.promoter_roles import DESCRIPTION_LIMIT, EventRoleInput, normalize_name
 
 Role = Literal["organizer", "venue", "both", "unknown"]
 
@@ -55,8 +55,9 @@ def classify_with_llm(event: EventRoleInput) -> RoleResponse:
         "A venue can also organize an event; mere name similarity does not prove either role. "
         "Do not infer organizers from artists or event series. Return JSON object with roles "
         "containing exactly one object per input promoter: promoter_id, role, confidence (0..1), "
-        "and evidence as a short exact substring of the input. For events with no listed "
-        "promoters, candidates may contain name, confidence, and exact evidence of organizing. "
+        "and evidence as a short exact substring of the input. Candidates may contain "
+        "organizers missing from the listed RA promoters, only when there is explicit textual "
+        "evidence; each candidate has name, confidence and exact evidence of organizing. "
         "When uncertain use unknown. Never invent IDs or quotations."
     )
     usage: list[tuple[int | None, int | None]] = []
@@ -114,14 +115,15 @@ def parse_role_response(raw: str, event: EventRoleInput) -> RoleResponse:
     if seen != ids:
         raise InvalidRoleResponse("missing promoter role")
     candidates: list[OrganizerCandidate] = []
-    if ids and payload.get("candidates"):
-        raise InvalidRoleResponse("text-only candidates require an event without RA promoters")
+    existing_names = {normalize_name(profile.name) for profile in event.promoters}
     for item in payload.get("candidates", []):
         if not isinstance(item, dict) or not isinstance(item.get("name"), str):
             raise InvalidRoleResponse("invalid candidate")
         name = item["name"].strip()
         evidence = _evidence(item.get("evidence"), sources[:2])
-        if not name or len(name) > 200 or name.casefold() not in evidence.casefold():
+        if not name or not normalize_name(name) or len(name) > 200 or name.casefold() not in evidence.casefold():
             raise InvalidRoleResponse("candidate name not supported by evidence")
+        if normalize_name(name) in existing_names:
+            raise InvalidRoleResponse("candidate duplicates an existing RA profile")
         candidates.append(OrganizerCandidate(name, _confidence(item.get("confidence")), evidence))
     return RoleResponse(tuple(roles), tuple(candidates))
