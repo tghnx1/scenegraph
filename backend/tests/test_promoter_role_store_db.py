@@ -32,6 +32,8 @@ def role_db():
                 cursor.execute(usage_migration.read_text())
                 hash_migration = migration.parents[1] / "20261103020000_hash_promoter_role_snapshots/migration.sql"
                 cursor.execute(hash_migration.read_text())
+                audit_migration = migration.parents[1] / "20261103030000_promoter_identity_audit/migration.sql"
+                cursor.execute(audit_migration.read_text())
                 cursor.execute("INSERT INTO events VALUES (1, '8MM presents', NULL, 1)")
                 cursor.execute("INSERT INTO venues VALUES (1, '8MM')")
                 cursor.execute("INSERT INTO promoters VALUES (1, '8MM', 'ra1')")

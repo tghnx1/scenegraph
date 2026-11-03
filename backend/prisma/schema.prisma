@@ -115,6 +115,7 @@ model Promoter {
   eventRoles      PromoterEventRole[]
   identityMember  PromoterIdentityMember?
   organizerCandidates EventOrganizerCandidate[]
+  identityAudit PromoterIdentityAudit[]
 
   @@map("promoters")
 }
@@ -197,7 +198,23 @@ model PromoterIdentity {
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
   members PromoterIdentityMember[]
+  audit PromoterIdentityAudit[]
   @@map("promoter_identity")
+}
+
+model PromoterIdentityAudit {
+  id BigInt @id @default(autoincrement())
+  promoterId BigInt @map("promoter_id")
+  identityId BigInt @map("identity_id")
+  previousStatus String? @map("previous_status")
+  newStatus String @map("new_status")
+  reason String
+  version String
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  promoter Promoter @relation(fields: [promoterId], references: [id], onDelete: Restrict)
+  identity PromoterIdentity @relation(fields: [identityId], references: [id], onDelete: Restrict)
+  @@index([promoterId, createdAt])
+  @@map("promoter_identity_audit")
 }
 
 model PromoterIdentityMember {

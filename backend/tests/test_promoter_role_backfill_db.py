@@ -21,6 +21,7 @@ from app.promoter_role_relation import role_filtered_relation
 from app.promoter_role_shadow import compare_recommendations
 from app.promoter_role_candidates import find_candidate_matches
 from app.promoter_role_worker import process_next
+from app.promoter_role_identity import confirm_profiles, unconfirm_profile
 from app.promoter_role_store import EventInputChanged
 
 
@@ -44,6 +45,8 @@ def database():
             connection.execute(usage_migration.read_text())
             hash_migration = migration.parents[1] / "20261103020000_hash_promoter_role_snapshots/migration.sql"
             connection.execute(hash_migration.read_text())
+            audit_migration = migration.parents[1] / "20261103030000_promoter_identity_audit/migration.sql"
+            connection.execute(audit_migration.read_text())
             connection.execute("INSERT INTO events VALUES (1, '8MM live', NULL, 1, 'ra1'), (2, 'Other live', NULL, NULL, 'ra2')")
             connection.execute("INSERT INTO venues VALUES (1, '8MM')")
             connection.execute("INSERT INTO promoters VALUES (1, '8MM', 'ra1'), (2, 'Other', 'ra2')")
@@ -356,6 +359,37 @@ def test_worker_processes_only_queued_compatible_runs(database, monkeypatch):
     assert process_next(database, "config") == "succeeded"
     assert process_next(database, "config") is None
     assert database.execute("SELECT status FROM promoter_role_backfill_run WHERE id = %s", (run_id,)).fetchone() == ("succeeded",)
+
+
+def test_confirm_and_undo_identity_keeps_ra_profiles_and_audit(database):
+    identity = confirm_profiles(database, (1, 2), "reviewed source profiles")
+    database.commit()
+    assert database.execute("SELECT count(*) FROM promoter_identity_member WHERE identity_id = %s AND status = 'confirmed'", (identity,)).fetchone() == (2,)
+    unconfirm_profile(database, 2, "review corrected")
+    database.commit()
+    assert database.execute("SELECT status FROM promoter_identity_member WHERE promoter_id = 2").fetchone() == ("proposed",)
+    assert database.execute("SELECT ra_promoter_id FROM promoters ORDER BY id").fetchall() == [("ra1",), ("ra2",)]
+    assert database.execute("SELECT new_status FROM promoter_identity_audit WHERE promoter_id = 2 ORDER BY id").fetchall() == [("confirmed",), ("proposed",)]
+
+
+def test_confirmation_refuses_to_merge_existing_identities(database):
+    database.execute("INSERT INTO promoter_identity DEFAULT VALUES")
+    database.execute("INSERT INTO promoter_identity DEFAULT VALUES")
+    database.execute("INSERT INTO promoter_identity_member (promoter_id,identity_id,status,reason,version) VALUES (1,1,'confirmed','reviewed','v1'),(2,2,'confirmed','reviewed','v1')")
+    with pytest.raises(ValueError, match="different identities"):
+        confirm_profiles(database, (1, 2), "ambiguous")
+    assert database.execute("SELECT count(*) FROM promoter_identity_audit").fetchone() == (0,)
+
+
+def test_identity_cli_defaults_to_read_only(database):
+    schema = database.execute("SELECT current_schema()").fetchone()[0]
+    database.commit()
+    env = os.environ.copy()
+    env["PGOPTIONS"] = f"-c search_path={schema}"
+    result = subprocess.run([sys.executable, "-m", "app.promoter_role_identity_cli", "--confirm", "1", "--confirm", "2"],
+                            env=env, capture_output=True, text=True, check=True)
+    assert json.loads(result.stdout)["applied"] is False
+    assert database.execute("SELECT count(*) FROM promoter_identity_member").fetchone() == (0,)
 
 
 def test_filtered_relation_is_scoped_and_preserves_ra_data(database, monkeypatch):
