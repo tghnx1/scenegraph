@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from psycopg import Connection
+from psycopg.rows import tuple_row
 
 from app.promoter_role_llm import RoleResponse
 from app.promoter_roles import CLASSIFIER_VERSION, EventRoleInput, PromoterProfile, normalize_name, role_input_hash
@@ -13,7 +14,7 @@ class EventInputChanged(RuntimeError):
 
 
 def load_event_input(connection: Connection, event_id: int, *, lock: bool = False) -> EventRoleInput | None:
-    with connection.cursor() as cursor:
+    with connection.cursor(row_factory=tuple_row) as cursor:
         cursor.execute(
             "SELECT id, title, description_text, venue_id FROM events WHERE id = %s" + (" FOR UPDATE" if lock else ""),
             (event_id,),

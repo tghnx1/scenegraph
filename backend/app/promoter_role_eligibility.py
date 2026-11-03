@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from psycopg import Connection
+from psycopg.rows import tuple_row
 
 from app.promoter_role_store import load_event_input
 from app.promoter_roles import CLASSIFIER_VERSION, role_input_hash
@@ -26,7 +27,7 @@ def eligible_promoters(connection: Connection, event_id: int, expected_config_ha
     if event is None:
         return ()
     current_hash = role_input_hash(event)
-    with connection.cursor() as cursor:
+    with connection.cursor(row_factory=tuple_row) as cursor:
         cursor.execute("""
             SELECT 1 FROM promoter_event_classification
             WHERE event_id = %s AND input_hash = %s AND config_hash = %s AND classifier_version = %s

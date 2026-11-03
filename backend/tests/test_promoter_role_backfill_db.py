@@ -18,6 +18,7 @@ from app.promoter_role_eligibility import eligible_promoters
 from app.promoter_role_queue import enqueue_changed_events, enqueue_imported_ra_events
 from app.promoter_role_relation import role_filtered_relation
 from app.promoter_role_shadow import compare_recommendations
+from app.promoter_role_candidates import find_candidate_matches
 from app.promoter_role_store import EventInputChanged
 
 
@@ -33,13 +34,13 @@ def database():
             connection.execute(sql.SQL("CREATE SCHEMA {} ").format(sql.Identifier(schema)))
             connection.execute(sql.SQL("SET search_path TO {} ").format(sql.Identifier(schema)))
             connection.execute("CREATE TABLE events (id BIGINT PRIMARY KEY, title TEXT, description_text TEXT, venue_id BIGINT, ra_event_id TEXT)")
-            connection.execute("CREATE TABLE promoters (id BIGINT PRIMARY KEY, name TEXT)")
+            connection.execute("CREATE TABLE promoters (id BIGINT PRIMARY KEY, name TEXT, ra_promoter_id TEXT)")
             connection.execute("CREATE TABLE venues (id BIGINT PRIMARY KEY, name TEXT)")
             connection.execute("CREATE TABLE event_promoters (event_id BIGINT, promoter_id BIGINT)")
             connection.execute(migration.read_text())
             connection.execute("INSERT INTO events VALUES (1, '8MM live', NULL, 1, 'ra1'), (2, 'Other live', NULL, NULL, 'ra2')")
             connection.execute("INSERT INTO venues VALUES (1, '8MM')")
-            connection.execute("INSERT INTO promoters VALUES (1, '8MM'), (2, 'Other')")
+            connection.execute("INSERT INTO promoters VALUES (1, '8MM', 'ra1'), (2, 'Other', 'ra2')")
             connection.execute("INSERT INTO event_promoters VALUES (1, 1), (2, 2)")
             connection.commit()
             yield connection
@@ -288,3 +289,24 @@ def test_shadow_compares_real_relation_without_changing_base(database, monkeypat
     assert result.removed_ids == (2,)
     assert database.execute("SELECT count(*) FROM event_promoters").fetchone() == (2,)
     assert database.execute("SELECT count(*) FROM promoter_role_shadow_result").fetchone() == (0,)
+
+
+def test_candidate_matches_remain_proposals_and_preserve_ra_ids(database):
+    database.execute("INSERT INTO promoters VALUES (3, '8-MM', 'ra3')")
+    matches = find_candidate_matches(database, '8 MM')
+    assert [(item.promoter_id, item.ra_promoter_id) for item in matches] == [(1, 'ra1'), (3, 'ra3')]
+    assert all(item.confirmed_identity_id is None for item in matches)
+    assert database.execute("SELECT count(*) FROM event_organizer_candidate").fetchone() == (0,)
+
+
+def test_role_readers_accept_application_dict_row_connections(database):
+    from psycopg.rows import dict_row
+    from app.promoter_role_store import load_event_input
+
+    database.row_factory = dict_row
+    try:
+        assert load_event_input(database, 1).title == "8MM live"
+        assert find_candidate_matches(database, "8MM")[0].ra_promoter_id == "ra1"
+        assert eligible_promoters(database, 1, "config") == ()
+    finally:
+        database.row_factory = psycopg.rows.tuple_row
