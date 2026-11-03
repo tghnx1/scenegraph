@@ -1,0 +1,16 @@
+{
+  "version": "provisional-holdout-v1",
+  "frozen_before_model_evaluation": true,
+  "release_representative": false,
+  "note": "Partial review set; no rollout decision until independently reviewed negative, venue-organizer, duplicate-profile, text-only, and ambiguity cases are added. Uncertain profiles are intentionally omitted.",
+  "cases": [
+    {"ra_event_id": "2113300", "ra_promoter_id": "149592", "expected_organizer": true, "category": "multiple_organizers", "basis": "RA title and editorial text identify Pager as a presenter", "source": "https://ra.co/events/2113300"},
+    {"ra_event_id": "2113300", "ra_promoter_id": "111477", "expected_organizer": true, "category": "multiple_organizers", "basis": "RA title and editorial text identify Restless as a presenter", "source": "https://ra.co/events/2113300"},
+    {"ra_event_id": "2067200", "ra_promoter_id": "117311", "expected_organizer": true, "category": "multiple_organizers", "basis": "RA title credits Hyper Berlin as a presenter", "source": "https://ra.co/events/2067200"},
+    {"ra_event_id": "2067200", "ra_promoter_id": "121352", "expected_organizer": true, "category": "multiple_organizers", "basis": "RA title credits Fog Juice as a presenter and lists Fog Juice Entertainment", "source": "https://ra.co/events/2067200"},
+    {"ra_event_id": "2085158", "ra_promoter_id": "143539", "expected_organizer": true, "category": "artist_organizer", "basis": "RA title and description explicitly credit Luca Eck for event curation", "source": "https://ra.co/events/2085158"},
+    {"ra_event_id": "2097882", "ra_promoter_id": "158048", "expected_organizer": true, "category": "multiple_organizers", "basis": "RA title credits Whoriental Festival as presenter", "source": "https://ra.co/events/2097882"},
+    {"ra_event_id": "2564574", "ra_promoter_id": "105593", "expected_organizer": true, "category": "venue_with_organizer", "basis": "User identified singularity.bln as the organizer; RA page unavailable to automated fetch", "source": "https://ra.co/events/2564574"},
+    {"ra_event_id": "2564574", "ra_promoter_id": "8711", "expected_organizer": false, "category": "venue_with_organizer", "basis": "User identified Tresor Club as the venue profile for this event; RA page unavailable to automated fetch", "source": "https://ra.co/events/2564574"}
+  ]
+}
