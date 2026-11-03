@@ -525,6 +525,25 @@ def test_allowlisted_recommendations_use_only_confirmed_organizers(database, mon
     assert role_aware.build_role_aware_recommendations(database, artist_id=1, limit=10, debug=False, user_id=99) == [1, 2]
 
 
+def test_rollout_cli_is_dry_run_by_default_and_requires_review(database):
+    schema = database.execute("SELECT current_schema()").fetchone()[0]
+    database.commit()
+    env = os.environ.copy()
+    env.update(PGOPTIONS=f"-c search_path={schema}", EXTRACTION_PROVIDER="kimi_code", KIMI_EXTRACTION_MODEL="test",
+               EVENT_TAG_EXTRACTION_MAX_TEXT_CHARS="7000", EVENT_TAG_EXTRACTION_MAX_TAGS="12", EVENT_TAG_EXTRACTION_CHUNK_CHARS="800")
+    command = [sys.executable, "-m", "app.promoter_role_rollout"]
+    preview = subprocess.run([*command, "--add-user", "42"], env=env, capture_output=True, text=True, check=True)
+    assert json.loads(preview.stdout)["user_ids"] == [42]
+    assert database.execute("SELECT count(*) FROM promoter_role_allowlist").fetchone() == (0,)
+    database.commit()
+    subprocess.run([*command, "--add-user", "42", "--apply"], env=env, capture_output=True, text=True, check=True)
+    assert database.execute("SELECT count(*) FROM promoter_role_allowlist").fetchone() == (1,)
+    database.commit()
+    missing = subprocess.run([*command, "--enable-review", "9999", "--apply"], env=env, capture_output=True, text=True)
+    assert missing.returncode != 0
+    assert database.execute("SELECT enabled FROM promoter_role_runtime_state").fetchone() == (False,)
+
+
 def test_runtime_cannot_be_enabled_without_matching_quality_review(database):
     with pytest.raises(psycopg.errors.CheckViolation):
         with database.transaction():
