@@ -123,6 +123,39 @@ def test_usage_is_retained_when_both_responses_fail_validation(monkeypatch):
     assert (error.value.input_tokens, error.value.output_tokens) == (20, 10)
 
 
+def test_retry_explains_safe_validation_reason(monkeypatch):
+    from app import promoter_role_llm
+
+    prompts = []
+    outputs = iter([json.dumps({"roles": [{"promoter_id": 4, "role": "both", "confidence": 1,
+                                          "evidence": "made-up text"}]}),
+                    json.dumps({"roles": [{"promoter_id": 4, "role": "both", "confidence": 1,
+                                          "evidence": "8MM present"}]})])
+    monkeypatch.setattr(promoter_role_llm.EventTagExtractionConfig, "from_env", lambda: object())
+    monkeypatch.setattr(promoter_role_llm, "create_extraction_client", lambda received: received)
+
+    def complete(client, **kwargs):
+        prompts.append(kwargs["prompt"])
+        return next(outputs)
+
+    monkeypatch.setattr(promoter_role_llm, "create_chat_completion", complete)
+    assert classify_with_llm(EVENT).roles[0].role == "both"
+    assert "previous evidence was not an exact input substring" in prompts[1]
+    assert "made-up text" not in prompts[1]
+
+
+def test_bad_role_evidence_after_retry_becomes_unknown(monkeypatch):
+    from app import promoter_role_llm
+
+    raw = json.dumps({"roles": [{"promoter_id": 4, "role": "both", "confidence": 1,
+                                 "evidence": "made-up text"}]})
+    monkeypatch.setattr(promoter_role_llm.EventTagExtractionConfig, "from_env", lambda: object())
+    monkeypatch.setattr(promoter_role_llm, "create_extraction_client", lambda received: received)
+    monkeypatch.setattr(promoter_role_llm, "create_chat_completion", lambda *args, **kwargs: raw)
+    role = classify_with_llm(EVENT).roles[0]
+    assert (role.role, role.confidence, role.evidence) == ("unknown", 0.0, "8MM")
+
+
 def test_venue_mention_does_not_prove_it_coorganized():
     event = EventRoleInput(2, "OMANA at Funkhaus Berlin", "OMANA transform Funkhaus Berlin", 1,
                            "Funkhaus Berlin", (PromoterProfile(4, "Funkhaus Berlin"),))

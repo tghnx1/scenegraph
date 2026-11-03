@@ -65,16 +65,24 @@ def classify_with_llm(event: EventRoleInput) -> RoleResponse:
         "When uncertain use unknown. Never invent IDs or quotations."
     )
     usage: list[tuple[int | None, int | None]] = []
+    previous_reason = ""
     for attempt in range(2):
-        retry_hint = "" if attempt == 0 else "\nReturn a valid JSON object with every listed ID and exact, non-empty evidence copied from the input."
+        retry_hint = "" if attempt == 0 else (
+            "\nReturn a JSON object with roles and candidates arrays; include every listed ID exactly once. "
+            "Evidence must be copied character-for-character from the input without edits or ellipses. "
+            + ("The previous evidence was not an exact input substring. " if previous_reason == "evidence is not present in input" else "")
+            + ("The previous response had the wrong JSON object or array structure. " if previous_reason == "invalid response shape" else "")
+            + "When unsure use unknown with the exact promoter name as evidence."
+        )
         response = create_chat_completion(client, prompt=prompt + retry_hint, config=config, instructions=instructions,
                                           usage_callback=lambda incoming, outgoing: usage.append((incoming, outgoing)))
         try:
-            result = parse_role_response(response, event)
+            result = parse_role_response(response, event, allow_unknown_evidence=attempt == 1)
             incoming = sum(item[0] for item in usage if item[0] is not None) if len(usage) == attempt + 1 and all(item[0] is not None for item in usage) else None
             outgoing = sum(item[1] for item in usage if item[1] is not None) if len(usage) == attempt + 1 and all(item[1] is not None for item in usage) else None
             return replace(result, input_tokens=incoming, output_tokens=outgoing)
         except InvalidRoleResponse as error:
+            previous_reason = str(error)
             if attempt == 1:
                 if len(usage) == 2 and all(item[0] is not None for item in usage):
                     error.input_tokens = sum(item[0] for item in usage if item[0] is not None)
@@ -98,7 +106,7 @@ def _evidence(value: object, sources: tuple[str, ...]) -> str:
     return value
 
 
-def parse_role_response(raw: str, event: EventRoleInput) -> RoleResponse:
+def parse_role_response(raw: str, event: EventRoleInput, *, allow_unknown_evidence: bool = False) -> RoleResponse:
     """Reject unknown IDs, unsupported roles, duplicate IDs and fabricated evidence."""
     try:
         payload = json.loads(raw)
@@ -120,9 +128,16 @@ def parse_role_response(raw: str, event: EventRoleInput) -> RoleResponse:
             raise InvalidRoleResponse("invalid role")
         seen.add(promoter_id)
         confidence = _confidence(item.get("confidence"))
-        evidence = _evidence(item.get("evidence"), sources)
+        name = next(profile.name for profile in event.promoters if profile.id == promoter_id)
+        try:
+            evidence = _evidence(item.get("evidence"), sources)
+        except InvalidRoleResponse:
+            if not allow_unknown_evidence or not name.strip():
+                raise
+            # A bad quotation cannot substantiate any role. Preserve the other
+            # validated links, but make this one explicitly uncertain.
+            role, confidence, evidence = "unknown", 0.0, name
         if role == "both":
-            name = next(profile.name for profile in event.promoters if profile.id == promoter_id)
             # A location mention alone does not prove that the venue co-organized.
             credit = re.compile(r"(?<!\w)" + re.escape(name) +
                                 r"\s+(?:presents?|invites?|hosts?|organizes?|organises?|curates?)\b", re.IGNORECASE)

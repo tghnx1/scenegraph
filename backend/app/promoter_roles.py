@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from typing import Literal, TypedDict
 
 
-CLASSIFIER_VERSION = "promoter-role-v4"
+CLASSIFIER_VERSION = "promoter-role-v6"
 NORMALIZATION_VERSION = "unicode-nfkc-alnum-v1"
 DESCRIPTION_LIMIT = 12000
 
