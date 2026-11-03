@@ -137,7 +137,8 @@ def parse_role_response(raw: str, event: EventRoleInput, *, allow_unknown_eviden
             # A bad quotation cannot substantiate any role. Preserve the other
             # validated links, but make this one explicitly uncertain.
             role, confidence, evidence = "unknown", 0.0, name
-        if role == "both":
+        same_venue = bool(event.venue_name and normalize_name(name) == normalize_name(event.venue_name))
+        if role == "both" or (role == "organizer" and same_venue):
             # A location mention alone does not prove that the venue co-organized.
             credit = re.compile(r"(?<!\w)" + re.escape(name) +
                                 r"\s+(?:presents?|invites?|hosts?|organizes?|organises?|curates?)\b", re.IGNORECASE)

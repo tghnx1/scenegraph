@@ -170,3 +170,11 @@ def test_explicit_invitation_can_support_venue_coorganizer():
     raw = json.dumps({"roles": [{"promoter_id": 4, "role": "both", "confidence": 0.88,
                                  "evidence": "Heaven and Studio 1111 invite"}]})
     assert parse_role_response(raw, event).roles[0].role == "both"
+
+
+def test_venue_cannot_become_organizer_based_only_on_its_name():
+    event = EventRoleInput(2, "OMANA at Funkhaus Berlin", "", 1,
+                           "Funkhaus Berlin", (PromoterProfile(4, "Funkhaus Berlin"),))
+    raw = json.dumps({"roles": [{"promoter_id": 4, "role": "organizer", "confidence": 0.98,
+                                 "evidence": "Funkhaus Berlin"}]})
+    assert parse_role_response(raw, event).roles[0].role == "unknown"
