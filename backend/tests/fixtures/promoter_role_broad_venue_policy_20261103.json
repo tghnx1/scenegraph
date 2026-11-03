@@ -1,0 +1,11 @@
+{
+  "version": "broad-venue-policy-20261103-v1",
+  "frozen_before_model_evaluation": true,
+  "release_representative": false,
+  "note": "Partial review of preregistered events: matching venue profiles without explicit organizer credit are excluded under the user's policy, not asserted to be non-organizers in reality.",
+  "cases": [
+    {"ra_event_id": "2330885", "ra_promoter_id": "84707", "expected_organizer": false, "basis": "VOID profile matches Void Club venue; source gives no explicit venue organizer credit.", "source": "https://ra.co/events/2330885"},
+    {"ra_event_id": "2355609", "ra_promoter_id": "52501", "expected_organizer": false, "basis": "Kater profile matches venue; source gives no explicit venue organizer credit.", "source": "https://ra.co/events/2355609"},
+    {"ra_event_id": "2422574", "ra_promoter_id": "9481", "expected_organizer": false, "basis": "Ritter Butzke profile matches venue; ticket link and event administration alone do not explicitly credit the venue as organizer.", "source": "https://ra.co/events/2422574"}
+  ]
+}
