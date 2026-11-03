@@ -20,3 +20,9 @@ def test_both_metrics_must_reach_eighty_percent():
 def test_empty_denominators_never_pass():
     assert not evaluate_roles(()).passes
     assert evaluate_roles((ReviewedRole(False, "venue"),)).precision is None
+
+
+def test_positive_only_sample_does_not_satisfy_release_gate():
+    quality = evaluate_roles((ReviewedRole(True, "organizer"),))
+    assert quality.precision == 1 and quality.recall == 1
+    assert not quality.passes
