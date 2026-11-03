@@ -46,3 +46,25 @@ def test_model_path_uses_ingestion_configuration_and_validates_response(monkeypa
     monkeypatch.setattr(promoter_role_llm, "create_extraction_client", lambda received: received)
     monkeypatch.setattr(promoter_role_llm, "create_chat_completion", lambda client, **kwargs: json.dumps({"roles": [{"promoter_id": 4, "role": "both", "confidence": 1, "evidence": "8MM present"}]}))
     assert classify_with_llm(EVENT).roles[0].role == "both"
+
+
+def test_invalid_model_json_retries_once_then_accepts_valid_response(monkeypatch):
+    from app import promoter_role_llm
+
+    outputs = iter(['invalid', json.dumps({"roles": [{"promoter_id": 4, "role": "both", "confidence": 1, "evidence": "8MM present"}]})])
+    monkeypatch.setattr(promoter_role_llm.EventTagExtractionConfig, "from_env", lambda: object())
+    monkeypatch.setattr(promoter_role_llm, "create_extraction_client", lambda received: received)
+    monkeypatch.setattr(promoter_role_llm, "create_chat_completion", lambda client, **kwargs: next(outputs))
+    assert classify_with_llm(EVENT).roles[0].role == "both"
+
+
+def test_invalid_model_json_has_bounded_retry(monkeypatch):
+    from app import promoter_role_llm
+
+    calls = []
+    monkeypatch.setattr(promoter_role_llm.EventTagExtractionConfig, "from_env", lambda: object())
+    monkeypatch.setattr(promoter_role_llm, "create_extraction_client", lambda received: received)
+    monkeypatch.setattr(promoter_role_llm, "create_chat_completion", lambda client, **kwargs: calls.append(1) or "invalid")
+    with pytest.raises(InvalidRoleResponse):
+        classify_with_llm(EVENT)
+    assert len(calls) == 2

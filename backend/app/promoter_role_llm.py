@@ -57,8 +57,15 @@ def classify_with_llm(event: EventRoleInput) -> RoleResponse:
         "promoters, candidates may contain name, confidence, and exact evidence of organizing. "
         "When uncertain use unknown. Never invent IDs or quotations."
     )
-    response = create_chat_completion(client, prompt=prompt, config=config, instructions=instructions)
-    return parse_role_response(response, event)
+    for attempt in range(2):
+        retry_hint = "" if attempt == 0 else "\nReturn a valid JSON object with every listed ID and exact, non-empty evidence copied from the input."
+        response = create_chat_completion(client, prompt=prompt + retry_hint, config=config, instructions=instructions)
+        try:
+            return parse_role_response(response, event)
+        except InvalidRoleResponse:
+            if attempt == 1:
+                raise
+    raise AssertionError("unreachable")
 
 
 def _confidence(value: object) -> float:
