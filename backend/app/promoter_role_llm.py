@@ -9,7 +9,7 @@ from typing import Literal
 
 from app.artist_tag_extraction import create_chat_completion
 from app.event_tag_extraction import EventTagExtractionConfig, create_extraction_client
-from app.promoter_roles import DESCRIPTION_LIMIT, EventRoleInput, normalize_name
+from app.promoter_roles import DESCRIPTION_LIMIT, EventRoleInput, normalize_name, venue_name_matches
 
 Role = Literal["organizer", "venue", "both", "unknown"]
 
@@ -138,7 +138,7 @@ def parse_role_response(raw: str, event: EventRoleInput, *, allow_unknown_eviden
             # A bad quotation cannot substantiate any role. Preserve the other
             # validated links, but make this one explicitly uncertain.
             role, confidence, evidence = "unknown", 0.0, name
-        same_venue = bool(event.venue_name and normalize_name(name) == normalize_name(event.venue_name))
+        same_venue = venue_name_matches(name, event.venue_name)
         if role == "both" or (role == "organizer" and same_venue):
             # A location mention alone does not prove that the venue co-organized.
             credit = re.compile(r"(?<!\w)" + re.escape(name) +

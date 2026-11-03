@@ -197,3 +197,17 @@ def test_venue_cannot_become_organizer_based_only_on_its_name():
     raw = json.dumps({"roles": [{"promoter_id": 4, "role": "organizer", "confidence": 0.98,
                                  "evidence": "Funkhaus Berlin"}]})
     assert parse_role_response(raw, event).roles[0].role == "unknown"
+
+
+def test_venue_with_club_suffix_needs_organizer_evidence():
+    event = EventRoleInput(2, "A night at Renate", "", 1, "Renate", (PromoterProfile(4, "Renate Club"),))
+    raw = json.dumps({"roles": [{"promoter_id": 4, "role": "organizer", "confidence": 0.98,
+                                 "evidence": "Renate Club"}]})
+    assert parse_role_response(raw, event).roles[0].role == "unknown"
+
+
+def test_different_name_containing_club_is_not_automatically_venue():
+    event = EventRoleInput(2, "Clubnight presents", "", 1, "Night", (PromoterProfile(4, "Clubnight"),))
+    raw = json.dumps({"roles": [{"promoter_id": 4, "role": "organizer", "confidence": 0.9,
+                                 "evidence": "Clubnight presents"}]})
+    assert parse_role_response(raw, event).roles[0].role == "organizer"

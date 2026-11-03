@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from typing import Literal, TypedDict
 
 
-CLASSIFIER_VERSION = "promoter-role-v7"
+CLASSIFIER_VERSION = "promoter-role-v8"
 NORMALIZATION_VERSION = "unicode-nfkc-alnum-v1"
 DESCRIPTION_LIMIT = 12000
 
@@ -102,11 +102,28 @@ def normalize_name(value: str) -> str:
     return "".join(c for c in unicodedata.normalize("NFKC", value).casefold() if c.isalnum())
 
 
+def venue_name_matches(profile: str, venue: str | None) -> bool:
+    """Match exact names and a separate Club prefix or suffix conservatively."""
+    if not venue:
+        return False
+
+    def variants(value: str) -> set[str]:
+        words = re.findall(r"[^\W_]+", unicodedata.normalize("NFKC", value).casefold())
+        result = {normalize_name(value)}
+        if len(words) > 1 and words[0] == "club":
+            result.add("".join(words[1:]))
+        if len(words) > 1 and words[-1] == "club":
+            result.add("".join(words[:-1]))
+        return result - {""}
+
+    return bool(variants(profile) & variants(venue))
+
+
 def classify_explicit_presenter(promoter: str, venue: str | None, title: str) -> RoleSignal:
     """Recognize a named presenter; leave ambiguous credits unresolved."""
     name = promoter.strip()
     normalized = normalize_name(name)
-    venue_match = bool(normalized and venue and normalized == normalize_name(venue))
+    venue_match = venue_name_matches(name, venue)
     if not name or not normalized:
         return RoleSignal("unknown", None, venue_match)
     # Require the exact name immediately before the presentation verb. This is a

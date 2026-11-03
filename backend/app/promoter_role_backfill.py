@@ -21,7 +21,7 @@ from openai import APIConnectionError, APITimeoutError, InternalServerError, Ope
 from app.promoter_role_llm import InvalidRoleResponse, OrganizerCandidate, ProposedRole, RoleResponse, classify_with_llm
 from app.event_tag_extraction import EventTagExtractionConfig
 from app.promoter_role_store import EventInputChanged, load_event_input, save_llm_roles
-from app.promoter_roles import CLASSIFIER_VERSION, EventRoleInput, classify_explicit_presenter, normalize_name
+from app.promoter_roles import CLASSIFIER_VERSION, EventRoleInput, classify_explicit_presenter, normalize_name, venue_name_matches
 from app.promoter_roles import role_input_hash, role_input_snapshot
 
 LOCK_KEY = 0x534750524F4C4553
@@ -48,7 +48,7 @@ def add_explicit_venue_candidate(event: EventRoleInput, response: RoleResponse) 
     if not event.venue_name:
         return response
     venue_key = normalize_name(event.venue_name)
-    if not venue_key or any(normalize_name(profile.name) == venue_key for profile in event.promoters):
+    if not venue_key or any(venue_name_matches(profile.name, event.venue_name) for profile in event.promoters):
         return response
     if any(normalize_name(candidate.name) == venue_key for candidate in response.candidates):
         return response
