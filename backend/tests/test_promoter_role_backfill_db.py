@@ -49,6 +49,8 @@ def database():
             connection.execute(audit_migration.read_text())
             shadow_migration = migration.parents[1] / "20261103040000_promoter_shadow_job_identity/migration.sql"
             connection.execute(shadow_migration.read_text())
+            revision_migration = migration.parents[1] / "20261103050000_promoter_role_revision/migration.sql"
+            connection.execute(revision_migration.read_text())
             connection.execute("INSERT INTO events VALUES (1, '8MM live', NULL, 1, 'ra1'), (2, 'Other live', NULL, NULL, 'ra2')")
             connection.execute("INSERT INTO venues VALUES (1, '8MM')")
             connection.execute("INSERT INTO promoters VALUES (1, '8MM', 'ra1'), (2, 'Other', 'ra2')")
@@ -392,6 +394,30 @@ def test_identity_cli_defaults_to_read_only(database):
                             env=env, capture_output=True, text=True, check=True)
     assert json.loads(result.stdout)["applied"] is False
     assert database.execute("SELECT count(*) FROM promoter_identity_member").fetchone() == (0,)
+
+
+def test_role_revision_tracks_relevant_changes_only_when_enabled(database):
+    def revision():
+        return database.execute("SELECT revision FROM promoter_role_runtime_state WHERE id = 1").fetchone()[0]
+
+    assert revision() == 0
+    database.execute("UPDATE events SET title = 'changed' WHERE id = 1")
+    assert revision() == 0
+    database.execute("UPDATE promoter_role_runtime_state SET enabled = true WHERE id = 1")
+    assert revision() == 1
+    database.execute("UPDATE events SET title = 'changed again' WHERE id = 1")
+    assert revision() == 2
+    database.execute("INSERT INTO promoter_identity DEFAULT VALUES")
+    database.execute("INSERT INTO promoter_identity_member (promoter_id,identity_id,status,reason,version) VALUES (1,1,'confirmed','reviewed','v1')")
+    assert revision() == 3
+    database.execute("DELETE FROM event_promoters WHERE event_id = 1")
+    assert revision() == 4
+    database.execute("UPDATE promoter_role_runtime_state SET enabled = false WHERE id = 1")
+    assert revision() == 5
+    database.execute("UPDATE promoters SET name = 'new' WHERE id = 1")
+    assert revision() == 5
+    database.execute("UPDATE promoter_role_runtime_state SET enabled = true WHERE id = 1")
+    assert revision() == 6
 
 
 def test_filtered_relation_is_scoped_and_preserves_ra_data(database, monkeypatch):

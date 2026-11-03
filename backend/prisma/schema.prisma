@@ -291,6 +291,14 @@ model PromoterRoleShadowResult {
   @@map("promoter_role_shadow_result")
 }
 
+model PromoterRoleRuntimeState {
+  id Int @id @db.SmallInt
+  enabled Boolean @default(false)
+  revision BigInt @default(0)
+  updatedAt DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  @@map("promoter_role_runtime_state")
+}
+
 model EventSourcePayload {
   id            BigInt   @id @default(autoincrement())
   eventId       BigInt   @unique @map("event_id")
