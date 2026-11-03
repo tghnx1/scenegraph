@@ -1,0 +1,6 @@
+{
+  "selection": "first 30 previously unclassified events with at least one RA promoter profile and event_date >= 2025-01-01, ordered by md5(ra_event_id || 'representative-20261103-v1') in the local production snapshot",
+  "selected_before_model_inference": true,
+  "ra_event_ids": ["2037168", "2223199", "2253560", "2290862", "2479239", "2235098", "2496794", "2253570", "2226976", "2088874", "2160588", "2433734", "2320326", "2330885", "2554289", "2203036", "2240225", "2539584", "2416042", "2481496", "2422574", "2350955", "2355609", "1999398", "2296954", "2257755", "2182791", "2062246", "2441038", "2400151"],
+  "note": "Selection is restricted to events with RA promoter profiles and excludes prior classifications; it is not representative of all database events. Label before classification."
+}
