@@ -295,8 +295,35 @@ model PromoterRoleRuntimeState {
   id Int @id @db.SmallInt
   enabled Boolean @default(false)
   revision BigInt @default(0)
+  qualityReviewId BigInt? @map("quality_review_id")
+  configHash String? @map("config_hash")
+  classifierVersion String? @map("classifier_version")
   updatedAt DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
   @@map("promoter_role_runtime_state")
+}
+
+model PromoterRoleQualityReview {
+  id BigInt @id @default(autoincrement())
+  configHash String @map("config_hash")
+  classifierVersion String @map("classifier_version")
+  manifestSha256 String @map("manifest_sha256")
+  truePositive Int @map("true_positive")
+  trueNegative Int @map("true_negative")
+  falsePositive Int @map("false_positive")
+  falseNegative Int @map("false_negative")
+  unknownCount Int @map("unknown_count")
+  representative Boolean
+  reviewer String
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  @@index([configHash, classifierVersion, createdAt])
+  @@map("promoter_role_quality_review")
+}
+
+model PromoterRoleQualityRevocation {
+  reviewId BigInt @id @map("review_id")
+  reason String
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  @@map("promoter_role_quality_revocation")
 }
 
 model EventSourcePayload {

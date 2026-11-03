@@ -22,6 +22,8 @@ from app.promoter_role_shadow import compare_recommendations
 from app.promoter_role_candidates import find_candidate_matches
 from app.promoter_role_worker import process_next
 from app.promoter_role_identity import confirm_profiles, unconfirm_profile
+from app.promoter_role_evaluation_db import EvaluatedCase, EvaluationReport, ReviewedCase, evaluate_current_cases, has_quality_review, record_quality_review, revoke_quality_review
+from app.promoter_role_evaluation import ReviewedRole, evaluate_roles
 from app.promoter_role_store import EventInputChanged
 
 
@@ -51,6 +53,10 @@ def database():
             connection.execute(shadow_migration.read_text())
             revision_migration = migration.parents[1] / "20261103050000_promoter_role_revision/migration.sql"
             connection.execute(revision_migration.read_text())
+            quality_migration = migration.parents[1] / "20261103060000_promoter_role_quality_gate/migration.sql"
+            connection.execute(quality_migration.read_text())
+            integrity_migration = migration.parents[1] / "20261103070000_promoter_role_gate_integrity/migration.sql"
+            connection.execute(integrity_migration.read_text())
             connection.execute("INSERT INTO events VALUES (1, '8MM live', NULL, 1, 'ra1'), (2, 'Other live', NULL, NULL, 'ra2')")
             connection.execute("INSERT INTO venues VALUES (1, '8MM')")
             connection.execute("INSERT INTO promoters VALUES (1, '8MM', 'ra1'), (2, 'Other', 'ra2')")
@@ -403,7 +409,13 @@ def test_role_revision_tracks_relevant_changes_only_when_enabled(database):
     assert revision() == 0
     database.execute("UPDATE events SET title = 'changed' WHERE id = 1")
     assert revision() == 0
-    database.execute("UPDATE promoter_role_runtime_state SET enabled = true WHERE id = 1")
+    review_id = database.execute("""
+        INSERT INTO promoter_role_quality_review (config_hash, classifier_version, manifest_sha256,
+          true_positive, true_negative, false_positive, false_negative, unknown_count, representative, reviewer)
+        VALUES ('config', %s, %s, 4, 1, 1, 1, 1, true, 'test reviewer') RETURNING id
+    """, (backfill.CLASSIFIER_VERSION, 'a' * 64)).fetchone()[0]
+    database.execute("""UPDATE promoter_role_runtime_state SET enabled = true, quality_review_id = %s,
+        config_hash = 'config', classifier_version = %s WHERE id = 1""", (review_id, backfill.CLASSIFIER_VERSION))
     assert revision() == 1
     database.execute("UPDATE events SET title = 'changed again' WHERE id = 1")
     assert revision() == 2
@@ -418,6 +430,84 @@ def test_role_revision_tracks_relevant_changes_only_when_enabled(database):
     assert revision() == 5
     database.execute("UPDATE promoter_role_runtime_state SET enabled = true WHERE id = 1")
     assert revision() == 6
+
+
+def test_runtime_cannot_be_enabled_without_matching_quality_review(database):
+    with pytest.raises(psycopg.errors.CheckViolation):
+        with database.transaction():
+            database.execute("UPDATE promoter_role_runtime_state SET enabled = true WHERE id = 1")
+    assert database.execute("SELECT enabled FROM promoter_role_runtime_state WHERE id = 1").fetchone() == (False,)
+
+
+def test_runtime_rejects_review_for_different_configuration(database):
+    review = database.execute("""INSERT INTO promoter_role_quality_review (config_hash, classifier_version,
+        manifest_sha256, true_positive, true_negative, false_positive, false_negative, unknown_count,
+        representative, reviewer) VALUES ('old', %s, %s, 4, 1, 1, 1, 0, true, 'reviewer') RETURNING id""",
+        (backfill.CLASSIFIER_VERSION, 'a' * 64)).fetchone()[0]
+    with pytest.raises(psycopg.errors.CheckViolation):
+        with database.transaction():
+            database.execute("""UPDATE promoter_role_runtime_state SET enabled = true,
+              quality_review_id = %s, config_hash = 'new', classifier_version = %s WHERE id = 1""",
+              (review, backfill.CLASSIFIER_VERSION))
+    assert database.execute("SELECT enabled FROM promoter_role_runtime_state WHERE id = 1").fetchone() == (False,)
+
+
+def test_database_rejects_quality_review_below_threshold(database):
+    with pytest.raises(psycopg.errors.CheckViolation):
+        with database.transaction():
+            database.execute("""INSERT INTO promoter_role_quality_review (config_hash, classifier_version,
+              manifest_sha256, true_positive, true_negative, false_positive, false_negative, unknown_count,
+              representative, reviewer) VALUES ('config', 'v', %s, 1, 1, 1, 0, 0, true, 'reviewer')""", ('a' * 64,))
+
+
+def test_review_record_requires_pass_and_is_bound_to_configuration(database):
+    quality = evaluate_roles(tuple([ReviewedRole(True, "organizer")] * 4 + [ReviewedRole(True, "unknown"), ReviewedRole(False, "organizer")]))
+    assert quality.passes
+    incomplete = EvaluationReport((), quality, 1, False)
+    with pytest.raises(ValueError):
+        record_quality_review(database, incomplete, config_hash="config", manifest_sha256='a' * 64, reviewer="reviewer")
+    assert not has_quality_review(database, "config")
+    cases = tuple([EvaluatedCase(str(i), str(i), True, "organizer", True) for i in range(4)] + [
+        EvaluatedCase("4", "4", True, "unknown", True),
+        EvaluatedCase("5", "5", False, "organizer", True),
+    ])
+    complete = EvaluationReport(cases, quality, 0, True)
+    record_quality_review(database, complete, config_hash="config", manifest_sha256='a' * 64, reviewer="reviewer")
+    assert has_quality_review(database, "config")
+    assert not has_quality_review(database, "different-config")
+
+
+def test_recorded_review_and_runtime_singleton_cannot_be_rewritten(database):
+    database.execute("""INSERT INTO promoter_role_quality_review (config_hash, classifier_version,
+        manifest_sha256, true_positive, true_negative, false_positive, false_negative, unknown_count,
+        representative, reviewer) VALUES ('config', 'v', %s, 4, 1, 1, 1, 0, true, 'reviewer')""", ('a' * 64,))
+    with pytest.raises(psycopg.errors.CheckViolation):
+        with database.transaction():
+            database.execute("UPDATE promoter_role_quality_review SET config_hash = 'changed'")
+    with pytest.raises(psycopg.errors.CheckViolation):
+        with database.transaction():
+            database.execute("DELETE FROM promoter_role_quality_review")
+    with pytest.raises(psycopg.errors.CheckViolation):
+        with database.transaction():
+            database.execute("DELETE FROM promoter_role_runtime_state")
+
+
+def test_revocation_requires_disabling_active_mode_and_blocks_reenable(database):
+    review = database.execute("""INSERT INTO promoter_role_quality_review (config_hash, classifier_version,
+        manifest_sha256, true_positive, true_negative, false_positive, false_negative, unknown_count,
+        representative, reviewer) VALUES ('config', %s, %s, 4, 1, 1, 1, 0, true, 'reviewer') RETURNING id""",
+        (backfill.CLASSIFIER_VERSION, 'a' * 64)).fetchone()[0]
+    database.execute("""UPDATE promoter_role_runtime_state SET enabled = true, quality_review_id = %s,
+        config_hash = 'config', classifier_version = %s WHERE id = 1""", (review, backfill.CLASSIFIER_VERSION))
+    with pytest.raises(psycopg.errors.CheckViolation):
+        with database.transaction():
+            revoke_quality_review(database, review, "review withdrawn")
+    database.execute("UPDATE promoter_role_runtime_state SET enabled = false WHERE id = 1")
+    revoke_quality_review(database, review, "review withdrawn")
+    assert not has_quality_review(database, "config")
+    with pytest.raises(psycopg.errors.CheckViolation):
+        with database.transaction():
+            database.execute("UPDATE promoter_role_runtime_state SET enabled = true WHERE id = 1")
 
 
 def test_filtered_relation_is_scoped_and_preserves_ra_data(database, monkeypatch):
@@ -518,6 +608,33 @@ def test_candidate_matches_remain_proposals_and_preserve_ra_ids(database):
     assert [(item.promoter_id, item.ra_promoter_id) for item in matches] == [(1, 'ra1'), (3, 'ra3')]
     assert all(item.confirmed_identity_id is None for item in matches)
     assert database.execute("SELECT count(*) FROM event_organizer_candidate").fetchone() == (0,)
+
+
+def test_evaluation_never_passes_with_unavailable_or_nonrepresentative_cases(database, monkeypatch):
+    monkeypatch.setattr(backfill, "classify_with_llm", lambda event: RoleResponse((ProposedRole(1, "organizer", 1, "8MM"),), ()))
+    run_id = backfill.create_run(database, (1,), "config")
+    database.commit()
+    assert backfill.process_run(database, run_id, "config") == "succeeded"
+    cases = (ReviewedCase("ra1", "ra1", True), ReviewedCase("ra2", "ra2", False))
+    report = evaluate_current_cases(database, cases, config_hash="config", representative=True)
+    assert report.unavailable == 1
+    assert not report.release_ready
+    assert report.cases[1].predicted_role == "unknown"
+    assert not evaluate_current_cases(database, cases, config_hash="config", representative=False).release_ready
+
+
+def test_evaluation_cli_cannot_record_provisional_review(database, tmp_path):
+    schema = database.execute("SELECT current_schema()").fetchone()[0]
+    database.commit()
+    manifest = tmp_path / "holdout.json"
+    manifest.write_text(json.dumps({"version": "draft", "release_representative": False, "cases": []}))
+    env = os.environ.copy()
+    env.update(PGOPTIONS=f"-c search_path={schema}", EXTRACTION_PROVIDER="kimi_code", KIMI_EXTRACTION_MODEL="test",
+               EVENT_TAG_EXTRACTION_MAX_TEXT_CHARS="7000", EVENT_TAG_EXTRACTION_MAX_TAGS="12", EVENT_TAG_EXTRACTION_CHUNK_CHARS="800")
+    result = subprocess.run([sys.executable, "-m", "app.promoter_role_evaluation_cli", "--manifest", str(manifest),
+                             "--record-review", "--reviewer", "test"], env=env, capture_output=True, text=True)
+    assert result.returncode != 0
+    assert database.execute("SELECT count(*) FROM promoter_role_quality_review").fetchone() == (0,)
 
 
 def test_role_readers_accept_application_dict_row_connections(database):
