@@ -106,6 +106,7 @@ services:
     environment:
       DATABASE_URL: ${DATABASE_URL}
       PROMOTER_ROLE_WORKER_ENABLED: ${PROMOTER_ROLE_WORKER_ENABLED:-false}
+      PROMOTER_ROLE_WORKER_POLL_SECONDS: ${PROMOTER_ROLE_WORKER_POLL_SECONDS:-30}
     depends_on:
       db:
         condition: service_healthy
