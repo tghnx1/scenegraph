@@ -499,6 +499,32 @@ def test_recommendation_cache_does_not_reuse_old_role_revision(database):
         database.row_factory = psycopg.rows.tuple_row
 
 
+def test_allowlisted_recommendations_use_only_confirmed_organizers(database, monkeypatch):
+    from app.recommendations import role_aware
+
+    database.execute("INSERT INTO event_promoters VALUES (1, 2)")
+    database.commit()
+    monkeypatch.setattr(backfill, "classify_with_llm", lambda event: RoleResponse((
+        ProposedRole(1, "organizer", 1, "8MM"), ProposedRole(2, "venue", 1, "Other")), ()))
+    run_id = backfill.create_run(database, (1,), "config")
+    database.commit()
+    assert backfill.process_run(database, run_id, "config") == "succeeded"
+    review = database.execute("""INSERT INTO promoter_role_quality_review (config_hash, classifier_version,
+        manifest_sha256, true_positive, true_negative, false_positive, false_negative, unknown_count,
+        representative, reviewer) VALUES ('config', %s, %s, 4, 1, 1, 1, 0, true, 'reviewer') RETURNING id""",
+        (backfill.CLASSIFIER_VERSION, 'a' * 64)).fetchone()[0]
+    database.execute("INSERT INTO promoter_role_allowlist (user_id) VALUES (42)")
+    database.execute("""UPDATE promoter_role_runtime_state SET enabled = true, quality_review_id = %s,
+        config_hash = 'config', classifier_version = %s WHERE id = 1""", (review, backfill.CLASSIFIER_VERSION))
+    monkeypatch.setattr(role_aware, "resolve_runtime_context", lambda connection, *, user_id, lock=False:
+                        resolve_runtime_context(connection, user_id=user_id, lock=lock, current_config_hash="config"))
+    monkeypatch.setattr(role_aware, "build_artist_promoter_recommendation_response",
+                        lambda connection, **kwargs: [row[0] for row in connection.execute(
+                            "SELECT promoter_id FROM event_promoters WHERE event_id = 1 ORDER BY promoter_id")])
+    assert role_aware.build_role_aware_recommendations(database, artist_id=1, limit=10, debug=False, user_id=42) == [1]
+    assert role_aware.build_role_aware_recommendations(database, artist_id=1, limit=10, debug=False, user_id=99) == [1, 2]
+
+
 def test_runtime_cannot_be_enabled_without_matching_quality_review(database):
     with pytest.raises(psycopg.errors.CheckViolation):
         with database.transaction():
