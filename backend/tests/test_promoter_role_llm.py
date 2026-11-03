@@ -206,6 +206,13 @@ def test_venue_with_club_suffix_needs_organizer_evidence():
     assert parse_role_response(raw, event).roles[0].role == "unknown"
 
 
+def test_venue_with_club_suffix_keeps_explicit_organizer_credit():
+    event = EventRoleInput(2, "Renate Club presents", "", 1, "Renate", (PromoterProfile(4, "Renate Club"),))
+    raw = json.dumps({"roles": [{"promoter_id": 4, "role": "both", "confidence": 0.9,
+                                 "evidence": "Renate Club presents"}]})
+    assert parse_role_response(raw, event).roles[0].role == "both"
+
+
 def test_different_name_containing_club_is_not_automatically_venue():
     event = EventRoleInput(2, "Clubnight presents", "", 1, "Night", (PromoterProfile(4, "Clubnight"),))
     raw = json.dumps({"roles": [{"promoter_id": 4, "role": "organizer", "confidence": 0.9,
