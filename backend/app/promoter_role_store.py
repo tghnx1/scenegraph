@@ -6,6 +6,7 @@ from psycopg import Connection
 from psycopg.rows import tuple_row
 
 from app.promoter_role_llm import RoleResponse
+from app.promoter_role_candidates import find_candidate_matches
 from app.promoter_roles import CLASSIFIER_VERSION, EventRoleInput, PromoterProfile, normalize_name, role_input_hash
 
 
@@ -69,10 +70,12 @@ def save_llm_roles(connection: Connection, source: EventRoleInput, response: Rol
             normalized = normalize_name(candidate.name)
             if not normalized:
                 continue
+            matches = find_candidate_matches(connection, candidate.name)
+            proposed_id = matches[0].promoter_id if len(matches) == 1 else None
             cursor.execute("""
                 INSERT INTO event_organizer_candidate
-                    (event_id, name, normalized_name, evidence, confidence, classifier_version, input_hash)
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    (event_id, name, normalized_name, evidence, confidence, classifier_version, input_hash, promoter_id)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (event_id, normalized_name, input_hash, classifier_version) DO NOTHING
             """, (source.event_id, candidate.name, normalized, candidate.evidence,
-                  candidate.confidence, CLASSIFIER_VERSION, source_hash))
+                  candidate.confidence, CLASSIFIER_VERSION, source_hash, proposed_id))

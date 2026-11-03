@@ -8,7 +8,7 @@ import psycopg
 import pytest
 from psycopg import sql
 
-from app.promoter_role_llm import ProposedRole, RoleResponse
+from app.promoter_role_llm import OrganizerCandidate, ProposedRole, RoleResponse
 from app.promoter_role_store import EventInputChanged, load_event_input, save_llm_roles
 
 @pytest.fixture
@@ -23,7 +23,7 @@ def role_db():
             cursor.execute(sql.SQL("CREATE SCHEMA {} ").format(sql.Identifier(schema)))
             cursor.execute(sql.SQL("SET LOCAL search_path TO {} ").format(sql.Identifier(schema)))
             cursor.execute("CREATE TABLE events (id BIGINT PRIMARY KEY, title TEXT, description_text TEXT, venue_id BIGINT)")
-            cursor.execute("CREATE TABLE promoters (id BIGINT PRIMARY KEY, name TEXT)")
+            cursor.execute("CREATE TABLE promoters (id BIGINT PRIMARY KEY, name TEXT, ra_promoter_id TEXT)")
             cursor.execute("CREATE TABLE venues (id BIGINT PRIMARY KEY, name TEXT)")
             cursor.execute("CREATE TABLE event_promoters (event_id BIGINT, promoter_id BIGINT)")
             cursor.execute(migration.read_text())
@@ -31,7 +31,7 @@ def role_db():
             cursor.execute(usage_migration.read_text())
             cursor.execute("INSERT INTO events VALUES (1, '8MM presents', NULL, 1)")
             cursor.execute("INSERT INTO venues VALUES (1, '8MM')")
-            cursor.execute("INSERT INTO promoters VALUES (1, '8MM')")
+            cursor.execute("INSERT INTO promoters VALUES (1, '8MM', 'ra1')")
             cursor.execute("INSERT INTO event_promoters VALUES (1, 1)")
             yield cursor
         connection.rollback()
@@ -71,3 +71,23 @@ def test_changed_event_is_not_written(role_db):
         save_llm_roles(role_db.connection, source, RoleResponse((ProposedRole(1, "both", 1, "8MM"),), ()))
     role_db.execute("SELECT count(*) FROM promoter_event_role")
     assert role_db.fetchone() == (0,)
+
+
+def test_text_candidate_suggests_existing_profile_without_confirming(role_db):
+    role_db.execute("DELETE FROM event_promoters WHERE event_id = 1")
+    source = load_event_input(role_db.connection, 1)
+    response = RoleResponse((), (OrganizerCandidate("8MM", 1, "8MM presents"),))
+    save_llm_roles(role_db.connection, source, response)
+    role_db.execute("SELECT name, status, promoter_id FROM event_organizer_candidate")
+    assert role_db.fetchone() == ("8MM", "pending", 1)
+    role_db.execute("SELECT count(*) FROM event_promoters")
+    assert role_db.fetchone() == (0,)
+
+
+def test_ambiguous_text_candidate_does_not_choose_profile(role_db):
+    role_db.execute("DELETE FROM event_promoters WHERE event_id = 1")
+    role_db.execute("INSERT INTO promoters VALUES (2, '8-MM', 'ra2')")
+    source = load_event_input(role_db.connection, 1)
+    save_llm_roles(role_db.connection, source, RoleResponse((), (OrganizerCandidate("8MM", 1, "8MM presents"),)))
+    role_db.execute("SELECT status, promoter_id FROM event_organizer_candidate")
+    assert role_db.fetchone() == ("pending", None)
