@@ -72,6 +72,7 @@ def classify_with_llm(event: EventRoleInput) -> RoleResponse:
             "Evidence must be copied character-for-character from the input without edits or ellipses. "
             + ("The previous evidence was not an exact input substring. " if previous_reason == "evidence is not present in input" else "")
             + ("The previous response had the wrong JSON object or array structure. " if previous_reason == "invalid response shape" else "")
+            + ("A previous candidate name was not contained in its evidence. Omit any candidate without an exact supporting quote; an empty candidates array is valid. " if previous_reason == "candidate name not supported by evidence" else "")
             + "When unsure use unknown with the exact promoter name as evidence."
         )
         response = create_chat_completion(client, prompt=prompt + retry_hint, config=config, instructions=instructions,

@@ -144,6 +144,25 @@ def test_retry_explains_safe_validation_reason(monkeypatch):
     assert "made-up text" not in prompts[1]
 
 
+def test_retry_can_omit_candidate_without_supported_name(monkeypatch):
+    from app import promoter_role_llm
+
+    role = {"promoter_id": 4, "role": "both", "confidence": 1, "evidence": "8MM present"}
+    invalid = {"roles": [role], "candidates": [{"name": "Other", "confidence": 1, "evidence": "8MM present"}]}
+    outputs = iter([json.dumps(invalid), json.dumps({"roles": [role], "candidates": []})])
+    prompts = []
+    monkeypatch.setattr(promoter_role_llm.EventTagExtractionConfig, "from_env", lambda: object())
+    monkeypatch.setattr(promoter_role_llm, "create_extraction_client", lambda config: config)
+
+    def complete(client, **kwargs):
+        prompts.append(kwargs["prompt"])
+        return next(outputs)
+
+    monkeypatch.setattr(promoter_role_llm, "create_chat_completion", complete)
+    assert classify_with_llm(EVENT).candidates == ()
+    assert "Omit any candidate" in prompts[1]
+
+
 def test_bad_role_evidence_after_retry_becomes_unknown(monkeypatch):
     from app import promoter_role_llm
 
