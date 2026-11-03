@@ -213,6 +213,14 @@ def test_venue_with_club_suffix_keeps_explicit_organizer_credit():
     assert parse_role_response(raw, event).roles[0].role == "both"
 
 
+def test_venue_organizer_credit_with_hosted_by_is_retained():
+    event = EventRoleInput(2, "Summer afternoon", "hosted by OYE Records", 1, "OYE Records",
+                           (PromoterProfile(4, "OYE Records"),))
+    raw = json.dumps({"roles": [{"promoter_id": 4, "role": "both", "confidence": 0.9,
+                                 "evidence": "hosted by OYE Records"}]})
+    assert parse_role_response(raw, event).roles[0].role == "both"
+
+
 def test_different_name_containing_club_is_not_automatically_venue():
     event = EventRoleInput(2, "Clubnight presents", "", 1, "Night", (PromoterProfile(4, "Clubnight"),))
     raw = json.dumps({"roles": [{"promoter_id": 4, "role": "organizer", "confidence": 0.9,

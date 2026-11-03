@@ -143,7 +143,11 @@ def parse_role_response(raw: str, event: EventRoleInput, *, allow_unknown_eviden
             # A location mention alone does not prove that the venue co-organized.
             credit = re.compile(r"(?<!\w)" + re.escape(name) +
                                 r"\s+(?:presents?|invites?|hosts?|organizes?|organises?|curates?)\b", re.IGNORECASE)
-            if not credit.search(evidence):
+            reverse_credit = re.compile(
+                r"\b(?:presented|invited|hosted|organized|organised|curated)\s+by\s+"
+                + re.escape(name) + r"(?!\w)", re.IGNORECASE,
+            )
+            if not credit.search(evidence) and not reverse_credit.search(evidence):
                 role = "unknown"
         roles.append(ProposedRole(promoter_id, role, confidence, evidence))
     if seen != ids:
