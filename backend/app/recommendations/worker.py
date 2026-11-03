@@ -30,18 +30,23 @@ logger = logging.getLogger(__name__)
 RECONNECT_DELAY_SECONDS = 2.0
 
 
+def _shadow_allowed(user_id: int) -> bool:
+    if os.environ.get("PROMOTER_ROLE_SHADOW_ENABLED", "").strip().lower() != "true":
+        return False
+    values = (value.strip() for value in os.environ.get("PROMOTER_ROLE_SHADOW_USER_IDS", "").split(","))
+    allowed = {int(value) for value in values if value.isascii() and value.isdigit() and len(value) <= 19}
+    return user_id in allowed
+
+
 def _run_optional_shadow(connection: psycopg.Connection, job: dict[str, Any], params: RecommendationJobParams,
                          baseline: PromoterRecommendationResponse) -> None:
     """Compare only explicitly allowed users; never replace or fail the primary result."""
-    if os.environ.get("PROMOTER_ROLE_SHADOW_ENABLED", "").strip().lower() != "true":
-        return
-    values = (value.strip() for value in os.environ.get("PROMOTER_ROLE_SHADOW_USER_IDS", "").split(","))
-    allowed = {int(value) for value in values if value.isascii() and value.isdigit() and len(value) <= 19}
     user_id = int(job["user_id"])
-    if user_id not in allowed:
+    if not _shadow_allowed(user_id):
         return
     try:
         with connection.transaction():
+            connection.execute("SET LOCAL statement_timeout = '30s'")
             config = EventTagExtractionConfig.from_env()
             current_hash = extraction_config_hash(config)
             comparison = compare_recommendations(
@@ -63,6 +68,7 @@ def _run_job(job: dict[str, Any]) -> None:
     job_id = str(job["id"])
     try:
         job_type = str(job["job_type"])
+        shadow_input = None
         with get_connection() as connection:
             if job_type == ARTIST_PROMOTERS_JOB_TYPE:
                 params = RecommendationJobParams.model_validate(job["params_json"])
@@ -74,7 +80,7 @@ def _run_job(job: dict[str, Any]) -> None:
                     user_id=int(job["user_id"]),
                 )
                 result_payload = result.model_dump(mode="json", exclude_none=True)
-                _run_optional_shadow(connection, job, params, result)
+                shadow_input = (params, result)
             elif job_type == ARTIST_BIO_REFRESH_JOB_TYPE:
                 result_payload = refresh_artist_derived_data(
                     connection,
@@ -95,6 +101,13 @@ def _run_job(job: dict[str, Any]) -> None:
                 result=result_payload,
             )
         logger.info("Recommendation job %s completed", job_id)
+        if shadow_input is not None and _shadow_allowed(int(job["user_id"])):
+            try:
+                with get_connection() as connection:
+                    _run_optional_shadow(connection, job, *shadow_input)
+            except Exception as error:
+                # The primary result is already committed; never mark it failed for shadow errors.
+                logger.warning("Promoter shadow connection failed: %s", type(error).__name__)
     except Exception as error:
         logger.exception("Recommendation job %s failed", job_id)
         try:

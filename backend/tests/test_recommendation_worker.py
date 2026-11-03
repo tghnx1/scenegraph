@@ -71,3 +71,26 @@ def test_run_job_dispatches_artist_bio_refresh_jobs(monkeypatch):
         ("enqueue", (1, 2178)),
         ("complete", "job-1"),
     ]
+
+
+def test_shadow_failure_cannot_reverse_completed_primary_job(monkeypatch):
+    calls = []
+
+    class Result:
+        def model_dump(self, **kwargs):
+            return {"recommendations": []}
+
+    monkeypatch.setattr(recommendation_worker, "get_connection", lambda: nullcontext(object()))
+    monkeypatch.setattr(recommendation_worker, "build_artist_promoter_recommendation_response", lambda *a, **kw: Result())
+    monkeypatch.setattr(recommendation_worker, "complete_recommendation_job", lambda connection, **kwargs: calls.append("complete"))
+    monkeypatch.setattr(recommendation_worker, "fail_recommendation_job", lambda connection, **kwargs: calls.append("failed"))
+    monkeypatch.setattr(recommendation_worker, "_shadow_allowed", lambda user_id: True)
+
+    def broken_shadow(*args):
+        calls.append("shadow")
+        raise RuntimeError("shadow failure")
+
+    monkeypatch.setattr(recommendation_worker, "_run_optional_shadow", broken_shadow)
+    recommendation_worker._run_job({"id": "job-1", "job_type": "artist_promoters", "artist_id": 1,
+                                    "user_id": 1, "params_json": {"limit": 10, "debug": False}})
+    assert calls == ["complete", "shadow"]
