@@ -1,0 +1,10 @@
+{
+  "version": "broad-venue-final-20261103-v1",
+  "frozen_before_model_evaluation": true,
+  "release_representative": false,
+  "note": "Two previously selected and unclassified event-profile links reviewed under the venue exclusion policy.",
+  "cases": [
+    {"ra_event_id": "2296954", "ra_promoter_id": "9094", "expected_organizer": false, "basis": "Lokschuppen is the venue; description identifies Chantal as organizer and gives no organizer credit to the venue.", "source": "https://ra.co/events/2296954"},
+    {"ra_event_id": "2416042", "ra_promoter_id": "166006", "expected_organizer": false, "basis": "The promoter profile matches the venue; the event description provides no explicit organizer credit for the venue.", "source": "https://ra.co/events/2416042"}
+  ]
+}
