@@ -11,7 +11,7 @@ import psycopg
 from app.event_tag_extraction import EventTagExtractionConfig
 from app.promoter_role_backfill import MAX_EVENTS, config_hash, create_run, process_run
 from app.promoter_role_store import load_event_input
-from app.promoter_roles import DESCRIPTION_LIMIT, role_input_hash
+from app.promoter_roles import CLASSIFIER_VERSION, DESCRIPTION_LIMIT, role_input_hash
 
 
 def main() -> int:
@@ -19,10 +19,11 @@ def main() -> int:
     scope = parser.add_mutually_exclusive_group(required=True)
     scope.add_argument("--event-id", type=int, action="append", help="Internal event ID; repeat for each event")
     scope.add_argument("--resume-run", type=int)
+    scope.add_argument("--next-run", action="store_true", help="Process the oldest queued or interrupted run")
     parser.add_argument("--apply", action="store_true", help="Persist and process a bounded run")
     args = parser.parse_args()
-    if args.resume_run is not None and not args.apply:
-        parser.error("--resume-run requires --apply")
+    if (args.resume_run is not None or args.next_run) and not args.apply:
+        parser.error("--resume-run and --next-run require --apply")
     if args.event_id and (len(args.event_id) > MAX_EVENTS or len(set(args.event_id)) != len(args.event_id)):
         parser.error("provide at most 1000 unique event IDs")
     with psycopg.connect(os.environ["DATABASE_URL"]) as connection:
@@ -41,7 +42,17 @@ def main() -> int:
         config = EventTagExtractionConfig.from_env()
         current_hash = config_hash(config.provider, config.model, config.reasoning_effort)
         run_id = args.resume_run
-        if run_id is None:
+        if args.next_run:
+            row = connection.execute("""
+                SELECT id FROM promoter_role_backfill_run WHERE status IN ('queued', 'running')
+                  AND classifier_version = %s AND config_hash = %s
+                ORDER BY CASE WHEN status = 'running' THEN 0 ELSE 1 END, id LIMIT 1
+            """, (CLASSIFIER_VERSION, current_hash)).fetchone()
+            if row is None:
+                print("no queued run")
+                return 0
+            run_id = int(row[0])
+        elif run_id is None:
             run_id = create_run(connection, tuple(args.event_id), current_hash)
             connection.commit()
         print(f"run_id={run_id}", flush=True)

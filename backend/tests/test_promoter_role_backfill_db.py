@@ -15,6 +15,7 @@ from psycopg import sql
 from app import promoter_role_backfill as backfill
 from app.promoter_role_llm import ProposedRole, RoleResponse
 from app.promoter_role_eligibility import eligible_promoters
+from app.promoter_role_queue import enqueue_changed_events, enqueue_imported_ra_events
 from app.promoter_role_store import EventInputChanged
 
 
@@ -29,12 +30,12 @@ def database():
         try:
             connection.execute(sql.SQL("CREATE SCHEMA {} ").format(sql.Identifier(schema)))
             connection.execute(sql.SQL("SET search_path TO {} ").format(sql.Identifier(schema)))
-            connection.execute("CREATE TABLE events (id BIGINT PRIMARY KEY, title TEXT, description_text TEXT, venue_id BIGINT)")
+            connection.execute("CREATE TABLE events (id BIGINT PRIMARY KEY, title TEXT, description_text TEXT, venue_id BIGINT, ra_event_id TEXT)")
             connection.execute("CREATE TABLE promoters (id BIGINT PRIMARY KEY, name TEXT)")
             connection.execute("CREATE TABLE venues (id BIGINT PRIMARY KEY, name TEXT)")
             connection.execute("CREATE TABLE event_promoters (event_id BIGINT, promoter_id BIGINT)")
             connection.execute(migration.read_text())
-            connection.execute("INSERT INTO events VALUES (1, '8MM live', NULL, 1), (2, 'Other live', NULL, NULL)")
+            connection.execute("INSERT INTO events VALUES (1, '8MM live', NULL, 1, 'ra1'), (2, 'Other live', NULL, NULL, 'ra2')")
             connection.execute("INSERT INTO venues VALUES (1, '8MM')")
             connection.execute("INSERT INTO promoters VALUES (1, '8MM'), (2, 'Other')")
             connection.execute("INSERT INTO event_promoters VALUES (1, 1), (2, 2)")
@@ -204,3 +205,29 @@ def test_unknown_and_proposed_aliases_do_not_create_or_merge_credits(database, m
     assert backfill.process_run(database, run_id, "config") == "succeeded"
     matches = eligible_promoters(database, 1, "config")
     assert [(m.canonical_id, m.source_ids) for m in matches] == [(1, (1,))]
+
+
+def test_enqueue_avoids_duplicate_and_current_events(database, monkeypatch):
+    monkeypatch.setattr(backfill, "classify_with_llm", lambda event: RoleResponse((ProposedRole(1, "organizer", 1, "8MM"),), ()))
+    first = enqueue_changed_events(database, (1, 1), "config")
+    assert len(first) == 1
+    assert enqueue_changed_events(database, (1,), "config") == ()
+    database.commit()
+    assert backfill.process_run(database, first[0], "config") == "succeeded"
+    assert enqueue_changed_events(database, (1,), "config") == ()
+    database.execute("UPDATE events SET title = 'updated' WHERE id = 1")
+    assert len(enqueue_changed_events(database, (1,), "config")) == 1
+
+
+def test_import_enqueue_uses_ra_ids_and_ingestion_config(database, monkeypatch):
+    from types import SimpleNamespace
+    from app import promoter_role_queue
+
+    schema = database.execute("SELECT current_schema()").fetchone()[0]
+    database.commit()
+    monkeypatch.setenv("PGOPTIONS", f"-c search_path={schema}")
+    monkeypatch.setattr(promoter_role_queue.EventTagExtractionConfig, "from_env", lambda: SimpleNamespace(provider="kimi_code", model="k3", reasoning_effort="low"))
+    runs = enqueue_imported_ra_events(os.environ["DATABASE_URL"], ("ra1", "ra2"))
+    assert len(runs) == 1
+    assert database.execute("SELECT event_id FROM promoter_role_backfill_item ORDER BY event_id").fetchall() == [(1,), (2,)]
+    assert enqueue_imported_ra_events(os.environ["DATABASE_URL"], ("ra1", "ra2")) == ()
