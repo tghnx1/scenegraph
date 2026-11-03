@@ -259,6 +259,18 @@ model PromoterRoleBackfillItem {
   @@map("promoter_role_backfill_item")
 }
 
+model PromoterRoleShadowResult {
+  id BigInt @id @default(autoincrement())
+  artistId BigInt @map("artist_id")
+  userId BigInt @map("user_id")
+  configHash String @map("config_hash")
+  classifierVersion String @map("classifier_version")
+  baseline Json
+  shadow Json
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  @@map("promoter_role_shadow_result")
+}
+
 model EventSourcePayload {
   id            BigInt   @id @default(autoincrement())
   eventId       BigInt   @unique @map("event_id")

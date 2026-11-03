@@ -17,6 +17,7 @@ from app.promoter_role_llm import ProposedRole, RoleResponse
 from app.promoter_role_eligibility import eligible_promoters
 from app.promoter_role_queue import enqueue_changed_events, enqueue_imported_ra_events
 from app.promoter_role_relation import role_filtered_relation
+from app.promoter_role_shadow import compare_recommendations
 from app.promoter_role_store import EventInputChanged
 
 
@@ -266,3 +267,24 @@ def test_filtered_relation_rolls_back_when_query_fails(database):
         with role_filtered_relation(database, "config"):
             database.execute("SELECT 1 / 0")
     assert database.execute("SELECT count(*) FROM event_promoters").fetchone() == (2,)
+
+
+def test_shadow_compares_real_relation_without_changing_base(database, monkeypatch):
+    from types import SimpleNamespace
+
+    monkeypatch.setattr(backfill, "classify_with_llm", lambda event: RoleResponse((ProposedRole(1, "organizer", 1, "8MM"),), ()))
+    run_id = backfill.create_run(database, (1,), "config")
+    database.commit()
+    assert backfill.process_run(database, run_id, "config") == "succeeded"
+
+    def builder(connection, **kwargs):
+        ids = connection.execute("SELECT promoter_id FROM event_promoters ORDER BY promoter_id").fetchall()
+        return SimpleNamespace(recommendations=[SimpleNamespace(id=row[0]) for row in ids])
+
+    result = compare_recommendations(database, artist_id=1, user_id=1, limit=10,
+                                     current_config_hash="config", builder=builder)
+    assert result.baseline_ids == (1, 2)
+    assert result.shadow_ids == (1,)
+    assert result.removed_ids == (2,)
+    assert database.execute("SELECT count(*) FROM event_promoters").fetchone() == (2,)
+    assert database.execute("SELECT count(*) FROM promoter_role_shadow_result").fetchone() == (0,)

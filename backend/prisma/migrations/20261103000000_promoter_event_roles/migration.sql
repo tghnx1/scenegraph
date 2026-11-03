@@ -110,3 +110,14 @@ CREATE TABLE promoter_role_backfill_item (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     PRIMARY KEY (run_id, event_id)
 );
+
+CREATE TABLE promoter_role_shadow_result (
+    id BIGSERIAL PRIMARY KEY,
+    artist_id BIGINT NOT NULL,
+    user_id BIGINT NOT NULL,
+    config_hash TEXT NOT NULL,
+    classifier_version TEXT NOT NULL,
+    baseline JSONB NOT NULL,
+    shadow JSONB NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
