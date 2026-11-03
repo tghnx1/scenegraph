@@ -105,3 +105,35 @@ def test_usage_includes_invalid_response_retry(monkeypatch):
     monkeypatch.setattr(promoter_role_llm, "create_chat_completion", complete)
     result = classify_with_llm(EVENT)
     assert (result.input_tokens, result.output_tokens) == (20, 10)
+
+
+def test_usage_is_retained_when_both_responses_fail_validation(monkeypatch):
+    from app import promoter_role_llm
+
+    monkeypatch.setattr(promoter_role_llm.EventTagExtractionConfig, "from_env", lambda: object())
+    monkeypatch.setattr(promoter_role_llm, "create_extraction_client", lambda received: received)
+
+    def complete(client, **kwargs):
+        kwargs["usage_callback"](10, 5)
+        return "invalid"
+
+    monkeypatch.setattr(promoter_role_llm, "create_chat_completion", complete)
+    with pytest.raises(InvalidRoleResponse) as error:
+        classify_with_llm(EVENT)
+    assert (error.value.input_tokens, error.value.output_tokens) == (20, 10)
+
+
+def test_venue_mention_does_not_prove_it_coorganized():
+    event = EventRoleInput(2, "OMANA at Funkhaus Berlin", "OMANA transform Funkhaus Berlin", 1,
+                           "Funkhaus Berlin", (PromoterProfile(4, "Funkhaus Berlin"),))
+    raw = json.dumps({"roles": [{"promoter_id": 4, "role": "both", "confidence": 0.98,
+                                 "evidence": "OMANA transform Funkhaus Berlin"}]})
+    assert parse_role_response(raw, event).roles[0].role == "unknown"
+
+
+def test_explicit_invitation_can_support_venue_coorganizer():
+    event = EventRoleInput(2, "Heaven and Studio 1111 invite", "", 1, "Studio 1111",
+                           (PromoterProfile(4, "Studio 1111"),))
+    raw = json.dumps({"roles": [{"promoter_id": 4, "role": "both", "confidence": 0.88,
+                                 "evidence": "Heaven and Studio 1111 invite"}]})
+    assert parse_role_response(raw, event).roles[0].role == "both"

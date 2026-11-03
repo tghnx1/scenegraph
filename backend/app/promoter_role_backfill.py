@@ -282,9 +282,20 @@ def process_run(connection: Connection, run_id: int, current_config_hash: str) -
                     _finish_run(connection, run_id, "paused")
                     connection.commit()
                     return "paused"
-            except InvalidRoleResponse:
+            except InvalidRoleResponse as error:
                 connection.rollback()
-                finish_item(connection, run_id, item.event_id, status="failed", error_code="invalid_model_response")
+                reasons = {
+                    "invalid JSON", "invalid response shape", "invalid role item", "invalid promoter ID",
+                    "invalid role", "missing promoter role", "invalid confidence", "invalid evidence",
+                    "evidence is not present in input", "invalid candidate", "candidate name not supported by evidence",
+                    "candidate duplicates an existing RA profile",
+                }
+                reason = str(error)
+                error_code = "invalid_model_response"
+                if reason in reasons:
+                    error_code += ":" + reason.replace(" ", "_")
+                finish_item(connection, run_id, item.event_id, status="failed", error_code=error_code,
+                            input_tokens=error.input_tokens, output_tokens=error.output_tokens)
                 connection.commit()
             except PermissionDeniedError as error:
                 if _is_explicit_kimi_quota(error):

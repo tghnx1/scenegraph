@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass, replace
 from typing import Literal
 
@@ -15,6 +16,9 @@ Role = Literal["organizer", "venue", "both", "unknown"]
 
 class InvalidRoleResponse(ValueError):
     """A response failed structural or evidence validation."""
+
+    input_tokens: int | None = None
+    output_tokens: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -70,8 +74,12 @@ def classify_with_llm(event: EventRoleInput) -> RoleResponse:
             incoming = sum(item[0] for item in usage if item[0] is not None) if len(usage) == attempt + 1 and all(item[0] is not None for item in usage) else None
             outgoing = sum(item[1] for item in usage if item[1] is not None) if len(usage) == attempt + 1 and all(item[1] is not None for item in usage) else None
             return replace(result, input_tokens=incoming, output_tokens=outgoing)
-        except InvalidRoleResponse:
+        except InvalidRoleResponse as error:
             if attempt == 1:
+                if len(usage) == 2 and all(item[0] is not None for item in usage):
+                    error.input_tokens = sum(item[0] for item in usage if item[0] is not None)
+                if len(usage) == 2 and all(item[1] is not None for item in usage):
+                    error.output_tokens = sum(item[1] for item in usage if item[1] is not None)
                 raise
     raise AssertionError("unreachable")
 
@@ -111,7 +119,16 @@ def parse_role_response(raw: str, event: EventRoleInput) -> RoleResponse:
         if role not in ("organizer", "venue", "both", "unknown"):
             raise InvalidRoleResponse("invalid role")
         seen.add(promoter_id)
-        roles.append(ProposedRole(promoter_id, role, _confidence(item.get("confidence")), _evidence(item.get("evidence"), sources)))
+        confidence = _confidence(item.get("confidence"))
+        evidence = _evidence(item.get("evidence"), sources)
+        if role == "both":
+            name = next(profile.name for profile in event.promoters if profile.id == promoter_id)
+            # A location mention alone does not prove that the venue co-organized.
+            credit = re.compile(r"(?<!\w)" + re.escape(name) +
+                                r"\s+(?:presents?|invites?|hosts?|organizes?|organises?|curates?)\b", re.IGNORECASE)
+            if not credit.search(evidence):
+                role = "unknown"
+        roles.append(ProposedRole(promoter_id, role, confidence, evidence))
     if seen != ids:
         raise InvalidRoleResponse("missing promoter role")
     candidates: list[OrganizerCandidate] = []

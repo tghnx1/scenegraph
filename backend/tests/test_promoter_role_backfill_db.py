@@ -124,6 +124,22 @@ def test_retries_are_bounded(database, monkeypatch):
     assert database.execute("SELECT attempts FROM promoter_role_backfill_item").fetchone() == (3,)
 
 
+def test_invalid_response_persists_only_safe_reason_and_usage(database, monkeypatch):
+    from app.promoter_role_llm import InvalidRoleResponse
+
+    def invalid(_event):
+        error = InvalidRoleResponse("invalid JSON")
+        error.input_tokens, error.output_tokens = 20, 10
+        raise error
+
+    monkeypatch.setattr(backfill, "classify_with_llm", invalid)
+    run_id = backfill.create_run(database, (1,), "config")
+    database.commit()
+    assert backfill.process_run(database, run_id, "config") == "failed"
+    assert database.execute("SELECT error_code, input_tokens, output_tokens FROM promoter_role_backfill_item").fetchone() == (
+        "invalid_model_response:invalid_JSON", 20, 10)
+
+
 def test_quota_pauses_without_consuming_retry(database, monkeypatch):
     response = httpx.Response(429, request=httpx.Request("POST", "https://example.invalid"))
 
