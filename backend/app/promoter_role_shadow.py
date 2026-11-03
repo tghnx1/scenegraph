@@ -13,7 +13,7 @@ from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
 from app.event_tag_extraction import EventTagExtractionConfig
-from app.promoter_role_backfill import config_hash
+from app.promoter_role_backfill import extraction_config_hash
 from app.promoter_role_relation import role_filtered_relation
 from app.promoter_roles import CLASSIFIER_VERSION
 from app.recommendations.services import build_artist_promoter_recommendation_response
@@ -57,7 +57,7 @@ def main() -> int:
     if not 1 <= args.limit <= 100:
         parser.error("--limit must be between 1 and 100")
     config = EventTagExtractionConfig.from_env()
-    current_hash = config_hash(config.provider, config.model, config.reasoning_effort)
+    current_hash = extraction_config_hash(config)
     with psycopg.connect(os.environ["DATABASE_URL"], row_factory=dict_row) as connection:
         result = compare_recommendations(connection, artist_id=args.artist_id, user_id=args.user_id,
                                          limit=args.limit, current_config_hash=current_hash)

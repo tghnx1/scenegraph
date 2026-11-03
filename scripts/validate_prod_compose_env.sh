@@ -48,6 +48,7 @@ run_compose_config() {
     HOME="${HOME:-}" \
     PATH="$PATH" \
     DOCKER_CONFIG="${DOCKER_CONFIG:-${HOME:-}/.docker}" \
+    COMPOSE_PROFILES=promoter-roles \
     "$docker_bin" compose \
       --project-directory "$repo_root" \
       --env-file "$env_file" \
@@ -65,6 +66,7 @@ EXTRACTION_PROVIDER=kimi_code
 KIMI_API_KEY=compose-validation-kimi-key
 KIMI_EXTRACTION_MODEL=compose-validation-model
 PROMOTER_ROLE_QUEUE_ENABLED=true
+PROMOTER_ROLE_WORKER_ENABLED=true
 EOF
 run_compose_config "$provider_env" --format json >"$temp_dir/provider.json"
 python3 - "$temp_dir/provider.json" <<'PY'
@@ -80,6 +82,12 @@ for service in ("ingestion-runner", "coverage-worker", "coverage-reconcile-worke
     assert environment["KIMI_EXTRACTION_MODEL"] == "compose-validation-model", service
     assert environment["PROMOTER_ROLE_QUEUE_ENABLED"] == "true", service
 print("PASS ingestion services receive extraction and optional queue settings")
+worker = config["services"]["promoter-role-worker"]["environment"]
+assert worker["PROMOTER_ROLE_WORKER_ENABLED"] == "true"
+assert worker["EXTRACTION_PROVIDER"] == "kimi_code"
+assert worker["KIMI_API_KEY"] == "compose-validation-kimi-key"
+assert worker["KIMI_EXTRACTION_MODEL"] == "compose-validation-model"
+print("PASS promoter role worker receives its provider settings")
 PY
 
 for variable in "${required_variables[@]}"; do

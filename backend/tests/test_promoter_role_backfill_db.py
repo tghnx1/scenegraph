@@ -20,6 +20,7 @@ from app.promoter_role_queue import enqueue_changed_events, enqueue_imported_ra_
 from app.promoter_role_relation import role_filtered_relation
 from app.promoter_role_shadow import compare_recommendations
 from app.promoter_role_candidates import find_candidate_matches
+from app.promoter_role_worker import process_next
 from app.promoter_role_store import EventInputChanged
 
 
@@ -77,6 +78,16 @@ def test_config_change_cannot_resume(database):
     database.commit()
     with pytest.raises(ValueError, match="configuration changed"):
         backfill.process_run(database, run_id, "new")
+
+
+def test_config_hash_changes_with_provider_endpoint(monkeypatch):
+    from types import SimpleNamespace
+
+    config = SimpleNamespace(provider="kimi_code", model="k3", reasoning_effort="low")
+    monkeypatch.setenv("KIMI_BASE_URL", "https://one.example/v1")
+    original = backfill.extraction_config_hash(config)
+    monkeypatch.setenv("KIMI_BASE_URL", "https://two.example/v1")
+    assert backfill.extraction_config_hash(config) != original
 
 
 def test_retries_are_bounded(database, monkeypatch):
@@ -290,6 +301,17 @@ def test_import_enqueue_uses_ra_ids_and_ingestion_config(database, monkeypatch):
     assert len(runs) == 1
     assert database.execute("SELECT event_id FROM promoter_role_backfill_item ORDER BY event_id").fetchall() == [(1,), (2,)]
     assert enqueue_imported_ra_events(os.environ["DATABASE_URL"], ("ra1", "ra2")) == ()
+
+
+def test_worker_processes_only_queued_compatible_runs(database, monkeypatch):
+    database.execute("UPDATE events SET title = '8MM presents' WHERE id = 1")
+    run_id = backfill.create_run(database, (1,), "config")
+    database.commit()
+    monkeypatch.setattr(backfill, "classify_with_llm", lambda event: pytest.fail("rule should avoid the provider"))
+    assert process_next(database, "different") is None
+    assert process_next(database, "config") == "succeeded"
+    assert process_next(database, "config") is None
+    assert database.execute("SELECT status FROM promoter_role_backfill_run WHERE id = %s", (run_id,)).fetchone() == ("succeeded",)
 
 
 def test_filtered_relation_is_scoped_and_preserves_ra_data(database, monkeypatch):

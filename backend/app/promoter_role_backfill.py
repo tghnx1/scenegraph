@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Iterator
@@ -17,6 +18,7 @@ from psycopg.types.json import Jsonb
 from openai import APIConnectionError, APITimeoutError, InternalServerError, OpenAIError, RateLimitError
 
 from app.promoter_role_llm import InvalidRoleResponse, ProposedRole, RoleResponse, classify_with_llm
+from app.event_tag_extraction import EventTagExtractionConfig
 from app.promoter_role_store import EventInputChanged, load_event_input, save_llm_roles
 from app.promoter_roles import CLASSIFIER_VERSION, EventRoleInput, classify_explicit_presenter
 from app.promoter_roles import role_input_hash, role_input_snapshot
@@ -47,9 +49,23 @@ class PendingItem:
     attempts: int
 
 
-def config_hash(provider: str, model: str, reasoning_effort: str) -> str:
-    config = [CLASSIFIER_VERSION, provider, model, reasoning_effort]
+def config_hash(provider: str, model: str, reasoning_effort: str, endpoint: str = "", api_version: str = "") -> str:
+    config = [CLASSIFIER_VERSION, provider, model, reasoning_effort, endpoint, api_version]
     return hashlib.sha256(json.dumps(config, separators=(",", ":")).encode()).hexdigest()
+
+
+def extraction_config_hash(config: EventTagExtractionConfig) -> str:
+    """Bind resumable work to provider endpoint and model, without storing credentials."""
+    if config.provider == "kimi_code":
+        endpoint = os.environ.get("KIMI_BASE_URL", "https://api.kimi.ai/coding/v1")
+        api_version = ""
+    elif config.provider == "moonshot":
+        endpoint = os.environ.get("MOONSHOT_BASE_URL", "https://api.moonshot.ai/v1")
+        api_version = ""
+    else:
+        endpoint = os.environ.get("AZURE_OPENAI_ENDPOINT", "")
+        api_version = os.environ.get("AZURE_OPENAI_CHAT_API_VERSION", "")
+    return config_hash(config.provider, config.model, config.reasoning_effort, endpoint, api_version)
 
 
 @contextmanager

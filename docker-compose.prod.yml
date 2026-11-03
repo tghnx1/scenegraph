@@ -78,6 +78,37 @@ services:
       migrate:
         condition: service_completed_successfully
 
+  promoter-role-worker:
+    build:
+      context: ./backend
+    profiles:
+      - promoter-roles
+    restart: unless-stopped
+    command: ["python", "-m", "app.promoter_role_worker"]
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
+      PROMOTER_ROLE_WORKER_ENABLED: ${PROMOTER_ROLE_WORKER_ENABLED:-false}
+      PROMOTER_ROLE_WORKER_POLL_SECONDS: ${PROMOTER_ROLE_WORKER_POLL_SECONDS:-30}
+      EXTRACTION_PROVIDER: ${EXTRACTION_PROVIDER:-azure}
+      KIMI_API_KEY: ${KIMI_API_KEY:-}
+      KIMI_BASE_URL: ${KIMI_BASE_URL:-https://api.kimi.ai/coding/v1}
+      KIMI_EXTRACTION_MODEL: ${KIMI_EXTRACTION_MODEL:-k3}
+      KIMI_REASONING_EFFORT: ${KIMI_REASONING_EFFORT:-low}
+      MOONSHOT_API_KEY: ${MOONSHOT_API_KEY:-}
+      MOONSHOT_BASE_URL: ${MOONSHOT_BASE_URL:-https://api.moonshot.ai/v1}
+      MOONSHOT_EXTRACTION_MODEL: ${MOONSHOT_EXTRACTION_MODEL:-kimi-k3}
+      MOONSHOT_REASONING_EFFORT: ${MOONSHOT_REASONING_EFFORT:-low}
+      AZURE_OPENAI_API_KEY: ${AZURE_OPENAI_API_KEY:-}
+      AZURE_OPENAI_ENDPOINT: ${AZURE_OPENAI_ENDPOINT:-}
+      AZURE_OPENAI_CHAT_API_VERSION: ${AZURE_OPENAI_CHAT_API_VERSION:-}
+      AZURE_OPENAI_EXTRACTION_DEPLOYMENT: ${AZURE_OPENAI_EXTRACTION_DEPLOYMENT:-}
+      EVENT_TAG_EXTRACTION_MAX_TEXT_CHARS: ${EVENT_TAG_EXTRACTION_MAX_TEXT_CHARS:-7000}
+      EVENT_TAG_EXTRACTION_MAX_TAGS: ${EVENT_TAG_EXTRACTION_MAX_TAGS:-12}
+      EVENT_TAG_EXTRACTION_CHUNK_CHARS: ${EVENT_TAG_EXTRACTION_CHUNK_CHARS:-800}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
   ingestion-runner:
     build:
       context: .

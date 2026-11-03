@@ -9,7 +9,7 @@ import os
 import psycopg
 
 from app.event_tag_extraction import EventTagExtractionConfig
-from app.promoter_role_backfill import MAX_EVENTS, config_hash, create_run, process_run
+from app.promoter_role_backfill import MAX_EVENTS, create_run, extraction_config_hash, process_run
 from app.promoter_role_store import load_event_input
 from app.promoter_roles import CLASSIFIER_VERSION, DESCRIPTION_LIMIT, role_input_hash
 
@@ -59,7 +59,7 @@ def main() -> int:
                                   "estimated_text_tokens": (chars + 3) // 4}, ensure_ascii=False))
             return 0
         config = EventTagExtractionConfig.from_env()
-        current_hash = config_hash(config.provider, config.model, config.reasoning_effort)
+        current_hash = extraction_config_hash(config)
         run_id = args.resume_run
         if args.next_run:
             row = connection.execute("""

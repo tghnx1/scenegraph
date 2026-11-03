@@ -6,7 +6,7 @@ import psycopg
 from psycopg import Connection
 
 from app.promoter_role_backfill import MAX_EVENTS, create_run
-from app.promoter_role_backfill import config_hash
+from app.promoter_role_backfill import extraction_config_hash
 from app.event_tag_extraction import EventTagExtractionConfig
 from app.promoter_role_store import load_event_input
 from app.promoter_roles import CLASSIFIER_VERSION, role_input_hash
@@ -51,7 +51,7 @@ def enqueue_imported_ra_events(database_url: str, ra_event_ids: tuple[str, ...])
     if not ra_event_ids:
         return ()
     config = EventTagExtractionConfig.from_env()
-    current_hash = config_hash(config.provider, config.model, config.reasoning_effort)
+    current_hash = extraction_config_hash(config)
     with psycopg.connect(database_url) as connection:
         with connection.cursor() as cursor:
             cursor.execute("SELECT id FROM events WHERE ra_event_id = ANY(%s) ORDER BY id", (list(ra_event_ids),))
