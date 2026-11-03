@@ -71,6 +71,7 @@ model Event {
   extractedTags       EventExtractedTag[]
   tagExtractionRuns   EventTagExtractionRun[]
   promoterRoles       PromoterEventRole[]
+  promoterClassification PromoterEventClassification?
   organizerCandidates EventOrganizerCandidate[]
   promoterBackfillItems PromoterRoleBackfillItem[]
 
@@ -178,6 +179,16 @@ model PromoterEventRole {
   @@id([eventId, promoterId])
   @@index([promoterId])
   @@map("promoter_event_role")
+}
+
+model PromoterEventClassification {
+  eventId BigInt @id @map("event_id")
+  inputHash String @map("input_hash")
+  configHash String @map("config_hash")
+  classifierVersion String @map("classifier_version")
+  classifiedAt DateTime @default(now()) @map("classified_at") @db.Timestamptz(6)
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  @@map("promoter_event_classification")
 }
 
 model PromoterIdentity {

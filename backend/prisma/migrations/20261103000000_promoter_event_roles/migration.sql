@@ -16,6 +16,15 @@ CREATE TABLE promoter_event_role (
 );
 CREATE INDEX promoter_event_role_promoter_id_idx ON promoter_event_role(promoter_id);
 
+-- One marker per event, including events where the model found no candidate.
+CREATE TABLE promoter_event_classification (
+    event_id BIGINT PRIMARY KEY REFERENCES events(id) ON DELETE CASCADE,
+    input_hash TEXT NOT NULL,
+    config_hash TEXT NOT NULL,
+    classifier_version TEXT NOT NULL,
+    classified_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 CREATE TABLE promoter_identity (
     id BIGSERIAL PRIMARY KEY,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),

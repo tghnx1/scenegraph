@@ -37,8 +37,10 @@ def load_event_input(connection: Connection, event_id: int, *, lock: bool = Fals
     return EventRoleInput(event_id, title, description, venue_id, venue_name, profiles)
 
 
-def save_llm_roles(connection: Connection, source: EventRoleInput, response: RoleResponse) -> None:
+def save_llm_roles(connection: Connection, source: EventRoleInput, response: RoleResponse, *, method: str = "llm") -> None:
     """Recheck the event under its import lock; never overwrite a manual decision."""
+    if method not in {"llm", "rule"}:
+        raise ValueError("invalid automatic classification method")
     current = load_event_input(connection, source.event_id, lock=True)
     source_hash = role_input_hash(source)
     if current is None or role_input_hash(current) != source_hash:
@@ -52,7 +54,7 @@ def save_llm_roles(connection: Connection, source: EventRoleInput, response: Rol
             cursor.execute("""
                 INSERT INTO promoter_event_role
                     (event_id, promoter_id, role, confidence, reason_code, evidence, method, classifier_version, input_hash)
-                VALUES (%s, %s, %s, %s, 'model_evidence', %s, 'llm', %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (event_id, promoter_id) DO UPDATE SET
                     role = EXCLUDED.role, confidence = EXCLUDED.confidence,
                     reason_code = EXCLUDED.reason_code, evidence = EXCLUDED.evidence,
@@ -60,7 +62,8 @@ def save_llm_roles(connection: Connection, source: EventRoleInput, response: Rol
                     input_hash = EXCLUDED.input_hash, classified_at = now(), updated_at = now()
                 WHERE promoter_event_role.method <> 'manual'
             """, (source.event_id, decision.promoter_id, decision.role, decision.confidence,
-                  decision.evidence, CLASSIFIER_VERSION, source_hash))
+                  "explicit_presenter" if method == "rule" else "model_evidence", decision.evidence,
+                  method, CLASSIFIER_VERSION, source_hash))
         for candidate in response.candidates:
             normalized = normalize_name(candidate.name)
             if not normalized:
