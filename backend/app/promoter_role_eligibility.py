@@ -49,7 +49,7 @@ def eligible_promoters(connection: Connection, event_id: int, expected_config_ha
     result: dict[int, list[int]] = {}
     for profile in event.promoters:
         method = roles.get(profile.id)
-        if method is None or (method != "manual" and not automatic_current):
+        if method is None or not automatic_current:
             continue
         identity = canonical.get(profile.identity_id, profile.id)
         result.setdefault(identity, []).append(profile.id)

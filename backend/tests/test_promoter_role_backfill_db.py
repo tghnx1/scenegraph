@@ -192,6 +192,22 @@ def test_confirmed_aliases_deduplicate_without_losing_source_ids(database, monke
     assert len(matches) == 1
     assert matches[0].canonical_id == 1
     assert matches[0].source_ids == (1, 2)
+    rows = database.execute("SELECT promoter_id, source_promoter_ids FROM promoter_role_eligible_links WHERE event_id = 1").fetchall()
+    assert rows == [(1, [1, 2])]
+
+
+def test_sql_eligibility_rejects_changed_event_and_changed_alias(database, monkeypatch):
+    monkeypatch.setattr(backfill, "classify_with_llm", lambda event: RoleResponse((ProposedRole(1, "organizer", 1, "8MM"),), ()))
+    run_id = backfill.create_run(database, (1,), "config")
+    database.commit()
+    assert backfill.process_run(database, run_id, "config") == "succeeded"
+    assert database.execute("SELECT count(*) FROM promoter_role_eligible_links").fetchone() == (1,)
+    database.execute("UPDATE events SET title = 'changed' WHERE id = 1")
+    assert database.execute("SELECT count(*) FROM promoter_role_eligible_links").fetchone() == (0,)
+    database.rollback()
+    database.execute("INSERT INTO promoter_identity DEFAULT VALUES")
+    database.execute("INSERT INTO promoter_identity_member (promoter_id, identity_id, status, reason, version) VALUES (1, 1, 'confirmed', 'reviewed', 'v1')")
+    assert database.execute("SELECT count(*) FROM promoter_role_eligible_links").fetchone() == (0,)
 
 
 def test_unknown_and_proposed_aliases_do_not_create_or_merge_credits(database, monkeypatch):

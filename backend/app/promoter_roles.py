@@ -7,7 +7,7 @@ import unicodedata
 import hashlib
 import json
 from dataclasses import dataclass
-from typing import Literal
+from typing import Literal, TypedDict
 
 
 CLASSIFIER_VERSION = "promoter-role-v1"
@@ -31,6 +31,36 @@ class EventRoleInput:
     venue_id: int | None
     venue_name: str | None
     promoters: tuple[PromoterProfile, ...]
+
+
+class ProfileSnapshot(TypedDict):
+    id: int
+    name: str
+    identity_id: int | None
+
+
+class EventSnapshot(TypedDict):
+    event_id: int
+    title: str
+    description: str
+    venue_id: int | None
+    venue_name: str | None
+    promoters: list[ProfileSnapshot]
+
+
+def role_input_snapshot(event: EventRoleInput) -> EventSnapshot:
+    """Structured counterpart of the SQL eligibility view's input comparison."""
+    return {
+        "event_id": event.event_id,
+        "title": event.title,
+        "description": (event.description or "")[:DESCRIPTION_LIMIT],
+        "venue_id": event.venue_id,
+        "venue_name": event.venue_name,
+        "promoters": [
+            {"id": p.id, "name": p.name, "identity_id": p.identity_id}
+            for p in sorted(event.promoters, key=lambda p: p.id)
+        ],
+    }
 
 
 def role_input_hash(event: EventRoleInput, *, version: str = CLASSIFIER_VERSION) -> str:

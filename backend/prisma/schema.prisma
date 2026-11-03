@@ -184,6 +184,7 @@ model PromoterEventRole {
 model PromoterEventClassification {
   eventId BigInt @id @map("event_id")
   inputHash String @map("input_hash")
+  inputSnapshot Json @map("input_snapshot")
   configHash String @map("config_hash")
   classifierVersion String @map("classifier_version")
   classifiedAt DateTime @default(now()) @map("classified_at") @db.Timestamptz(6)

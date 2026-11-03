@@ -19,7 +19,7 @@ from openai import APIConnectionError, APITimeoutError, InternalServerError, Ope
 from app.promoter_role_llm import InvalidRoleResponse, ProposedRole, RoleResponse, classify_with_llm
 from app.promoter_role_store import EventInputChanged, load_event_input, save_llm_roles
 from app.promoter_roles import CLASSIFIER_VERSION, EventRoleInput, classify_explicit_presenter
-from app.promoter_roles import role_input_hash
+from app.promoter_roles import role_input_hash, role_input_snapshot
 
 LOCK_KEY = 0x534750524F4C4553
 MAX_EVENTS = 1000
@@ -199,12 +199,12 @@ def process_run(connection: Connection, run_id: int, current_config_hash: str) -
                 save_llm_roles(connection, source, response, method=method)
                 with connection.cursor() as cursor:
                     cursor.execute("""
-                        INSERT INTO promoter_event_classification (event_id, input_hash, config_hash, classifier_version)
-                        VALUES (%s, %s, %s, %s)
+                        INSERT INTO promoter_event_classification (event_id, input_hash, input_snapshot, config_hash, classifier_version)
+                        VALUES (%s, %s, %s, %s, %s)
                         ON CONFLICT (event_id) DO UPDATE SET input_hash = EXCLUDED.input_hash,
-                          config_hash = EXCLUDED.config_hash, classifier_version = EXCLUDED.classifier_version,
+                          input_snapshot = EXCLUDED.input_snapshot, config_hash = EXCLUDED.config_hash, classifier_version = EXCLUDED.classifier_version,
                           classified_at = now()
-                    """, (item.event_id, role_input_hash(source), current_config_hash, CLASSIFIER_VERSION))
+                    """, (item.event_id, role_input_hash(source), Jsonb(role_input_snapshot(source)), current_config_hash, CLASSIFIER_VERSION))
                 finish_item(connection, run_id, item.event_id, status="succeeded", input_hash=role_input_hash(source))
                 connection.commit()
             except RateLimitError:
