@@ -14,6 +14,7 @@ from psycopg import sql
 
 from app import promoter_role_backfill as backfill
 from app.promoter_role_llm import ProposedRole, RoleResponse
+from app.promoter_role_eligibility import eligible_promoters
 from app.promoter_role_store import EventInputChanged
 
 
@@ -161,3 +162,45 @@ def test_clear_presenter_uses_rules_without_calling_provider(database, monkeypat
     database.commit()
     assert backfill.process_run(database, run_id, "config") == "succeeded"
     assert database.execute("SELECT role, method FROM promoter_event_role").fetchone() == ("both", "rule")
+
+
+def test_eligibility_excludes_stale_or_removed_roles(database, monkeypatch):
+    monkeypatch.setattr(backfill, "classify_with_llm", lambda event: RoleResponse((ProposedRole(1, "organizer", 1, "8MM"),), ()))
+    run_id = backfill.create_run(database, (1,), "config")
+    database.commit()
+    assert backfill.process_run(database, run_id, "config") == "succeeded"
+    assert eligible_promoters(database, 1, "config")[0].canonical_id == 1
+    assert eligible_promoters(database, 1, "different") == ()
+    database.execute("UPDATE events SET title = 'changed' WHERE id = 1")
+    assert eligible_promoters(database, 1, "config") == ()
+    database.rollback()
+    database.execute("DELETE FROM event_promoters WHERE event_id = 1")
+    assert eligible_promoters(database, 1, "config") == ()
+
+
+def test_confirmed_aliases_deduplicate_without_losing_source_ids(database, monkeypatch):
+    database.execute("INSERT INTO promoter_identity DEFAULT VALUES")
+    database.execute("INSERT INTO promoter_identity_member (promoter_id, identity_id, status, reason, version) VALUES (1, 1, 'confirmed', 'reviewed', 'v1'), (2, 1, 'confirmed', 'reviewed', 'v1')")
+    database.execute("INSERT INTO event_promoters VALUES (1, 2)")
+    database.commit()
+    monkeypatch.setattr(backfill, "classify_with_llm", lambda event: RoleResponse((ProposedRole(1, "organizer", 1, "8MM"), ProposedRole(2, "organizer", 1, "Other")), ()))
+    run_id = backfill.create_run(database, (1,), "config")
+    database.commit()
+    assert backfill.process_run(database, run_id, "config") == "succeeded"
+    matches = eligible_promoters(database, 1, "config")
+    assert len(matches) == 1
+    assert matches[0].canonical_id == 1
+    assert matches[0].source_ids == (1, 2)
+
+
+def test_unknown_and_proposed_aliases_do_not_create_or_merge_credits(database, monkeypatch):
+    database.execute("INSERT INTO promoter_identity DEFAULT VALUES")
+    database.execute("INSERT INTO promoter_identity_member (promoter_id, identity_id, status, reason, version) VALUES (1, 1, 'proposed', 'unverified', 'v1'), (2, 1, 'proposed', 'unverified', 'v1')")
+    database.execute("INSERT INTO event_promoters VALUES (1, 2)")
+    database.commit()
+    monkeypatch.setattr(backfill, "classify_with_llm", lambda event: RoleResponse((ProposedRole(1, "organizer", 1, "8MM"), ProposedRole(2, "unknown", 0.5, "Other")), ()))
+    run_id = backfill.create_run(database, (1,), "config")
+    database.commit()
+    assert backfill.process_run(database, run_id, "config") == "succeeded"
+    matches = eligible_promoters(database, 1, "config")
+    assert [(m.canonical_id, m.source_ids) for m in matches] == [(1, (1,))]
