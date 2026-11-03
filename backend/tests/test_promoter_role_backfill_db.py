@@ -24,6 +24,7 @@ from app.promoter_role_worker import process_next
 from app.promoter_role_identity import confirm_profiles, unconfirm_profile
 from app.promoter_role_evaluation_db import EvaluatedCase, EvaluationReport, ReviewedCase, evaluate_current_cases, has_quality_review, record_quality_review, revoke_quality_review
 from app.promoter_role_evaluation import ReviewedRole, evaluate_roles
+from app.promoter_role_runtime import RoleRuntimeConfigurationError, resolve_runtime_context
 from app.promoter_role_store import EventInputChanged
 
 
@@ -41,7 +42,11 @@ def database():
             connection.execute("CREATE TABLE events (id BIGINT PRIMARY KEY, title TEXT, description_text TEXT, venue_id BIGINT, ra_event_id TEXT)")
             connection.execute("CREATE TABLE promoters (id BIGINT PRIMARY KEY, name TEXT, ra_promoter_id TEXT)")
             connection.execute("CREATE TABLE venues (id BIGINT PRIMARY KEY, name TEXT)")
+            connection.execute("CREATE TABLE users (id BIGINT PRIMARY KEY)")
             connection.execute("CREATE TABLE event_promoters (event_id BIGINT, promoter_id BIGINT)")
+            connection.execute("""CREATE TABLE recommendation_feedback (id BIGINT PRIMARY KEY, user_id BIGINT,
+                source_entity_type TEXT, source_entity_id BIGINT, candidate_entity_type TEXT,
+                candidate_entity_id BIGINT, feedback TEXT, updated_at TIMESTAMPTZ)""")
             connection.execute(migration.read_text())
             usage_migration = migration.parents[1] / "20261103010000_promoter_role_token_usage/migration.sql"
             connection.execute(usage_migration.read_text())
@@ -57,8 +62,11 @@ def database():
             connection.execute(quality_migration.read_text())
             integrity_migration = migration.parents[1] / "20261103070000_promoter_role_gate_integrity/migration.sql"
             connection.execute(integrity_migration.read_text())
+            audience_migration = migration.parents[1] / "20261103080000_promoter_role_audience/migration.sql"
+            connection.execute(audience_migration.read_text())
             connection.execute("INSERT INTO events VALUES (1, '8MM live', NULL, 1, 'ra1'), (2, 'Other live', NULL, NULL, 'ra2')")
             connection.execute("INSERT INTO venues VALUES (1, '8MM')")
+            connection.execute("INSERT INTO users VALUES (42), (99)")
             connection.execute("INSERT INTO promoters VALUES (1, '8MM', 'ra1'), (2, 'Other', 'ra2')")
             connection.execute("INSERT INTO event_promoters VALUES (1, 1), (2, 2)")
             connection.commit()
@@ -432,6 +440,39 @@ def test_role_revision_tracks_relevant_changes_only_when_enabled(database):
     assert revision() == 6
 
 
+def test_allowlist_and_audience_changes_advance_revision(database):
+    review = database.execute("""INSERT INTO promoter_role_quality_review (config_hash, classifier_version,
+        manifest_sha256, true_positive, true_negative, false_positive, false_negative, unknown_count,
+        representative, reviewer) VALUES ('config', %s, %s, 4, 1, 1, 1, 0, true, 'reviewer') RETURNING id""",
+        (backfill.CLASSIFIER_VERSION, 'a' * 64)).fetchone()[0]
+    database.execute("""UPDATE promoter_role_runtime_state SET enabled = true, quality_review_id = %s,
+        config_hash = 'config', classifier_version = %s WHERE id = 1""", (review, backfill.CLASSIFIER_VERSION))
+    database.execute("INSERT INTO promoter_role_allowlist (user_id) VALUES (42)")
+    assert database.execute("SELECT revision FROM promoter_role_runtime_state").fetchone() == (2,)
+    database.execute("UPDATE promoter_role_runtime_state SET audience = 'all' WHERE id = 1")
+    assert database.execute("SELECT revision FROM promoter_role_runtime_state").fetchone() == (3,)
+    database.execute("DELETE FROM promoter_role_allowlist WHERE user_id = 42")
+    assert database.execute("SELECT revision FROM promoter_role_runtime_state").fetchone() == (4,)
+
+
+def test_runtime_context_requires_approved_config_and_user_audience(database):
+    assert resolve_runtime_context(database, user_id=42, current_config_hash=None).mode == "off"
+    review = database.execute("""INSERT INTO promoter_role_quality_review (config_hash, classifier_version,
+        manifest_sha256, true_positive, true_negative, false_positive, false_negative, unknown_count,
+        representative, reviewer) VALUES ('config', %s, %s, 4, 1, 1, 1, 0, true, 'reviewer') RETURNING id""",
+        (backfill.CLASSIFIER_VERSION, 'a' * 64)).fetchone()[0]
+    database.execute("INSERT INTO promoter_role_allowlist (user_id) VALUES (42)")
+    database.execute("""UPDATE promoter_role_runtime_state SET enabled = true, quality_review_id = %s,
+        config_hash = 'config', classifier_version = %s WHERE id = 1""", (review, backfill.CLASSIFIER_VERSION))
+    assert resolve_runtime_context(database, user_id=99, current_config_hash=None).mode == "off"
+    context = resolve_runtime_context(database, user_id=42, current_config_hash="config", lock=True)
+    assert context.mode == "enforce" and context.config_hash == "config"
+    with pytest.raises(RoleRuntimeConfigurationError):
+        resolve_runtime_context(database, user_id=42, current_config_hash="wrong")
+    database.execute("UPDATE promoter_role_runtime_state SET audience = 'all' WHERE id = 1")
+    assert resolve_runtime_context(database, user_id=99, current_config_hash="config").mode == "enforce"
+
+
 def test_runtime_cannot_be_enabled_without_matching_quality_review(database):
     with pytest.raises(psycopg.errors.CheckViolation):
         with database.transaction():
@@ -526,6 +567,25 @@ def test_filtered_relation_rolls_back_when_query_fails(database):
         with role_filtered_relation(database, "config"):
             database.execute("SELECT 1 / 0")
     assert database.execute("SELECT count(*) FROM event_promoters").fetchone() == (2,)
+
+
+def test_filtered_feedback_uses_latest_confirmed_alias_without_modifying_original(database):
+    from psycopg.rows import dict_row, tuple_row
+    from app.recommendations.promoter_feedback import load_promoter_feedback
+
+    database.execute("INSERT INTO promoter_identity DEFAULT VALUES")
+    database.execute("INSERT INTO promoter_identity_member (promoter_id,identity_id,status,reason,version) VALUES (1,1,'confirmed','reviewed','v1'),(2,1,'confirmed','reviewed','v1')")
+    database.execute("""INSERT INTO recommendation_feedback VALUES
+      (1,42,'artist',1,'promoter',1,'positive','2025-01-01'),
+      (2,42,'artist',1,'promoter',2,'negative','2025-02-01')""")
+    database.row_factory = dict_row
+    try:
+        assert load_promoter_feedback(database, user_id=42, artist_id=1) == {1: "positive", 2: "negative"}
+        with role_filtered_relation(database, "config"):
+            assert load_promoter_feedback(database, user_id=42, artist_id=1) == {1: "negative"}
+        assert load_promoter_feedback(database, user_id=42, artist_id=1) == {1: "positive", 2: "negative"}
+    finally:
+        database.row_factory = tuple_row
 
 
 def test_shadow_compares_real_relation_without_changing_base(database, monkeypatch):

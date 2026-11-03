@@ -294,12 +294,19 @@ model PromoterRoleShadowResult {
 model PromoterRoleRuntimeState {
   id Int @id @db.SmallInt
   enabled Boolean @default(false)
+  audience String @default("allowlist")
   revision BigInt @default(0)
   qualityReviewId BigInt? @map("quality_review_id")
   configHash String? @map("config_hash")
   classifierVersion String? @map("classifier_version")
   updatedAt DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
   @@map("promoter_role_runtime_state")
+}
+
+model PromoterRoleAllowlist {
+  userId BigInt @id @map("user_id")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  @@map("promoter_role_allowlist")
 }
 
 model PromoterRoleQualityReview {

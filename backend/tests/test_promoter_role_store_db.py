@@ -26,6 +26,7 @@ def role_db():
                 cursor.execute("CREATE TABLE events (id BIGINT PRIMARY KEY, title TEXT, description_text TEXT, venue_id BIGINT)")
                 cursor.execute("CREATE TABLE promoters (id BIGINT PRIMARY KEY, name TEXT, ra_promoter_id TEXT)")
                 cursor.execute("CREATE TABLE venues (id BIGINT PRIMARY KEY, name TEXT)")
+                cursor.execute("CREATE TABLE users (id BIGINT PRIMARY KEY)")
                 cursor.execute("CREATE TABLE event_promoters (event_id BIGINT, promoter_id BIGINT)")
                 cursor.execute(migration.read_text())
                 usage_migration = migration.parents[1] / "20261103010000_promoter_role_token_usage/migration.sql"
@@ -42,6 +43,8 @@ def role_db():
                 cursor.execute(quality_migration.read_text())
                 integrity_migration = migration.parents[1] / "20261103070000_promoter_role_gate_integrity/migration.sql"
                 cursor.execute(integrity_migration.read_text())
+                audience_migration = migration.parents[1] / "20261103080000_promoter_role_audience/migration.sql"
+                cursor.execute(audience_migration.read_text())
                 cursor.execute("INSERT INTO events VALUES (1, '8MM presents', NULL, 1)")
                 cursor.execute("INSERT INTO venues VALUES (1, '8MM')")
                 cursor.execute("INSERT INTO promoters VALUES (1, '8MM', 'ra1')")
