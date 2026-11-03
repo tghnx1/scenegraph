@@ -67,6 +67,8 @@ KIMI_API_KEY=compose-validation-kimi-key
 KIMI_EXTRACTION_MODEL=compose-validation-model
 PROMOTER_ROLE_QUEUE_ENABLED=true
 PROMOTER_ROLE_WORKER_ENABLED=true
+PROMOTER_ROLE_SHADOW_ENABLED=true
+PROMOTER_ROLE_SHADOW_USER_IDS=42
 EOF
 run_compose_config "$provider_env" --format json >"$temp_dir/provider.json"
 python3 - "$temp_dir/provider.json" <<'PY'
@@ -88,6 +90,12 @@ assert worker["EXTRACTION_PROVIDER"] == "kimi_code"
 assert worker["KIMI_API_KEY"] == "compose-validation-kimi-key"
 assert worker["KIMI_EXTRACTION_MODEL"] == "compose-validation-model"
 print("PASS promoter role worker receives its provider settings")
+recommendations = config["services"]["recommendation-worker"]["environment"]
+assert recommendations["PROMOTER_ROLE_SHADOW_ENABLED"] == "true"
+assert recommendations["PROMOTER_ROLE_SHADOW_USER_IDS"] == "42"
+assert recommendations["EXTRACTION_PROVIDER"] == "kimi_code"
+assert recommendations["KIMI_EXTRACTION_MODEL"] == "compose-validation-model"
+print("PASS recommendation worker receives opt-in shadow settings")
 PY
 
 for variable in "${required_variables[@]}"; do

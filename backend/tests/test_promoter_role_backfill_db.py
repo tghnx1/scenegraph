@@ -47,6 +47,8 @@ def database():
             connection.execute(hash_migration.read_text())
             audit_migration = migration.parents[1] / "20261103030000_promoter_identity_audit/migration.sql"
             connection.execute(audit_migration.read_text())
+            shadow_migration = migration.parents[1] / "20261103040000_promoter_shadow_job_identity/migration.sql"
+            connection.execute(shadow_migration.read_text())
             connection.execute("INSERT INTO events VALUES (1, '8MM live', NULL, 1, 'ra1'), (2, 'Other live', NULL, NULL, 'ra2')")
             connection.execute("INSERT INTO venues VALUES (1, '8MM')")
             connection.execute("INSERT INTO promoters VALUES (1, '8MM', 'ra1'), (2, 'Other', 'ra2')")
@@ -428,6 +430,59 @@ def test_shadow_compares_real_relation_without_changing_base(database, monkeypat
     assert result.shadow_ids == (1,)
     assert result.removed_ids == (2,)
     assert database.execute("SELECT count(*) FROM event_promoters").fetchone() == (2,)
+    assert database.execute("SELECT count(*) FROM promoter_role_shadow_result").fetchone() == (0,)
+
+
+def test_worker_shadow_is_allowlisted_idempotent_and_does_not_replace_baseline(database, monkeypatch):
+    from types import SimpleNamespace
+    from app.recommendations import worker
+
+    monkeypatch.setattr(backfill, "classify_with_llm", lambda event: RoleResponse((ProposedRole(1, "organizer", 1, "8MM"),), ()))
+    run_id = backfill.create_run(database, (1,), "config")
+    database.commit()
+    assert backfill.process_run(database, run_id, "config") == "succeeded"
+    baseline = SimpleNamespace(recommendations=[SimpleNamespace(id=1), SimpleNamespace(id=2)])
+    job = {"id": "00000000-0000-0000-0000-000000000001", "user_id": 42, "artist_id": 1}
+    params = SimpleNamespace(limit=10)
+    monkeypatch.setenv("PROMOTER_ROLE_SHADOW_ENABLED", "true")
+    monkeypatch.setenv("PROMOTER_ROLE_SHADOW_USER_IDS", "42")
+    monkeypatch.setattr(worker.EventTagExtractionConfig, "from_env", lambda: object())
+    monkeypatch.setattr(worker, "extraction_config_hash", lambda config: "config")
+    monkeypatch.setattr(worker, "build_artist_promoter_recommendation_response", lambda connection, **kw: SimpleNamespace(recommendations=[SimpleNamespace(id=row[0]) for row in connection.execute("SELECT promoter_id FROM event_promoters ORDER BY promoter_id")]))
+    worker._run_optional_shadow(database, job, params, baseline)
+    worker._run_optional_shadow(database, job, params, baseline)
+    assert database.execute("SELECT baseline, shadow FROM promoter_role_shadow_result").fetchall() == [([1, 2], [1])]
+    assert [item.id for item in baseline.recommendations] == [1, 2]
+    assert database.execute("SELECT count(*) FROM event_promoters").fetchone() == (2,)
+
+
+def test_worker_shadow_failure_preserves_primary_transaction(database, monkeypatch):
+    from types import SimpleNamespace
+    from app.recommendations import worker
+
+    job = {"id": "00000000-0000-0000-0000-000000000002", "user_id": 42, "artist_id": 1}
+    monkeypatch.setenv("PROMOTER_ROLE_SHADOW_ENABLED", "true")
+    monkeypatch.setenv("PROMOTER_ROLE_SHADOW_USER_IDS", "42")
+    monkeypatch.setattr(worker.EventTagExtractionConfig, "from_env", lambda: object())
+    monkeypatch.setattr(worker, "extraction_config_hash", lambda config: "config")
+
+    def fail(connection, **kwargs):
+        connection.execute("SELECT 1 / 0")
+
+    monkeypatch.setattr(worker, "build_artist_promoter_recommendation_response", fail)
+    worker._run_optional_shadow(database, job, SimpleNamespace(limit=10), SimpleNamespace(recommendations=[]))
+    assert database.execute("SELECT count(*) FROM event_promoters").fetchone() == (2,)
+    assert database.execute("SELECT count(*) FROM promoter_role_shadow_result").fetchone() == (0,)
+
+
+def test_worker_shadow_does_not_run_for_unlisted_user(database, monkeypatch):
+    from types import SimpleNamespace
+    from app.recommendations import worker
+
+    monkeypatch.setenv("PROMOTER_ROLE_SHADOW_ENABLED", "true")
+    monkeypatch.setenv("PROMOTER_ROLE_SHADOW_USER_IDS", "43")
+    monkeypatch.setattr(worker.EventTagExtractionConfig, "from_env", lambda: pytest.fail("unlisted user should be ignored"))
+    worker._run_optional_shadow(database, {"user_id": 42}, SimpleNamespace(limit=10), SimpleNamespace(recommendations=[]))
     assert database.execute("SELECT count(*) FROM promoter_role_shadow_result").fetchone() == (0,)
 
 

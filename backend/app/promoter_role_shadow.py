@@ -38,13 +38,30 @@ def compare_recommendations(
     connection: psycopg.Connection, *, artist_id: int, user_id: int, limit: int,
     current_config_hash: str,
     builder: Callable[..., PromoterRecommendationResponse] = build_artist_promoter_recommendation_response,
+    baseline: PromoterRecommendationResponse | None = None,
 ) -> ShadowComparison:
     """Run the unchanged engine twice; return the normal result separately from shadow."""
-    baseline = builder(connection, artist_id=artist_id, user_id=user_id, limit=limit, debug=False)
+    if baseline is None:
+        baseline = builder(connection, artist_id=artist_id, user_id=user_id, limit=limit, debug=False)
     with role_filtered_relation(connection, current_config_hash):
         shadow = builder(connection, artist_id=artist_id, user_id=user_id, limit=limit, debug=False)
     return ShadowComparison(tuple(item.id for item in baseline.recommendations),
                             tuple(item.id for item in shadow.recommendations))
+
+
+def store_shadow_comparison(connection: psycopg.Connection, *, artist_id: int, user_id: int,
+                            current_config_hash: str, result: ShadowComparison,
+                            recommendation_job_id: str | None = None) -> None:
+    """Store only the two ranked ID lists; a retried job cannot duplicate its report."""
+    connection.execute("""
+        INSERT INTO promoter_role_shadow_result
+          (artist_id, user_id, config_hash, classifier_version, baseline, shadow, recommendation_job_id)
+        VALUES (%s, %s, %s, %s, %s, %s, %s::uuid)
+        ON CONFLICT (recommendation_job_id) WHERE recommendation_job_id IS NOT NULL DO UPDATE SET
+          config_hash = EXCLUDED.config_hash, classifier_version = EXCLUDED.classifier_version,
+          baseline = EXCLUDED.baseline, shadow = EXCLUDED.shadow, created_at = now()
+    """, (artist_id, user_id, current_config_hash, CLASSIFIER_VERSION,
+          Jsonb(list(result.baseline_ids)), Jsonb(list(result.shadow_ids)), recommendation_job_id))
 
 
 def main() -> int:
@@ -62,12 +79,8 @@ def main() -> int:
         result = compare_recommendations(connection, artist_id=args.artist_id, user_id=args.user_id,
                                          limit=args.limit, current_config_hash=current_hash)
         if args.persist:
-            connection.execute("""
-                INSERT INTO promoter_role_shadow_result
-                  (artist_id, user_id, config_hash, classifier_version, baseline, shadow)
-                VALUES (%s, %s, %s, %s, %s, %s)
-            """, (args.artist_id, args.user_id, current_hash, CLASSIFIER_VERSION,
-                  Jsonb(list(result.baseline_ids)), Jsonb(list(result.shadow_ids))))
+            store_shadow_comparison(connection, artist_id=args.artist_id, user_id=args.user_id,
+                                    current_config_hash=current_hash, result=result)
         else:
             connection.rollback()
         print(json.dumps({"baseline": result.baseline_ids, "shadow": result.shadow_ids,

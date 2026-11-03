@@ -284,6 +284,7 @@ model PromoterRoleShadowResult {
   userId BigInt @map("user_id")
   configHash String @map("config_hash")
   classifierVersion String @map("classifier_version")
+  recommendationJobId String? @map("recommendation_job_id") @db.Uuid
   baseline Json
   shadow Json
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import time
 from typing import Any
 
@@ -19,11 +20,41 @@ from app.recommendations.jobs import (
     requeue_stale_running_jobs,
 )
 from app.recommendations.services import build_artist_promoter_recommendation_response
-from app.schemas import RecommendationJobParams
+from app.event_tag_extraction import EventTagExtractionConfig
+from app.promoter_role_backfill import extraction_config_hash
+from app.promoter_role_shadow import compare_recommendations, store_shadow_comparison
+from app.schemas import PromoterRecommendationResponse, RecommendationJobParams
 
 
 logger = logging.getLogger(__name__)
 RECONNECT_DELAY_SECONDS = 2.0
+
+
+def _run_optional_shadow(connection: psycopg.Connection, job: dict[str, Any], params: RecommendationJobParams,
+                         baseline: PromoterRecommendationResponse) -> None:
+    """Compare only explicitly allowed users; never replace or fail the primary result."""
+    if os.environ.get("PROMOTER_ROLE_SHADOW_ENABLED", "").strip().lower() != "true":
+        return
+    values = (value.strip() for value in os.environ.get("PROMOTER_ROLE_SHADOW_USER_IDS", "").split(","))
+    allowed = {int(value) for value in values if value.isascii() and value.isdigit() and len(value) <= 19}
+    user_id = int(job["user_id"])
+    if user_id not in allowed:
+        return
+    try:
+        with connection.transaction():
+            config = EventTagExtractionConfig.from_env()
+            current_hash = extraction_config_hash(config)
+            comparison = compare_recommendations(
+                connection, artist_id=int(job["artist_id"]), user_id=user_id, limit=params.limit,
+                current_config_hash=current_hash, builder=build_artist_promoter_recommendation_response,
+                baseline=baseline,
+            )
+            store_shadow_comparison(connection, artist_id=int(job["artist_id"]), user_id=user_id,
+                                    current_config_hash=current_hash, result=comparison,
+                                    recommendation_job_id=str(job["id"]))
+    except Exception as error:
+        # This boundary is optional and isolated by a savepoint; do not log provider or DB details.
+        logger.warning("Promoter shadow comparison failed: %s", type(error).__name__)
 
 
 # Run the synchronous recommendation engine for one already claimed job.
@@ -43,6 +74,7 @@ def _run_job(job: dict[str, Any]) -> None:
                     user_id=int(job["user_id"]),
                 )
                 result_payload = result.model_dump(mode="json", exclude_none=True)
+                _run_optional_shadow(connection, job, params, result)
             elif job_type == ARTIST_BIO_REFRESH_JOB_TYPE:
                 result_payload = refresh_artist_derived_data(
                     connection,
