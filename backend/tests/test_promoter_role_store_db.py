@@ -18,23 +18,29 @@ def role_db():
         pytest.skip("DATABASE_URL is required for PostgreSQL integration")
     migration = Path(__file__).resolve().parents[1] / "prisma/migrations/20261103000000_promoter_event_roles/migration.sql"
     with psycopg.connect(database_url) as connection:
-        with connection.cursor() as cursor:
-            schema = "test_promoter_role_" + uuid4().hex
-            cursor.execute(sql.SQL("CREATE SCHEMA {} ").format(sql.Identifier(schema)))
-            cursor.execute(sql.SQL("SET LOCAL search_path TO {} ").format(sql.Identifier(schema)))
-            cursor.execute("CREATE TABLE events (id BIGINT PRIMARY KEY, title TEXT, description_text TEXT, venue_id BIGINT)")
-            cursor.execute("CREATE TABLE promoters (id BIGINT PRIMARY KEY, name TEXT, ra_promoter_id TEXT)")
-            cursor.execute("CREATE TABLE venues (id BIGINT PRIMARY KEY, name TEXT)")
-            cursor.execute("CREATE TABLE event_promoters (event_id BIGINT, promoter_id BIGINT)")
-            cursor.execute(migration.read_text())
-            usage_migration = migration.parents[1] / "20261103010000_promoter_role_token_usage/migration.sql"
-            cursor.execute(usage_migration.read_text())
-            cursor.execute("INSERT INTO events VALUES (1, '8MM presents', NULL, 1)")
-            cursor.execute("INSERT INTO venues VALUES (1, '8MM')")
-            cursor.execute("INSERT INTO promoters VALUES (1, '8MM', 'ra1')")
-            cursor.execute("INSERT INTO event_promoters VALUES (1, 1)")
-            yield cursor
-        connection.rollback()
+        schema = "test_promoter_role_" + uuid4().hex
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute(sql.SQL("CREATE SCHEMA {} ").format(sql.Identifier(schema)))
+                cursor.execute(sql.SQL("SET search_path TO {} ").format(sql.Identifier(schema)))
+                cursor.execute("CREATE TABLE events (id BIGINT PRIMARY KEY, title TEXT, description_text TEXT, venue_id BIGINT)")
+                cursor.execute("CREATE TABLE promoters (id BIGINT PRIMARY KEY, name TEXT, ra_promoter_id TEXT)")
+                cursor.execute("CREATE TABLE venues (id BIGINT PRIMARY KEY, name TEXT)")
+                cursor.execute("CREATE TABLE event_promoters (event_id BIGINT, promoter_id BIGINT)")
+                cursor.execute(migration.read_text())
+                usage_migration = migration.parents[1] / "20261103010000_promoter_role_token_usage/migration.sql"
+                cursor.execute(usage_migration.read_text())
+                hash_migration = migration.parents[1] / "20261103020000_hash_promoter_role_snapshots/migration.sql"
+                cursor.execute(hash_migration.read_text())
+                cursor.execute("INSERT INTO events VALUES (1, '8MM presents', NULL, 1)")
+                cursor.execute("INSERT INTO venues VALUES (1, '8MM')")
+                cursor.execute("INSERT INTO promoters VALUES (1, '8MM', 'ra1')")
+                cursor.execute("INSERT INTO event_promoters VALUES (1, 1)")
+                yield cursor
+        finally:
+            connection.rollback()
+            connection.execute(sql.SQL("DROP SCHEMA IF EXISTS {} CASCADE").format(sql.Identifier(schema)))
+            connection.commit()
 
 
 def test_recreating_ra_relation_preserves_manual_role(role_db):

@@ -35,29 +35,32 @@ class EventRoleInput:
 
 class ProfileSnapshot(TypedDict):
     id: int
-    name: str
+    name_hash: str
     identity_id: int | None
 
 
 class EventSnapshot(TypedDict):
     event_id: int
-    title: str
-    description: str
+    title_hash: str
+    description_hash: str
     venue_id: int | None
-    venue_name: str | None
+    venue_name_hash: str | None
     promoters: list[ProfileSnapshot]
 
 
 def role_input_snapshot(event: EventRoleInput) -> EventSnapshot:
     """Structured counterpart of the SQL eligibility view's input comparison."""
+    def digest(value: str) -> str:
+        return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
     return {
         "event_id": event.event_id,
-        "title": event.title,
-        "description": (event.description or "")[:DESCRIPTION_LIMIT],
+        "title_hash": digest(event.title),
+        "description_hash": digest((event.description or "")[:DESCRIPTION_LIMIT]),
         "venue_id": event.venue_id,
-        "venue_name": event.venue_name,
+        "venue_name_hash": digest(event.venue_name) if event.venue_name is not None else None,
         "promoters": [
-            {"id": p.id, "name": p.name, "identity_id": p.identity_id}
+            {"id": p.id, "name_hash": digest(p.name), "identity_id": p.identity_id}
             for p in sorted(event.promoters, key=lambda p: p.id)
         ],
     }

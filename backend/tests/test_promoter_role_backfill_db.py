@@ -42,6 +42,8 @@ def database():
             connection.execute(migration.read_text())
             usage_migration = migration.parents[1] / "20261103010000_promoter_role_token_usage/migration.sql"
             connection.execute(usage_migration.read_text())
+            hash_migration = migration.parents[1] / "20261103020000_hash_promoter_role_snapshots/migration.sql"
+            connection.execute(hash_migration.read_text())
             connection.execute("INSERT INTO events VALUES (1, '8MM live', NULL, 1, 'ra1'), (2, 'Other live', NULL, NULL, 'ra2')")
             connection.execute("INSERT INTO venues VALUES (1, '8MM')")
             connection.execute("INSERT INTO promoters VALUES (1, '8MM', 'ra1'), (2, 'Other', 'ra2')")
@@ -255,6 +257,9 @@ def test_sql_eligibility_rejects_changed_event_and_changed_alias(database, monke
     run_id = backfill.create_run(database, (1,), "config")
     database.commit()
     assert backfill.process_run(database, run_id, "config") == "succeeded"
+    snapshot = database.execute("SELECT input_snapshot FROM promoter_event_classification").fetchone()[0]
+    assert "8MM live" not in json.dumps(snapshot)
+    assert "8MM" not in json.dumps(snapshot)
     assert database.execute("SELECT count(*) FROM promoter_role_eligible_links").fetchone() == (1,)
     database.execute("UPDATE events SET title = 'changed' WHERE id = 1")
     assert database.execute("SELECT count(*) FROM promoter_role_eligible_links").fetchone() == (0,)
@@ -262,6 +267,23 @@ def test_sql_eligibility_rejects_changed_event_and_changed_alias(database, monke
     database.execute("INSERT INTO promoter_identity DEFAULT VALUES")
     database.execute("INSERT INTO promoter_identity_member (promoter_id, identity_id, status, reason, version) VALUES (1, 1, 'confirmed', 'reviewed', 'v1')")
     assert database.execute("SELECT count(*) FROM promoter_role_eligible_links").fetchone() == (0,)
+
+
+def test_snapshot_migration_preserves_existing_eligibility(database, monkeypatch):
+    from psycopg.types.json import Jsonb
+
+    monkeypatch.setattr(backfill, "classify_with_llm", lambda event: RoleResponse((ProposedRole(1, "organizer", 1, "8MM"),), ()))
+    run_id = backfill.create_run(database, (1,), "config")
+    database.commit()
+    assert backfill.process_run(database, run_id, "config") == "succeeded"
+    old_snapshot = {"event_id": 1, "title": "8MM live", "description": "", "venue_id": 1,
+                    "venue_name": "8MM", "promoters": [{"id": 1, "name": "8MM", "identity_id": None}]}
+    database.execute("UPDATE promoter_event_classification SET input_snapshot = %s", (Jsonb(old_snapshot),))
+    migration = Path(__file__).resolve().parents[1] / "prisma/migrations/20261103020000_hash_promoter_role_snapshots/migration.sql"
+    database.execute(migration.read_text())
+    snapshot = database.execute("SELECT input_snapshot FROM promoter_event_classification").fetchone()[0]
+    assert "8MM" not in json.dumps(snapshot)
+    assert database.execute("SELECT count(*) FROM promoter_role_eligible_links").fetchone() == (1,)
 
 
 def test_unknown_and_proposed_aliases_do_not_create_or_merge_credits(database, monkeypatch):
