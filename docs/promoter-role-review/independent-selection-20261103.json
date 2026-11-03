@@ -1,0 +1,8 @@
+{
+  "selection": "first 25 previously unclassified events with at least two RA promoter profiles and a venue, event_date >= 2025-01-01, ordered by md5(ra_event_id || 'independent-20261103-v1')",
+  "selected_before_model_inference": true,
+  "ra_event_ids": ["2392989", "2517781", "2258818", "2204513", "2402604", "2471867", "2392933", "2348235", "2111936", "2542188", "2239510", "2352024", "2110857", "2063377", "2373298", "2049483", "2490874", "2259471", "2385813", "2256552", "2166616", "2446297", "2059633", "2134982", "2314895"],
+  "review_status": "pending",
+  "release_representative": false,
+  "note": "Selection excludes previously classified events and is restricted to multiple-promoter events; it is not representative of all events and is not a set of verified labels."
+}
