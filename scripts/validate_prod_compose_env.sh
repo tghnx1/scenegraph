@@ -43,6 +43,7 @@ EOF
 
 run_compose_config() {
   local env_file="$1"
+  shift
   env -i \
     HOME="${HOME:-}" \
     PATH="$PATH" \
@@ -51,11 +52,35 @@ run_compose_config() {
       --project-directory "$repo_root" \
       --env-file "$env_file" \
       -f "$compose_file" \
-      config
+      config "$@"
 }
 
 run_compose_config "$complete_env" >/dev/null
 printf 'PASS complete production environment\n'
+
+provider_env="$temp_dir/provider.env"
+cp "$complete_env" "$provider_env"
+cat >>"$provider_env" <<'EOF'
+EXTRACTION_PROVIDER=kimi_code
+KIMI_API_KEY=compose-validation-kimi-key
+KIMI_EXTRACTION_MODEL=compose-validation-model
+PROMOTER_ROLE_QUEUE_ENABLED=true
+EOF
+run_compose_config "$provider_env" --format json >"$temp_dir/provider.json"
+python3 - "$temp_dir/provider.json" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as stream:
+    config = json.load(stream)
+for service in ("ingestion-runner", "coverage-worker", "coverage-reconcile-worker"):
+    environment = config["services"][service]["environment"]
+    assert environment["EXTRACTION_PROVIDER"] == "kimi_code", service
+    assert environment["KIMI_API_KEY"] == "compose-validation-kimi-key", service
+    assert environment["KIMI_EXTRACTION_MODEL"] == "compose-validation-model", service
+    assert environment["PROMOTER_ROLE_QUEUE_ENABLED"] == "true", service
+print("PASS ingestion services receive extraction and optional queue settings")
+PY
 
 for variable in "${required_variables[@]}"; do
   missing_env="$temp_dir/missing-$variable.env"
