@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Literal
 
 from app.artist_tag_extraction import create_chat_completion
@@ -36,6 +36,8 @@ class OrganizerCandidate:
 class RoleResponse:
     roles: tuple[ProposedRole, ...]
     candidates: tuple[OrganizerCandidate, ...]
+    input_tokens: int | None = None
+    output_tokens: int | None = None
 
 
 def classify_with_llm(event: EventRoleInput) -> RoleResponse:
@@ -57,11 +59,16 @@ def classify_with_llm(event: EventRoleInput) -> RoleResponse:
         "promoters, candidates may contain name, confidence, and exact evidence of organizing. "
         "When uncertain use unknown. Never invent IDs or quotations."
     )
+    usage: list[tuple[int | None, int | None]] = []
     for attempt in range(2):
         retry_hint = "" if attempt == 0 else "\nReturn a valid JSON object with every listed ID and exact, non-empty evidence copied from the input."
-        response = create_chat_completion(client, prompt=prompt + retry_hint, config=config, instructions=instructions)
+        response = create_chat_completion(client, prompt=prompt + retry_hint, config=config, instructions=instructions,
+                                          usage_callback=lambda incoming, outgoing: usage.append((incoming, outgoing)))
         try:
-            return parse_role_response(response, event)
+            result = parse_role_response(response, event)
+            incoming = sum(item[0] for item in usage if item[0] is not None) if len(usage) == attempt + 1 and all(item[0] is not None for item in usage) else None
+            outgoing = sum(item[1] for item in usage if item[1] is not None) if len(usage) == attempt + 1 and all(item[1] is not None for item in usage) else None
+            return replace(result, input_tokens=incoming, output_tokens=outgoing)
         except InvalidRoleResponse:
             if attempt == 1:
                 raise

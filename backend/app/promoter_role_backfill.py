@@ -129,14 +129,15 @@ def claim_item(connection: Connection, run_id: int) -> PendingItem | None:
         return PendingItem(int(row[0]), int(row[1]) + 1)
 
 
-def finish_item(connection: Connection, run_id: int, event_id: int, *, status: str, error_code: str | None = None, input_hash: str | None = None) -> None:
+def finish_item(connection: Connection, run_id: int, event_id: int, *, status: str, error_code: str | None = None, input_hash: str | None = None, input_tokens: int | None = None, output_tokens: int | None = None) -> None:
     if status not in {"pending", "succeeded", "failed"}:
         raise ValueError("invalid item status")
     with connection.cursor() as cursor:
         cursor.execute("""
-            UPDATE promoter_role_backfill_item SET status = %s, error_code = %s, input_hash = %s, updated_at = now()
+            UPDATE promoter_role_backfill_item SET status = %s, error_code = %s, input_hash = %s,
+              input_tokens = %s, output_tokens = %s, updated_at = now()
             WHERE run_id = %s AND event_id = %s AND status = 'running'
-        """, (status, error_code, input_hash, run_id, event_id))
+        """, (status, error_code, input_hash, input_tokens, output_tokens, run_id, event_id))
         if cursor.rowcount != 1:
             raise LookupError("running item not found")
 
@@ -205,7 +206,8 @@ def process_run(connection: Connection, run_id: int, current_config_hash: str) -
                           input_snapshot = EXCLUDED.input_snapshot, config_hash = EXCLUDED.config_hash, classifier_version = EXCLUDED.classifier_version,
                           classified_at = now()
                     """, (item.event_id, role_input_hash(source), Jsonb(role_input_snapshot(source)), current_config_hash, CLASSIFIER_VERSION))
-                finish_item(connection, run_id, item.event_id, status="succeeded", input_hash=role_input_hash(source))
+                finish_item(connection, run_id, item.event_id, status="succeeded", input_hash=role_input_hash(source),
+                            input_tokens=response.input_tokens, output_tokens=response.output_tokens)
                 connection.commit()
             except RateLimitError:
                 connection.rollback()

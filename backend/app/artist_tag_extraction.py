@@ -5,7 +5,7 @@ import json
 import os
 import re
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import Any, Callable, Literal
 
 from openai import AzureOpenAI, OpenAI
 from psycopg import Connection
@@ -548,6 +548,7 @@ def create_chat_completion(
     prompt: str,
     config: TagExtractionConfig,
     instructions: str | None = None,
+    usage_callback: Callable[[int | None, int | None], None] | None = None,
 ) -> str:
     if client is None:
         raise RuntimeError("Chat completions extraction requires a client")
@@ -565,6 +566,9 @@ def create_chat_completion(
     else:
         request["temperature"] = 0
     response = client.chat.completions.create(**request)
+    if usage_callback is not None:
+        usage = response.usage
+        usage_callback(usage.prompt_tokens if usage else None, usage.completion_tokens if usage else None)
     return response.choices[0].message.content or "{}"
 
 

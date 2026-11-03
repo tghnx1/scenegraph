@@ -68,3 +68,19 @@ def test_invalid_model_json_has_bounded_retry(monkeypatch):
     with pytest.raises(InvalidRoleResponse):
         classify_with_llm(EVENT)
     assert len(calls) == 2
+
+
+def test_usage_includes_invalid_response_retry(monkeypatch):
+    from app import promoter_role_llm
+
+    outputs = iter(['invalid', json.dumps({"roles": [{"promoter_id": 4, "role": "both", "confidence": 1, "evidence": "8MM present"}]})])
+    monkeypatch.setattr(promoter_role_llm.EventTagExtractionConfig, "from_env", lambda: object())
+    monkeypatch.setattr(promoter_role_llm, "create_extraction_client", lambda received: received)
+
+    def complete(client, **kwargs):
+        kwargs["usage_callback"](10, 5)
+        return next(outputs)
+
+    monkeypatch.setattr(promoter_role_llm, "create_chat_completion", complete)
+    result = classify_with_llm(EVENT)
+    assert (result.input_tokens, result.output_tokens) == (20, 10)

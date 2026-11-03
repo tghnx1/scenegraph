@@ -1,6 +1,7 @@
 """Run durable backfill transitions against a real PostgreSQL schema."""
 
 import os
+import json
 import subprocess
 import sys
 from pathlib import Path
@@ -38,6 +39,8 @@ def database():
             connection.execute("CREATE TABLE venues (id BIGINT PRIMARY KEY, name TEXT)")
             connection.execute("CREATE TABLE event_promoters (event_id BIGINT, promoter_id BIGINT)")
             connection.execute(migration.read_text())
+            usage_migration = migration.parents[1] / "20261103010000_promoter_role_token_usage/migration.sql"
+            connection.execute(usage_migration.read_text())
             connection.execute("INSERT INTO events VALUES (1, '8MM live', NULL, 1, 'ra1'), (2, 'Other live', NULL, NULL, 'ra2')")
             connection.execute("INSERT INTO venues VALUES (1, '8MM')")
             connection.execute("INSERT INTO promoters VALUES (1, '8MM', 'ra1'), (2, 'Other', 'ra2')")
@@ -114,6 +117,35 @@ def test_dry_run_does_not_write(database):
     assert database.execute("SELECT count(*) FROM promoter_event_role").fetchone() == (0,)
 
 
+def test_status_command_only_reads_persisted_state(database):
+    schema = database.execute("SELECT current_schema()").fetchone()[0]
+    run_id = backfill.create_run(database, (1,), "config")
+    database.commit()
+    env = os.environ.copy()
+    env["PGOPTIONS"] = f"-c search_path={schema}"
+    result = subprocess.run([sys.executable, "-m", "app.promoter_role_backfill_cli", "--status-run", str(run_id)],
+                            env=env, capture_output=True, text=True, check=True)
+    status = json.loads(result.stdout)
+    assert status["status"] == "queued"
+    assert status["items"] == {"pending": 1}
+    assert status["reported_input_tokens"] is None
+    assert database.execute("SELECT status FROM promoter_role_backfill_run").fetchone() == ("queued",)
+
+
+def test_status_command_serializes_nonempty_token_totals(database):
+    schema = database.execute("SELECT current_schema()").fetchone()[0]
+    run_id = backfill.create_run(database, (1,), "config")
+    database.execute("UPDATE promoter_role_backfill_item SET input_tokens = 123, output_tokens = 45 WHERE run_id = %s", (run_id,))
+    database.commit()
+    env = os.environ.copy()
+    env["PGOPTIONS"] = f"-c search_path={schema}"
+    result = subprocess.run([sys.executable, "-m", "app.promoter_role_backfill_cli", "--status-run", str(run_id)],
+                            env=env, capture_output=True, text=True, check=True)
+    status = json.loads(result.stdout)
+    assert status["reported_input_tokens"] == 123
+    assert status["reported_output_tokens"] == 45
+
+
 def test_worker_lock_prevents_concurrent_runs(database):
     with psycopg.connect(os.environ["DATABASE_URL"]) as second:
         with backfill.worker_lock(database):
@@ -156,6 +188,14 @@ def test_new_run_reuses_current_result_and_reclassifies_changed_input(database, 
     database.commit()
     assert backfill.process_run(database, third, "config") == "succeeded"
     assert calls == ["8MM live", "8MM live again"]
+
+
+def test_provider_usage_is_persisted_with_the_event(database, monkeypatch):
+    monkeypatch.setattr(backfill, "classify_with_llm", lambda event: RoleResponse((ProposedRole(1, "organizer", 1, "8MM"),), (), 123, 45))
+    run_id = backfill.create_run(database, (1,), "config")
+    database.commit()
+    assert backfill.process_run(database, run_id, "config") == "succeeded"
+    assert database.execute("SELECT input_tokens, output_tokens FROM promoter_role_backfill_item").fetchone() == (123, 45)
 
 
 def test_clear_presenter_uses_rules_without_calling_provider(database, monkeypatch):
