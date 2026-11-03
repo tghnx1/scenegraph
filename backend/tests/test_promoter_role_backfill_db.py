@@ -16,6 +16,7 @@ from app import promoter_role_backfill as backfill
 from app.promoter_role_llm import ProposedRole, RoleResponse
 from app.promoter_role_eligibility import eligible_promoters
 from app.promoter_role_queue import enqueue_changed_events, enqueue_imported_ra_events
+from app.promoter_role_relation import role_filtered_relation
 from app.promoter_role_store import EventInputChanged
 
 
@@ -247,3 +248,21 @@ def test_import_enqueue_uses_ra_ids_and_ingestion_config(database, monkeypatch):
     assert len(runs) == 1
     assert database.execute("SELECT event_id FROM promoter_role_backfill_item ORDER BY event_id").fetchall() == [(1,), (2,)]
     assert enqueue_imported_ra_events(os.environ["DATABASE_URL"], ("ra1", "ra2")) == ()
+
+
+def test_filtered_relation_is_scoped_and_preserves_ra_data(database, monkeypatch):
+    monkeypatch.setattr(backfill, "classify_with_llm", lambda event: RoleResponse((ProposedRole(1, "organizer", 1, "8MM"),), ()))
+    run_id = backfill.create_run(database, (1,), "config")
+    database.commit()
+    assert backfill.process_run(database, run_id, "config") == "succeeded"
+    assert database.execute("SELECT count(*) FROM event_promoters").fetchone() == (2,)
+    with role_filtered_relation(database, "config"):
+        assert database.execute("SELECT event_id, promoter_id FROM event_promoters").fetchall() == [(1, 1)]
+    assert database.execute("SELECT count(*) FROM event_promoters").fetchone() == (2,)
+
+
+def test_filtered_relation_rolls_back_when_query_fails(database):
+    with pytest.raises(psycopg.errors.DivisionByZero):
+        with role_filtered_relation(database, "config"):
+            database.execute("SELECT 1 / 0")
+    assert database.execute("SELECT count(*) FROM event_promoters").fetchone() == (2,)
