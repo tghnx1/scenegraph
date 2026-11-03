@@ -10,7 +10,7 @@ from uuid import uuid4
 import psycopg
 import pytest
 import httpx
-from openai import RateLimitError
+from openai import PermissionDeniedError, RateLimitError
 from psycopg import sql
 
 from app import promoter_role_backfill as backfill
@@ -114,6 +114,28 @@ def test_quota_pauses_without_consuming_retry(database, monkeypatch):
     database.commit()
     assert backfill.process_run(database, run_id, "config") == "paused"
     assert database.execute("SELECT status, attempts, error_code FROM promoter_role_backfill_item").fetchone() == ("pending", 0, "provider_quota")
+
+
+@pytest.mark.parametrize("error_type,message,expected", [
+    ("access_terminated_error", "You've reached your 5-hour usage limit", "paused"),
+    ("access_terminated_error", "Account terminated for policy reasons", "failed"),
+    ("permission_denied", "Access denied", "failed"),
+])
+def test_403_is_quota_only_when_explicit(database, monkeypatch, error_type, message, expected):
+    response = httpx.Response(403, request=httpx.Request("POST", "https://example.invalid"))
+
+    def deny(_event):
+        raise PermissionDeniedError("provider error", response=response, body={"type": error_type, "message": message})
+
+    monkeypatch.setattr(backfill, "classify_with_llm", deny)
+    run_id = backfill.create_run(database, (1,), "config")
+    database.commit()
+    assert backfill.process_run(database, run_id, "config") == expected
+    row = database.execute("SELECT status, attempts, error_code FROM promoter_role_backfill_item").fetchone()
+    if expected == "paused":
+        assert row == ("pending", 0, "provider_quota")
+    else:
+        assert row == ("failed", 1, "provider_system_failure")
 
 
 def test_dry_run_does_not_write(database):

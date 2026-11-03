@@ -15,7 +15,7 @@ from typing import Iterator
 
 from psycopg import Connection
 from psycopg.types.json import Jsonb
-from openai import APIConnectionError, APITimeoutError, InternalServerError, OpenAIError, RateLimitError
+from openai import APIConnectionError, APITimeoutError, InternalServerError, OpenAIError, PermissionDeniedError, RateLimitError
 
 from app.promoter_role_llm import InvalidRoleResponse, ProposedRole, RoleResponse, classify_with_llm
 from app.event_tag_extraction import EventTagExtractionConfig
@@ -167,6 +167,30 @@ def _finish_run(connection: Connection, run_id: int, status: str) -> None:
         """, (status, status, run_id))
 
 
+def _is_explicit_kimi_quota(error: PermissionDeniedError) -> bool:
+    """Recognize Kimi's documented-in-practice quota response, not generic 403s."""
+    body = error.body
+    if not isinstance(body, dict):
+        return False
+    detail = body.get("error", body)
+    if not isinstance(detail, dict):
+        return False
+    message = detail.get("message")
+    return (detail.get("type") in {"access_terminated_error", "exceeded_current_quota_error"}
+            and isinstance(message, str)
+            and ("usage limit" in message.lower() or "quota" in message.lower()))
+
+
+def _pause_for_quota(connection: Connection, run_id: int, event_id: int) -> None:
+    connection.rollback()
+    finish_item(connection, run_id, event_id, status="pending", error_code="provider_quota")
+    # Quota exhaustion is not a failed attempt; a later invocation can resume.
+    with connection.cursor() as cursor:
+        cursor.execute("UPDATE promoter_role_backfill_item SET attempts = attempts - 1 WHERE run_id = %s AND event_id = %s", (run_id, event_id))
+    _finish_run(connection, run_id, "paused")
+    connection.commit()
+
+
 def process_run(connection: Connection, run_id: int, current_config_hash: str) -> str:
     """Process one bounded run. Failures persist only safe categories, not provider text."""
     with worker_lock(connection):
@@ -226,13 +250,7 @@ def process_run(connection: Connection, run_id: int, current_config_hash: str) -
                             input_tokens=response.input_tokens, output_tokens=response.output_tokens)
                 connection.commit()
             except RateLimitError:
-                connection.rollback()
-                finish_item(connection, run_id, item.event_id, status="pending", error_code="provider_quota")
-                # Quota exhaustion is not a failed attempt; a later invocation can resume.
-                with connection.cursor() as cursor:
-                    cursor.execute("UPDATE promoter_role_backfill_item SET attempts = attempts - 1 WHERE run_id = %s AND event_id = %s", (run_id, item.event_id))
-                _finish_run(connection, run_id, "paused")
-                connection.commit()
+                _pause_for_quota(connection, run_id, item.event_id)
                 return "paused"
             except (APIConnectionError, APITimeoutError, InternalServerError, EventInputChanged):
                 connection.rollback()
@@ -248,6 +266,15 @@ def process_run(connection: Connection, run_id: int, current_config_hash: str) -
                 connection.rollback()
                 finish_item(connection, run_id, item.event_id, status="failed", error_code="invalid_model_response")
                 connection.commit()
+            except PermissionDeniedError as error:
+                if _is_explicit_kimi_quota(error):
+                    _pause_for_quota(connection, run_id, item.event_id)
+                    return "paused"
+                connection.rollback()
+                finish_item(connection, run_id, item.event_id, status="failed", error_code="provider_system_failure")
+                _finish_run(connection, run_id, "failed")
+                connection.commit()
+                return "failed"
             except OpenAIError:
                 connection.rollback()
                 finish_item(connection, run_id, item.event_id, status="failed", error_code="provider_system_failure")
