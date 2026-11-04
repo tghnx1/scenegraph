@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from typing import Literal, TypedDict
 
 
-CLASSIFIER_VERSION = "promoter-role-v12"
+CLASSIFIER_VERSION = "promoter-role-v13"
 NORMALIZATION_VERSION = "unicode-nfkc-alnum-v1"
 DESCRIPTION_LIMIT = 12000
 
@@ -131,10 +131,10 @@ def venue_name_may_match(profile: str, venue: str | None) -> bool:
     profile_key = normalize_name(profile)
     for part in re.split(r"\s+/\s+", venue):
         key = normalize_name(part)
-        if len(key) < 4 or not profile_key.startswith(key):
+        if len(key) < 3 or not profile_key.startswith(key):
             continue
         suffix = profile_key[len(key):]
-        if suffix in {"berlin", "berlino", "bier"}:
+        if suffix == "events" or (len(key) >= 4 and suffix in {"berlin", "berlino", "bier"}):
             return True
     return False
 
