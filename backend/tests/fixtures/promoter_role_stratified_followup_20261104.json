@@ -1,0 +1,12 @@
+{
+  "version": "stratified-20261104-followup-v1",
+  "frozen_before_model_evaluation": true,
+  "release_representative": false,
+  "note": "Additional reviewed links from the preregistered 60-link sample. Negatives reflect the venue exclusion policy; these four events have not been classified prior to review.",
+  "cases": [
+    {"ra_event_id": "2567621", "ra_promoter_id": "173430", "expected_organizer": true, "basis": "The title credits PATIKA as presenter and the description identifies the initiative as PATIKA Berlin.", "source": "https://ra.co/events/2567621"},
+    {"ra_event_id": "2394017", "ra_promoter_id": "182851", "expected_organizer": true, "basis": "The title credits ROOH as presenter; the promoter and event administration identify ROOH.Berlin.", "source": "https://ra.co/events/2394017"},
+    {"ra_event_id": "2440427", "ra_promoter_id": "110848", "expected_organizer": false, "basis": "InsomniaBerlin identifies the listed Insomnia venue; no explicit organizer credit is present in the stored text.", "source": "https://ra.co/events/2440427"},
+    {"ra_event_id": "2417954", "ra_promoter_id": "11078", "expected_organizer": false, "basis": "Else Events identifies the listed Else venue; the source does not explicitly credit the venue as organizer.", "source": "https://ra.co/events/2417954"}
+  ]
+}
