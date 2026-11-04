@@ -1,0 +1,428 @@
+{
+  "version": "population-selection-20261104-v1",
+  "selection": "60 uniformly hash-ordered event-promoter links from the local production snapshot; excludes events in previous review selections. All dates and classification states. Hash seed population-20261104-v1. No model outputs included.",
+  "selected_before_review": true,
+  "previous_reviews_excluded": true,
+  "cases": [
+    {
+      "ra_event_id": "2123411",
+      "ra_promoter_id": "115233",
+      "title": "Battle of the Machines (DAYTIME)",
+      "venue": "Urban Spree",
+      "promoter": "Josef Kunz"
+    },
+    {
+      "ra_event_id": "2407744",
+      "ra_promoter_id": "8711",
+      "title": "Tresor meets Diffuse Reality",
+      "venue": "Tresor / Globus",
+      "promoter": "Tresor Club"
+    },
+    {
+      "ra_event_id": "2191503",
+      "ra_promoter_id": "110655",
+      "title": "DFFRNT",
+      "venue": "OST",
+      "promoter": "OST"
+    },
+    {
+      "ra_event_id": "2550633",
+      "ra_promoter_id": "92369",
+      "title": "Halloween Calling",
+      "venue": "Zur Klappe",
+      "promoter": "Zur Klappe"
+    },
+    {
+      "ra_event_id": "2413638",
+      "ra_promoter_id": "102021",
+      "title": "Renate Klubnacht & Free Open Air with Kindergarten Records, AGY3NA, Ma Sha, karete bu",
+      "venue": "Renate",
+      "promoter": "Renate Club"
+    },
+    {
+      "ra_event_id": "2457531",
+      "ra_promoter_id": "70881",
+      "title": "MONDAY ROAST w. fat lip",
+      "venue": "Klunkerkranich",
+      "promoter": "Klunkerkranich"
+    },
+    {
+      "ra_event_id": "2502885",
+      "ra_promoter_id": "107670",
+      "title": "Maara Ultra Villain Album Live Debut",
+      "venue": "arkaoda Berlin",
+      "promoter": "Maara-Louisa Dunbar"
+    },
+    {
+      "ra_event_id": "2211571",
+      "ra_promoter_id": "99406",
+      "title": "Teletech: Berlin",
+      "venue": "DSTRKT Club Berlin",
+      "promoter": "Polka Bookings"
+    },
+    {
+      "ra_event_id": "2495993",
+      "ra_promoter_id": "147867",
+      "title": "SIGNALS",
+      "venue": "Lokschuppen Berlin",
+      "promoter": "SIGNALSBERLINEVENT"
+    },
+    {
+      "ra_event_id": "2370557",
+      "ra_promoter_id": "137375",
+      "title": "FEIERAMT X FURIA COLLECTIVE ",
+      "venue": "KREUZWERK",
+      "promoter": "kreuzwerk.berlin"
+    },
+    {
+      "ra_event_id": "2251066",
+      "ra_promoter_id": "171510",
+      "title": "Close Beta Shift Testing EUR",
+      "venue": "TBA - Somewhere",
+      "promoter": "Yuri Shift Promoter"
+    },
+    {
+      "ra_event_id": "2431370",
+      "ra_promoter_id": "147457",
+      "title": "IT'S MAYDAY TIME AT YAAM",
+      "venue": "YAAM Berlin",
+      "promoter": "hng.picnics.brln"
+    },
+    {
+      "ra_event_id": "2060256",
+      "ra_promoter_id": "110848",
+      "title": "Dirty Disco",
+      "venue": "Insomnia",
+      "promoter": "InsomniaBerlin"
+    },
+    {
+      "ra_event_id": "2403973",
+      "ra_promoter_id": "183991",
+      "title": "RZ OFF-TRACK",
+      "venue": "Sonnenraum",
+      "promoter": "RZ-Events"
+    },
+    {
+      "ra_event_id": "2298451",
+      "ra_promoter_id": "50797",
+      "title": "Tegel Boys x Leonard Wellington",
+      "venue": "Mikropol",
+      "promoter": "Public Hearing"
+    },
+    {
+      "ra_event_id": "2449867",
+      "ra_promoter_id": "1039",
+      "title": "Klubnacht",
+      "venue": "Berghain | Panorama Bar | Säule",
+      "promoter": "OstGut GmbH"
+    },
+    {
+      "ra_event_id": "2122542",
+      "ra_promoter_id": "34887",
+      "title": "JOINT FREQUENCIES",
+      "venue": "AVA Club",
+      "promoter": "Sensorium"
+    },
+    {
+      "ra_event_id": "2097377",
+      "ra_promoter_id": "109212",
+      "title": "HAPPY EASTER x HAPPY HARDCORE (Outdoor+Indoor)",
+      "venue": "Lokschuppen Berlin",
+      "promoter": "candyflip030"
+    },
+    {
+      "ra_event_id": "2449666",
+      "ra_promoter_id": "180911",
+      "title": "TECHNO MITTWOCH",
+      "venue": "Sensorium",
+      "promoter": "Sensorium"
+    },
+    {
+      "ra_event_id": "2423724",
+      "ra_promoter_id": "52501",
+      "title": "CHOSEN FAMILY CSD",
+      "venue": "Kater",
+      "promoter": "Kater"
+    },
+    {
+      "ra_event_id": "2059591",
+      "ra_promoter_id": "13285",
+      "title": "Dead City Driving - antiautomobiler Neujahrsempfang",
+      "venue": "://about blank",
+      "promoter": "://about blank"
+    },
+    {
+      "ra_event_id": "2137549",
+      "ra_promoter_id": "105593",
+      "title": "SINGULARITY",
+      "venue": "Tresor / Globus",
+      "promoter": "singularity.bln"
+    },
+    {
+      "ra_event_id": "2531697",
+      "ra_promoter_id": "169979",
+      "title": "72 HOURS – ART WEEK EDITION",
+      "venue": "Georgia Bar",
+      "promoter": "Inan Batman"
+    },
+    {
+      "ra_event_id": "2113911",
+      "ra_promoter_id": "102021",
+      "title": "Renate Klubnacht with BUTZ, Hanna Baerti, .Cheka, Kamira, Marc DePulse, Juan Ramos, Trent",
+      "venue": "Renate",
+      "promoter": "Renate Club"
+    },
+    {
+      "ra_event_id": "2213519",
+      "ra_promoter_id": "9094",
+      "title": "FREE DAY-TIME OPEN AIR + MARKET & EXHIBITION — Hosted by KINDER DER WELT",
+      "venue": "Lokschuppen Berlin",
+      "promoter": "Lokschuppen Berlin"
+    },
+    {
+      "ra_event_id": "2459017",
+      "ra_promoter_id": "116901",
+      "title": "Skew & rythme brisé invite Holandês",
+      "venue": "Crack Bellmer",
+      "promoter": "rythme brisé"
+    },
+    {
+      "ra_event_id": "2293148",
+      "ra_promoter_id": "4075",
+      "title": "10 Years of JOY",
+      "venue": "Sameheads",
+      "promoter": "Sameheads"
+    },
+    {
+      "ra_event_id": "1930725",
+      "ra_promoter_id": "138482",
+      "title": "BCCO x HOT MEAL NYE 35 hours",
+      "venue": "ZENNER",
+      "promoter": "Hot Meal"
+    },
+    {
+      "ra_event_id": "2458394",
+      "ra_promoter_id": "1039",
+      "title": "SÄULE",
+      "venue": "Berghain | Panorama Bar | Säule",
+      "promoter": "OstGut GmbH"
+    },
+    {
+      "ra_event_id": "2068084",
+      "ra_promoter_id": "84707",
+      "title": "Free Party - New Year's Special",
+      "venue": "Void Club",
+      "promoter": "VOID"
+    },
+    {
+      "ra_event_id": "2455534",
+      "ra_promoter_id": "161289",
+      "title": "TEA SERVED [at your SERVICE]",
+      "venue": "arkaoda Berlin",
+      "promoter": "at your SERVICE"
+    },
+    {
+      "ra_event_id": "2159984",
+      "ra_promoter_id": "136510",
+      "title": "9th Floor presents: 'Metamorphosis'",
+      "venue": "Bohnengold",
+      "promoter": "9th Floor"
+    },
+    {
+      "ra_event_id": "2075406",
+      "ra_promoter_id": "102483",
+      "title": "HYPE PARTY BERLIN",
+      "venue": "Cassiopeia",
+      "promoter": "cassiopeia Berlin"
+    },
+    {
+      "ra_event_id": "2281643",
+      "ra_promoter_id": "134253",
+      "title": "Chain Reaction",
+      "venue": "Orangerie Neukölln",
+      "promoter": "Chain Reaction Berlin"
+    },
+    {
+      "ra_event_id": "2427133",
+      "ra_promoter_id": "60483",
+      "title": "Birgits WEEKENDER",
+      "venue": "Birgit",
+      "promoter": "Birgit & Bier"
+    },
+    {
+      "ra_event_id": "2191472",
+      "ra_promoter_id": "55584",
+      "title": "CREAMS *live // CANCELLED",
+      "venue": "Gretchen",
+      "promoter": "Good Day Berlin Kultur und Veranstaltungen GmbH"
+    },
+    {
+      "ra_event_id": "2513833",
+      "ra_promoter_id": "170762",
+      "title": "Reflected Radio [REC006]",
+      "venue": "P61 Gallery",
+      "promoter": "Reflected Radio"
+    },
+    {
+      "ra_event_id": "2512572",
+      "ra_promoter_id": "126462",
+      "title": "The Wolfgang Press, A Southern Code",
+      "venue": "Neue Zukunft",
+      "promoter": "Positive Transmitter"
+    },
+    {
+      "ra_event_id": "2240639",
+      "ra_promoter_id": "110848",
+      "title": "Venus Kick-Off Party",
+      "venue": "Insomnia",
+      "promoter": "InsomniaBerlin"
+    },
+    {
+      "ra_event_id": "2427812",
+      "ra_promoter_id": "9094",
+      "title": "wieder: BOILER ROOM SETUP + MARKETPLACE",
+      "venue": "Lokschuppen Berlin",
+      "promoter": "Lokschuppen Berlin"
+    },
+    {
+      "ra_event_id": "2322486",
+      "ra_promoter_id": "48504",
+      "title": "MIKROMAL CLUBNIGHT 005",
+      "venue": "Crack Bellmer",
+      "promoter": "Crack Bellmer"
+    },
+    {
+      "ra_event_id": "2337846",
+      "ra_promoter_id": "171173",
+      "title": "Melantónia x Last Riot / transmediale and CTM Vorspiel program",
+      "venue": "Illuseum",
+      "promoter": "Mel"
+    },
+    {
+      "ra_event_id": "2331870",
+      "ra_promoter_id": "126472",
+      "title": "CYCLE with SANTØS, Franky-B, Death of Mars, Anuuk x DonChoppa(live) & SEKTOR69",
+      "venue": "Lokschuppen Berlin",
+      "promoter": "EUPHORIK EVENTS"
+    },
+    {
+      "ra_event_id": "2503350",
+      "ra_promoter_id": "188488",
+      "title": "YOU ARE THE VIBE",
+      "venue": "Liquidrom",
+      "promoter": "Sylvio"
+    },
+    {
+      "ra_event_id": "2350725",
+      "ra_promoter_id": "106563",
+      "title": "Walk The Night",
+      "venue": "Fitzroy",
+      "promoter": "Singular Arts Group"
+    },
+    {
+      "ra_event_id": "2393031",
+      "ra_promoter_id": "148336",
+      "title": "Swim Good",
+      "venue": "Coco Boule",
+      "promoter": "Swim Good"
+    },
+    {
+      "ra_event_id": "2433842",
+      "ra_promoter_id": "178450",
+      "title": "Down & Dirty - LESBERLIN Mud Wrestling Fundraiser",
+      "venue": "OXI",
+      "promoter": "Lesberlin Run Club"
+    },
+    {
+      "ra_event_id": "2099547",
+      "ra_promoter_id": "157112",
+      "title": "Impossibly Distant, Impossibly Close: Electronic Residency - Day 2",
+      "venue": "Morphine Raum",
+      "promoter": "Black Knoll Editions"
+    },
+    {
+      "ra_event_id": "2121666",
+      "ra_promoter_id": "48504",
+      "title": "Succulent City 2",
+      "venue": "Crack Bellmer",
+      "promoter": "Crack Bellmer"
+    },
+    {
+      "ra_event_id": "2458401",
+      "ra_promoter_id": "164356",
+      "title": "FLORA Festival '26 [Session 7]",
+      "venue": "TBA - Follow @BerlinFloraFestival & @Ousiasound to know exact locations",
+      "promoter": "Ousia"
+    },
+    {
+      "ra_event_id": "2164941",
+      "ra_promoter_id": "74151",
+      "title": "://sektgarten x Frauengedeck & ://about fun [free entry & open air]",
+      "venue": "://about blank",
+      "promoter": "Frauengedeck"
+    },
+    {
+      "ra_event_id": "2300341",
+      "ra_promoter_id": "168546",
+      "title": "OPEN DECKS FOR FLINTA* - PING PONG FOR ALL",
+      "venue": "Crack Bellmer",
+      "promoter": "CrackBellmer"
+    },
+    {
+      "ra_event_id": "2140761",
+      "ra_promoter_id": "132089",
+      "title": "'Resonantia V/A' Release Party by Eclectic Limited",
+      "venue": "Giri",
+      "promoter": "giriberlino"
+    },
+    {
+      "ra_event_id": "2186812",
+      "ra_promoter_id": "159932",
+      "title": "Power in Connection",
+      "venue": "Pastiche",
+      "promoter": "SoundCloud Kollectiv"
+    },
+    {
+      "ra_event_id": "2216341",
+      "ra_promoter_id": "118779",
+      "title": "HELLO? (Eddie Chacon & Ash Rah)",
+      "venue": "Pastiche",
+      "promoter": "Pastiche"
+    },
+    {
+      "ra_event_id": "2401332",
+      "ra_promoter_id": "159490",
+      "title": "Heated Rivalry Music&Quiz Night",
+      "venue": "Urbayn Berlin",
+      "promoter": "Berlin Energy Network"
+    },
+    {
+      "ra_event_id": "2538979",
+      "ra_promoter_id": "84592",
+      "title": "MA BAKER Party ✪ 1970s - 2020s Dance Classics RnB House Disco ✪",
+      "venue": "Silverwings Club",
+      "promoter": "MA BAKER"
+    },
+    {
+      "ra_event_id": "2296077",
+      "ra_promoter_id": "159867",
+      "title": "UMZ UMZ NIGHTSHIFT 004",
+      "venue": "Panda Kulturplattform",
+      "promoter": "UMZUMZ"
+    },
+    {
+      "ra_event_id": "2413942",
+      "ra_promoter_id": "184760",
+      "title": "TIME TO MOVE x Groove Therapy",
+      "venue": "Humboldthain Club",
+      "promoter": "TIME TO MOVE"
+    },
+    {
+      "ra_event_id": "2086695",
+      "ra_promoter_id": "61016",
+      "title": "Techno Ihr Hasen",
+      "venue": "Der Weiße Hase",
+      "promoter": "Der Weiße Hase"
+    }
+  ]
+}
