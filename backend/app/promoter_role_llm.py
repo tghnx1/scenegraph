@@ -156,9 +156,9 @@ def parse_role_response(raw: str, event: EventRoleInput, *, allow_unknown_eviden
             credit_found = False
             for credit_name in names:
                 escaped = re.escape(credit_name)
-                credit = re.compile(r"(?<!\w)" + escaped + r"\s+(?:presents?|invites?|hosts?|organizes?|organises?|curates?)\b", re.IGNORECASE)
+                credit = re.compile(r"(?<!\w)" + escaped + r"\s+(?:presents?|pres\.|invites?|hosts?|organizes?|organises?|curates?)(?!\w)", re.IGNORECASE)
                 reverse_credit = re.compile(r"\b(?:presented|invited|hosted|organized|organised|curated)\s+by\s+" + escaped + r"(?!\w)", re.IGNORECASE)
-                appositive_credit = re.compile(r"(?<!\w)" + escaped + r"\s*,[^.!?\n]{1,120},\s*(?:presents?|invites?|hosts?|organizes?|organises?|curates?)\b", re.IGNORECASE)
+                appositive_credit = re.compile(r"(?<!\w)" + escaped + r"\s*,[^.!?\n]{1,120},\s*(?:presents?|pres\.|invites?|hosts?|organizes?|organises?|curates?)(?!\w)", re.IGNORECASE)
                 if credit.search(evidence) or reverse_credit.search(evidence) or appositive_credit.search(evidence):
                     credit_found = True
                     break

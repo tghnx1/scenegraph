@@ -267,6 +267,14 @@ def test_venue_alias_can_be_credited_by_venue_name():
     assert parse_role_response(raw, event).roles[0].role == "both"
 
 
+def test_venue_presenter_abbreviation_is_a_credit():
+    event = EventRoleInput(2, "M.A.R.A.", "OST pres. M.A.R.A.", 1,
+                           "OST", (PromoterProfile(4, "OST"),))
+    raw = json.dumps({"roles": [{"promoter_id": 4, "role": "both", "confidence": 0.9,
+                                 "evidence": "OST pres. M.A.R.A."}]})
+    assert parse_role_response(raw, event).roles[0].role == "both"
+
+
 def test_different_name_containing_club_is_not_automatically_venue():
     event = EventRoleInput(2, "Clubnight presents", "", 1, "Night", (PromoterProfile(4, "Clubnight"),))
     raw = json.dumps({"roles": [{"promoter_id": 4, "role": "organizer", "confidence": 0.9,
