@@ -9,7 +9,7 @@ from typing import Literal
 
 from app.artist_tag_extraction import create_chat_completion
 from app.event_tag_extraction import EventTagExtractionConfig, create_extraction_client
-from app.promoter_roles import DESCRIPTION_LIMIT, EventRoleInput, normalize_name, venue_name_matches
+from app.promoter_roles import DESCRIPTION_LIMIT, EventRoleInput, normalize_name, venue_name_may_match
 
 Role = Literal["organizer", "venue", "both", "unknown"]
 
@@ -138,21 +138,32 @@ def parse_role_response(raw: str, event: EventRoleInput, *, allow_unknown_eviden
             # A bad quotation cannot substantiate any role. Preserve the other
             # validated links, but make this one explicitly uncertain.
             role, confidence, evidence = "unknown", 0.0, name
-        same_venue = venue_name_matches(name, event.venue_name)
-        if role == "both" or (role == "organizer" and same_venue):
+        possible_venue = venue_name_may_match(name, event.venue_name)
+        names = [name]
+        parts = re.findall(r"[^\W_]+", name)
+        if len(parts) > 1 and parts[-1].casefold() in {"berlin", "bln", "events", "club"}:
+            names.append(" ".join(parts[:-1]))
+        if possible_venue and event.venue_name:
+            names.extend(re.split(r"\s+/\s+", event.venue_name))
+        normalized_evidence = normalize_name(evidence)
+        name_supported = any(len(normalize_name(value)) >= 2 and normalize_name(value) in normalized_evidence
+                             for value in names)
+        event_text_supported = any(evidence in value for value in sources[:2])
+        if role in ("organizer", "both") and not (name_supported and event_text_supported):
+            role, confidence = "unknown", 0.0
+        if role == "both" or (role == "organizer" and possible_venue):
             # A location mention alone does not prove that the venue co-organized.
-            credit = re.compile(r"(?<!\w)" + re.escape(name) +
-                                r"\s+(?:presents?|invites?|hosts?|organizes?|organises?|curates?)\b", re.IGNORECASE)
-            reverse_credit = re.compile(
-                r"\b(?:presented|invited|hosted|organized|organised|curated)\s+by\s+"
-                + re.escape(name) + r"(?!\w)", re.IGNORECASE,
-            )
-            appositive_credit = re.compile(
-                r"(?<!\w)" + re.escape(name) + r"\s*,[^.!?\n]{1,120},\s*"
-                r"(?:presents?|invites?|hosts?|organizes?|organises?|curates?)\b", re.IGNORECASE,
-            )
-            if not credit.search(evidence) and not reverse_credit.search(evidence) and not appositive_credit.search(evidence):
-                role = "unknown"
+            credit_found = False
+            for credit_name in names:
+                escaped = re.escape(credit_name)
+                credit = re.compile(r"(?<!\w)" + escaped + r"\s+(?:presents?|invites?|hosts?|organizes?|organises?|curates?)\b", re.IGNORECASE)
+                reverse_credit = re.compile(r"\b(?:presented|invited|hosted|organized|organised|curated)\s+by\s+" + escaped + r"(?!\w)", re.IGNORECASE)
+                appositive_credit = re.compile(r"(?<!\w)" + escaped + r"\s*,[^.!?\n]{1,120},\s*(?:presents?|invites?|hosts?|organizes?|organises?|curates?)\b", re.IGNORECASE)
+                if credit.search(evidence) or reverse_credit.search(evidence) or appositive_credit.search(evidence):
+                    credit_found = True
+                    break
+            if not credit_found:
+                role, confidence = "unknown", 0.0
         roles.append(ProposedRole(promoter_id, role, confidence, evidence))
     if seen != ids:
         raise InvalidRoleResponse("missing promoter role")

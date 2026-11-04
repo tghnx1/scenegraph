@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from typing import Literal, TypedDict
 
 
-CLASSIFIER_VERSION = "promoter-role-v10"
+CLASSIFIER_VERSION = "promoter-role-v11"
 NORMALIZATION_VERSION = "unicode-nfkc-alnum-v1"
 DESCRIPTION_LIMIT = 12000
 
@@ -117,6 +117,26 @@ def venue_name_matches(profile: str, venue: str | None) -> bool:
         return result - {""}
 
     return bool(variants(profile) & variants(venue))
+
+
+def venue_name_may_match(profile: str, venue: str | None) -> bool:
+    """Identify limited name overlaps that require stronger organizer evidence.
+
+    This is not an identity merge: ambiguous overlaps remain separate profiles.
+    """
+    if venue_name_matches(profile, venue):
+        return True
+    if not venue:
+        return False
+    profile_key = normalize_name(profile)
+    for part in re.split(r"\s+/\s+", venue):
+        key = normalize_name(part)
+        if len(key) < 4 or not profile_key.startswith(key):
+            continue
+        suffix = profile_key[len(key):]
+        if suffix in {"berlin", "berlino", "bier"}:
+            return True
+    return False
 
 
 def classify_explicit_presenter(promoter: str, venue: str | None, title: str) -> RoleSignal:

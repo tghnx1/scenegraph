@@ -235,6 +235,38 @@ def test_venue_mention_with_appositive_is_not_a_presenter_credit():
     assert parse_role_response(raw, event).roles[0].role == "unknown"
 
 
+def test_organizer_must_be_named_in_event_evidence():
+    event = EventRoleInput(2, "Klubnacht", "playing here for the second time", 1,
+                           "Berghain | Panorama Bar | Säule", (PromoterProfile(4, "OstGut GmbH"),))
+    raw = json.dumps({"roles": [{"promoter_id": 4, "role": "organizer", "confidence": 0.9,
+                                 "evidence": "playing here for the second time"}]})
+    assert parse_role_response(raw, event).roles[0].role == "unknown"
+
+
+def test_profile_name_alone_is_not_event_organizer_evidence():
+    event = EventRoleInput(2, "A gathering", "Doors open at 10", 1,
+                           "Somewhere", (PromoterProfile(4, "Collective"),))
+    raw = json.dumps({"roles": [{"promoter_id": 4, "role": "organizer", "confidence": 0.9,
+                                 "evidence": "Collective"}]})
+    assert parse_role_response(raw, event).roles[0].role == "unknown"
+
+
+def test_venue_overlap_does_not_become_organizer_from_profile_name():
+    event = EventRoleInput(2, "Birgits WEEKENDER", "Tickets at the door", 1,
+                           "Birgit", (PromoterProfile(4, "Birgit & Bier"),))
+    raw = json.dumps({"roles": [{"promoter_id": 4, "role": "organizer", "confidence": 0.9,
+                                 "evidence": "Birgit & Bier"}]})
+    assert parse_role_response(raw, event).roles[0].role == "unknown"
+
+
+def test_venue_alias_can_be_credited_by_venue_name():
+    event = EventRoleInput(2, "Release party", "Eclectic Limited & Giri present", 1,
+                           "Giri", (PromoterProfile(4, "giriberlino"),))
+    raw = json.dumps({"roles": [{"promoter_id": 4, "role": "both", "confidence": 0.9,
+                                 "evidence": "Eclectic Limited & Giri present"}]})
+    assert parse_role_response(raw, event).roles[0].role == "both"
+
+
 def test_different_name_containing_club_is_not_automatically_venue():
     event = EventRoleInput(2, "Clubnight presents", "", 1, "Night", (PromoterProfile(4, "Clubnight"),))
     raw = json.dumps({"roles": [{"promoter_id": 4, "role": "organizer", "confidence": 0.9,
