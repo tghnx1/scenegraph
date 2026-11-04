@@ -1,0 +1,487 @@
+{
+  "version": "independent-stratified-20261104-v1",
+  "selection": "30 links with exact normalized venue name and 30 other links, dated since 2025, from events without saved classification; ordered within strata by md5(RA event ID:RA promoter ID:independent-20261104-v1). Stratified sample; not representative without weighting.",
+  "selected_before_model_inference": true,
+  "cases": [
+    {
+      "ra_event_id": "2088877",
+      "ra_promoter_id": "52501",
+      "title": "Kater x Woodlands with Upercent, Sarah Wild, SKALA, Actitude + more",
+      "venue": "Kater",
+      "promoter": "Kater",
+      "exact_venue_match": true
+    },
+    {
+      "ra_event_id": "2527384",
+      "ra_promoter_id": "70881",
+      "title": "3000 GRAD presents: ACKER RECORDS SHOWCASE w. Pornbugs, Dompe, LEENI, LIZZN, Mitsuko, Nibø",
+      "venue": "Klunkerkranich",
+      "promoter": "Klunkerkranich",
+      "exact_venue_match": true
+    },
+    {
+      "ra_event_id": "2191290",
+      "ra_promoter_id": "42875",
+      "title": "Trash/80s/90s/Hip Hop and House on two floors - free entry",
+      "venue": "Promenaden Eck",
+      "promoter": "Promenaden Eck",
+      "exact_venue_match": true
+    },
+    {
+      "ra_event_id": "2379311",
+      "ra_promoter_id": "9094",
+      "title": "Chantal's House of Shame: CHANTAL'S BDAY",
+      "venue": "Lokschuppen Berlin",
+      "promoter": "Lokschuppen Berlin",
+      "exact_venue_match": true
+    },
+    {
+      "ra_event_id": "2380770",
+      "ra_promoter_id": "9481",
+      "title": "Unison X NonChalance",
+      "venue": "Ritter Butzke",
+      "promoter": "Ritter Butzke",
+      "exact_venue_match": true
+    },
+    {
+      "ra_event_id": "2455675",
+      "ra_promoter_id": "184030",
+      "title": "Heinali and Andriana-Yaroslava Saienko 'Гільдеґарда (Hildegard)'",
+      "venue": "KW Institute for Contemporary Art",
+      "promoter": "KW Institute for Contemporary Art",
+      "exact_venue_match": true
+    },
+    {
+      "ra_event_id": "2072743",
+      "ra_promoter_id": "8367",
+      "title": "Multilayer /w ALI3N, Ida Daugaard, Leon Licht, Sarah Wild",
+      "venue": "://about blank",
+      "promoter": "About Blank",
+      "exact_venue_match": true
+    },
+    {
+      "ra_event_id": "2545948",
+      "ra_promoter_id": "13285",
+      "title": "://sektgarten [free entry & open air]",
+      "venue": "://about blank",
+      "promoter": "://about blank",
+      "exact_venue_match": true
+    },
+    {
+      "ra_event_id": "2253573",
+      "ra_promoter_id": "61016",
+      "title": "Engine Room 046 / Pappenheimer",
+      "venue": "Der Weiße Hase",
+      "promoter": "Der Weiße Hase",
+      "exact_venue_match": true
+    },
+    {
+      "ra_event_id": "2423317",
+      "ra_promoter_id": "139980",
+      "title": "A 90mil Festival___IS THAT ALL THERE IS?",
+      "venue": "90mil",
+      "promoter": "90mil",
+      "exact_venue_match": true
+    },
+    {
+      "ra_event_id": "2475159",
+      "ra_promoter_id": "63291",
+      "title": "Klubnacht",
+      "venue": "Golden Gate",
+      "promoter": "Golden Gate",
+      "exact_venue_match": true
+    },
+    {
+      "ra_event_id": "2240869",
+      "ra_promoter_id": "110655",
+      "title": "808 Studios x OST w./ OGUZ, Claessens",
+      "venue": "OST",
+      "promoter": "OST",
+      "exact_venue_match": true
+    },
+    {
+      "ra_event_id": "2268729",
+      "ra_promoter_id": "63291",
+      "title": "Golden Time Jubilee & Afterhour",
+      "venue": "Golden Gate",
+      "promoter": "Golden Gate",
+      "exact_venue_match": true
+    },
+    {
+      "ra_event_id": "2223984",
+      "ra_promoter_id": "9094",
+      "title": "FLOORWÄRTS w/ Lenny Fuck, S.3000, Plattenlieferant and many more",
+      "venue": "Lokschuppen Berlin",
+      "promoter": "Lokschuppen Berlin",
+      "exact_venue_match": true
+    },
+    {
+      "ra_event_id": "2168457",
+      "ra_promoter_id": "61016",
+      "title": "Techno Ihr Hasen",
+      "venue": "Der Weiße Hase",
+      "promoter": "Der Weiße Hase",
+      "exact_venue_match": true
+    },
+    {
+      "ra_event_id": "2270014",
+      "ra_promoter_id": "173235",
+      "title": "Sunny's Sunday Funday",
+      "venue": "YAAM Berlin",
+      "promoter": "YaamBerlin",
+      "exact_venue_match": true
+    },
+    {
+      "ra_event_id": "2343111",
+      "ra_promoter_id": "63291",
+      "title": "ABOR Collective",
+      "venue": "Golden Gate",
+      "promoter": "Golden Gate",
+      "exact_venue_match": true
+    },
+    {
+      "ra_event_id": "2488120",
+      "ra_promoter_id": "79283",
+      "title": "Vinyl Market with Batukizer",
+      "venue": "arkaoda Berlin",
+      "promoter": "arkaoda Berlin",
+      "exact_venue_match": true
+    },
+    {
+      "ra_event_id": "2070566",
+      "ra_promoter_id": "42875",
+      "title": "Trash/80s/90s/Hip Hop and House on two floors",
+      "venue": "Promenaden Eck",
+      "promoter": "Promenaden Eck",
+      "exact_venue_match": true
+    },
+    {
+      "ra_event_id": "2072572",
+      "ra_promoter_id": "9094",
+      "title": "PFANDCORE w/ FLUCC, Olmatri, Antonym",
+      "venue": "Lokschuppen Berlin",
+      "promoter": "Lokschuppen Berlin",
+      "exact_venue_match": true
+    },
+    {
+      "ra_event_id": "2223000",
+      "ra_promoter_id": "110655",
+      "title": "Savory - Techno Every Thursday",
+      "venue": "OST",
+      "promoter": "OST",
+      "exact_venue_match": true
+    },
+    {
+      "ra_event_id": "2103340",
+      "ra_promoter_id": "4075",
+      "title": "TWISTA with Luce Clandestina, Nadia Wise, L. Zylberberg",
+      "venue": "Sameheads",
+      "promoter": "Sameheads",
+      "exact_venue_match": true
+    },
+    {
+      "ra_event_id": "2546840",
+      "ra_promoter_id": "180911",
+      "title": "TRIG FROM 23:00- XXX",
+      "venue": "Sensorium",
+      "promoter": "Sensorium",
+      "exact_venue_match": true
+    },
+    {
+      "ra_event_id": "2231332",
+      "ra_promoter_id": "9094",
+      "title": "SIGNALS - 5€ Tickets - with Lucy Duffner, Laurix, Tom Forelli, Meander",
+      "venue": "Lokschuppen Berlin",
+      "promoter": "Lokschuppen Berlin",
+      "exact_venue_match": true
+    },
+    {
+      "ra_event_id": "2410180",
+      "ra_promoter_id": "180595",
+      "title": "Harmony Rec. ciao ciao Bar Takeover",
+      "venue": "ciao ciao Bar",
+      "promoter": "ciao ciao Bar",
+      "exact_venue_match": true
+    },
+    {
+      "ra_event_id": "2362022",
+      "ra_promoter_id": "4075",
+      "title": "WARNING pres. SYNTHETIC STUPIDITY",
+      "venue": "Sameheads",
+      "promoter": "Sameheads",
+      "exact_venue_match": true
+    },
+    {
+      "ra_event_id": "2515790",
+      "ra_promoter_id": "110655",
+      "title": "ULTRA SOZIAL w. Tham, RIKHTER, KTK, SAIKA",
+      "venue": "OST",
+      "promoter": "OST",
+      "exact_venue_match": true
+    },
+    {
+      "ra_event_id": "2548525",
+      "ra_promoter_id": "184791",
+      "title": "tangent afterparty",
+      "venue": "Jonny Knüppel",
+      "promoter": "Jonny Knüppel",
+      "exact_venue_match": true
+    },
+    {
+      "ra_event_id": "2495614",
+      "ra_promoter_id": "9481",
+      "title": "Alan Fitzpatrick",
+      "venue": "Ritter Butzke",
+      "promoter": "Ritter Butzke",
+      "exact_venue_match": true
+    },
+    {
+      "ra_event_id": "2231489",
+      "ra_promoter_id": "31233",
+      "title": "Human Tree Records invites: Monotone & Deltagram",
+      "venue": "Urban Spree",
+      "promoter": "Urban Spree",
+      "exact_venue_match": true
+    },
+    {
+      "ra_event_id": "2179010",
+      "ra_promoter_id": "102845",
+      "title": "SYMBIOTIKKA at KitKat Club",
+      "venue": "KitKatClub",
+      "promoter": "Symbiotikka / Too Much Entertainment",
+      "exact_venue_match": false
+    },
+    {
+      "ra_event_id": "2394017",
+      "ra_promoter_id": "182851",
+      "title": "[Free Entry] ROOH presents - THE FIRST RITUAL",
+      "venue": "Golden Flamingo",
+      "promoter": "ROOH.Berlin",
+      "exact_venue_match": false
+    },
+    {
+      "ra_event_id": "2049820",
+      "ra_promoter_id": "75892",
+      "title": "Four Play",
+      "venue": "KitKatClub",
+      "promoter": "Four Play",
+      "exact_venue_match": false
+    },
+    {
+      "ra_event_id": "2143709",
+      "ra_promoter_id": "29098",
+      "title": "Perfect Sundays in Sonnenraum",
+      "venue": "Sonnenraum",
+      "promoter": "CDV",
+      "exact_venue_match": false
+    },
+    {
+      "ra_event_id": "2334937",
+      "ra_promoter_id": "181864",
+      "title": "Hoe__mies x EN1GMA: Day & Night",
+      "venue": "OXI",
+      "promoter": "EN1GMACLUB",
+      "exact_venue_match": false
+    },
+    {
+      "ra_event_id": "2346935",
+      "ra_promoter_id": "52590",
+      "title": "PORN by PRNCPTL | Berlin",
+      "venue": "MUENZE",
+      "promoter": "Pornceptual",
+      "exact_venue_match": false
+    },
+    {
+      "ra_event_id": "2236433",
+      "ra_promoter_id": "144884",
+      "title": "RODA DE FEIJOADA – BRAZILIAN POOL PARTY",
+      "venue": "Maaya",
+      "promoter": "Bossa_FM",
+      "exact_venue_match": false
+    },
+    {
+      "ra_event_id": "2447316",
+      "ra_promoter_id": "142828",
+      "title": "RAUM Records x R0",
+      "venue": "Crack Bellmer",
+      "promoter": "RAUM Records",
+      "exact_venue_match": false
+    },
+    {
+      "ra_event_id": "2270418",
+      "ra_promoter_id": "27524",
+      "title": "Electric Monday",
+      "venue": "KitKatClub",
+      "promoter": "Electric Monday",
+      "exact_venue_match": false
+    },
+    {
+      "ra_event_id": "2129495",
+      "ra_promoter_id": "159867",
+      "title": "3H Company",
+      "venue": "Panda Kulturplattform",
+      "promoter": "UMZUMZ",
+      "exact_venue_match": false
+    },
+    {
+      "ra_event_id": "2421956",
+      "ra_promoter_id": "110012",
+      "title": "Friends der Unintelligenz",
+      "venue": "TBA - Plänterwald",
+      "promoter": "Arndt29",
+      "exact_venue_match": false
+    },
+    {
+      "ra_event_id": "2288353",
+      "ra_promoter_id": "111202",
+      "title": "HEISSS",
+      "venue": "RSO.BERLIN",
+      "promoter": "HEISSS",
+      "exact_venue_match": false
+    },
+    {
+      "ra_event_id": "2379537",
+      "ra_promoter_id": "157178",
+      "title": "HEAT by UNDR - Kinky House & Techno Party",
+      "venue": "Insomnia",
+      "promoter": "UNDR",
+      "exact_venue_match": false
+    },
+    {
+      "ra_event_id": "2438780",
+      "ra_promoter_id": "180643",
+      "title": "Day&Night Festival: Watergate Open Air with DJ Heartstring, Interplanetary Criminal, THC + more",
+      "venue": "FOUND",
+      "promoter": "STEADY BERLIN",
+      "exact_venue_match": false
+    },
+    {
+      "ra_event_id": "2432531",
+      "ra_promoter_id": "8711",
+      "title": "Tresor New Faces hosted by AOIFE",
+      "venue": "Tresor / Globus",
+      "promoter": "Tresor Club",
+      "exact_venue_match": false
+    },
+    {
+      "ra_event_id": "2239813",
+      "ra_promoter_id": "84707",
+      "title": "New Blood Sessions IV with Abex, Buktuu, Gianni Noel, Hybrid Paulito, Jaynetics, Saint Popsy",
+      "venue": "Void Club",
+      "promoter": "VOID",
+      "exact_venue_match": false
+    },
+    {
+      "ra_event_id": "2521594",
+      "ra_promoter_id": "140037",
+      "title": "FLIGHTMODE",
+      "venue": "Humboldthain Club",
+      "promoter": "Geisburg Records",
+      "exact_venue_match": false
+    },
+    {
+      "ra_event_id": "2068293",
+      "ra_promoter_id": "126472",
+      "title": "EUPHORIK x CYCLE(INDOOR+OUTDOOR) w/ Don Woezik, ANKKH, MATRAKK & SZG",
+      "venue": "Lokschuppen Berlin",
+      "promoter": "EUPHORIK EVENTS",
+      "exact_venue_match": false
+    },
+    {
+      "ra_event_id": "2192975",
+      "ra_promoter_id": "29098",
+      "title": "Quirk",
+      "venue": "Hoppetosse",
+      "promoter": "CDV",
+      "exact_venue_match": false
+    },
+    {
+      "ra_event_id": "2082395",
+      "ra_promoter_id": "84707",
+      "title": "Free Entry: Subsonic Soul Drum & Bass with Deep Inc, Dub Isotope, Upzet, Nerv",
+      "venue": "Void Hall",
+      "promoter": "VOID",
+      "exact_venue_match": false
+    },
+    {
+      "ra_event_id": "2438995",
+      "ra_promoter_id": "147240",
+      "title": "Safety Net vol. 5 in Kwia with HWXXNG, Mithril, suvelina, t0ni, ZULI",
+      "venue": "Kwia",
+      "promoter": "Safety Net",
+      "exact_venue_match": false
+    },
+    {
+      "ra_event_id": "2376160",
+      "ra_promoter_id": "153791",
+      "title": "ABARTIG x FADERCULT",
+      "venue": "Marmorbar",
+      "promoter": "Act Like Adults",
+      "exact_venue_match": false
+    },
+    {
+      "ra_event_id": "2425811",
+      "ra_promoter_id": "81960",
+      "title": "Radio Rudina invites Yung Singh + Seoul Community Radio",
+      "venue": "OXI",
+      "promoter": "Seoul Community Radio",
+      "exact_venue_match": false
+    },
+    {
+      "ra_event_id": "2440427",
+      "ra_promoter_id": "110848",
+      "title": "Hello Insomnia",
+      "venue": "Insomnia",
+      "promoter": "InsomniaBerlin",
+      "exact_venue_match": false
+    },
+    {
+      "ra_event_id": "2121465",
+      "ra_promoter_id": "124040",
+      "title": "TYME",
+      "venue": "Monarch",
+      "promoter": "TYME Berlin",
+      "exact_venue_match": false
+    },
+    {
+      "ra_event_id": "2277010",
+      "ra_promoter_id": "131560",
+      "title": "Einhundert: Code Switch DAY3",
+      "venue": "adidas Sports Base",
+      "promoter": "Einhundert",
+      "exact_venue_match": false
+    },
+    {
+      "ra_event_id": "2069735",
+      "ra_promoter_id": "109700",
+      "title": "BLVSH invites KOX",
+      "venue": "Crack Bellmer",
+      "promoter": "BLVSH",
+      "exact_venue_match": false
+    },
+    {
+      "ra_event_id": "2567621",
+      "ra_promoter_id": "173430",
+      "title": "PATIKA presents: Witches get stitches",
+      "venue": "Giri",
+      "promoter": "PATIKA Berlin",
+      "exact_venue_match": false
+    },
+    {
+      "ra_event_id": "2417954",
+      "ra_promoter_id": "11078",
+      "title": "Fête de la Musique: XJAZZ on the floor (free open air) I 12:00 starting time",
+      "venue": "Else",
+      "promoter": "Else Events",
+      "exact_venue_match": false
+    },
+    {
+      "ra_event_id": "2516486",
+      "ra_promoter_id": "55435",
+      "title": "ARA x OHM",
+      "venue": "OHM",
+      "promoter": "Samsara Sessions",
+      "exact_venue_match": false
+    }
+  ]
+}
