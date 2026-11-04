@@ -36,12 +36,18 @@ def main() -> int:
             if row is None:
                 raise SystemExit("run not found")
             counts = connection.execute("SELECT status, count(*) FROM promoter_role_backfill_item WHERE run_id = %s GROUP BY status ORDER BY status", (args.status_run,)).fetchall()
+            failed = connection.execute("""
+                SELECT event_id, attempts, error_code FROM promoter_role_backfill_item
+                WHERE run_id = %s AND status = 'failed' ORDER BY event_id
+            """, (args.status_run,)).fetchall()
             usage = connection.execute("""
                 SELECT sum(input_tokens), sum(output_tokens),
                        count(*) FILTER (WHERE input_tokens IS NULL OR output_tokens IS NULL)
                 FROM promoter_role_backfill_item WHERE run_id = %s
             """, (args.status_run,)).fetchone()
             print(json.dumps({"run_id": args.status_run, "status": row[0], "items": dict(counts),
+                              "failed_items": [{"event_id": int(event_id), "attempts": attempts, "error_code": error_code}
+                                               for event_id, attempts, error_code in failed],
                               "reported_input_tokens": int(usage[0]) if usage[0] is not None else None,
                               "reported_output_tokens": int(usage[1]) if usage[1] is not None else None,
                               "items_without_complete_usage": usage[2]}))

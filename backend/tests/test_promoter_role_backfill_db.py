@@ -218,6 +218,21 @@ def test_status_command_serializes_nonempty_token_totals(database):
     assert status["reported_output_tokens"] == 45
 
 
+def test_status_reports_failed_item_without_modifying_it(database):
+    schema = database.execute("SELECT current_schema()").fetchone()[0]
+    run_id = backfill.create_run(database, (1,), "config")
+    database.execute("UPDATE promoter_role_backfill_item SET status = 'failed', attempts = 2, error_code = %s WHERE run_id = %s",
+                     ("invalid_model_response:invalid_response_shape", run_id))
+    database.commit()
+    env = os.environ.copy()
+    env["PGOPTIONS"] = f"-c search_path={schema}"
+    result = subprocess.run([sys.executable, "-m", "app.promoter_role_backfill_cli", "--status-run", str(run_id)],
+                            env=env, capture_output=True, text=True, check=True)
+    status = json.loads(result.stdout)
+    assert status["failed_items"] == [{"event_id": 1, "attempts": 2, "error_code": "invalid_model_response:invalid_response_shape"}]
+    assert database.execute("SELECT status, attempts FROM promoter_role_backfill_item WHERE run_id = %s", (run_id,)).fetchone() == ("failed", 2)
+
+
 def test_worker_lock_prevents_concurrent_runs(database):
     with psycopg.connect(os.environ["DATABASE_URL"]) as second:
         with backfill.worker_lock(database):
