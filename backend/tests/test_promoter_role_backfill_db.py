@@ -142,6 +142,37 @@ def test_invalid_response_persists_only_safe_reason_and_usage(database, monkeypa
         "invalid_model_response:invalid_JSON", 20, 10)
 
 
+def test_explicit_retry_only_retries_eligible_failures_and_preserves_success(database, monkeypatch):
+    from app.promoter_role_llm import InvalidRoleResponse
+
+    calls = []
+
+    def classify(event):
+        calls.append(event.event_id)
+        if event.event_id == 1 and calls.count(1) == 1:
+            raise InvalidRoleResponse("invalid JSON")
+        return RoleResponse((ProposedRole(event.event_id, "organizer", 1, "presents"),), ())
+
+    monkeypatch.setattr(backfill, "classify_with_llm", classify)
+    run_id = backfill.create_run(database, (1, 2), "config")
+    database.commit()
+    assert backfill.process_run(database, run_id, "config") == "failed"
+    assert backfill.process_run(database, run_id, "config") == "failed"
+    assert backfill.process_run(database, run_id, "config", retry_failed=True) == "succeeded"
+    assert calls == [1, 2, 1]
+    assert database.execute("SELECT event_id, attempts FROM promoter_role_backfill_item ORDER BY event_id").fetchall() == [(1, 2), (2, 1)]
+
+
+def test_explicit_retry_does_not_retry_system_errors_or_exceed_limit(database, monkeypatch):
+    run_id = backfill.create_run(database, (1, 2), "config")
+    database.execute("UPDATE promoter_role_backfill_item SET status = 'failed', attempts = 1, error_code = 'provider_system_failure' WHERE event_id = 1")
+    database.execute("UPDATE promoter_role_backfill_item SET status = 'failed', attempts = 3, error_code = 'invalid_model_response' WHERE event_id = 2")
+    database.commit()
+    monkeypatch.setattr(backfill, "classify_with_llm", lambda event: pytest.fail("must not retry"))
+    assert backfill.process_run(database, run_id, "config", retry_failed=True) == "failed"
+    assert database.execute("SELECT status, attempts FROM promoter_role_backfill_item ORDER BY event_id").fetchall() == [("failed", 1), ("failed", 3)]
+
+
 def test_quota_pauses_without_consuming_retry(database, monkeypatch):
     response = httpx.Response(429, request=httpx.Request("POST", "https://example.invalid"))
 

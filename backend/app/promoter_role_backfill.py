@@ -210,10 +210,18 @@ def _pause_for_quota(connection: Connection, run_id: int, event_id: int) -> None
     connection.commit()
 
 
-def process_run(connection: Connection, run_id: int, current_config_hash: str) -> str:
+def process_run(connection: Connection, run_id: int, current_config_hash: str, *, retry_failed: bool = False) -> str:
     """Process one bounded run. Failures persist only safe categories, not provider text."""
     with worker_lock(connection):
         resume_run(connection, run_id, current_config_hash)
+        if retry_failed:
+            with connection.cursor() as cursor:
+                cursor.execute("""
+                    UPDATE promoter_role_backfill_item SET status = 'pending', updated_at = now()
+                    WHERE run_id = %s AND status = 'failed' AND attempts < %s
+                      AND (error_code = 'transient_failure' OR error_code = 'invalid_model_response'
+                           OR error_code LIKE 'invalid_model_response:%%')
+                """, (run_id, MAX_ATTEMPTS))
         connection.commit()
         while True:
             item = claim_item(connection, run_id)

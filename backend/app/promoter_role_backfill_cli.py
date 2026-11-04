@@ -22,7 +22,10 @@ def main() -> int:
     scope.add_argument("--next-run", action="store_true", help="Process the oldest queued or interrupted run")
     scope.add_argument("--status-run", type=int, help="Read persisted run state and available usage")
     parser.add_argument("--apply", action="store_true", help="Persist and process a bounded run")
+    parser.add_argument("--retry-failed", action="store_true", help="Retry eligible failed items within the existing attempt limit")
     args = parser.parse_args()
+    if args.retry_failed and (args.resume_run is None or not args.apply):
+        parser.error("--retry-failed requires --resume-run and --apply")
     if (args.resume_run is not None or args.next_run) and not args.apply:
         parser.error("--resume-run and --next-run require --apply")
     if args.status_run is not None and args.apply:
@@ -40,12 +43,19 @@ def main() -> int:
                 SELECT event_id, attempts, error_code FROM promoter_role_backfill_item
                 WHERE run_id = %s AND status = 'failed' ORDER BY event_id
             """, (args.status_run,)).fetchall()
+            unknown = connection.execute("""
+                SELECT count(*) FROM promoter_role_backfill_item i
+                JOIN promoter_event_classification c ON c.event_id = i.event_id AND c.input_hash = i.input_hash
+                JOIN promoter_event_role r ON r.event_id = c.event_id AND r.input_hash = c.input_hash
+                WHERE i.run_id = %s AND i.status = 'succeeded' AND r.role = 'unknown'
+            """, (args.status_run,)).fetchone()[0]
             usage = connection.execute("""
                 SELECT sum(input_tokens), sum(output_tokens),
                        count(*) FILTER (WHERE input_tokens IS NULL OR output_tokens IS NULL)
                 FROM promoter_role_backfill_item WHERE run_id = %s
             """, (args.status_run,)).fetchone()
             print(json.dumps({"run_id": args.status_run, "status": row[0], "items": dict(counts),
+                              "unknown_role_links": unknown,
                               "failed_items": [{"event_id": int(event_id), "attempts": attempts, "error_code": error_code}
                                                for event_id, attempts, error_code in failed],
                               "reported_input_tokens": int(usage[0]) if usage[0] is not None else None,
@@ -81,7 +91,7 @@ def main() -> int:
             run_id = create_run(connection, tuple(args.event_id), current_hash)
             connection.commit()
         print(f"run_id={run_id}", flush=True)
-        status = process_run(connection, run_id, current_hash)
+        status = process_run(connection, run_id, current_hash, retry_failed=args.retry_failed)
         print(f"status={status}")
         return 0 if status == "succeeded" else 1
 
