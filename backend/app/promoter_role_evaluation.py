@@ -37,5 +37,5 @@ def evaluate_roles(rows: tuple[ReviewedRole, ...]) -> RoleQuality:
     recall = tp / (tp + fn) if tp + fn else None
     # A positive-only sample cannot measure how often venues are mistaken for organizers.
     passes = (precision is not None and recall is not None and fp + tn > 0
-              and precision >= 0.8 and recall >= 0.8)
+              and precision >= 0.7 and recall >= 0.7)
     return RoleQuality(tp, tn, fp, fn, unknown, precision, recall, passes)

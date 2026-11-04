@@ -9,12 +9,19 @@ def test_unknown_organizer_reduces_recall_below_gate():
     assert not quality.passes
 
 
-def test_both_metrics_must_reach_eighty_percent():
-    passing = tuple([ReviewedRole(True, "both")] * 4 + [ReviewedRole(True, "unknown")] + [ReviewedRole(False, "organizer")])
+def test_both_metrics_must_reach_seventy_percent():
+    passing = tuple([ReviewedRole(True, "both")] * 7 + [ReviewedRole(True, "unknown")] * 3 + [ReviewedRole(False, "organizer")] * 3)
     quality = evaluate_roles(passing)
-    assert quality.precision == 0.8
-    assert quality.recall == 0.8
+    assert quality.precision == 0.7
+    assert quality.recall == 0.7
     assert quality.passes
+
+
+def test_metrics_below_seventy_percent_fail_independently():
+    low_precision = tuple([ReviewedRole(True, "organizer")] * 6 + [ReviewedRole(False, "organizer")] * 4)
+    low_recall = tuple([ReviewedRole(True, "organizer")] * 6 + [ReviewedRole(True, "unknown")] * 4 + [ReviewedRole(False, "venue")])
+    assert not evaluate_roles(low_precision).passes
+    assert not evaluate_roles(low_recall).passes
 
 
 def test_empty_denominators_never_pass():

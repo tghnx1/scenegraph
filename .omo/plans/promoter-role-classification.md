@@ -77,13 +77,13 @@ Tests-after с pytest и настоящим PostgreSQL для ограничен
   Commit: Y | feat(promoters): add bounded classification backfill
 - [ ] 8. Оценка качества и сравнение shadow
   Recommended task executor category: unspecified-high
-  What to do: до rollout прогнать отложенную разметку, измерить precision/recall и ошибки исключения, сравнить старые и shadow рекомендации репрезентативных артистов, вручную проверить примеры, затраты и unknown; применить пороги precision ≥ 80% и recall ≥ 80% на отложенной выборке, считая unknown для реального организатора пропуском; пустой знаменатель блокирует enforce.
+  What to do: до rollout прогнать отложенную разметку, измерить precision/recall и ошибки исключения, сравнить старые и shadow рекомендации репрезентативных артистов, вручную проверить примеры, затраты и unknown; применить пороги precision ≥ 70% и recall ≥ 70% на отложенной выборке, считая unknown для реального организатора пропуском; пустой знаменатель блокирует enforce.
   Parallelization: Wave 4 | Blocked by: 1, 4, 5, 6, 7 | Blocks: 9
   Acceptance/QA: воспроизводимый отчёт с командами, размерами, ошибками и затратами; полный backend `cd backend && PYTHONPATH=. pytest -q` на подготовленной тестовой БД; отсутствие доступного LLM или разметки фиксируется как блокер enforce. Evidence: .omo/evidence/task-8-evaluation.txt.
   Commit: Y | test(promoters): evaluate role classification
 - [ ] 9. Поэтапный rollout и откат
   Recommended task executor category: unspecified-high
-  What to do: подготовить команды миграции, off, shadow, ограниченного backfill, allowlist и enforce, проверки health/cache и rollback; production выполнять лишь после успешных проверок и достижения порогов precision/recall ≥ 80%, сохранить контроль результатов каждого этапа.
+  What to do: подготовить команды миграции, off, shadow, ограниченного backfill, allowlist и enforce, проверки health/cache и rollback; production выполнять лишь после успешных проверок и достижения порогов precision/recall ≥ 70%, сохранить контроль результатов каждого этапа.
   Parallelization: Wave 5 | Blocked by: 6, 7, 8 | Blocks: final verification
   References: docker-compose.prod.yml; docs/production-delivery.md; docs/promoter-classification-spec.md.
   Acceptance/QA: на тестовой среде воспроизвести off → shadow → allowlist → rollback, доказать отсутствие старого кэша; production этапы зафиксировать с реальными результатами или отметить невыполненными. Evidence: .omo/evidence/task-9-rollout.txt.

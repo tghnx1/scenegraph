@@ -64,6 +64,8 @@ def database():
             connection.execute(integrity_migration.read_text())
             audience_migration = migration.parents[1] / "20261103080000_promoter_role_audience/migration.sql"
             connection.execute(audience_migration.read_text())
+            threshold_migration = migration.parents[1] / "20261104000000_promoter_role_quality_threshold_70/migration.sql"
+            connection.execute(threshold_migration.read_text())
             connection.execute("INSERT INTO events VALUES (1, '8MM live', NULL, 1, 'ra1'), (2, 'Other live', NULL, NULL, 'ra2')")
             connection.execute("INSERT INTO venues VALUES (1, '8MM')")
             connection.execute("INSERT INTO users VALUES (42), (99)")
@@ -601,6 +603,17 @@ def test_database_rejects_quality_review_below_threshold(database):
             database.execute("""INSERT INTO promoter_role_quality_review (config_hash, classifier_version,
               manifest_sha256, true_positive, true_negative, false_positive, false_negative, unknown_count,
               representative, reviewer) VALUES ('config', 'v', %s, 1, 1, 1, 0, 0, true, 'reviewer')""", ('a' * 64,))
+
+
+def test_database_accepts_seventy_percent_and_rejects_below_for_either_metric(database):
+    statement = """INSERT INTO promoter_role_quality_review (config_hash, classifier_version,
+        manifest_sha256, true_positive, true_negative, false_positive, false_negative, unknown_count,
+        representative, reviewer) VALUES ('config', 'v', %s, %s, 1, %s, %s, 0, true, 'reviewer')"""
+    database.execute(statement, ('a' * 64, 7, 3, 3))
+    for counts in ((6, 4, 0), (6, 0, 4)):
+        with pytest.raises(psycopg.errors.CheckViolation):
+            with database.transaction():
+                database.execute(statement, ('b' * 64, *counts))
 
 
 def test_review_record_requires_pass_and_is_bound_to_configuration(database):
