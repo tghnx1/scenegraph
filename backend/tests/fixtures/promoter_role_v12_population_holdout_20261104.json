@@ -1,0 +1,78 @@
+{
+  "version": "v12-population-holdout-20261104-v1",
+  "frozen_before_model_evaluation": true,
+  "release_representative": false,
+  "note": "10 reviewed links from preregistered random 30-link sample, prior to v12 inference; 20 unresolved. Venue negatives apply explicit user policy. This incomplete subset is not representative.",
+  "cases": [
+    {
+      "ra_event_id": "2276887",
+      "ra_promoter_id": "9481",
+      "expected_organizer": false,
+      "basis": "Ritter Butzke is the venue; ticket link alone is not an explicit organizer credit.",
+      "source": "https://ra.co/events/2276887"
+    },
+    {
+      "ra_event_id": "2185994",
+      "ra_promoter_id": "52501",
+      "expected_organizer": false,
+      "basis": "Kater is the venue; the text contains no explicit organizer credit.",
+      "source": "https://ra.co/events/2185994"
+    },
+    {
+      "ra_event_id": "2449945",
+      "ra_promoter_id": "8711",
+      "expected_organizer": false,
+      "basis": "Tresor Club matches the Tresor / Globus venue; no explicit organizer credit appears in the text.",
+      "source": "https://ra.co/events/2449945"
+    },
+    {
+      "ra_event_id": "2220983",
+      "ra_promoter_id": "167439",
+      "expected_organizer": false,
+      "basis": "PETER EDEL is the venue; venue hospitality language does not explicitly establish an organizer credit.",
+      "source": "https://ra.co/events/2220983"
+    },
+    {
+      "ra_event_id": "2538737",
+      "ra_promoter_id": "9094",
+      "expected_organizer": false,
+      "basis": "Lokschuppen Berlin is the venue; the text names the event landing there, with no explicit venue organizer credit.",
+      "source": "https://ra.co/events/2538737"
+    },
+    {
+      "ra_event_id": "2235598",
+      "ra_promoter_id": "133420",
+      "expected_organizer": true,
+      "basis": "The event title and description explicitly say THE LOFT presents SOFT POWER.",
+      "source": "https://ra.co/events/2235598"
+    },
+    {
+      "ra_event_id": "2236103",
+      "ra_promoter_id": "109356",
+      "expected_organizer": true,
+      "basis": "The description explicitly says Ultra Light Plus and ouch join forces for the event.",
+      "source": "https://ra.co/events/2236103"
+    },
+    {
+      "ra_event_id": "2374344",
+      "ra_promoter_id": "70881",
+      "expected_organizer": false,
+      "basis": "Klunkerkranich is the venue; the text credits We Küyen with inviting a guest, not the venue as organizer.",
+      "source": "https://ra.co/events/2374344"
+    },
+    {
+      "ra_event_id": "2156921",
+      "ra_promoter_id": "106700",
+      "expected_organizer": false,
+      "basis": "ZENNER is the venue; the text does not explicitly credit it as organizer.",
+      "source": "https://ra.co/events/2156921"
+    },
+    {
+      "ra_event_id": "2454471",
+      "ra_promoter_id": "70881",
+      "expected_organizer": false,
+      "basis": "Klunkerkranich is the venue; the text credits Baerbel with her series, without explicit venue organizer credit.",
+      "source": "https://ra.co/events/2454471"
+    }
+  ]
+}
