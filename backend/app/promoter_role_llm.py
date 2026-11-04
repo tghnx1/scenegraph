@@ -147,7 +147,11 @@ def parse_role_response(raw: str, event: EventRoleInput, *, allow_unknown_eviden
                 r"\b(?:presented|invited|hosted|organized|organised|curated)\s+by\s+"
                 + re.escape(name) + r"(?!\w)", re.IGNORECASE,
             )
-            if not credit.search(evidence) and not reverse_credit.search(evidence):
+            appositive_credit = re.compile(
+                r"(?<!\w)" + re.escape(name) + r"\s*,[^.!?\n]{1,120},\s*"
+                r"(?:presents?|invites?|hosts?|organizes?|organises?|curates?)\b", re.IGNORECASE,
+            )
+            if not credit.search(evidence) and not reverse_credit.search(evidence) and not appositive_credit.search(evidence):
                 role = "unknown"
         roles.append(ProposedRole(promoter_id, role, confidence, evidence))
     if seen != ids:

@@ -221,6 +221,20 @@ def test_venue_organizer_credit_with_hosted_by_is_retained():
     assert parse_role_response(raw, event).roles[0].role == "both"
 
 
+def test_venue_presenter_with_appositive_is_retained():
+    text = "90mil, a temporary DIY space in Berlin, presents their farewell festival"
+    event = EventRoleInput(2, "A 90mil Festival", text, 1, "90mil", (PromoterProfile(4, "90mil"),))
+    raw = json.dumps({"roles": [{"promoter_id": 4, "role": "both", "confidence": 0.9, "evidence": text}]})
+    assert parse_role_response(raw, event).roles[0].role == "both"
+
+
+def test_venue_mention_with_appositive_is_not_a_presenter_credit():
+    text = "90mil, a temporary DIY space in Berlin, welcomes festival guests"
+    event = EventRoleInput(2, "A festival", text, 1, "90mil", (PromoterProfile(4, "90mil"),))
+    raw = json.dumps({"roles": [{"promoter_id": 4, "role": "both", "confidence": 0.9, "evidence": text}]})
+    assert parse_role_response(raw, event).roles[0].role == "unknown"
+
+
 def test_different_name_containing_club_is_not_automatically_venue():
     event = EventRoleInput(2, "Clubnight presents", "", 1, "Night", (PromoterProfile(4, "Clubnight"),))
     raw = json.dumps({"roles": [{"promoter_id": 4, "role": "organizer", "confidence": 0.9,
