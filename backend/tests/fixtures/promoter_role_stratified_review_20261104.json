@@ -1,0 +1,197 @@
+{
+  "version": "stratified-20261104-reviewed-partial-v1",
+  "frozen_before_model_evaluation": true,
+  "release_representative": false,
+  "note": "27 manually reviewed links from a 60-link stratified sample; the remaining 33 are unresolved. Negatives apply the venue exclusion policy, not a claim about actual involvement. Review used the local source snapshot and public RA pages where accessible; sample is stratified and incomplete.",
+  "cases": [
+    {
+      "ra_event_id": "2527384",
+      "ra_promoter_id": "70881",
+      "expected_organizer": false,
+      "basis": "Matched venue profile without explicit organizer credit in the stored event text; exclusion follows the user policy.",
+      "source": "https://ra.co/events/2527384"
+    },
+    {
+      "ra_event_id": "2191290",
+      "ra_promoter_id": "42875",
+      "expected_organizer": false,
+      "basis": "Matched venue profile without explicit organizer credit in the stored event text; exclusion follows the user policy.",
+      "source": "https://ra.co/events/2191290"
+    },
+    {
+      "ra_event_id": "2379311",
+      "ra_promoter_id": "9094",
+      "expected_organizer": false,
+      "basis": "Matched venue profile without explicit organizer credit in the stored event text; exclusion follows the user policy.",
+      "source": "https://ra.co/events/2379311"
+    },
+    {
+      "ra_event_id": "2380770",
+      "ra_promoter_id": "9481",
+      "expected_organizer": false,
+      "basis": "Matched venue profile without explicit organizer credit in the stored event text; exclusion follows the user policy.",
+      "source": "https://ra.co/events/2380770"
+    },
+    {
+      "ra_event_id": "2072743",
+      "ra_promoter_id": "8367",
+      "expected_organizer": false,
+      "basis": "Matched venue profile without explicit organizer credit in the stored event text; exclusion follows the user policy.",
+      "source": "https://ra.co/events/2072743"
+    },
+    {
+      "ra_event_id": "2423317",
+      "ra_promoter_id": "139980",
+      "expected_organizer": true,
+      "basis": "The venue explicitly presents its festival in the description.",
+      "source": "https://ra.co/events/2423317"
+    },
+    {
+      "ra_event_id": "2475159",
+      "ra_promoter_id": "63291",
+      "expected_organizer": false,
+      "basis": "Matched venue profile without explicit organizer credit in the stored event text; exclusion follows the user policy.",
+      "source": "https://ra.co/events/2475159"
+    },
+    {
+      "ra_event_id": "2268729",
+      "ra_promoter_id": "63291",
+      "expected_organizer": false,
+      "basis": "Matched venue profile without explicit organizer credit in the stored event text; exclusion follows the user policy.",
+      "source": "https://ra.co/events/2268729"
+    },
+    {
+      "ra_event_id": "2223984",
+      "ra_promoter_id": "9094",
+      "expected_organizer": false,
+      "basis": "Matched venue profile without explicit organizer credit in the stored event text; exclusion follows the user policy.",
+      "source": "https://ra.co/events/2223984"
+    },
+    {
+      "ra_event_id": "2168457",
+      "ra_promoter_id": "61016",
+      "expected_organizer": false,
+      "basis": "Matched venue profile without explicit organizer credit in the stored event text; exclusion follows the user policy.",
+      "source": "https://ra.co/events/2168457"
+    },
+    {
+      "ra_event_id": "2343111",
+      "ra_promoter_id": "63291",
+      "expected_organizer": false,
+      "basis": "Matched venue profile without explicit organizer credit in the stored event text; exclusion follows the user policy.",
+      "source": "https://ra.co/events/2343111"
+    },
+    {
+      "ra_event_id": "2070566",
+      "ra_promoter_id": "42875",
+      "expected_organizer": false,
+      "basis": "Matched venue profile without explicit organizer credit in the stored event text; exclusion follows the user policy.",
+      "source": "https://ra.co/events/2070566"
+    },
+    {
+      "ra_event_id": "2072572",
+      "ra_promoter_id": "9094",
+      "expected_organizer": false,
+      "basis": "Matched venue profile without explicit organizer credit in the stored event text; exclusion follows the user policy.",
+      "source": "https://ra.co/events/2072572"
+    },
+    {
+      "ra_event_id": "2223000",
+      "ra_promoter_id": "110655",
+      "expected_organizer": false,
+      "basis": "Matched venue profile without explicit organizer credit in the stored event text; exclusion follows the user policy.",
+      "source": "https://ra.co/events/2223000"
+    },
+    {
+      "ra_event_id": "2103340",
+      "ra_promoter_id": "4075",
+      "expected_organizer": false,
+      "basis": "Matched venue profile without explicit organizer credit in the stored event text; exclusion follows the user policy.",
+      "source": "https://ra.co/events/2103340"
+    },
+    {
+      "ra_event_id": "2546840",
+      "ra_promoter_id": "180911",
+      "expected_organizer": false,
+      "basis": "Matched venue profile without explicit organizer credit in the stored event text; exclusion follows the user policy.",
+      "source": "https://ra.co/events/2546840"
+    },
+    {
+      "ra_event_id": "2231332",
+      "ra_promoter_id": "9094",
+      "expected_organizer": false,
+      "basis": "Matched venue profile without explicit organizer credit in the stored event text; exclusion follows the user policy.",
+      "source": "https://ra.co/events/2231332"
+    },
+    {
+      "ra_event_id": "2410180",
+      "ra_promoter_id": "180595",
+      "expected_organizer": false,
+      "basis": "Matched venue profile without explicit organizer credit in the stored event text; exclusion follows the user policy.",
+      "source": "https://ra.co/events/2410180"
+    },
+    {
+      "ra_event_id": "2362022",
+      "ra_promoter_id": "4075",
+      "expected_organizer": false,
+      "basis": "Matched venue profile without explicit organizer credit in the stored event text; exclusion follows the user policy.",
+      "source": "https://ra.co/events/2362022"
+    },
+    {
+      "ra_event_id": "2548525",
+      "ra_promoter_id": "184791",
+      "expected_organizer": false,
+      "basis": "Matched venue profile without explicit organizer credit in the stored event text; exclusion follows the user policy.",
+      "source": "https://ra.co/events/2548525"
+    },
+    {
+      "ra_event_id": "2495614",
+      "ra_promoter_id": "9481",
+      "expected_organizer": false,
+      "basis": "Matched venue profile without explicit organizer credit in the stored event text; exclusion follows the user policy.",
+      "source": "https://ra.co/events/2495614"
+    },
+    {
+      "ra_event_id": "2231489",
+      "ra_promoter_id": "31233",
+      "expected_organizer": false,
+      "basis": "Matched venue profile without explicit organizer credit in the stored event text; exclusion follows the user policy.",
+      "source": "https://ra.co/events/2231489"
+    },
+    {
+      "ra_event_id": "2447316",
+      "ra_promoter_id": "142828",
+      "expected_organizer": true,
+      "basis": "RAUM Records explicitly joins forces with R0 for the event.",
+      "source": "https://ra.co/events/2447316"
+    },
+    {
+      "ra_event_id": "2432531",
+      "ra_promoter_id": "8711",
+      "expected_organizer": false,
+      "basis": "Source identifies this as a venue profile; stored event text does not explicitly credit it as organizer; exclusion follows the user policy.",
+      "source": "https://ra.co/events/2432531"
+    },
+    {
+      "ra_event_id": "2239813",
+      "ra_promoter_id": "84707",
+      "expected_organizer": false,
+      "basis": "Source identifies this as a venue profile; stored event text does not explicitly credit it as organizer; exclusion follows the user policy.",
+      "source": "https://ra.co/events/2239813"
+    },
+    {
+      "ra_event_id": "2082395",
+      "ra_promoter_id": "84707",
+      "expected_organizer": false,
+      "basis": "Source identifies this as a venue profile; stored event text does not explicitly credit it as organizer; exclusion follows the user policy.",
+      "source": "https://ra.co/events/2082395"
+    },
+    {
+      "ra_event_id": "2069735",
+      "ra_promoter_id": "109700",
+      "expected_organizer": true,
+      "basis": "The title explicitly credits BLVSH with inviting KOX.",
+      "source": "https://ra.co/events/2069735"
+    }
+  ]
+}
