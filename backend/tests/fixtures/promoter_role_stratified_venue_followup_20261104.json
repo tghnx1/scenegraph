@@ -1,0 +1,14 @@
+{
+  "version": "stratified-20261104-venue-followup-v1",
+  "frozen_before_model_evaluation": true,
+  "release_representative": false,
+  "note": "Venue profiles without explicit named organizer credits in the stored descriptions. Exclusion implements the user's policy and is not a claim that a venue actually took no part in the event.",
+  "cases": [
+    {"ra_event_id": "2455675", "ra_promoter_id": "184030", "expected_organizer": false, "basis": "The profile and venue match; the description credits performers without explicitly crediting the venue as organizer.", "source": "https://ra.co/events/2455675"},
+    {"ra_event_id": "2545948", "ra_promoter_id": "13285", "expected_organizer": false, "basis": "The profile and venue match; an unnamed first-person invitation does not explicitly identify the venue as organizer.", "source": "https://ra.co/events/2545948"},
+    {"ra_event_id": "2253573", "ra_promoter_id": "61016", "expected_organizer": false, "basis": "The profile and venue match; the description does not explicitly name the venue as organizer.", "source": "https://ra.co/events/2253573"},
+    {"ra_event_id": "2270014", "ra_promoter_id": "173235", "expected_organizer": false, "basis": "YaamBerlin matches the YAAM Berlin venue; no explicit venue organizer credit appears in the stored description.", "source": "https://ra.co/events/2270014"},
+    {"ra_event_id": "2488120", "ra_promoter_id": "79283", "expected_organizer": false, "basis": "The promoter profile matches the venue; the description names a market there but does not explicitly credit the venue as organizer.", "source": "https://ra.co/events/2488120"},
+    {"ra_event_id": "2515790", "ra_promoter_id": "110655", "expected_organizer": false, "basis": "OST matches the venue; club admission and payment information is not an explicit organizer credit.", "source": "https://ra.co/events/2515790"}
+  ]
+}
