@@ -1,0 +1,217 @@
+{
+  "version": "v11-population-selection-20261104-v1",
+  "selection": "30 hash-ordered links from local snapshot, excluding previously selected review events; all dates. Seed v11-holdout-20261104-v1. No predictions included.",
+  "selected_before_review_and_v11_inference": true,
+  "cases": [
+    {
+      "ra_event_id": "2462253",
+      "ra_promoter_id": "114144",
+      "title": "MIDSOMMAR Blockspäti Closing [Free Entry]",
+      "venue": "Mena Berlin",
+      "promoter": "Refraction IRL"
+    },
+    {
+      "ra_event_id": "2530019",
+      "ra_promoter_id": "163751",
+      "title": "Rhythmusstube",
+      "venue": "TBA - JWP MittenDrin",
+      "promoter": "INDACID"
+    },
+    {
+      "ra_event_id": "2253635",
+      "ra_promoter_id": "171730",
+      "title": "Urban Malitia at SomoS Arts Gallery - Call.Köl x PROJECT ENSEMBLE",
+      "venue": "TBA - SomoS Arts Gallery",
+      "promoter": "SomoS Arts"
+    },
+    {
+      "ra_event_id": "2074619",
+      "ra_promoter_id": "62269",
+      "title": "Roller Disco",
+      "venue": "So36",
+      "promoter": "Rollers Inc."
+    },
+    {
+      "ra_event_id": "2413008",
+      "ra_promoter_id": "184681",
+      "title": "UNCANNY RHYTHMS",
+      "venue": "TBA - Secret Location",
+      "promoter": "UNCANNY RHYTHMS"
+    },
+    {
+      "ra_event_id": "2178723",
+      "ra_promoter_id": "165484",
+      "title": "YOU WANT IT DARKER soli-party",
+      "venue": "Zwille",
+      "promoter": "JOHN DARK"
+    },
+    {
+      "ra_event_id": "2456379",
+      "ra_promoter_id": "8711",
+      "title": "Tresor meets Unterwegs",
+      "venue": "Tresor / Globus",
+      "promoter": "Tresor Club"
+    },
+    {
+      "ra_event_id": "2189164",
+      "ra_promoter_id": "61016",
+      "title": "straff / thursday techno / 5€ until 1 AM",
+      "venue": "Der Weiße Hase",
+      "promoter": "Der Weiße Hase"
+    },
+    {
+      "ra_event_id": "2553415",
+      "ra_promoter_id": "4075",
+      "title": "Weddings vs Funerals - Sameheads Halloween Costume Party",
+      "venue": "Sameheads",
+      "promoter": "Sameheads"
+    },
+    {
+      "ra_event_id": "2151201",
+      "ra_promoter_id": "8401",
+      "title": "Kiezsalon with Brìghde Chaimbeul, Cassie Kinoshi and Paul Wallfisch & Dana Schechter",
+      "venue": "Schloss Britz",
+      "promoter": "Digital in Berlin"
+    },
+    {
+      "ra_event_id": "2222667",
+      "ra_promoter_id": "79283",
+      "title": "Banoffee Pies x Wisdom Teeth presents:",
+      "venue": "arkaoda Berlin",
+      "promoter": "arkaoda Berlin"
+    },
+    {
+      "ra_event_id": "2285161",
+      "ra_promoter_id": "174518",
+      "title": "OMNI",
+      "venue": "ÆDEN",
+      "promoter": "OmniBerlin"
+    },
+    {
+      "ra_event_id": "2010971",
+      "ra_promoter_id": "149712",
+      "title": "☆ LOWKEY STARS ★ CSD AFTERPARTY (enough tickets at the box-office)",
+      "venue": "://about blank",
+      "promoter": "LOWKEY"
+    },
+    {
+      "ra_event_id": "2312569",
+      "ra_promoter_id": "176867",
+      "title": "CANDY SHOP aphrodisiac disco cabaret extravaganza",
+      "venue": "TBA - Vault - Oranienburger Str. 4, 10178 Berlin",
+      "promoter": "Imperia Exclusive"
+    },
+    {
+      "ra_event_id": "2555270",
+      "ra_promoter_id": "59198",
+      "title": "Emma Pea's 'barbeatcue' with Phat Beat",
+      "venue": "Emma Pea",
+      "promoter": "Music Hospital"
+    },
+    {
+      "ra_event_id": "2529860",
+      "ra_promoter_id": "61016",
+      "title": "STRAFF ◢◤ Thursday Techno & Open Air Garden [ free tickets available ]",
+      "venue": "Der Weiße Hase",
+      "promoter": "Der Weiße Hase"
+    },
+    {
+      "ra_event_id": "2427946",
+      "ra_promoter_id": "185950",
+      "title": "OBSCITHEA",
+      "venue": "TBA",
+      "promoter": "obscitheaobscithea"
+    },
+    {
+      "ra_event_id": "2511863",
+      "ra_promoter_id": "98410",
+      "title": "OXI GROOVE AFFAIR (OPEN AIR + INDOOR)",
+      "venue": "OXI",
+      "promoter": "OXI Events"
+    },
+    {
+      "ra_event_id": "2196519",
+      "ra_promoter_id": "167057",
+      "title": "run callie run",
+      "venue": "Fitzroy",
+      "promoter": "Callie Reiff"
+    },
+    {
+      "ra_event_id": "2398849",
+      "ra_promoter_id": "70881",
+      "title": "FERNAB ÜBER DEN DÄCHERN w. Isabeau Fort, Cem Gemalmaz, Noy Ära, Kahl & Kæmena *live",
+      "venue": "Klunkerkranich",
+      "promoter": "Klunkerkranich"
+    },
+    {
+      "ra_event_id": "2174090",
+      "ra_promoter_id": "92313",
+      "title": "Great TECHNO RAVE 5 H SHIP PARTY TOUR",
+      "venue": "Reederei Wolff  in Charlottenburg",
+      "promoter": "Eventim light"
+    },
+    {
+      "ra_event_id": "2295011",
+      "ra_promoter_id": "110655",
+      "title": "(13€) M.A.R.A pres. Per Pleks, RuizOsc1, TRIS b2b Viscerale, Cortez",
+      "venue": "OST",
+      "promoter": "OST"
+    },
+    {
+      "ra_event_id": "2153259",
+      "ra_promoter_id": "112530",
+      "title": "Circuit Breaker",
+      "venue": "Crack Bellmer",
+      "promoter": "MAL WAS ANDERES"
+    },
+    {
+      "ra_event_id": "2309051",
+      "ra_promoter_id": "155196",
+      "title": "Car Culture - Live (TICKETS AVAILABLE AT THE DOOR)",
+      "venue": "Bar Neun",
+      "promoter": "Bar Neun"
+    },
+    {
+      "ra_event_id": "2506956",
+      "ra_promoter_id": "1039",
+      "title": "Desert Ghosts",
+      "venue": "Berghain | Panorama Bar | Säule",
+      "promoter": "OstGut GmbH"
+    },
+    {
+      "ra_event_id": "2294069",
+      "ra_promoter_id": "107847",
+      "title": "F4ctory R3set",
+      "venue": "TBA",
+      "promoter": "Kimchi Berlin"
+    },
+    {
+      "ra_event_id": "2229778",
+      "ra_promoter_id": "117673",
+      "title": "Transnational Trip: Hollow Ship (SWE), blood club (USA)",
+      "venue": "Neue Zukunft",
+      "promoter": "Crunch Tapes"
+    },
+    {
+      "ra_event_id": "2481552",
+      "ra_promoter_id": "102176",
+      "title": "Arlo Parks",
+      "venue": "Uber Eats Music Hall",
+      "promoter": "Goodlive Artists"
+    },
+    {
+      "ra_event_id": "2299725",
+      "ra_promoter_id": "80540",
+      "title": "15 Years of Ransom Note with ERIS",
+      "venue": "arkaoda Berlin",
+      "promoter": "Ransom Note"
+    },
+    {
+      "ra_event_id": "2544137",
+      "ra_promoter_id": "171409",
+      "title": "ambient evening",
+      "venue": "Ikii",
+      "promoter": "ikii"
+    }
+  ]
+}
