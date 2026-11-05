@@ -1,0 +1,17 @@
+{
+  "version": "stratified-20261104-source-inferences-v1",
+  "frozen_before_model_evaluation": true,
+  "release_representative": false,
+  "note": "Moderate-confidence independent labels based on the RA promoter field and corroborating event title, administrator, or project context. They are inferences, not explicit organizing credits. Report separately from direct credits and venue-policy labels.",
+  "cases": [
+    {"ra_event_id": "2179010", "ra_promoter_id": "102845", "expected_organizer": true, "basis": "RA lists Symbiotikka / Too Much Entertainment as promoter; event title, description and administrator use the Symbiotikka identity.", "source": "https://ra.co/events/2179010"},
+    {"ra_event_id": "2288353", "ra_promoter_id": "111202", "expected_organizer": true, "basis": "RA lists HEISSS as promoter, the event uses its name, and the event administrator uses its identity.", "source": "https://ra.co/events/2288353"},
+    {"ra_event_id": "2277010", "ra_promoter_id": "131560", "expected_organizer": true, "basis": "RA lists Einhundert as promoter and administrator, and the event title carries its name.", "source": "https://ra.co/events/2277010"},
+    {"ra_event_id": "2346935", "ra_promoter_id": "52590", "expected_organizer": true, "basis": "RA lists Pornceptual as promoter and administrator; the description connects PRNCPTL to its contact domain.", "source": "https://ra.co/events/2346935"},
+    {"ra_event_id": "2236433", "ra_promoter_id": "144884", "expected_organizer": true, "basis": "RA lists Bossa_FM as promoter and Bossa-FM as event administrator with its website as a promotional link.", "source": "https://ra.co/events/2236433"},
+    {"ra_event_id": "2376160", "ra_promoter_id": "153791", "expected_organizer": true, "basis": "RA lists Act Like Adults as both promoter and event administrator; the description contains no explicit credit.", "source": "https://ra.co/events/2376160"},
+    {"ra_event_id": "2438995", "ra_promoter_id": "147240", "expected_organizer": true, "basis": "RA lists Safety Net as promoter and the event title carries its identity; the event description does not explicitly credit an organizer.", "source": "https://ra.co/events/2438995"},
+    {"ra_event_id": "2270418", "ra_promoter_id": "27524", "expected_organizer": true, "basis": "The local RA snapshot lists Electric Monday as promoter and the event carries its name; organizer attribution is inferred from the listing.", "source": "https://ra.co/events/2270418"},
+    {"ra_event_id": "2121465", "ra_promoter_id": "124040", "expected_organizer": true, "basis": "The local RA snapshot lists TYME Berlin as promoter, the title uses TYME, and the description identifies members of TYME.", "source": "https://ra.co/events/2121465"}
+  ]
+}

@@ -19,6 +19,9 @@ required_variables=(
   AZURE_OPENAI_ENDPOINT
   AZURE_OPENAI_CHAT_API_VERSION
   AZURE_OPENAI_EXTRACTION_DEPLOYMENT
+  SUPERVISOR_TELEGRAM_BOT_TOKEN
+  SUPERVISOR_TELEGRAM_ALLOWED_USER_IDS
+  SUPERVISOR_TELEGRAM_CHAT_IDS
 )
 
 complete_env="$temp_dir/complete.env"
@@ -33,23 +36,67 @@ AZURE_OPENAI_API_KEY=compose-validation-azure-key
 AZURE_OPENAI_ENDPOINT=https://example.invalid
 AZURE_OPENAI_CHAT_API_VERSION=2025-01-01-preview
 AZURE_OPENAI_EXTRACTION_DEPLOYMENT=compose-validation-deployment
+SUPERVISOR_TELEGRAM_BOT_TOKEN=compose-validation-telegram-token
+SUPERVISOR_TELEGRAM_ALLOWED_USER_IDS=12345
+SUPERVISOR_TELEGRAM_CHAT_IDS=12345
 EOF
 
 run_compose_config() {
   local env_file="$1"
+  shift
   env -i \
     HOME="${HOME:-}" \
     PATH="$PATH" \
     DOCKER_CONFIG="${DOCKER_CONFIG:-${HOME:-}/.docker}" \
+    COMPOSE_PROFILES=promoter-roles \
     "$docker_bin" compose \
       --project-directory "$repo_root" \
       --env-file "$env_file" \
       -f "$compose_file" \
-      config
+      config "$@"
 }
 
 run_compose_config "$complete_env" >/dev/null
 printf 'PASS complete production environment\n'
+
+provider_env="$temp_dir/provider.env"
+cp "$complete_env" "$provider_env"
+cat >>"$provider_env" <<'EOF'
+EXTRACTION_PROVIDER=kimi_code
+KIMI_API_KEY=compose-validation-kimi-key
+KIMI_EXTRACTION_MODEL=compose-validation-model
+PROMOTER_ROLE_QUEUE_ENABLED=true
+PROMOTER_ROLE_WORKER_ENABLED=true
+PROMOTER_ROLE_SHADOW_ENABLED=true
+PROMOTER_ROLE_SHADOW_USER_IDS=42
+EOF
+run_compose_config "$provider_env" --format json >"$temp_dir/provider.json"
+python3 - "$temp_dir/provider.json" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as stream:
+    config = json.load(stream)
+for service in ("ingestion-runner", "coverage-worker", "coverage-reconcile-worker"):
+    environment = config["services"][service]["environment"]
+    assert environment["EXTRACTION_PROVIDER"] == "kimi_code", service
+    assert environment["KIMI_API_KEY"] == "compose-validation-kimi-key", service
+    assert environment["KIMI_EXTRACTION_MODEL"] == "compose-validation-model", service
+    assert environment["PROMOTER_ROLE_QUEUE_ENABLED"] == "true", service
+print("PASS ingestion services receive extraction and optional queue settings")
+worker = config["services"]["promoter-role-worker"]["environment"]
+assert worker["PROMOTER_ROLE_WORKER_ENABLED"] == "true"
+assert worker["EXTRACTION_PROVIDER"] == "kimi_code"
+assert worker["KIMI_API_KEY"] == "compose-validation-kimi-key"
+assert worker["KIMI_EXTRACTION_MODEL"] == "compose-validation-model"
+print("PASS promoter role worker receives its provider settings")
+recommendations = config["services"]["recommendation-worker"]["environment"]
+assert recommendations["PROMOTER_ROLE_SHADOW_ENABLED"] == "true"
+assert recommendations["PROMOTER_ROLE_SHADOW_USER_IDS"] == "42"
+assert recommendations["EXTRACTION_PROVIDER"] == "kimi_code"
+assert recommendations["KIMI_EXTRACTION_MODEL"] == "compose-validation-model"
+print("PASS recommendation worker receives opt-in shadow settings")
+PY
 
 for variable in "${required_variables[@]}"; do
   missing_env="$temp_dir/missing-$variable.env"

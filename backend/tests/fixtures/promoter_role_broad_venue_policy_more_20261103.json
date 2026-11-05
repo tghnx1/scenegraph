@@ -1,0 +1,10 @@
+{
+  "version": "broad-venue-policy-more-20261103-v1",
+  "frozen_before_model_evaluation": true,
+  "release_representative": false,
+  "note": "Partial review of preregistered events under the user's exclusion policy; this is not proof of actual non-involvement.",
+  "cases": [
+    {"ra_event_id": "2203036", "ra_promoter_id": "1039", "expected_organizer": false, "basis": "RA uses the same linked profile for OstGut GmbH and the Berghain venue; the event description contains no explicit organizer credit for OstGut.", "source": "https://ra.co/events/2203036"},
+    {"ra_event_id": "2400151", "ra_promoter_id": "102021", "expected_organizer": false, "basis": "Renate Club profile matches Renate venue; RA lists other hosts but no explicit organizer credit for the venue.", "source": "https://ra.co/events/2400151"}
+  ]
+}

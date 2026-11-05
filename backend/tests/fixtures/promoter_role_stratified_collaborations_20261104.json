@@ -1,0 +1,12 @@
+{
+  "version": "stratified-20261104-collaborations-v1",
+  "frozen_before_model_evaluation": true,
+  "release_representative": false,
+  "note": "Independent source review of previously unclassified links from the preregistered sample; collaboration credits require interpretation and the full sample is not yet reviewed.",
+  "cases": [
+    {"ra_event_id": "2334937", "ra_promoter_id": "181864", "expected_organizer": true, "basis": "The source credits Hoe__mies joining forces with EN1GMA for this event and lists EN1GMACLUB as a promoter.", "source": "https://ra.co/events/2334937"},
+    {"ra_event_id": "2068293", "ra_promoter_id": "126472", "expected_organizer": true, "basis": "EUPHORIK and CYCLE are credited as collaborators in the title and description; EUPHORIK EVENTS is the listed profile.", "source": "https://ra.co/events/2068293"},
+    {"ra_event_id": "2379537", "ra_promoter_id": "157178", "expected_organizer": true, "basis": "The title credits the event to UNDR and UNDR is listed as a promoter.", "source": "https://ra.co/events/2379537"},
+    {"ra_event_id": "2425811", "ra_promoter_id": "81960", "expected_organizer": true, "basis": "The source describes a collaboration between Seoul Community Radio and Radio Rudina for this event and lists the former as a promoter.", "source": "https://ra.co/events/2425811"}
+  ]
+}

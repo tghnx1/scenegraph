@@ -1,0 +1,217 @@
+{
+  "version": "v12-population-selection-20261104-v1",
+  "selection": "30 hash-ordered links from local snapshot; excludes all previous review events and events already classified under v12. All dates; seed v12-holdout-20261104-v1. No model predictions included.",
+  "selected_before_review_and_v12_inference": true,
+  "cases": [
+    {
+      "ra_event_id": "2515972",
+      "ra_promoter_id": "80958",
+      "title": "Loone with Gegen [FREE ENTRY]",
+      "venue": "AMT",
+      "promoter": "GEGEN"
+    },
+    {
+      "ra_event_id": "2276887",
+      "ra_promoter_id": "9481",
+      "title": "KLOUD",
+      "venue": "Ritter Butzke",
+      "promoter": "Ritter Butzke"
+    },
+    {
+      "ra_event_id": "2185994",
+      "ra_promoter_id": "52501",
+      "title": "Katernacht with Rey&Kjavik, Tobi Neumann, Mark Gill b2b DJ Chichi, DJ Zurückbleiben Bitte",
+      "venue": "Kater",
+      "promoter": "Kater"
+    },
+    {
+      "ra_event_id": "2149562",
+      "ra_promoter_id": "131129",
+      "title": "Shakomako",
+      "venue": "BABY01",
+      "promoter": "Shakomako"
+    },
+    {
+      "ra_event_id": "2061647",
+      "ra_promoter_id": "30973",
+      "title": "lazy.sunday mit Kaloustian",
+      "venue": "Minimal Bar",
+      "promoter": "mini.mal elektrokneipe"
+    },
+    {
+      "ra_event_id": "2037066",
+      "ra_promoter_id": "108108",
+      "title": "DUALISM",
+      "venue": "://about blank",
+      "promoter": "DUALISMBERLIN"
+    },
+    {
+      "ra_event_id": "2411186",
+      "ra_promoter_id": "184527",
+      "title": "Flubi Disks 001 RELEASE PARTY",
+      "venue": "TBA - Secret Location",
+      "promoter": "Flubi Disks"
+    },
+    {
+      "ra_event_id": "2396854",
+      "ra_promoter_id": "29098",
+      "title": "10 Years & CiaO MATO",
+      "venue": "Hoppetosse",
+      "promoter": "CDV"
+    },
+    {
+      "ra_event_id": "2419621",
+      "ra_promoter_id": "111445",
+      "title": "QS1 (Dayparty)",
+      "venue": "Sonnenraum",
+      "promoter": "QS1"
+    },
+    {
+      "ra_event_id": "2323360",
+      "ra_promoter_id": "91065",
+      "title": "Flugmodus",
+      "venue": "Bi Nuu",
+      "promoter": "Festsaal Kreuzberg"
+    },
+    {
+      "ra_event_id": "2449945",
+      "ra_promoter_id": "8711",
+      "title": "◥◣SINGULARITY◥◣",
+      "venue": "Tresor / Globus",
+      "promoter": "Tresor Club"
+    },
+    {
+      "ra_event_id": "2220983",
+      "ra_promoter_id": "167439",
+      "title": "AFTER WORK",
+      "venue": "PETER EDEL",
+      "promoter": "PETER EDEL"
+    },
+    {
+      "ra_event_id": "2538737",
+      "ra_promoter_id": "9094",
+      "title": "Chantal's House of Shame",
+      "venue": "Lokschuppen Berlin",
+      "promoter": "Lokschuppen Berlin"
+    },
+    {
+      "ra_event_id": "2235598",
+      "ra_promoter_id": "133420",
+      "title": "Berlin Art Week Special Project: The Loft presents Soft Power",
+      "venue": "Haus der Visionäre",
+      "promoter": "The Loft"
+    },
+    {
+      "ra_event_id": "2083788",
+      "ra_promoter_id": "29098",
+      "title": "Pressure Traxx: 30 Years of Transparent Sound",
+      "venue": "Hoppetosse",
+      "promoter": "CDV"
+    },
+    {
+      "ra_event_id": "2217946",
+      "ra_promoter_id": "30973",
+      "title": "go.play mit Fineberg",
+      "venue": "Minimal Bar",
+      "promoter": "mini.mal elektrokneipe"
+    },
+    {
+      "ra_event_id": "2389847",
+      "ra_promoter_id": "168580",
+      "title": "Pikante [31 HOURS]  + SUNDAY openair KDW market [2 floors + garden]",
+      "venue": "ÆDEN",
+      "promoter": "KINDERDERWELT"
+    },
+    {
+      "ra_event_id": "2402820",
+      "ra_promoter_id": "175504",
+      "title": "AM:PM at Sonnenraum with Regis, Jesse G, Tapefeed (Dj), Jess Nash, Kavander",
+      "venue": "Sonnenraum",
+      "promoter": "AM CLUB"
+    },
+    {
+      "ra_event_id": "2270648",
+      "ra_promoter_id": "28296",
+      "title": "Die Gebrüder Brett",
+      "venue": "The Cloud",
+      "promoter": "maik balke"
+    },
+    {
+      "ra_event_id": "2236103",
+      "ra_promoter_id": "109356",
+      "title": "ULTRA ouch PLUS - 26h - 20+ Artists, 3 Floors, indoor + outdoor + listenning floors",
+      "venue": "Blue Velvet",
+      "promoter": "ouch"
+    },
+    {
+      "ra_event_id": "2073135",
+      "ra_promoter_id": "160384",
+      "title": "TOILET SESSION - SPICY JUNGLE",
+      "venue": "Zur Klappe",
+      "promoter": "Toilet Session"
+    },
+    {
+      "ra_event_id": "2126032",
+      "ra_promoter_id": "118512",
+      "title": "ULTRAGEILETURBOSAUSE - Dejawie? x Halbtrocken",
+      "venue": "Lokschuppen Berlin",
+      "promoter": "Halbtrocken Exclusive"
+    },
+    {
+      "ra_event_id": "2214994",
+      "ra_promoter_id": "102845",
+      "title": "SYMBIOTIKKA at KIYKAT CLUB",
+      "venue": "KitKatClub",
+      "promoter": "Symbiotikka / Too Much Entertainment"
+    },
+    {
+      "ra_event_id": "2532834",
+      "ra_promoter_id": "30973",
+      "title": "luca.and.friends. with Luca ( Minimal Bar) & Freunde",
+      "venue": "Minimal Bar",
+      "promoter": "mini.mal elektrokneipe"
+    },
+    {
+      "ra_event_id": "2553242",
+      "ra_promoter_id": "135689",
+      "title": "salox90mil: Dagmar Zuniga + nykolaes & Daniël Paul",
+      "venue": "90mil",
+      "promoter": "salo"
+    },
+    {
+      "ra_event_id": "2374344",
+      "ra_promoter_id": "70881",
+      "title": "WE KÜYEN w.Monkyman (DJ Set), AP Solis, MonoAbe",
+      "venue": "Klunkerkranich",
+      "promoter": "Klunkerkranich"
+    },
+    {
+      "ra_event_id": "2156921",
+      "ra_promoter_id": "106700",
+      "title": "...GET PERLONIZED",
+      "venue": "ZENNER",
+      "promoter": "ZENNER"
+    },
+    {
+      "ra_event_id": "2125007",
+      "ra_promoter_id": "130529",
+      "title": "WINE & VINYL pres Groove Naturale with Gemini a Gemini and Overthink 71",
+      "venue": "The Hoxton",
+      "promoter": "Backside Radio"
+    },
+    {
+      "ra_event_id": "2454471",
+      "ra_promoter_id": "70881",
+      "title": "Baerbel'S BELLEZ w. Justice, Kauderwelsch, van Kay, Sunshinespice, Baerbel, vivi, Schorli",
+      "venue": "Klunkerkranich",
+      "promoter": "Klunkerkranich"
+    },
+    {
+      "ra_event_id": "2514037",
+      "ra_promoter_id": "156478",
+      "title": "WKND X OFFLINE",
+      "venue": "Weekend",
+      "promoter": "WeekendPromoter"
+    }
+  ]
+}

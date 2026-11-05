@@ -1,0 +1,85 @@
+{
+  "version": "v11-population-holdout-20261104-v1",
+  "frozen_before_model_evaluation": true,
+  "release_representative": false,
+  "note": "11 reviewed links from a preregistered random 30-link sample; 19 unresolved. One positive is an inference and negatives implement venue exclusion policy. Excludes previous review selections and is not representative due to incomplete annotation.",
+  "cases": [
+    {
+      "ra_event_id": "2413008",
+      "ra_promoter_id": "184681",
+      "expected_organizer": true,
+      "basis": "The profile and event share the UNCANNY RHYTHMS name; the text calls it the first event and identifies a co-founder. This is an inference, not an explicit named credit.",
+      "source": "https://ra.co/events/2413008"
+    },
+    {
+      "ra_event_id": "2456379",
+      "ra_promoter_id": "8711",
+      "expected_organizer": false,
+      "basis": "The listed RA profile identifies the venue; no explicit organizing credit for that venue was found in the event text. Exclusion applies the user policy.",
+      "source": "https://ra.co/events/2456379"
+    },
+    {
+      "ra_event_id": "2189164",
+      "ra_promoter_id": "61016",
+      "expected_organizer": false,
+      "basis": "The listed RA profile identifies the venue; no explicit organizing credit for that venue was found in the event text. Exclusion applies the user policy.",
+      "source": "https://ra.co/events/2189164"
+    },
+    {
+      "ra_event_id": "2553415",
+      "ra_promoter_id": "4075",
+      "expected_organizer": false,
+      "basis": "The listed RA profile identifies the venue; no explicit organizing credit for that venue was found in the event text. Exclusion applies the user policy.",
+      "source": "https://ra.co/events/2553415"
+    },
+    {
+      "ra_event_id": "2222667",
+      "ra_promoter_id": "79283",
+      "expected_organizer": false,
+      "basis": "The listed RA profile identifies the venue; no explicit organizing credit for that venue was found in the event text. Exclusion applies the user policy.",
+      "source": "https://ra.co/events/2222667"
+    },
+    {
+      "ra_event_id": "2529860",
+      "ra_promoter_id": "61016",
+      "expected_organizer": false,
+      "basis": "The listed RA profile identifies the venue; no explicit organizing credit for that venue was found in the event text. Exclusion applies the user policy.",
+      "source": "https://ra.co/events/2529860"
+    },
+    {
+      "ra_event_id": "2511863",
+      "ra_promoter_id": "98410",
+      "expected_organizer": false,
+      "basis": "The listed RA profile identifies the venue; no explicit organizing credit for that venue was found in the event text. Exclusion applies the user policy.",
+      "source": "https://ra.co/events/2511863"
+    },
+    {
+      "ra_event_id": "2196519",
+      "ra_promoter_id": "167057",
+      "expected_organizer": true,
+      "basis": "The description says Callie Reiff brings her own party series to this event.",
+      "source": "https://ra.co/events/2196519"
+    },
+    {
+      "ra_event_id": "2295011",
+      "ra_promoter_id": "110655",
+      "expected_organizer": true,
+      "basis": "The event description explicitly states OST pres. M.A.R.A.; pres. is a presenter credit.",
+      "source": "https://ra.co/events/2295011"
+    },
+    {
+      "ra_event_id": "2229778",
+      "ra_promoter_id": "117673",
+      "expected_organizer": true,
+      "basis": "The description explicitly credits Crunch Tapes with presenting the event.",
+      "source": "https://ra.co/events/2229778"
+    },
+    {
+      "ra_event_id": "2544137",
+      "ra_promoter_id": "171409",
+      "expected_organizer": false,
+      "basis": "The listed RA profile identifies the venue; no explicit organizing credit for that venue was found in the event text. Exclusion applies the user policy.",
+      "source": "https://ra.co/events/2544137"
+    }
+  ]
+}

@@ -711,6 +711,17 @@ def main() -> None:
         connection.commit()
 
     print(f"Imported {len(events)} events")
+    if os.environ.get("PROMOTER_ROLE_QUEUE_ENABLED", "").strip().lower() == "true":
+        # The import is already committed. Classification is a separate, resumable job.
+        try:
+            from app.promoter_role_queue import enqueue_imported_ra_events
+
+            runs = enqueue_imported_ra_events(DATABASE_URL, tuple(str(event["id"]) for event in events))
+        except (psycopg.Error, ValueError, KeyError, ImportError):
+            # Provider credentials, event text and database URLs must not enter logs.
+            print("Promoter role queue unavailable; imported events remain committed")
+        else:
+            print(f"Promoter role queue: {len(runs)} bounded run(s) queued")
     print(
         "Imported artist biographies: "
         f"updated={bio_updated}, unchanged={bio_unchanged}, "

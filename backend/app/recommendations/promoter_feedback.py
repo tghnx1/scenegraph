@@ -69,7 +69,23 @@ def load_promoter_feedback(
     user_id: int,
     artist_id: int,
 ) -> dict[int, str]:
+    from app.promoter_role_relation import role_filter_active
+
     with connection.cursor() as cursor:
+        if role_filter_active():
+            cursor.execute(
+                """
+                SELECT DISTINCT ON (COALESCE(m.canonical_id, f.candidate_entity_id))
+                  COALESCE(m.canonical_id, f.candidate_entity_id) AS candidate_entity_id, f.feedback
+                FROM recommendation_feedback f
+                LEFT JOIN pg_temp.promoter_role_identity_map m ON m.source_id = f.candidate_entity_id
+                WHERE f.user_id = %s AND f.source_entity_type = 'artist' AND f.source_entity_id = %s
+                  AND f.candidate_entity_type = 'promoter'
+                ORDER BY COALESCE(m.canonical_id, f.candidate_entity_id), f.updated_at DESC, f.id DESC
+                """,
+                (user_id, artist_id),
+            )
+            return {int(row["candidate_entity_id"]): str(row["feedback"]) for row in cursor.fetchall()}
         cursor.execute(
             """
             SELECT candidate_entity_id, feedback

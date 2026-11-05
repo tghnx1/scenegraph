@@ -1,0 +1,16 @@
+{
+  "version": "population-20261104-blind-followup-v1",
+  "frozen_before_model_evaluation": false,
+  "release_representative": false,
+  "note": "Additional blind review of the preregistered population sample. Some positive roles are inferred from event branding and collaboration, not explicit organizer credits. Some events may already have been classified. Other selected links remain unresolved.",
+  "cases": [
+    {"ra_event_id": "2281643", "ra_promoter_id": "134253", "expected_organizer": true, "basis": "Chain Reaction is the listed RA promoter and the description says the group invited participants and is delivering the event.", "source": "https://ra.co/events/2281643"},
+    {"ra_event_id": "2433842", "ra_promoter_id": "178450", "expected_organizer": true, "basis": "The source calls it a LESBERLIN fundraiser and links the named run club; organizer identity is inferred from the linked profile and context.", "source": "https://ra.co/events/2433842"},
+    {"ra_event_id": "2164941", "ra_promoter_id": "74151", "expected_organizer": true, "basis": "The event title credits a collaboration with Frauengedeck and its description identifies the collective behind the event series.", "source": "https://ra.co/events/2164941"},
+    {"ra_event_id": "2296077", "ra_promoter_id": "159867", "expected_organizer": true, "basis": "The event title and description identify the UMZUMZ crew and their biweekly series; the RA promoter profile matches.", "source": "https://ra.co/events/2296077"},
+    {"ra_event_id": "1930725", "ra_promoter_id": "138482", "expected_organizer": true, "basis": "The RA promoter Hot Meal is named as a collaborator in the event title; organization is inferred from the co-branded listing.", "source": "https://ra.co/events/1930725"},
+    {"ra_event_id": "2413942", "ra_promoter_id": "184760", "expected_organizer": true, "basis": "The event title credits TIME TO MOVE in collaboration with Groove Therapy; the RA promoter profile matches.", "source": "https://ra.co/events/2413942"},
+    {"ra_event_id": "2137549", "ra_promoter_id": "105593", "expected_organizer": true, "basis": "The listed RA promoter singularity.bln matches the event brand SINGULARITY; attribution is inferred from the listing, not an explicit organizing statement.", "source": "https://ra.co/events/2137549"},
+    {"ra_event_id": "2331870", "ra_promoter_id": "126472", "expected_organizer": false, "basis": "The text explicitly describes the event as CYCLE's first solo night, although it says CYCLE originated in the EUPHORIK movement; EUPHORIK's own organizing role is not confirmed.", "source": "https://ra.co/events/2331870"}
+  ]
+}

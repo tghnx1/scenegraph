@@ -1,0 +1,858 @@
+"""Run durable backfill transitions against a real PostgreSQL schema."""
+
+import os
+import json
+import subprocess
+import sys
+from pathlib import Path
+from uuid import uuid4
+
+import psycopg
+import pytest
+import httpx
+from openai import PermissionDeniedError, RateLimitError
+from psycopg import sql
+
+from app import promoter_role_backfill as backfill
+from app.promoter_role_llm import ProposedRole, RoleResponse
+from app.promoter_role_eligibility import eligible_promoters
+from app.promoter_role_queue import enqueue_changed_events, enqueue_imported_ra_events
+from app.promoter_role_relation import role_filtered_relation
+from app.promoter_role_shadow import compare_recommendations
+from app.promoter_role_candidates import find_candidate_matches
+from app.promoter_role_worker import process_next
+from app.promoter_role_identity import confirm_profiles, unconfirm_profile
+from app.promoter_role_evaluation_db import EvaluatedCase, EvaluationReport, ReviewedCase, evaluate_current_cases, has_quality_review, record_quality_review, revoke_quality_review
+from app.promoter_role_evaluation import ReviewedRole, evaluate_roles
+from app.promoter_role_runtime import RoleRuntimeConfigurationError, resolve_runtime_context
+from app.promoter_role_store import EventInputChanged
+
+
+@pytest.fixture
+def database():
+    url = os.environ.get("DATABASE_URL")
+    if not url:
+        pytest.skip("DATABASE_URL is required for PostgreSQL integration")
+    schema = "test_role_backfill_" + uuid4().hex
+    migration = Path(__file__).resolve().parents[1] / "prisma/migrations/20261103000000_promoter_event_roles/migration.sql"
+    with psycopg.connect(url) as connection:
+        try:
+            connection.execute(sql.SQL("CREATE SCHEMA {} ").format(sql.Identifier(schema)))
+            connection.execute(sql.SQL("SET search_path TO {} ").format(sql.Identifier(schema)))
+            connection.execute("CREATE TABLE events (id BIGINT PRIMARY KEY, title TEXT, description_text TEXT, venue_id BIGINT, ra_event_id TEXT)")
+            connection.execute("CREATE TABLE promoters (id BIGINT PRIMARY KEY, name TEXT, ra_promoter_id TEXT)")
+            connection.execute("CREATE TABLE venues (id BIGINT PRIMARY KEY, name TEXT)")
+            connection.execute("CREATE TABLE users (id BIGINT PRIMARY KEY)")
+            connection.execute("CREATE TABLE event_promoters (event_id BIGINT, promoter_id BIGINT)")
+            connection.execute("""CREATE TABLE recommendation_feedback (id BIGINT PRIMARY KEY, user_id BIGINT,
+                source_entity_type TEXT, source_entity_id BIGINT, candidate_entity_type TEXT,
+                candidate_entity_id BIGINT, feedback TEXT, updated_at TIMESTAMPTZ)""")
+            connection.execute(migration.read_text())
+            usage_migration = migration.parents[1] / "20261103010000_promoter_role_token_usage/migration.sql"
+            connection.execute(usage_migration.read_text())
+            hash_migration = migration.parents[1] / "20261103020000_hash_promoter_role_snapshots/migration.sql"
+            connection.execute(hash_migration.read_text())
+            audit_migration = migration.parents[1] / "20261103030000_promoter_identity_audit/migration.sql"
+            connection.execute(audit_migration.read_text())
+            shadow_migration = migration.parents[1] / "20261103040000_promoter_shadow_job_identity/migration.sql"
+            connection.execute(shadow_migration.read_text())
+            revision_migration = migration.parents[1] / "20261103050000_promoter_role_revision/migration.sql"
+            connection.execute(revision_migration.read_text())
+            quality_migration = migration.parents[1] / "20261103060000_promoter_role_quality_gate/migration.sql"
+            connection.execute(quality_migration.read_text())
+            integrity_migration = migration.parents[1] / "20261103070000_promoter_role_gate_integrity/migration.sql"
+            connection.execute(integrity_migration.read_text())
+            audience_migration = migration.parents[1] / "20261103080000_promoter_role_audience/migration.sql"
+            connection.execute(audience_migration.read_text())
+            threshold_migration = migration.parents[1] / "20261104000000_promoter_role_quality_threshold_70/migration.sql"
+            connection.execute(threshold_migration.read_text())
+            connection.execute("INSERT INTO events VALUES (1, '8MM live', NULL, 1, 'ra1'), (2, 'Other live', NULL, NULL, 'ra2')")
+            connection.execute("INSERT INTO venues VALUES (1, '8MM')")
+            connection.execute("INSERT INTO users VALUES (42), (99)")
+            connection.execute("INSERT INTO promoters VALUES (1, '8MM', 'ra1'), (2, 'Other', 'ra2')")
+            connection.execute("INSERT INTO event_promoters VALUES (1, 1), (2, 2)")
+            connection.commit()
+            yield connection
+        finally:
+            connection.rollback()
+            connection.execute(sql.SQL("DROP SCHEMA {} CASCADE").format(sql.Identifier(schema)))
+            connection.commit()
+
+
+def test_resume_does_not_repeat_completed_events(database, monkeypatch):
+    calls = []
+
+    def classify(event):
+        calls.append(event.event_id)
+        if calls == [1, 2]:
+            raise EventInputChanged("test interruption")
+        return RoleResponse((ProposedRole(event.event_id, "organizer", 1, "presents"),), ())
+
+    monkeypatch.setattr(backfill, "classify_with_llm", classify)
+    run_id = backfill.create_run(database, (1, 2), "config")
+    database.commit()
+    assert backfill.process_run(database, run_id, "config") == "paused"
+    assert backfill.process_run(database, run_id, "config") == "succeeded"
+    assert calls == [1, 2, 2]
+    rows = database.execute("SELECT event_id, status, attempts FROM promoter_role_backfill_item ORDER BY event_id").fetchall()
+    assert rows == [(1, "succeeded", 1), (2, "succeeded", 2)]
+
+
+def test_config_change_cannot_resume(database):
+    run_id = backfill.create_run(database, (1,), "old")
+    database.commit()
+    with pytest.raises(ValueError, match="configuration changed"):
+        backfill.process_run(database, run_id, "new")
+
+
+def test_config_hash_changes_with_provider_endpoint(monkeypatch):
+    from types import SimpleNamespace
+
+    config = SimpleNamespace(provider="kimi_code", model="k3", reasoning_effort="low")
+    monkeypatch.setenv("KIMI_BASE_URL", "https://one.example/v1")
+    original = backfill.extraction_config_hash(config)
+    monkeypatch.setenv("KIMI_BASE_URL", "https://two.example/v1")
+    assert backfill.extraction_config_hash(config) != original
+
+
+def test_retries_are_bounded(database, monkeypatch):
+    monkeypatch.setattr(backfill, "classify_with_llm", lambda event: (_ for _ in ()).throw(EventInputChanged("changed")))
+    run_id = backfill.create_run(database, (1,), "config")
+    database.commit()
+    assert backfill.process_run(database, run_id, "config") == "paused"
+    assert backfill.process_run(database, run_id, "config") == "paused"
+    assert backfill.process_run(database, run_id, "config") == "failed"
+    assert backfill.process_run(database, run_id, "config") == "failed"
+    assert database.execute("SELECT attempts FROM promoter_role_backfill_item").fetchone() == (3,)
+
+
+def test_invalid_response_persists_only_safe_reason_and_usage(database, monkeypatch):
+    from app.promoter_role_llm import InvalidRoleResponse
+
+    def invalid(_event):
+        error = InvalidRoleResponse("invalid JSON")
+        error.input_tokens, error.output_tokens = 20, 10
+        raise error
+
+    monkeypatch.setattr(backfill, "classify_with_llm", invalid)
+    run_id = backfill.create_run(database, (1,), "config")
+    database.commit()
+    assert backfill.process_run(database, run_id, "config") == "failed"
+    assert database.execute("SELECT error_code, input_tokens, output_tokens FROM promoter_role_backfill_item").fetchone() == (
+        "invalid_model_response:invalid_JSON", 20, 10)
+
+
+def test_explicit_retry_only_retries_eligible_failures_and_preserves_success(database, monkeypatch):
+    from app.promoter_role_llm import InvalidRoleResponse
+
+    calls = []
+
+    def classify(event):
+        calls.append(event.event_id)
+        if event.event_id == 1 and calls.count(1) == 1:
+            raise InvalidRoleResponse("invalid JSON")
+        return RoleResponse((ProposedRole(event.event_id, "organizer", 1, "presents"),), ())
+
+    monkeypatch.setattr(backfill, "classify_with_llm", classify)
+    run_id = backfill.create_run(database, (1, 2), "config")
+    database.commit()
+    assert backfill.process_run(database, run_id, "config") == "failed"
+    assert backfill.process_run(database, run_id, "config") == "failed"
+    assert backfill.process_run(database, run_id, "config", retry_failed=True) == "succeeded"
+    assert calls == [1, 2, 1]
+    assert database.execute("SELECT event_id, attempts FROM promoter_role_backfill_item ORDER BY event_id").fetchall() == [(1, 2), (2, 1)]
+
+
+def test_explicit_retry_does_not_retry_system_errors_or_exceed_limit(database, monkeypatch):
+    run_id = backfill.create_run(database, (1, 2), "config")
+    database.execute("UPDATE promoter_role_backfill_item SET status = 'failed', attempts = 1, error_code = 'provider_system_failure' WHERE event_id = 1")
+    database.execute("UPDATE promoter_role_backfill_item SET status = 'failed', attempts = 3, error_code = 'invalid_model_response' WHERE event_id = 2")
+    database.commit()
+    monkeypatch.setattr(backfill, "classify_with_llm", lambda event: pytest.fail("must not retry"))
+    assert backfill.process_run(database, run_id, "config", retry_failed=True) == "failed"
+    assert database.execute("SELECT status, attempts FROM promoter_role_backfill_item ORDER BY event_id").fetchall() == [("failed", 1), ("failed", 3)]
+
+
+def test_quota_pauses_without_consuming_retry(database, monkeypatch):
+    response = httpx.Response(429, request=httpx.Request("POST", "https://example.invalid"))
+
+    def quota(_event):
+        raise RateLimitError("quota", response=response, body=None)
+
+    monkeypatch.setattr(backfill, "classify_with_llm", quota)
+    run_id = backfill.create_run(database, (1,), "config")
+    database.commit()
+    assert backfill.process_run(database, run_id, "config") == "paused"
+    assert database.execute("SELECT status, attempts, error_code FROM promoter_role_backfill_item").fetchone() == ("pending", 0, "provider_quota")
+
+
+@pytest.mark.parametrize("error_type,message,expected", [
+    ("access_terminated_error", "You've reached your 5-hour usage limit", "paused"),
+    ("access_terminated_error", "Account terminated for policy reasons", "failed"),
+    ("permission_denied", "Access denied", "failed"),
+])
+def test_403_is_quota_only_when_explicit(database, monkeypatch, error_type, message, expected):
+    response = httpx.Response(403, request=httpx.Request("POST", "https://example.invalid"))
+
+    def deny(_event):
+        raise PermissionDeniedError("provider error", response=response, body={"type": error_type, "message": message})
+
+    monkeypatch.setattr(backfill, "classify_with_llm", deny)
+    run_id = backfill.create_run(database, (1,), "config")
+    database.commit()
+    assert backfill.process_run(database, run_id, "config") == expected
+    row = database.execute("SELECT status, attempts, error_code FROM promoter_role_backfill_item").fetchone()
+    if expected == "paused":
+        assert row == ("pending", 0, "provider_quota")
+    else:
+        assert row == ("failed", 1, "provider_system_failure")
+
+
+def test_dry_run_does_not_write(database):
+    schema = database.execute("SELECT current_schema()").fetchone()[0]
+    database.commit()
+    env = os.environ.copy()
+    env["PGOPTIONS"] = f"-c search_path={schema}"
+    result = subprocess.run(
+        [sys.executable, "-m", "app.promoter_role_backfill_cli", "--event-id", "1"],
+        env=env, capture_output=True, text=True, check=True,
+    )
+    assert '"event_id": 1' in result.stdout
+    assert database.execute("SELECT count(*) FROM promoter_role_backfill_run").fetchone() == (0,)
+    assert database.execute("SELECT count(*) FROM promoter_event_role").fetchone() == (0,)
+
+
+def test_status_command_only_reads_persisted_state(database):
+    schema = database.execute("SELECT current_schema()").fetchone()[0]
+    run_id = backfill.create_run(database, (1,), "config")
+    database.commit()
+    env = os.environ.copy()
+    env["PGOPTIONS"] = f"-c search_path={schema}"
+    result = subprocess.run([sys.executable, "-m", "app.promoter_role_backfill_cli", "--status-run", str(run_id)],
+                            env=env, capture_output=True, text=True, check=True)
+    status = json.loads(result.stdout)
+    assert status["status"] == "queued"
+    assert status["items"] == {"pending": 1}
+    assert status["reported_input_tokens"] is None
+    assert database.execute("SELECT status FROM promoter_role_backfill_run").fetchone() == ("queued",)
+
+
+def test_status_command_serializes_nonempty_token_totals(database):
+    schema = database.execute("SELECT current_schema()").fetchone()[0]
+    run_id = backfill.create_run(database, (1,), "config")
+    database.execute("UPDATE promoter_role_backfill_item SET input_tokens = 123, output_tokens = 45 WHERE run_id = %s", (run_id,))
+    database.commit()
+    env = os.environ.copy()
+    env["PGOPTIONS"] = f"-c search_path={schema}"
+    result = subprocess.run([sys.executable, "-m", "app.promoter_role_backfill_cli", "--status-run", str(run_id)],
+                            env=env, capture_output=True, text=True, check=True)
+    status = json.loads(result.stdout)
+    assert status["reported_input_tokens"] == 123
+    assert status["reported_output_tokens"] == 45
+
+
+def test_status_reports_failed_item_without_modifying_it(database):
+    schema = database.execute("SELECT current_schema()").fetchone()[0]
+    run_id = backfill.create_run(database, (1,), "config")
+    database.execute("UPDATE promoter_role_backfill_item SET status = 'failed', attempts = 2, error_code = %s WHERE run_id = %s",
+                     ("invalid_model_response:invalid_response_shape", run_id))
+    database.commit()
+    env = os.environ.copy()
+    env["PGOPTIONS"] = f"-c search_path={schema}"
+    result = subprocess.run([sys.executable, "-m", "app.promoter_role_backfill_cli", "--status-run", str(run_id)],
+                            env=env, capture_output=True, text=True, check=True)
+    status = json.loads(result.stdout)
+    assert status["failed_items"] == [{"event_id": 1, "attempts": 2, "error_code": "invalid_model_response:invalid_response_shape"}]
+    assert database.execute("SELECT status, attempts FROM promoter_role_backfill_item WHERE run_id = %s", (run_id,)).fetchone() == ("failed", 2)
+
+
+def test_worker_lock_prevents_concurrent_runs(database):
+    with psycopg.connect(os.environ["DATABASE_URL"]) as second:
+        with backfill.worker_lock(database):
+            with pytest.raises(backfill.BackfillBusy):
+                with backfill.worker_lock(second):
+                    pass
+
+
+def test_unknown_failure_is_recorded_and_propagated(database, monkeypatch):
+    def broken(_event):
+        raise RuntimeError("internal failure")
+
+    monkeypatch.setattr(backfill, "classify_with_llm", broken)
+    run_id = backfill.create_run(database, (1,), "config")
+    database.commit()
+    with pytest.raises(RuntimeError):
+        backfill.process_run(database, run_id, "config")
+    assert database.execute("SELECT status, error_code FROM promoter_role_backfill_item").fetchone() == ("failed", "system_failure")
+    assert database.execute("SELECT status FROM promoter_role_backfill_run").fetchone() == ("failed",)
+
+
+def test_new_run_reuses_current_result_and_reclassifies_changed_input(database, monkeypatch):
+    calls = []
+
+    def classify(event):
+        calls.append(event.title)
+        return RoleResponse((ProposedRole(1, "both", 1, "8MM"),), ())
+
+    monkeypatch.setattr(backfill, "classify_with_llm", classify)
+    first = backfill.create_run(database, (1,), "config")
+    database.commit()
+    assert backfill.process_run(database, first, "config") == "succeeded"
+    second = backfill.create_run(database, (1,), "config")
+    database.commit()
+    assert backfill.process_run(database, second, "config") == "succeeded"
+    assert calls == ["8MM live"]
+    database.execute("UPDATE events SET title = '8MM live again' WHERE id = 1")
+    database.commit()
+    third = backfill.create_run(database, (1,), "config")
+    database.commit()
+    assert backfill.process_run(database, third, "config") == "succeeded"
+    assert calls == ["8MM live", "8MM live again"]
+
+
+def test_provider_usage_is_persisted_with_the_event(database, monkeypatch):
+    monkeypatch.setattr(backfill, "classify_with_llm", lambda event: RoleResponse((ProposedRole(1, "organizer", 1, "8MM"),), (), 123, 45))
+    run_id = backfill.create_run(database, (1,), "config")
+    database.commit()
+    assert backfill.process_run(database, run_id, "config") == "succeeded"
+    assert database.execute("SELECT input_tokens, output_tokens FROM promoter_role_backfill_item").fetchone() == (123, 45)
+
+
+def test_clear_presenter_uses_rules_without_calling_provider(database, monkeypatch):
+    database.execute("UPDATE events SET title = '8MM presents' WHERE id = 1")
+    database.commit()
+    monkeypatch.setattr(backfill, "classify_with_llm", lambda event: pytest.fail("provider should not be called"))
+    run_id = backfill.create_run(database, (1,), "config")
+    database.commit()
+    assert backfill.process_run(database, run_id, "config") == "succeeded"
+    assert database.execute("SELECT role, method FROM promoter_event_role").fetchone() == ("both", "rule")
+
+
+def test_eligibility_excludes_stale_or_removed_roles(database, monkeypatch):
+    monkeypatch.setattr(backfill, "classify_with_llm", lambda event: RoleResponse((ProposedRole(1, "organizer", 1, "8MM"),), ()))
+    run_id = backfill.create_run(database, (1,), "config")
+    database.commit()
+    assert backfill.process_run(database, run_id, "config") == "succeeded"
+    assert eligible_promoters(database, 1, "config")[0].canonical_id == 1
+    assert eligible_promoters(database, 1, "different") == ()
+    database.execute("UPDATE events SET title = 'changed' WHERE id = 1")
+    assert eligible_promoters(database, 1, "config") == ()
+    database.rollback()
+    database.execute("DELETE FROM event_promoters WHERE event_id = 1")
+    assert eligible_promoters(database, 1, "config") == ()
+
+
+def test_confirmed_aliases_deduplicate_without_losing_source_ids(database, monkeypatch):
+    database.execute("INSERT INTO promoter_identity DEFAULT VALUES")
+    database.execute("INSERT INTO promoter_identity_member (promoter_id, identity_id, status, reason, version) VALUES (1, 1, 'confirmed', 'reviewed', 'v1'), (2, 1, 'confirmed', 'reviewed', 'v1')")
+    database.execute("INSERT INTO event_promoters VALUES (1, 2)")
+    database.commit()
+    monkeypatch.setattr(backfill, "classify_with_llm", lambda event: RoleResponse((ProposedRole(1, "organizer", 1, "8MM"), ProposedRole(2, "organizer", 1, "Other")), ()))
+    run_id = backfill.create_run(database, (1,), "config")
+    database.commit()
+    assert backfill.process_run(database, run_id, "config") == "succeeded"
+    matches = eligible_promoters(database, 1, "config")
+    assert len(matches) == 1
+    assert matches[0].canonical_id == 1
+    assert matches[0].source_ids == (1, 2)
+    rows = database.execute("SELECT promoter_id, source_promoter_ids FROM promoter_role_eligible_links WHERE event_id = 1").fetchall()
+    assert rows == [(1, [1, 2])]
+    with role_filtered_relation(database, "config"):
+        assert database.execute(
+            "SELECT promoter_id, source_promoter_ids FROM event_promoters WHERE event_id = 1"
+        ).fetchall() == [(1, [1, 2])]
+
+
+def test_sql_eligibility_rejects_changed_event_and_changed_alias(database, monkeypatch):
+    monkeypatch.setattr(backfill, "classify_with_llm", lambda event: RoleResponse((ProposedRole(1, "organizer", 1, "8MM"),), ()))
+    run_id = backfill.create_run(database, (1,), "config")
+    database.commit()
+    assert backfill.process_run(database, run_id, "config") == "succeeded"
+    snapshot = database.execute("SELECT input_snapshot FROM promoter_event_classification").fetchone()[0]
+    assert "8MM live" not in json.dumps(snapshot)
+    assert "8MM" not in json.dumps(snapshot)
+    assert database.execute("SELECT count(*) FROM promoter_role_eligible_links").fetchone() == (1,)
+    database.execute("UPDATE events SET title = 'changed' WHERE id = 1")
+    assert database.execute("SELECT count(*) FROM promoter_role_eligible_links").fetchone() == (0,)
+    database.rollback()
+    database.execute("INSERT INTO promoter_identity DEFAULT VALUES")
+    database.execute("INSERT INTO promoter_identity_member (promoter_id, identity_id, status, reason, version) VALUES (1, 1, 'confirmed', 'reviewed', 'v1')")
+    assert database.execute("SELECT count(*) FROM promoter_role_eligible_links").fetchone() == (0,)
+
+
+def test_snapshot_migration_preserves_existing_eligibility(database, monkeypatch):
+    from psycopg.types.json import Jsonb
+
+    monkeypatch.setattr(backfill, "classify_with_llm", lambda event: RoleResponse((ProposedRole(1, "organizer", 1, "8MM"),), ()))
+    run_id = backfill.create_run(database, (1,), "config")
+    database.commit()
+    assert backfill.process_run(database, run_id, "config") == "succeeded"
+    old_snapshot = {"event_id": 1, "title": "8MM live", "description": "", "venue_id": 1,
+                    "venue_name": "8MM", "promoters": [{"id": 1, "name": "8MM", "identity_id": None}]}
+    database.execute("UPDATE promoter_event_classification SET input_snapshot = %s", (Jsonb(old_snapshot),))
+    migration = Path(__file__).resolve().parents[1] / "prisma/migrations/20261103020000_hash_promoter_role_snapshots/migration.sql"
+    database.execute(migration.read_text())
+    snapshot = database.execute("SELECT input_snapshot FROM promoter_event_classification").fetchone()[0]
+    assert "8MM" not in json.dumps(snapshot)
+    assert database.execute("SELECT count(*) FROM promoter_role_eligible_links").fetchone() == (1,)
+
+
+def test_unknown_and_proposed_aliases_do_not_create_or_merge_credits(database, monkeypatch):
+    database.execute("INSERT INTO promoter_identity DEFAULT VALUES")
+    database.execute("INSERT INTO promoter_identity_member (promoter_id, identity_id, status, reason, version) VALUES (1, 1, 'proposed', 'unverified', 'v1'), (2, 1, 'proposed', 'unverified', 'v1')")
+    database.execute("INSERT INTO event_promoters VALUES (1, 2)")
+    database.commit()
+    monkeypatch.setattr(backfill, "classify_with_llm", lambda event: RoleResponse((ProposedRole(1, "organizer", 1, "8MM"), ProposedRole(2, "unknown", 0.5, "Other")), ()))
+    run_id = backfill.create_run(database, (1,), "config")
+    database.commit()
+    assert backfill.process_run(database, run_id, "config") == "succeeded"
+    matches = eligible_promoters(database, 1, "config")
+    assert [(m.canonical_id, m.source_ids) for m in matches] == [(1, (1,))]
+
+
+def test_enqueue_avoids_duplicate_and_current_events(database, monkeypatch):
+    monkeypatch.setattr(backfill, "classify_with_llm", lambda event: RoleResponse((ProposedRole(1, "organizer", 1, "8MM"),), ()))
+    first = enqueue_changed_events(database, (1, 1), "config")
+    assert len(first) == 1
+    assert enqueue_changed_events(database, (1,), "config") == ()
+    database.commit()
+    assert backfill.process_run(database, first[0], "config") == "succeeded"
+    assert enqueue_changed_events(database, (1,), "config") == ()
+    database.execute("UPDATE events SET title = 'updated' WHERE id = 1")
+    assert len(enqueue_changed_events(database, (1,), "config")) == 1
+
+
+def test_import_enqueue_uses_ra_ids_and_ingestion_config(database, monkeypatch):
+    from types import SimpleNamespace
+    from app import promoter_role_queue
+
+    schema = database.execute("SELECT current_schema()").fetchone()[0]
+    database.commit()
+    monkeypatch.setenv("PGOPTIONS", f"-c search_path={schema}")
+    monkeypatch.setattr(promoter_role_queue.EventTagExtractionConfig, "from_env", lambda: SimpleNamespace(provider="kimi_code", model="k3", reasoning_effort="low"))
+    runs = enqueue_imported_ra_events(os.environ["DATABASE_URL"], ("ra1", "ra2"))
+    assert len(runs) == 1
+    assert database.execute("SELECT event_id FROM promoter_role_backfill_item ORDER BY event_id").fetchall() == [(1,), (2,)]
+    assert enqueue_imported_ra_events(os.environ["DATABASE_URL"], ("ra1", "ra2")) == ()
+
+
+def test_worker_processes_only_queued_compatible_runs(database, monkeypatch):
+    database.execute("UPDATE events SET title = '8MM presents' WHERE id = 1")
+    run_id = backfill.create_run(database, (1,), "config")
+    database.commit()
+    monkeypatch.setattr(backfill, "classify_with_llm", lambda event: pytest.fail("rule should avoid the provider"))
+    assert process_next(database, "different") is None
+    assert process_next(database, "config") == "succeeded"
+    assert process_next(database, "config") is None
+    assert database.execute("SELECT status FROM promoter_role_backfill_run WHERE id = %s", (run_id,)).fetchone() == ("succeeded",)
+
+
+def test_confirm_and_undo_identity_keeps_ra_profiles_and_audit(database):
+    identity = confirm_profiles(database, (1, 2), "reviewed source profiles")
+    database.commit()
+    assert database.execute("SELECT count(*) FROM promoter_identity_member WHERE identity_id = %s AND status = 'confirmed'", (identity,)).fetchone() == (2,)
+    unconfirm_profile(database, 2, "review corrected")
+    database.commit()
+    assert database.execute("SELECT status FROM promoter_identity_member WHERE promoter_id = 2").fetchone() == ("proposed",)
+    assert database.execute("SELECT ra_promoter_id FROM promoters ORDER BY id").fetchall() == [("ra1",), ("ra2",)]
+    assert database.execute("SELECT new_status FROM promoter_identity_audit WHERE promoter_id = 2 ORDER BY id").fetchall() == [("confirmed",), ("proposed",)]
+
+
+def test_confirmation_refuses_to_merge_existing_identities(database):
+    database.execute("INSERT INTO promoter_identity DEFAULT VALUES")
+    database.execute("INSERT INTO promoter_identity DEFAULT VALUES")
+    database.execute("INSERT INTO promoter_identity_member (promoter_id,identity_id,status,reason,version) VALUES (1,1,'confirmed','reviewed','v1'),(2,2,'confirmed','reviewed','v1')")
+    with pytest.raises(ValueError, match="different identities"):
+        confirm_profiles(database, (1, 2), "ambiguous")
+    assert database.execute("SELECT count(*) FROM promoter_identity_audit").fetchone() == (0,)
+
+
+def test_identity_cli_defaults_to_read_only(database):
+    schema = database.execute("SELECT current_schema()").fetchone()[0]
+    database.commit()
+    env = os.environ.copy()
+    env["PGOPTIONS"] = f"-c search_path={schema}"
+    result = subprocess.run([sys.executable, "-m", "app.promoter_role_identity_cli", "--confirm", "1", "--confirm", "2"],
+                            env=env, capture_output=True, text=True, check=True)
+    assert json.loads(result.stdout)["applied"] is False
+    assert database.execute("SELECT count(*) FROM promoter_identity_member").fetchone() == (0,)
+
+
+def test_role_revision_tracks_relevant_changes_only_when_enabled(database):
+    def revision():
+        return database.execute("SELECT revision FROM promoter_role_runtime_state WHERE id = 1").fetchone()[0]
+
+    assert revision() == 0
+    database.execute("UPDATE events SET title = 'changed' WHERE id = 1")
+    assert revision() == 0
+    review_id = database.execute("""
+        INSERT INTO promoter_role_quality_review (config_hash, classifier_version, manifest_sha256,
+          true_positive, true_negative, false_positive, false_negative, unknown_count, representative, reviewer)
+        VALUES ('config', %s, %s, 4, 1, 1, 1, 1, true, 'test reviewer') RETURNING id
+    """, (backfill.CLASSIFIER_VERSION, 'a' * 64)).fetchone()[0]
+    database.execute("""UPDATE promoter_role_runtime_state SET enabled = true, quality_review_id = %s,
+        config_hash = 'config', classifier_version = %s WHERE id = 1""", (review_id, backfill.CLASSIFIER_VERSION))
+    assert revision() == 1
+    database.execute("UPDATE events SET title = 'changed again' WHERE id = 1")
+    assert revision() == 2
+    database.execute("INSERT INTO promoter_identity DEFAULT VALUES")
+    database.execute("INSERT INTO promoter_identity_member (promoter_id,identity_id,status,reason,version) VALUES (1,1,'confirmed','reviewed','v1')")
+    assert revision() == 3
+    database.execute("DELETE FROM event_promoters WHERE event_id = 1")
+    assert revision() == 4
+    database.execute("UPDATE promoter_role_runtime_state SET enabled = false WHERE id = 1")
+    assert revision() == 5
+    database.execute("UPDATE promoters SET name = 'new' WHERE id = 1")
+    assert revision() == 5
+    database.execute("UPDATE promoter_role_runtime_state SET enabled = true WHERE id = 1")
+    assert revision() == 6
+
+
+def test_allowlist_and_audience_changes_advance_revision(database):
+    review = database.execute("""INSERT INTO promoter_role_quality_review (config_hash, classifier_version,
+        manifest_sha256, true_positive, true_negative, false_positive, false_negative, unknown_count,
+        representative, reviewer) VALUES ('config', %s, %s, 4, 1, 1, 1, 0, true, 'reviewer') RETURNING id""",
+        (backfill.CLASSIFIER_VERSION, 'a' * 64)).fetchone()[0]
+    database.execute("""UPDATE promoter_role_runtime_state SET enabled = true, quality_review_id = %s,
+        config_hash = 'config', classifier_version = %s WHERE id = 1""", (review, backfill.CLASSIFIER_VERSION))
+    database.execute("INSERT INTO promoter_role_allowlist (user_id) VALUES (42)")
+    assert database.execute("SELECT revision FROM promoter_role_runtime_state").fetchone() == (2,)
+    database.execute("UPDATE promoter_role_runtime_state SET audience = 'all' WHERE id = 1")
+    assert database.execute("SELECT revision FROM promoter_role_runtime_state").fetchone() == (3,)
+    database.execute("DELETE FROM promoter_role_allowlist WHERE user_id = 42")
+    assert database.execute("SELECT revision FROM promoter_role_runtime_state").fetchone() == (4,)
+
+
+def test_runtime_context_requires_approved_config_and_user_audience(database):
+    assert resolve_runtime_context(database, user_id=42, current_config_hash=None).mode == "off"
+    review = database.execute("""INSERT INTO promoter_role_quality_review (config_hash, classifier_version,
+        manifest_sha256, true_positive, true_negative, false_positive, false_negative, unknown_count,
+        representative, reviewer) VALUES ('config', %s, %s, 4, 1, 1, 1, 0, true, 'reviewer') RETURNING id""",
+        (backfill.CLASSIFIER_VERSION, 'a' * 64)).fetchone()[0]
+    database.execute("INSERT INTO promoter_role_allowlist (user_id) VALUES (42)")
+    database.execute("""UPDATE promoter_role_runtime_state SET enabled = true, quality_review_id = %s,
+        config_hash = 'config', classifier_version = %s WHERE id = 1""", (review, backfill.CLASSIFIER_VERSION))
+    assert resolve_runtime_context(database, user_id=99, current_config_hash=None).mode == "off"
+    context = resolve_runtime_context(database, user_id=42, current_config_hash="config", lock=True)
+    assert context.mode == "enforce" and context.config_hash == "config"
+    with pytest.raises(RoleRuntimeConfigurationError):
+        resolve_runtime_context(database, user_id=42, current_config_hash="wrong")
+    database.execute("UPDATE promoter_role_runtime_state SET audience = 'all' WHERE id = 1")
+    assert resolve_runtime_context(database, user_id=99, current_config_hash="config").mode == "enforce"
+
+
+def test_recommendation_cache_does_not_reuse_old_role_revision(database):
+    from psycopg.rows import dict_row
+    from app.recommendations.jobs import create_recommendation_job, get_recommendation_job
+
+    database.execute("""CREATE TABLE recommendation_jobs (
+        id UUID PRIMARY KEY, user_id BIGINT, artist_id BIGINT, job_type TEXT,
+        params_hash TEXT, params_json JSONB, status TEXT,
+        created_at TIMESTAMPTZ DEFAULT now())""")
+    database.row_factory = dict_row
+    try:
+        params = {"limit": 10, "debug": False}
+        first = create_recommendation_job(database, user_id=42, artist_id=1, params=params)
+        assert get_recommendation_job(database, user_id=42, job_id=str(first["id"])) is not None
+        database.execute("UPDATE promoter_role_runtime_state SET revision = revision + 1 WHERE id = 1")
+        assert get_recommendation_job(database, user_id=42, job_id=str(first["id"])) is None
+        second = create_recommendation_job(database, user_id=42, artist_id=1, params=params)
+        assert second["id"] != first["id"]
+        assert get_recommendation_job(database, user_id=42, job_id=str(second["id"])) is not None
+    finally:
+        database.row_factory = psycopg.rows.tuple_row
+
+
+def test_allowlisted_recommendations_use_only_confirmed_organizers(database, monkeypatch):
+    from app.recommendations import role_aware
+
+    database.execute("INSERT INTO event_promoters VALUES (1, 2)")
+    database.commit()
+    monkeypatch.setattr(backfill, "classify_with_llm", lambda event: RoleResponse((
+        ProposedRole(1, "organizer", 1, "8MM"), ProposedRole(2, "venue", 1, "Other")), ()))
+    run_id = backfill.create_run(database, (1,), "config")
+    database.commit()
+    assert backfill.process_run(database, run_id, "config") == "succeeded"
+    review = database.execute("""INSERT INTO promoter_role_quality_review (config_hash, classifier_version,
+        manifest_sha256, true_positive, true_negative, false_positive, false_negative, unknown_count,
+        representative, reviewer) VALUES ('config', %s, %s, 4, 1, 1, 1, 0, true, 'reviewer') RETURNING id""",
+        (backfill.CLASSIFIER_VERSION, 'a' * 64)).fetchone()[0]
+    database.execute("INSERT INTO promoter_role_allowlist (user_id) VALUES (42)")
+    database.execute("""UPDATE promoter_role_runtime_state SET enabled = true, quality_review_id = %s,
+        config_hash = 'config', classifier_version = %s WHERE id = 1""", (review, backfill.CLASSIFIER_VERSION))
+    monkeypatch.setattr(role_aware, "resolve_runtime_context", lambda connection, *, user_id, lock=False:
+                        resolve_runtime_context(connection, user_id=user_id, lock=lock, current_config_hash="config"))
+    monkeypatch.setattr(role_aware, "build_artist_promoter_recommendation_response",
+                        lambda connection, **kwargs: [row[0] for row in connection.execute(
+                            "SELECT promoter_id FROM event_promoters WHERE event_id = 1 ORDER BY promoter_id")])
+    assert role_aware.build_role_aware_recommendations(database, artist_id=1, limit=10, debug=False, user_id=42) == [1]
+    assert role_aware.build_role_aware_recommendations(database, artist_id=1, limit=10, debug=False, user_id=99) == [1, 2]
+
+
+def test_rollout_cli_is_dry_run_by_default_and_requires_review(database):
+    schema = database.execute("SELECT current_schema()").fetchone()[0]
+    database.commit()
+    env = os.environ.copy()
+    env.update(PGOPTIONS=f"-c search_path={schema}", EXTRACTION_PROVIDER="kimi_code", KIMI_EXTRACTION_MODEL="test",
+               EVENT_TAG_EXTRACTION_MAX_TEXT_CHARS="7000", EVENT_TAG_EXTRACTION_MAX_TAGS="12", EVENT_TAG_EXTRACTION_CHUNK_CHARS="800")
+    command = [sys.executable, "-m", "app.promoter_role_rollout"]
+    preview = subprocess.run([*command, "--add-user", "42"], env=env, capture_output=True, text=True, check=True)
+    assert json.loads(preview.stdout)["user_ids"] == [42]
+    assert database.execute("SELECT count(*) FROM promoter_role_allowlist").fetchone() == (0,)
+    database.commit()
+    subprocess.run([*command, "--add-user", "42", "--apply"], env=env, capture_output=True, text=True, check=True)
+    assert database.execute("SELECT count(*) FROM promoter_role_allowlist").fetchone() == (1,)
+    database.commit()
+    missing = subprocess.run([*command, "--enable-review", "9999", "--apply"], env=env, capture_output=True, text=True)
+    assert missing.returncode != 0
+    assert database.execute("SELECT enabled FROM promoter_role_runtime_state").fetchone() == (False,)
+
+
+def test_runtime_cannot_be_enabled_without_matching_quality_review(database):
+    with pytest.raises(psycopg.errors.CheckViolation):
+        with database.transaction():
+            database.execute("UPDATE promoter_role_runtime_state SET enabled = true WHERE id = 1")
+    assert database.execute("SELECT enabled FROM promoter_role_runtime_state WHERE id = 1").fetchone() == (False,)
+
+
+def test_runtime_rejects_review_for_different_configuration(database):
+    review = database.execute("""INSERT INTO promoter_role_quality_review (config_hash, classifier_version,
+        manifest_sha256, true_positive, true_negative, false_positive, false_negative, unknown_count,
+        representative, reviewer) VALUES ('old', %s, %s, 4, 1, 1, 1, 0, true, 'reviewer') RETURNING id""",
+        (backfill.CLASSIFIER_VERSION, 'a' * 64)).fetchone()[0]
+    with pytest.raises(psycopg.errors.CheckViolation):
+        with database.transaction():
+            database.execute("""UPDATE promoter_role_runtime_state SET enabled = true,
+              quality_review_id = %s, config_hash = 'new', classifier_version = %s WHERE id = 1""",
+              (review, backfill.CLASSIFIER_VERSION))
+    assert database.execute("SELECT enabled FROM promoter_role_runtime_state WHERE id = 1").fetchone() == (False,)
+
+
+def test_database_rejects_quality_review_below_threshold(database):
+    with pytest.raises(psycopg.errors.CheckViolation):
+        with database.transaction():
+            database.execute("""INSERT INTO promoter_role_quality_review (config_hash, classifier_version,
+              manifest_sha256, true_positive, true_negative, false_positive, false_negative, unknown_count,
+              representative, reviewer) VALUES ('config', 'v', %s, 1, 1, 1, 0, 0, true, 'reviewer')""", ('a' * 64,))
+
+
+def test_database_accepts_seventy_percent_and_rejects_below_for_either_metric(database):
+    statement = """INSERT INTO promoter_role_quality_review (config_hash, classifier_version,
+        manifest_sha256, true_positive, true_negative, false_positive, false_negative, unknown_count,
+        representative, reviewer) VALUES ('config', 'v', %s, %s, 1, %s, %s, 0, true, 'reviewer')"""
+    database.execute(statement, ('a' * 64, 7, 3, 3))
+    for counts in ((6, 4, 0), (6, 0, 4)):
+        with pytest.raises(psycopg.errors.CheckViolation):
+            with database.transaction():
+                database.execute(statement, ('b' * 64, *counts))
+
+
+def test_review_record_requires_pass_and_is_bound_to_configuration(database):
+    quality = evaluate_roles(tuple([ReviewedRole(True, "organizer")] * 4 + [ReviewedRole(True, "unknown"), ReviewedRole(False, "organizer")]))
+    assert quality.passes
+    incomplete = EvaluationReport((), quality, 1, False)
+    with pytest.raises(ValueError):
+        record_quality_review(database, incomplete, config_hash="config", manifest_sha256='a' * 64, reviewer="reviewer")
+    assert not has_quality_review(database, "config")
+    cases = tuple([EvaluatedCase(str(i), str(i), True, "organizer", True) for i in range(4)] + [
+        EvaluatedCase("4", "4", True, "unknown", True),
+        EvaluatedCase("5", "5", False, "organizer", True),
+    ])
+    complete = EvaluationReport(cases, quality, 0, True)
+    record_quality_review(database, complete, config_hash="config", manifest_sha256='a' * 64, reviewer="reviewer")
+    assert has_quality_review(database, "config")
+    assert not has_quality_review(database, "different-config")
+
+
+def test_recorded_review_and_runtime_singleton_cannot_be_rewritten(database):
+    database.execute("""INSERT INTO promoter_role_quality_review (config_hash, classifier_version,
+        manifest_sha256, true_positive, true_negative, false_positive, false_negative, unknown_count,
+        representative, reviewer) VALUES ('config', 'v', %s, 4, 1, 1, 1, 0, true, 'reviewer')""", ('a' * 64,))
+    with pytest.raises(psycopg.errors.CheckViolation):
+        with database.transaction():
+            database.execute("UPDATE promoter_role_quality_review SET config_hash = 'changed'")
+    with pytest.raises(psycopg.errors.CheckViolation):
+        with database.transaction():
+            database.execute("DELETE FROM promoter_role_quality_review")
+    with pytest.raises(psycopg.errors.CheckViolation):
+        with database.transaction():
+            database.execute("DELETE FROM promoter_role_runtime_state")
+
+
+def test_revocation_requires_disabling_active_mode_and_blocks_reenable(database):
+    review = database.execute("""INSERT INTO promoter_role_quality_review (config_hash, classifier_version,
+        manifest_sha256, true_positive, true_negative, false_positive, false_negative, unknown_count,
+        representative, reviewer) VALUES ('config', %s, %s, 4, 1, 1, 1, 0, true, 'reviewer') RETURNING id""",
+        (backfill.CLASSIFIER_VERSION, 'a' * 64)).fetchone()[0]
+    database.execute("""UPDATE promoter_role_runtime_state SET enabled = true, quality_review_id = %s,
+        config_hash = 'config', classifier_version = %s WHERE id = 1""", (review, backfill.CLASSIFIER_VERSION))
+    with pytest.raises(psycopg.errors.CheckViolation):
+        with database.transaction():
+            revoke_quality_review(database, review, "review withdrawn")
+    database.execute("UPDATE promoter_role_runtime_state SET enabled = false WHERE id = 1")
+    revoke_quality_review(database, review, "review withdrawn")
+    assert not has_quality_review(database, "config")
+    with pytest.raises(psycopg.errors.CheckViolation):
+        with database.transaction():
+            database.execute("UPDATE promoter_role_runtime_state SET enabled = true WHERE id = 1")
+
+
+def test_filtered_relation_is_scoped_and_preserves_ra_data(database, monkeypatch):
+    monkeypatch.setattr(backfill, "classify_with_llm", lambda event: RoleResponse((ProposedRole(1, "organizer", 1, "8MM"),), ()))
+    run_id = backfill.create_run(database, (1,), "config")
+    database.commit()
+    assert backfill.process_run(database, run_id, "config") == "succeeded"
+    assert database.execute("SELECT count(*) FROM event_promoters").fetchone() == (2,)
+    with role_filtered_relation(database, "config"):
+        assert database.execute("SELECT event_id, promoter_id FROM event_promoters").fetchall() == [(1, 1)]
+    assert database.execute("SELECT count(*) FROM event_promoters").fetchone() == (2,)
+
+
+def test_filtered_relation_rolls_back_when_query_fails(database):
+    with pytest.raises(psycopg.errors.DivisionByZero):
+        with role_filtered_relation(database, "config"):
+            database.execute("SELECT 1 / 0")
+    assert database.execute("SELECT count(*) FROM event_promoters").fetchone() == (2,)
+
+
+def test_filtered_feedback_uses_latest_confirmed_alias_without_modifying_original(database):
+    from psycopg.rows import dict_row, tuple_row
+    from app.recommendations.promoter_feedback import load_promoter_feedback
+
+    database.execute("INSERT INTO promoter_identity DEFAULT VALUES")
+    database.execute("INSERT INTO promoter_identity_member (promoter_id,identity_id,status,reason,version) VALUES (1,1,'confirmed','reviewed','v1'),(2,1,'confirmed','reviewed','v1')")
+    database.execute("""INSERT INTO recommendation_feedback VALUES
+      (1,42,'artist',1,'promoter',1,'positive','2025-01-01'),
+      (2,42,'artist',1,'promoter',2,'negative','2025-02-01')""")
+    database.row_factory = dict_row
+    try:
+        assert load_promoter_feedback(database, user_id=42, artist_id=1) == {1: "positive", 2: "negative"}
+        with role_filtered_relation(database, "config"):
+            assert load_promoter_feedback(database, user_id=42, artist_id=1) == {1: "negative"}
+        assert load_promoter_feedback(database, user_id=42, artist_id=1) == {1: "positive", 2: "negative"}
+    finally:
+        database.row_factory = tuple_row
+
+
+def test_shadow_compares_real_relation_without_changing_base(database, monkeypatch):
+    from types import SimpleNamespace
+
+    monkeypatch.setattr(backfill, "classify_with_llm", lambda event: RoleResponse((ProposedRole(1, "organizer", 1, "8MM"),), ()))
+    run_id = backfill.create_run(database, (1,), "config")
+    database.commit()
+    assert backfill.process_run(database, run_id, "config") == "succeeded"
+
+    def builder(connection, **kwargs):
+        ids = connection.execute("SELECT promoter_id FROM event_promoters ORDER BY promoter_id").fetchall()
+        return SimpleNamespace(recommendations=[SimpleNamespace(id=row[0]) for row in ids])
+
+    result = compare_recommendations(database, artist_id=1, user_id=1, limit=10,
+                                     current_config_hash="config", builder=builder)
+    assert result.baseline_ids == (1, 2)
+    assert result.shadow_ids == (1,)
+    assert result.removed_ids == (2,)
+    assert database.execute("SELECT count(*) FROM event_promoters").fetchone() == (2,)
+    assert database.execute("SELECT count(*) FROM promoter_role_shadow_result").fetchone() == (0,)
+
+
+def test_worker_shadow_is_allowlisted_idempotent_and_does_not_replace_baseline(database, monkeypatch):
+    from types import SimpleNamespace
+    from app.recommendations import worker
+
+    monkeypatch.setattr(backfill, "classify_with_llm", lambda event: RoleResponse((ProposedRole(1, "organizer", 1, "8MM"),), ()))
+    run_id = backfill.create_run(database, (1,), "config")
+    database.commit()
+    assert backfill.process_run(database, run_id, "config") == "succeeded"
+    baseline = SimpleNamespace(recommendations=[SimpleNamespace(id=1), SimpleNamespace(id=2)])
+    job = {"id": "00000000-0000-0000-0000-000000000001", "user_id": 42, "artist_id": 1}
+    params = SimpleNamespace(limit=10)
+    monkeypatch.setenv("PROMOTER_ROLE_SHADOW_ENABLED", "true")
+    monkeypatch.setenv("PROMOTER_ROLE_SHADOW_USER_IDS", "42")
+    monkeypatch.setattr(worker.EventTagExtractionConfig, "from_env", lambda: object())
+    monkeypatch.setattr(worker, "extraction_config_hash", lambda config: "config")
+    monkeypatch.setattr(worker, "build_artist_promoter_recommendation_response", lambda connection, **kw: SimpleNamespace(recommendations=[SimpleNamespace(id=row[0]) for row in connection.execute("SELECT promoter_id FROM event_promoters ORDER BY promoter_id")]))
+    worker._run_optional_shadow(database, job, params, baseline)
+    worker._run_optional_shadow(database, job, params, baseline)
+    assert database.execute("SELECT baseline, shadow FROM promoter_role_shadow_result").fetchall() == [([1, 2], [1])]
+    assert [item.id for item in baseline.recommendations] == [1, 2]
+    assert database.execute("SELECT count(*) FROM event_promoters").fetchone() == (2,)
+
+
+def test_worker_shadow_failure_preserves_primary_transaction(database, monkeypatch):
+    from types import SimpleNamespace
+    from app.recommendations import worker
+
+    job = {"id": "00000000-0000-0000-0000-000000000002", "user_id": 42, "artist_id": 1}
+    monkeypatch.setenv("PROMOTER_ROLE_SHADOW_ENABLED", "true")
+    monkeypatch.setenv("PROMOTER_ROLE_SHADOW_USER_IDS", "42")
+    monkeypatch.setattr(worker.EventTagExtractionConfig, "from_env", lambda: object())
+    monkeypatch.setattr(worker, "extraction_config_hash", lambda config: "config")
+
+    def fail(connection, **kwargs):
+        connection.execute("SELECT 1 / 0")
+
+    monkeypatch.setattr(worker, "build_artist_promoter_recommendation_response", fail)
+    worker._run_optional_shadow(database, job, SimpleNamespace(limit=10), SimpleNamespace(recommendations=[]))
+    assert database.execute("SELECT count(*) FROM event_promoters").fetchone() == (2,)
+    assert database.execute("SELECT count(*) FROM promoter_role_shadow_result").fetchone() == (0,)
+
+
+def test_worker_shadow_does_not_run_for_unlisted_user(database, monkeypatch):
+    from types import SimpleNamespace
+    from app.recommendations import worker
+
+    monkeypatch.setenv("PROMOTER_ROLE_SHADOW_ENABLED", "true")
+    monkeypatch.setenv("PROMOTER_ROLE_SHADOW_USER_IDS", "43")
+    monkeypatch.setattr(worker.EventTagExtractionConfig, "from_env", lambda: pytest.fail("unlisted user should be ignored"))
+    worker._run_optional_shadow(database, {"user_id": 42}, SimpleNamespace(limit=10), SimpleNamespace(recommendations=[]))
+    assert database.execute("SELECT count(*) FROM promoter_role_shadow_result").fetchone() == (0,)
+
+
+def test_candidate_matches_remain_proposals_and_preserve_ra_ids(database):
+    database.execute("INSERT INTO promoters VALUES (3, '8-MM', 'ra3')")
+    matches = find_candidate_matches(database, '8 MM')
+    assert [(item.promoter_id, item.ra_promoter_id) for item in matches] == [(1, 'ra1'), (3, 'ra3')]
+    assert all(item.confirmed_identity_id is None for item in matches)
+    assert database.execute("SELECT count(*) FROM event_organizer_candidate").fetchone() == (0,)
+
+
+def test_evaluation_never_passes_with_unavailable_or_nonrepresentative_cases(database, monkeypatch):
+    monkeypatch.setattr(backfill, "classify_with_llm", lambda event: RoleResponse((ProposedRole(1, "organizer", 1, "8MM"),), ()))
+    run_id = backfill.create_run(database, (1,), "config")
+    database.commit()
+    assert backfill.process_run(database, run_id, "config") == "succeeded"
+    cases = (ReviewedCase("ra1", "ra1", True), ReviewedCase("ra2", "ra2", False))
+    report = evaluate_current_cases(database, cases, config_hash="config", representative=True)
+    assert report.unavailable == 1
+    assert not report.release_ready
+    assert report.cases[1].predicted_role == "unknown"
+    assert report.quality.true_negative == 0
+    assert not report.quality.passes
+    assert not evaluate_current_cases(database, cases, config_hash="config", representative=False).release_ready
+
+
+def test_evaluation_cli_cannot_record_provisional_review(database, tmp_path):
+    schema = database.execute("SELECT current_schema()").fetchone()[0]
+    database.commit()
+    manifest = tmp_path / "holdout.json"
+    manifest.write_text(json.dumps({"version": "draft", "release_representative": False, "cases": []}))
+    env = os.environ.copy()
+    env.update(PGOPTIONS=f"-c search_path={schema}", EXTRACTION_PROVIDER="kimi_code", KIMI_EXTRACTION_MODEL="test",
+               EVENT_TAG_EXTRACTION_MAX_TEXT_CHARS="7000", EVENT_TAG_EXTRACTION_MAX_TAGS="12", EVENT_TAG_EXTRACTION_CHUNK_CHARS="800")
+    result = subprocess.run([sys.executable, "-m", "app.promoter_role_evaluation_cli", "--manifest", str(manifest),
+                             "--record-review", "--reviewer", "test"], env=env, capture_output=True, text=True)
+    assert result.returncode != 0
+    assert database.execute("SELECT count(*) FROM promoter_role_quality_review").fetchone() == (0,)
+
+
+def test_role_readers_accept_application_dict_row_connections(database):
+    from psycopg.rows import dict_row
+    from app.promoter_role_store import load_event_input
+
+    database.row_factory = dict_row
+    try:
+        assert load_event_input(database, 1).title == "8MM live"
+        assert find_candidate_matches(database, "8MM")[0].ra_promoter_id == "ra1"
+        assert eligible_promoters(database, 1, "config") == ()
+    finally:
+        database.row_factory = psycopg.rows.tuple_row

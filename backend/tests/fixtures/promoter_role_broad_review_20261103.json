@@ -1,0 +1,29 @@
+{
+  "version": "broad-20261103-source-policy-v1",
+  "frozen_before_model_evaluation": true,
+  "release_representative": false,
+  "note": "Partial independent review of preregistered broad sample. A negative means excluded under the venue policy, not proven absence of co-organization. Remaining selected events are not yet reviewed.",
+  "cases": [
+    {
+      "ra_event_id": "2226976",
+      "ra_promoter_id": "150768",
+      "expected_organizer": true,
+      "basis": "RA title credits Zalando as presenter and description identifies it as host.",
+      "source": "https://ra.co/events/2226976"
+    },
+    {
+      "ra_event_id": "2496794",
+      "ra_promoter_id": "9094",
+      "expected_organizer": false,
+      "basis": "Lokschuppen Berlin is the listed venue and no organizer credit for it is present; exclude under the user's venue policy.",
+      "source": "https://ra.co/events/2496794"
+    },
+    {
+      "ra_event_id": "2235098",
+      "ra_promoter_id": "27041",
+      "expected_organizer": true,
+      "basis": "The event description names Addicted to Bass among groups calling for support.",
+      "source": "https://ra.co/events/2235098"
+    }
+  ]
+}
