@@ -12,6 +12,7 @@ import psycopg
 
 from app.event_tag_extraction import EventTagExtractionConfig
 from app.promoter_role_backfill import extraction_config_hash, process_run
+from app.promoter_role_progress import format_progress, notify_progress, read_progress
 
 QUOTA_WAIT_SECONDS = 6 * 60 * 60
 
@@ -56,7 +57,17 @@ def main() -> int:
                 print(json.dumps({"run_id": run_id, "status": "paused_non_quota"}), flush=True)
                 return 1
             while True:
+                before = read_progress(connection, args.run_id)
                 status = process_run(connection, run_id, config, retry_failed=True)
+                after = read_progress(connection, args.run_id)
+                quota = False
+                if status == "paused":
+                    quota = connection.execute("""
+                        SELECT EXISTS(SELECT 1 FROM promoter_role_backfill_item
+                            WHERE run_id = %s AND status = 'pending' AND error_code = 'provider_quota')
+                    """, (run_id,)).fetchone()[0]
+                    connection.commit()
+                notify_progress(format_progress(before, after, "quota" if quota else status))
                 print(json.dumps({"run_id": run_id, "status": status}), flush=True)
                 if status != "paused":
                     break
